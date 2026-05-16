@@ -1,0 +1,61 @@
+{
+  "name": "hero-siege-companion",
+  "productName": "Hero Siege Companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron + Vue companion app for passive Hero Siege stat tracking.",
+  "main": "dist/main/main/main.js",
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "dist:win": "npm run prepare:cap && npm run build && electron-builder --win portable --x64 --publish=never",
+    "prepare:cap": "node scripts/prepare-cap-native.js",
+    "start": "npm run build && electron .",
+    "test": "npm run build:main && node --test tests/parser.test.js",
+    "rebuild": "electron-rebuild -f -w cap",
+    "postinstall:electron": "node ./node_modules/electron/install.js"
+  },
+  "build": {
+    "appId": "com.herosiege.companion",
+    "productName": "Hero Siege Companion",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "../"
+    },
+    "files": [
+      "dist/**/*",
+      "icon.jpg",
+      "icon.ico",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Hero Siege Companion.exe"
+    }
+  },
+  "dependencies": {
+    "cap": "^0.2.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@types/node": "^22.15.21",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19",
+    "vue": "^3.5.14"
+  }
+}

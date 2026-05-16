@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+release/
+win-unpacked/
+*.exe
+*.blockmap
+builder-debug.yml
+builder-effective-config.yaml
+
+# Local caches
+.electron-cache/
+.npm-cache/
+.vite/
+
+# Logs and local runtime data
+*.log
+*.log.old
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
