@@ -56,6 +56,28 @@ test("bare currency snapshots update gold after account mode is known", () => {
   assert.equal(snapshot.totalGold, 400);
 });
 
+test("loose currency payloads recover readable gold totals from corrupt framing", () => {
+  const messages = captureMessages(
+    '����\u0002\u0001����x \u0010{"status":"1","message":"Success!","currencyData":{"account_id":39094,"GSS":1719845,"GSH":0,"GNS":0,"GNH":0,"GBP":0',
+  );
+  const events = messageToEvents(messages);
+
+  assert.equal(events[0].name, "updateGold");
+  assert.equal(events[0].value.accountId, 39094);
+  assert.equal(events[0].value.GSS, 1719845);
+});
+
+test("gold snapshots track current gold and earned positive deltas", () => {
+  const stats = new StatsEngine();
+
+  stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+  stats.applyEvents(messageToEvents([{ currencyData: { account_id: 39094, GSS: 1719845, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
+  const snapshot = stats.applyEvents(messageToEvents([{ currencyData: { account_id: 39094, GSS: 1719900, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
+
+  assert.equal(snapshot.totalGold, 1719900);
+  assert.equal(snapshot.totalGoldEarned, 55);
+});
+
 test("capture accepts JSON arrays", () => {
   const messages = captureMessages('prefix [{"total_guild_xp":500,"message":"Gained 15 XP"}] suffix');
   const events = messageToEvents(messages);

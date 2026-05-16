@@ -96,6 +96,8 @@ export function captureMessages(text: string): MessageValue[] {
   const messages: MessageValue[] = [];
 
   for (const fragment of splitProtocolFragments(text)) {
+    const fragmentMessageStart = messages.length;
+
     for (const jsonText of extractJsonCandidates(fragment)) {
       try {
         addMessage(messages, JSON.parse(jsonText) as MessageValue);
@@ -109,6 +111,11 @@ export function captureMessages(text: string): MessageValue[] {
 
     const queryMessage = parseQueryPayload(fragment);
     if (queryMessage) addMessage(messages, queryMessage);
+
+    if (!messages.slice(fragmentMessageStart).some(hasCurrencyMessage)) {
+      const looseCurrencyMessage = parseLooseCurrencyPayload(fragment);
+      if (looseCurrencyMessage) addMessage(messages, looseCurrencyMessage);
+    }
   }
 
   return messages;
@@ -199,6 +206,38 @@ function hasCurrencyTotals(msg: MessageObject): boolean {
 
 function hasPositiveGoldDelta(msg: MessageObject): boolean {
   return intMessageField(msg, GOLD_DELTA_FIELDS, 0) > 0;
+}
+
+function hasCurrencyMessage(value: MessageValue): boolean {
+  const msg = asMessageObject(value);
+  if (!msg) return false;
+  const currencyData = asMessageObject(getMessageField(msg, GOLD_FIELDS, undefined));
+  return Boolean(currencyData && hasCurrencyTotals(currencyData)) || hasCurrencyTotals(msg) || hasPositiveGoldDelta(msg);
+}
+
+function parseLooseCurrencyPayload(text: string): MessageObject | null {
+  if (!/\b(?:currency|gold|gss|gsh|gns|gnh|gbp)\b/i.test(text)) return null;
+
+  const currencyData: MessageObject = {};
+  const accountId = looseIntField(text, ["account_id", "accountId"]);
+  if (accountId !== null) currencyData.account_id = accountId;
+
+  for (const field of ["GSS", "GSH", "GNS", "GNH", "GBP"]) {
+    const value = looseIntField(text, [field]);
+    if (value !== null) currencyData[field] = value;
+  }
+
+  if (!hasCurrencyTotals(currencyData)) return null;
+  return { currencyData };
+}
+
+function looseIntField(text: string, names: string[]): number | null {
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = text.match(new RegExp(`["']?${escaped}["']?\\s*[:=]\\s*(-?\\d+)`, "i"));
+    if (match) return Number.parseInt(match[1], 10);
+  }
+  return null;
 }
 
 function parseXp(msg: MessageObject): number {

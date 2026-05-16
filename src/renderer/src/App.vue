@@ -72,6 +72,7 @@ const captureStatusLabel = computed(() => {
 });
 
 const sessionDuration = computed(() => formatDuration(now.value - state.value.stats.sessionStartedAt));
+const currentGoldLabel = computed(() => (state.value.stats.seasonMode ? formatNumber(state.value.stats.totalGold) : "pending"));
 const nextZoneAt = computed(() => {
   const date = new Date(now.value);
   const minutes = date.getMinutes();
@@ -296,9 +297,9 @@ function logClass(log: LogEntry): string {
             <small>{{ state.stats.accountName || "No character packet yet" }}</small>
           </article>
           <article class="metric">
-            <span class="metric-label">Gold Earned <span class="info-bubble" data-tip="Gold usually updates when the game sends a currency snapshot, commonly after changing zones.">i</span></span>
+            <span class="metric-label">Gold Earned <span class="info-bubble" data-tip="Gold starts from the current server total and tracks positive differences. Sometimes you may need to force a server sync twice, such as vote reset or starting a new game, before gold fully syncs.">i</span></span>
             <strong>{{ formatNumber(state.stats.totalGoldEarned) }}</strong>
-            <small>{{ formatNumber(state.stats.goldPerHour) }}/h &middot; {{ state.stats.seasonMode || "mode pending" }}</small>
+            <small>{{ formatNumber(state.stats.goldPerHour) }}/h &middot; Current {{ currentGoldLabel }}</small>
           </article>
           <article class="metric">
             <span class="metric-label">XP Earned</span>

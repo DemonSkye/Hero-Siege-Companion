@@ -4,7 +4,7 @@ Passive live-session tracking for Hero Siege on Windows.
 
 Hero Siege Companion watches local Hero Siege traffic, parses the game messages it understands, and turns the useful bits into a compact live dashboard: session time, gold and XP rates, mailbox status, Satanic Zone details, tracked drops, item history, and capture diagnostics.
 
-![Hero Siege Companion preview](docs/assets/app-preview.svg)
+![Hero Siege Companion preview](docs/assets/app.png)
 
 ## Features
 
