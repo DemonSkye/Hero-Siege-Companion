@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CompanionState, LogEntry } from "../../shared/app-state";
-import { ITEM_TYPE_NAMES } from "../../shared/constants";
+import { ITEM_TYPE_NAMES, MATERIAL_LIKE_TIMELINE_TYPES } from "../../shared/constants";
 import { createInitialStats } from "../../shared/stats";
 
 const state = ref<CompanionState>({
@@ -29,11 +29,35 @@ let unsubscribe: (() => void) | null = null;
 let clock: number | null = null;
 const logLimit = ref(20);
 const logLimitOptions = [10, 20, 50, 100, 250, 500];
+const timelineLimit = ref(10);
 const showCaptureDetails = ref(false);
+const showSettings = ref(false);
 const hideSocketables = ref(false);
 const hideKeys = ref(false);
 const hideMaterials = ref(false);
 const timelineType = ref("all");
+const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
+
+interface UiPreferences {
+  logLimit: number;
+  timelineLimit: number;
+  showCaptureDetails: boolean;
+  hideSocketables: boolean;
+  hideKeys: boolean;
+  hideMaterials: boolean;
+  timelineType: string;
+}
+
+const defaultPreferences: UiPreferences = {
+  logLimit: 20,
+  timelineLimit: 10,
+  showCaptureDetails: false,
+  hideSocketables: false,
+  hideKeys: false,
+  hideMaterials: false,
+  timelineType: "all",
+};
+
 const itemTypeOptions = computed(() =>
   Object.entries(ITEM_TYPE_NAMES)
     .map(([value, label]) => ({ value, label }))
@@ -70,15 +94,17 @@ const trackedItems = computed(() => {
 const filteredItemTimeline = computed(() =>
   state.value.stats.itemTimeline.filter((item) => {
     if (hideKeys.value && item.type === 12) return false;
-    if (hideMaterials.value && item.type === 14) return false;
+    if (hideMaterials.value && MATERIAL_LIKE_TIMELINE_TYPES.has(item.type)) return false;
     if (hideSocketables.value && item.type === 15) return false;
     if (timelineType.value !== "all" && item.type !== Number(timelineType.value)) return false;
     return true;
   }),
 );
+const visibleItemTimeline = computed(() => filteredItemTimeline.value.slice(0, timelineLimit.value));
 const recentLogs = computed(() => state.value.logs.slice(0, logLimit.value));
 
 onMounted(async () => {
+  applyPreferences(loadPreferences());
   state.value = await window.heroSiegeCompanion.getState();
   unsubscribe = window.heroSiegeCompanion.onStateUpdated((nextState) => {
     state.value = nextState;
@@ -86,6 +112,10 @@ onMounted(async () => {
   clock = window.setInterval(() => {
     now.value = Date.now();
   }, 1000);
+});
+
+watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType], () => {
+  savePreferences(currentPreferences());
 });
 
 onUnmounted(() => {
@@ -101,6 +131,83 @@ async function toggleCapture() {
 
 async function resetStats() {
   state.value = await window.heroSiegeCompanion.resetStats();
+}
+
+async function minimizeWindow() {
+  await window.heroSiegeCompanion.minimizeWindow();
+}
+
+async function toggleMaximizeWindow() {
+  await window.heroSiegeCompanion.toggleMaximizeWindow();
+}
+
+async function closeWindow() {
+  await window.heroSiegeCompanion.closeWindow();
+}
+
+function resetPreferences() {
+  applyPreferences(defaultPreferences);
+}
+
+function currentPreferences(): UiPreferences {
+  return {
+    logLimit: logLimit.value,
+    timelineLimit: timelineLimit.value,
+    showCaptureDetails: showCaptureDetails.value,
+    hideSocketables: hideSocketables.value,
+    hideKeys: hideKeys.value,
+    hideMaterials: hideMaterials.value,
+    timelineType: timelineType.value,
+  };
+}
+
+function applyPreferences(preferences: UiPreferences) {
+  logLimit.value = preferences.logLimit;
+  timelineLimit.value = preferences.timelineLimit;
+  showCaptureDetails.value = preferences.showCaptureDetails;
+  hideSocketables.value = preferences.hideSocketables;
+  hideKeys.value = preferences.hideKeys;
+  hideMaterials.value = preferences.hideMaterials;
+  timelineType.value = preferences.timelineType;
+}
+
+function loadPreferences(): UiPreferences {
+  try {
+    const raw = window.localStorage.getItem(PREFERENCES_STORAGE_KEY);
+    if (!raw) return defaultPreferences;
+    return normalizePreferences(JSON.parse(raw) as Partial<UiPreferences>);
+  } catch {
+    return defaultPreferences;
+  }
+}
+
+function savePreferences(preferences: UiPreferences) {
+  try {
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+  } catch {
+    // Preferences should never block the live tracker.
+  }
+}
+
+function normalizePreferences(value: Partial<UiPreferences>): UiPreferences {
+  const validLogLimit = logLimitOptions.includes(Number(value.logLimit)) ? Number(value.logLimit) : defaultPreferences.logLimit;
+  const validTimelineLimit = logLimitOptions.includes(Number(value.timelineLimit))
+    ? Number(value.timelineLimit)
+    : defaultPreferences.timelineLimit;
+  const validTimelineType =
+    value.timelineType === "all" || Object.prototype.hasOwnProperty.call(ITEM_TYPE_NAMES, Number(value.timelineType))
+      ? String(value.timelineType)
+      : defaultPreferences.timelineType;
+
+  return {
+    logLimit: validLogLimit,
+    timelineLimit: validTimelineLimit,
+    showCaptureDetails: Boolean(value.showCaptureDetails),
+    hideSocketables: Boolean(value.hideSocketables),
+    hideKeys: Boolean(value.hideKeys),
+    hideMaterials: Boolean(value.hideMaterials),
+    timelineType: validTimelineType,
+  };
 }
 
 function formatNumber(value: number): string {
@@ -128,12 +235,25 @@ function logClass(log: LogEntry): string {
 
 <template>
   <main class="app-shell">
+    <header class="app-titlebar">
+      <div class="drag-strip" aria-label="Drag window">
+        <span class="app-mark">HSC</span>
+        <span>Hero Siege Companion</span>
+      </div>
+      <div class="window-controls" aria-label="Window controls">
+        <button type="button" @click="minimizeWindow" title="Minimize" aria-label="Minimize">−</button>
+        <button type="button" @click="toggleMaximizeWindow" title="Maximize or restore" aria-label="Maximize or restore">□</button>
+        <button class="close" type="button" @click="closeWindow" title="Close" aria-label="Close">×</button>
+      </div>
+    </header>
+
     <section class="topbar">
       <div class="topbar-title">
         <p class="eyebrow">Hero Siege Companion</p>
         <h1>Live Session</h1>
       </div>
       <div class="actions">
+        <button class="icon-button ghost" type="button" @click="showSettings = true" title="Settings" aria-label="Settings">⚙</button>
         <button class="icon-button ghost" type="button" @click="resetStats" title="Reset session stats">Reset</button>
         <button class="icon-button primary" type="button" @click="toggleCapture">
           {{ state.captureRunning ? "Stop Capture" : "Start Capture" }}
@@ -171,12 +291,12 @@ function logClass(log: LogEntry): string {
 
         <section class="metric-grid">
           <article class="metric">
-            <span class="metric-label">Session <span class="info-bubble" title="How long this capture session has been running.">i</span></span>
+            <span class="metric-label">Session <span class="info-bubble" data-tip="How long this capture session has been running.">i</span></span>
             <strong>{{ sessionDuration }}</strong>
             <small>{{ state.stats.accountName || "No character packet yet" }}</small>
           </article>
           <article class="metric">
-            <span class="metric-label">Gold Earned <span class="info-bubble" title="Gold usually updates when the game sends a currency snapshot, commonly after changing zones.">i</span></span>
+            <span class="metric-label">Gold Earned <span class="info-bubble" data-tip="Gold usually updates when the game sends a currency snapshot, commonly after changing zones.">i</span></span>
             <strong>{{ formatNumber(state.stats.totalGoldEarned) }}</strong>
             <small>{{ formatNumber(state.stats.goldPerHour) }}/h &middot; {{ state.stats.seasonMode || "mode pending" }}</small>
           </article>
@@ -186,7 +306,7 @@ function logClass(log: LogEntry): string {
             <small>{{ formatNumber(state.stats.xpPerHour) }}/h</small>
           </article>
           <article class="metric">
-            <span class="metric-label">Mailbox <span class="info-bubble" title="Mailbox state updates when the game sends mailbox data, commonly when you go to town.">i</span></span>
+            <span class="metric-label">Mailbox <span class="info-bubble" data-tip="Mailbox state updates when the game sends mailbox data, commonly when you go to town.">i</span></span>
             <strong>{{ state.stats.hasMail ? "Mail" : "Clear" }}</strong>
             <small>Last event {{ formatTime(state.stats.lastEventAt) }}</small>
           </article>
@@ -196,7 +316,7 @@ function logClass(log: LogEntry): string {
         <article class="panel zone-panel">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Satanic Zone <span class="info-bubble" title="Satanic zone data updates when the game sends a fresh zone vote/reset packet.">i</span></p>
+              <p class="eyebrow">Satanic Zone <span class="info-bubble" data-tip="Satanic zone data updates when the game sends a fresh zone vote/reset packet.">i</span></p>
               <h2>{{ state.stats.satanicZone?.zone || "Waiting for zone packet" }}</h2>
             </div>
             <div class="countdown">
@@ -252,6 +372,12 @@ function logClass(log: LogEntry): string {
               <p class="eyebrow">Recent</p>
               <h2>Item Timeline</h2>
             </div>
+            <label class="timeline-limit">
+              <span>History</span>
+              <select v-model.number="timelineLimit" title="Visible item timeline history">
+                <option v-for="option in logLimitOptions" :key="option" :value="option">{{ option }}</option>
+              </select>
+            </label>
           </div>
           <div class="timeline-filters">
             <label class="timeline-type-filter">
@@ -274,8 +400,8 @@ function logClass(log: LogEntry): string {
               <span>Hide materials</span>
             </label>
           </div>
-          <div v-if="filteredItemTimeline.length" class="timeline">
-            <div v-for="item in filteredItemTimeline.slice(0, 10)" :key="`${item.createdAt}-${item.id}-${item.fingerprint}`" class="timeline-row">
+          <div v-if="visibleItemTimeline.length" class="timeline">
+            <div v-for="item in visibleItemTimeline" :key="`${item.createdAt}-${item.id}-${item.fingerprint}`" class="timeline-row">
               <span :class="['rarity-pill', item.rarity.toLowerCase()]">{{ item.rarity }}</span>
               <strong>{{ item.label || (item.id ? `#${item.id}` : "Unknown item") }}</strong>
               <small>
@@ -309,6 +435,61 @@ function logClass(log: LogEntry): string {
             </div>
           </div>
         </article>
+      </section>
+    </div>
+    <div v-if="showSettings" class="modal-backdrop" @click.self="showSettings = false">
+      <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="settings-heading">
+          <div>
+            <p class="eyebrow">Preferences</p>
+            <h2 id="settings-title">Settings</h2>
+            <p class="settings-note">These preferences are saved on this device and restored between sessions.</p>
+          </div>
+          <button class="settings-close" type="button" @click="showSettings = false" title="Close settings" aria-label="Close settings">×</button>
+        </div>
+
+        <div class="settings-grid">
+          <label class="settings-row">
+            <span>Log history</span>
+            <select v-model.number="logLimit" title="Visible log history">
+              <option v-for="option in logLimitOptions" :key="option" :value="option">{{ option }}</option>
+            </select>
+          </label>
+          <label class="settings-row">
+            <span>Item timeline history</span>
+            <select v-model.number="timelineLimit" title="Visible item timeline history">
+              <option v-for="option in logLimitOptions" :key="option" :value="option">{{ option }}</option>
+            </select>
+          </label>
+          <label class="settings-row">
+            <span>Timeline type</span>
+            <select v-model="timelineType" title="Filter item timeline by item type">
+              <option value="all">All</option>
+              <option v-for="option in itemTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </label>
+          <label class="settings-check">
+            <input v-model="showCaptureDetails" type="checkbox" />
+            <span>Show capture details</span>
+          </label>
+          <label class="settings-check">
+            <input v-model="hideSocketables" type="checkbox" />
+            <span>Hide socketable items</span>
+          </label>
+          <label class="settings-check">
+            <input v-model="hideKeys" type="checkbox" />
+            <span>Hide key items</span>
+          </label>
+          <label class="settings-check">
+            <input v-model="hideMaterials" type="checkbox" />
+            <span>Hide material and collectible items</span>
+          </label>
+        </div>
+
+        <div class="settings-actions">
+          <button class="icon-button ghost" type="button" @click="resetPreferences">Reset Preferences</button>
+          <button class="icon-button primary" type="button" @click="showSettings = false">Done</button>
+        </div>
       </section>
     </div>
     <div class="resize-grip" aria-hidden="true"></div>

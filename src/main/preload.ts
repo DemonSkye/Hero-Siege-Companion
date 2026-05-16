@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   startCapture: (): Promise<CompanionState> => ipcRenderer.invoke("capture:start"),
   stopCapture: (): Promise<CompanionState> => ipcRenderer.invoke("capture:stop"),
   resetStats: (): Promise<CompanionState> => ipcRenderer.invoke("stats:reset"),
+  minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
+  toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke("window:toggle-maximize"),
+  closeWindow: (): Promise<void> => ipcRenderer.invoke("window:close"),
   onStateUpdated: (callback: (state: CompanionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: CompanionState) => callback(state);
     ipcRenderer.on("state:updated", listener);

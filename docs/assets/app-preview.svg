@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Hero Siege Companion live session dashboard preview</title>
+  <desc id="desc">Dark dashboard showing capture status, session metrics, Satanic Zone data, tracked drops, recent item timeline, and live diagnostics.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1c1c"/>
+      <stop offset=".42" stop-color="#0e1219"/>
+      <stop offset="1" stop-color="#18110f"/>
+    </linearGradient>
+    <style>
+      .ui { font-family: "Segoe UI", Arial, sans-serif; }
+      .panel { fill: #11161e; stroke: #24303a; stroke-width: 1; }
+      .card { fill: #171c24; }
+      .muted { fill: #aab3c2; }
+      .text { fill: #e9edf4; }
+      .teal { fill: #8ce7d5; }
+      .green { fill: #8ee16c; }
+      .red { fill: #ff615a; }
+      .gold { fill: #ffe58f; }
+    </style>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect x="20" y="8" width="1240" height="24" rx="5" fill="#0d1118" stroke="#26313a"/>
+  <rect x="34" y="12" width="26" height="16" rx="4" fill="none" stroke="#4fb5a4"/>
+  <text class="ui teal" x="39" y="24" font-size="10" font-weight="700">HSC</text>
+  <text class="ui muted" x="70" y="24" font-size="12" font-weight="700">Hero Siege Companion</text>
+  <rect x="1182" y="8" width="74" height="24" rx="5" fill="#151821" stroke="#343946"/>
+  <text class="ui text" x="1201" y="25" font-size="18">-  □  ×</text>
+  <rect x="20" y="42" width="1240" height="86" rx="7" class="panel"/>
+  <text class="ui teal" x="36" y="70" font-size="12" font-weight="800">HERO SIEGE COMPANION</text>
+  <text class="ui text" x="36" y="102" font-size="30" font-weight="800">Live Session</text>
+  <rect x="1030" y="65" width="34" height="34" rx="6" fill="#171b23" stroke="#3a414d"/>
+  <text class="ui text" x="1040" y="89" font-size="18">⚙</text>
+  <rect x="1075" y="65" width="62" height="34" rx="6" fill="#171b23" stroke="#3a414d"/>
+  <text class="ui text" x="1091" y="88" font-size="15" font-weight="700">Reset</text>
+  <rect x="1148" y="65" width="104" height="34" rx="7" fill="#df6840"/>
+  <text class="ui text" x="1162" y="88" font-size="15" font-weight="800">Stop Capture</text>
+  <rect x="20" y="144" width="1240" height="54" rx="7" class="panel"/>
+  <circle cx="40" cy="171" r="5" fill="#43d39b"/>
+  <text class="ui text" x="56" y="169" font-size="15" font-weight="800">Connected</text>
+  <text class="ui muted" x="56" y="184" font-size="12">Capture active</text>
+  <text class="ui text" x="612" y="176" font-size="14" font-weight="800">Packets</text>
+  <text class="ui muted" x="663" y="176" font-size="12">24,140 seen · 98 parsed</text>
+  <rect x="1178" y="158" width="62" height="28" rx="6" fill="#171b23" stroke="#3a414d"/>
+  <text class="ui text" x="1190" y="178" font-size="14" font-weight="700">Details</text>
+  <g>
+    <rect x="20" y="212" width="300" height="92" rx="7" class="panel"/>
+    <text class="ui muted" x="36" y="245" font-size="12">Session</text>
+    <text class="ui text" x="36" y="282" font-size="30" font-weight="800">6:39</text>
+    <text class="ui muted" x="36" y="302" font-size="13">Deva</text>
+    <rect x="333" y="212" width="300" height="92" rx="7" class="panel"/>
+    <text class="ui muted" x="349" y="245" font-size="12">Gold Earned</text>
+    <text class="ui text" x="349" y="282" font-size="30" font-weight="800">2,888</text>
+    <text class="ui muted" x="349" y="302" font-size="13">26,467/h · GSS</text>
+    <rect x="646" y="212" width="300" height="92" rx="7" class="panel"/>
+    <text class="ui muted" x="662" y="245" font-size="12">XP Earned</text>
+    <text class="ui text" x="662" y="282" font-size="30" font-weight="800">2,350,560</text>
+    <text class="ui muted" x="662" y="302" font-size="13">21,541,933/h</text>
+    <rect x="959" y="212" width="300" height="92" rx="7" class="panel"/>
+    <text class="ui muted" x="975" y="245" font-size="12">Mailbox</text>
+    <text class="ui text" x="975" y="282" font-size="30" font-weight="800">Mail</text>
+    <text class="ui muted" x="975" y="302" font-size="13">Last event 7:10:35 PM</text>
+  </g>
+  <rect x="20" y="318" width="734" height="260" rx="7" class="panel"/>
+  <text class="ui teal" x="36" y="350" font-size="12" font-weight="800">SATANIC ZONE</text>
+  <text class="ui text" x="36" y="376" font-size="18" font-weight="800">Act 1: King's Garden</text>
+  <text class="ui gold" x="688" y="360" font-size="26" font-weight="900">19:17</text>
+  <text class="ui muted" x="679" y="383" font-size="12">until 7:30 PM</text>
+  <text class="ui text" x="36" y="418" font-size="13" font-weight="800">Pros</text>
+  <text class="ui text" x="390" y="418" font-size="13" font-weight="800">Cons</text>
+  <rect x="36" y="432" width="345" height="58" rx="6" fill="#142125" stroke="#2d4a4f"/>
+  <text class="ui text" x="48" y="459" font-size="16" font-weight="800">Nether Surge</text>
+  <text class="ui muted" x="48" y="479" font-size="12">Magic Skill Damage increased by 40%</text>
+  <rect x="36" y="500" width="345" height="58" rx="6" fill="#142125" stroke="#2d4a4f"/>
+  <text class="ui text" x="48" y="527" font-size="16" font-weight="800">Rapid Casting</text>
+  <text class="ui muted" x="48" y="547" font-size="12">Faster Cast Rate increased by 60%</text>
+  <rect x="390" y="432" width="345" height="58" rx="6" fill="#241a1d" stroke="#70423e"/>
+  <text class="ui text" x="402" y="459" font-size="16" font-weight="800">Broken Armor</text>
+  <text class="ui muted" x="402" y="479" font-size="12">You are unable to block attacks and projectiles</text>
+  <rect x="390" y="500" width="345" height="58" rx="6" fill="#241a1d" stroke="#70423e"/>
+  <text class="ui text" x="402" y="527" font-size="16" font-weight="800">Dusk's Shroud</text>
+  <text class="ui muted" x="402" y="547" font-size="12">Light Radius decreased by 20%</text>
+  <rect x="765" y="318" width="494" height="260" rx="7" class="panel"/>
+  <text class="ui teal" x="781" y="350" font-size="12" font-weight="800">DROPS</text>
+  <text class="ui text" x="781" y="376" font-size="18" font-weight="800">Tracked Items</text>
+  <rect x="781" y="396" width="224" height="84" rx="6" class="card"/>
+  <text class="ui green" x="793" y="424" font-size="16" font-weight="800">Set</text>
+  <text class="ui green" x="793" y="461" font-size="28" font-weight="900">5</text>
+  <text class="ui green" x="793" y="483" font-size="13" font-weight="700">4 MF · 45/h</text>
+  <rect x="1014" y="396" width="224" height="84" rx="6" class="card"/>
+  <text class="ui red" x="1026" y="424" font-size="16" font-weight="800">Satanic</text>
+  <text class="ui red" x="1026" y="461" font-size="28" font-weight="900">1</text>
+  <text class="ui red" x="1026" y="483" font-size="13" font-weight="700">1 MF · 9/h</text>
+  <rect x="781" y="492" width="224" height="84" rx="6" class="card"/>
+  <text class="ui gold" x="793" y="520" font-size="16" font-weight="800">Heroic</text>
+  <text class="ui gold" x="793" y="557" font-size="28" font-weight="900">0</text>
+  <text class="ui gold" x="793" y="579" font-size="13" font-weight="700">0 MF · 0/h</text>
+  <rect x="1014" y="492" width="224" height="84" rx="6" class="card"/>
+  <text class="ui gold" x="1026" y="520" font-size="16" font-weight="800">Angelic</text>
+  <text class="ui gold" x="1026" y="557" font-size="28" font-weight="900">0</text>
+  <text class="ui gold" x="1026" y="579" font-size="13" font-weight="700">0 MF · 0/h</text>
+  <rect x="20" y="590" width="734" height="116" rx="7" class="panel"/>
+  <text class="ui teal" x="36" y="618" font-size="12" font-weight="800">RECENT</text>
+  <text class="ui text" x="36" y="643" font-size="18" font-weight="800">Item Timeline</text>
+  <rect x="36" y="658" width="700" height="28" rx="6" class="card"/>
+  <rect x="50" y="663" width="58" height="18" rx="9" fill="#222a31"/>
+  <text class="ui green" x="66" y="677" font-size="12" font-weight="800">Set</text>
+  <text class="ui text" x="118" y="677" font-size="14" font-weight="800">Shield Bearer's Wall</text>
+  <text class="ui muted" x="608" y="677" font-size="12">Magic find · 7:07:50 PM</text>
+  <rect x="765" y="590" width="494" height="116" rx="7" class="panel"/>
+  <text class="ui teal" x="781" y="618" font-size="12" font-weight="800">DIAGNOSTICS</text>
+  <text class="ui text" x="781" y="643" font-size="18" font-weight="800">Live Log</text>
+  <rect x="781" y="658" width="458" height="28" rx="6" class="card"/>
+  <text class="ui muted" x="793" y="677" font-size="12">7:10:35 PM</text>
+  <text class="ui text" x="870" y="677" font-size="12" font-weight="700">Parsed updateMail: true</text>
+</svg>

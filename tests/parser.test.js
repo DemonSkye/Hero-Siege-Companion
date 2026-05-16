@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const { captureMessages, identifyEvent, messageToEvents } = require("../dist/main/shared/parser.js");
 const { StatsEngine } = require("../dist/main/shared/stats.js");
+const { MATERIAL_LIKE_TIMELINE_TYPES } = require("../dist/main/shared/constants.js");
 
 test("identifies renamed packet fields from PR25", () => {
   const cases = [
@@ -407,6 +408,52 @@ test("stack materials do not increment tracked drop cards", () => {
   assert.equal(snapshot.items.Satanic.total, 0);
 });
 
+test("timeline keeps older visible drops when hidden material pickups are noisy", () => {
+  const stats = new StatsEngine();
+  const baseTime = Date.now();
+  const events = [
+    {
+      name: "itemAdded",
+      createdAt: baseTime,
+      value: {
+        rarityName: "Satanic",
+        label: "Visible Satanic Drop",
+        id: 101,
+        type: 4,
+        seed: 1,
+        dropQuality: 6,
+        amount: 1,
+        mfDrop: 0,
+        fingerprint: "visible-satanic-drop",
+      },
+    },
+  ];
+
+  for (let index = 0; index < 35; index += 1) {
+    events.push({
+      name: "itemAdded",
+      createdAt: baseTime + index + 1,
+      value: {
+        rarityName: "Satanic",
+        label: "Satanic Crystal Fragment",
+        id: 60,
+        type: 14,
+        seed: index + 1,
+        dropQuality: 6,
+        amount: 1,
+        mfDrop: 0,
+        fingerprint: `material-${index}`,
+      },
+    });
+  }
+
+  const snapshot = stats.applyEvents(events);
+  const visibleAfterHidingMaterials = snapshot.itemTimeline.filter((item) => item.type !== 14);
+
+  assert.equal(visibleAfterHidingMaterials.length, 1);
+  assert.equal(visibleAfterHidingMaterials[0].label, "Visible Satanic Drop");
+});
+
 test("inventory stack updates resolve known material and key names", () => {
   const events = messageToEvents([
     {
@@ -521,6 +568,24 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
     events.map((event) => event.value.label),
     ["Crystal Key", "Devil's Key", "Chaos Key", "Battle Fragment", "The Hanged Man", "Bloodstone", "Tarethium Ore", "Blacksmith's Mallet", "Gold Ore"],
   );
+});
+
+test("battle fragments are treated as material-like timeline noise", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        stack: {
+          "10-3909410-collectible-0-13": {
+            pickup_add_data: { a: 4, b: 0, d: 1 },
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(events[0].value.label, "Battle Fragment");
+  assert.equal(events[0].value.type, 13);
+  assert.equal(MATERIAL_LIKE_TIMELINE_TYPES.has(events[0].value.type), true);
 });
 
 test("manual stack lookup resolves known socketables", () => {

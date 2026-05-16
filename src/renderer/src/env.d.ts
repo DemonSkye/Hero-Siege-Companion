@@ -7,6 +7,9 @@ declare global {
       startCapture: () => Promise<CompanionState>;
       stopCapture: () => Promise<CompanionState>;
       resetStats: () => Promise<CompanionState>;
+      minimizeWindow: () => Promise<void>;
+      toggleMaximizeWindow: () => Promise<void>;
+      closeWindow: () => Promise<void>;
       onStateUpdated: (callback: (state: CompanionState) => void) => () => void;
     };
   }

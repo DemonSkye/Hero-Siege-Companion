@@ -34,6 +34,8 @@ let captureService: CaptureService | null = null;
 let appLogPath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
 
+if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
@@ -60,7 +62,7 @@ process.on("exit", () => {
 });
 
 function createWindow(): void {
-  const iconPath = path.join(__dirname, "..", "..", "icon.jpg");
+  const iconPath = resolveIconPath();
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -68,7 +70,9 @@ function createWindow(): void {
     minHeight: 620,
     autoHideMenuBar: true,
     backgroundColor: "#101217",
+    frame: false,
     icon: nativeImage.createFromPath(iconPath),
+    title: "Hero Siege Companion",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -87,6 +91,12 @@ function createWindow(): void {
     });
     addLog("error", `Renderer stopped unexpectedly: ${details.reason}.`);
   });
+}
+
+function resolveIconPath(): string {
+  const resourceIconPath = path.join(process.resourcesPath, "icon.ico");
+  if (app.isPackaged && fs.existsSync(resourceIconPath)) return resourceIconPath;
+  return path.join(app.getAppPath(), "icon.ico");
 }
 
 function applyCaptureUpdate(update: CaptureUpdate): void {
@@ -135,6 +145,17 @@ ipcMain.handle("stats:reset", () => {
   addLog("info", "Session stats reset.");
   publishState();
   return state;
+});
+ipcMain.handle("window:minimize", () => {
+  mainWindow?.minimize();
+});
+ipcMain.handle("window:toggle-maximize", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+ipcMain.handle("window:close", () => {
+  mainWindow?.close();
 });
 
 app.whenReady().then(async () => {

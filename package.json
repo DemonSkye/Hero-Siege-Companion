@@ -19,7 +19,10 @@
   "build": {
     "appId": "com.herosiege.companion",
     "productName": "Hero Siege Companion",
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/cap/build/Release/cap.node"
+    ],
     "npmRebuild": false,
     "directories": {
       "output": "../"
@@ -30,6 +33,12 @@
       "icon.ico",
       "package.json",
       "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "icon.ico",
+        "to": "icon.ico"
+      }
     ],
     "win": {
       "icon": "icon.ico",

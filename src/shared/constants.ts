@@ -32,6 +32,8 @@ export const ITEM_TYPE_NAMES: Record<number, string> = {
   18: "Vial",
 };
 
+export const MATERIAL_LIKE_TIMELINE_TYPES = new Set([13, 14]);
+
 export const WEAPON_TYPE_NAMES: Record<number, string> = {
   0: "Item",
   1: "Sword",

@@ -40,6 +40,7 @@ export interface CompanionStats {
 
 const TRACKED_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
 const UNTRACKED_ITEM_TYPES = new Set([12, 13, 14, 15]);
+const MAX_ITEM_TIMELINE_ENTRIES = 500;
 
 export class StatsEngine {
   private stats: CompanionStats = createInitialStats();
@@ -143,7 +144,7 @@ export class StatsEngine {
       fingerprint: item.fingerprint,
       createdAt,
     });
-    this.stats.itemTimeline = this.stats.itemTimeline.slice(0, 30);
+    this.stats.itemTimeline = this.stats.itemTimeline.slice(0, MAX_ITEM_TIMELINE_ENTRIES);
   }
 
   private updateSatanicZone(zone: SatanicZoneInfo): void {
