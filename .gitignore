@@ -24,6 +24,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local project notes
+AUCTION_HOUSE_FINDINGS.md
+PROJECT_MEMORY.md
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
