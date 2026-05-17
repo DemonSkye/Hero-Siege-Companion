@@ -92,10 +92,16 @@ $env:electron_config_cache=(Join-Path (Get-Location) '.electron-cache')
 node .\node_modules\electron\install.js
 ```
 
-Rebuild the native packet capture module:
+Rebuild the native packet capture module. This requires Python on your `PATH`; Python 3.10+ is a good default on Windows.
 
 ```powershell
-$env:npm_config_python='C:\Program Files\JetBrains\JetBrains Rider 2023.1.3\plugins\cidr-debugger-plugin\bin\lldb\win\x64\bin\python.exe'
+npx electron-rebuild -f -w cap
+```
+
+If Python is installed but not on `PATH`, point npm at your local `python.exe` first:
+
+```powershell
+$env:npm_config_python='C:\Path\To\Python\python.exe'
 npx electron-rebuild -f -w cap
 ```
 
