@@ -877,6 +877,10 @@ const ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "consumable_amun_ras_demise", name: "Amun Ra's Demise", gameId: 21, type: 18, weaponType: 0 },
 ];
 
+const ITEM_TRANSLATION_OVERRIDES: ItemTranslation[] = [
+  { localizationId: "rings_scourge_loop", name: "Scourge Loop", gameId: 48, type: 7, weaponType: 0 },
+];
+
 const exactLookup = new Map<string, ItemTranslation>();
 const looseLookup = new Map<string, ItemTranslation[]>();
 
@@ -886,6 +890,11 @@ for (const item of ITEM_TRANSLATIONS) {
   const matches = looseLookup.get(looseKey) ?? [];
   matches.push(item);
   looseLookup.set(looseKey, matches);
+}
+
+for (const item of ITEM_TRANSLATION_OVERRIDES) {
+  exactLookup.set(lookupKey(item.type, item.gameId, item.weaponType), item);
+  looseLookup.set(lookupKey(item.type, item.gameId), [item]);
 }
 
 export function lookupItemTranslation(type: number, gameId: number, weaponType = 0): ItemTranslation | null {

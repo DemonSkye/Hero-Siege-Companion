@@ -1,4 +1,4 @@
-import type { CompanionStats } from "./stats";
+import type { CompanionStats, PastRunSummary } from "./stats";
 
 export interface LogEntry {
   id: string;
@@ -28,6 +28,11 @@ export interface CaptureHealth {
   parsedEvents: number;
 }
 
+export interface RunArchivePreferences {
+  skipEmptyRuns: boolean;
+  minDurationMinutes: number;
+}
+
 export interface CompanionState {
   captureRunning: boolean;
   captureStatus: "idle" | "waiting" | "running" | "error";
@@ -35,5 +40,7 @@ export interface CompanionState {
   connections: CaptureConnection[];
   health: CaptureHealth;
   stats: CompanionStats;
+  pastRuns: PastRunSummary[];
+  runArchivePreferences: RunArchivePreferences;
   logs: LogEntry[];
 }

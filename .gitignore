@@ -23,9 +23,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.pcap
+*.pcapng
+capture-*.bin
+past-runs.json
+preferences.json
 
 # Local project notes
 AUCTION_HOUSE_FINDINGS.md
+auction_house_findings*
 PROJECT_MEMORY.md
 
 # OS/editor noise

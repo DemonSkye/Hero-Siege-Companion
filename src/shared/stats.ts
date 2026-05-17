@@ -6,6 +6,12 @@ export interface ItemCounter {
   mf: number;
 }
 
+export interface ResourceCounter {
+  id: number;
+  name: string;
+  total: number;
+}
+
 export interface ItemTimelineEntry {
   rarity: string;
   label: string;
@@ -33,14 +39,40 @@ export interface CompanionStats {
   xpPerHour: number;
   items: Record<string, ItemCounter>;
   itemsPerHour: Record<string, number>;
+  keys: Record<string, ResourceCounter>;
+  ores: Record<string, ResourceCounter>;
   itemTimeline: ItemTimelineEntry[];
   satanicZone: SatanicZoneInfo | null;
   lastEventAt: number | null;
 }
 
+export interface PastRunSummary {
+  id: string;
+  sessionStartedAt: number;
+  sessionEndedAt: number;
+  durationMs: number;
+  accountName: string;
+  totalGoldGained: number;
+  totalXpGained: number;
+  heroicDrops: number;
+  angelicDrops: number;
+  keys: ResourceCounter[];
+  ores: ResourceCounter[];
+}
+
 const TRACKED_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
 const UNTRACKED_ITEM_TYPES = new Set([12, 13, 14, 15]);
 const MAX_ITEM_TIMELINE_ENTRIES = 500;
+const BASIC_KEY_ID = 0;
+
+const ORE_MATERIALS: Record<number, string> = {
+  27: "Copper Ore",
+  28: "Iron Ore",
+  29: "Gold Ore",
+  30: "Ruby",
+  31: "Jade",
+  32: "Tarethium Ore",
+};
 
 export class StatsEngine {
   private stats: CompanionStats = createInitialStats();
@@ -62,6 +94,11 @@ export class StatsEngine {
 
   snapshot(): CompanionStats {
     return structuredCloneCompat(this.stats);
+  }
+
+  runSummary(sessionEndedAt = Date.now()): PastRunSummary {
+    const snapshot = this.snapshot();
+    return createRunSummary(snapshot, sessionEndedAt);
   }
 
   private applyEvent(event: ParsedEvent): void {
@@ -131,6 +168,15 @@ export class StatsEngine {
       if (item.mfDrop === 1) this.stats.items[trackedRarity].mf += 1;
     }
 
+    if (item.type === 12 && item.id !== BASIC_KEY_ID) {
+      incrementResource(this.stats.keys, item.id, item.label, item.amount);
+    }
+
+    const oreName = item.type === 14 ? ORE_MATERIALS[item.id] : undefined;
+    if (oreName) {
+      incrementResource(this.stats.ores, item.id, oreName, item.amount);
+    }
+
     this.stats.itemTimeline.unshift({
       rarity,
       label: item.label,
@@ -195,9 +241,13 @@ function normalizeTrackedRarity(rarity: string): string | null {
 export function createInitialStats(): CompanionStats {
   const items: Record<string, ItemCounter> = {};
   const itemsPerHour: Record<string, number> = {};
+  const ores: Record<string, ResourceCounter> = {};
   for (const rarity of TRACKED_RARITIES) {
     items[rarity] = { total: 0, mf: 0 };
     itemsPerHour[rarity] = 0;
+  }
+  for (const [id, name] of Object.entries(ORE_MATERIALS)) {
+    ores[name] = { id: Number(id), name, total: 0 };
   }
 
   return {
@@ -213,10 +263,53 @@ export function createInitialStats(): CompanionStats {
     xpPerHour: 0,
     items,
     itemsPerHour,
+    keys: {},
+    ores,
     itemTimeline: [],
     satanicZone: null,
     lastEventAt: null,
   };
+}
+
+export function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now()): PastRunSummary {
+  return {
+    id: `${stats.sessionStartedAt}-${sessionEndedAt}`,
+    sessionStartedAt: stats.sessionStartedAt,
+    sessionEndedAt,
+    durationMs: Math.max(sessionEndedAt - stats.sessionStartedAt, 0),
+    accountName: stats.accountName,
+    totalGoldGained: stats.totalGoldEarned,
+    totalXpGained: stats.totalXpEarned,
+    heroicDrops: stats.items.Heroic?.total ?? 0,
+    angelicDrops: stats.items.Angelic?.total ?? 0,
+    keys: resourceList(stats.keys),
+    ores: resourceList(stats.ores),
+  };
+}
+
+export function hasRunActivity(summary: PastRunSummary): boolean {
+  const keyTotal = summary.keys.reduce((total, key) => total + key.total, 0);
+  const oreTotal = summary.ores.reduce((total, ore) => total + ore.total, 0);
+  return (
+    summary.totalGoldGained > 0 ||
+    summary.totalXpGained > 0 ||
+    summary.heroicDrops > 0 ||
+    summary.angelicDrops > 0 ||
+    keyTotal > 0 ||
+    oreTotal > 0
+  );
+}
+
+function incrementResource(resources: Record<string, ResourceCounter>, id: number, name: string, amount: number): void {
+  const total = Math.max(amount || 1, 1);
+  resources[name] = resources[name] ?? { id, name, total: 0 };
+  resources[name].total += total;
+}
+
+function resourceList(resources: Record<string, ResourceCounter>): ResourceCounter[] {
+  return Object.values(resources)
+    .filter((resource) => resource.total > 0)
+    .sort((a, b) => a.id - b.id);
 }
 
 function structuredCloneCompat<T>(value: T): T {

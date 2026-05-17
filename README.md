@@ -2,20 +2,9 @@
 
 Passive live-session tracking for Hero Siege on Windows.
 
-Hero Siege Companion watches local Hero Siege traffic, parses the game messages it understands, and turns the useful bits into a compact live dashboard: session time, gold and XP rates, mailbox status, Satanic Zone details, tracked drops, item history, and capture diagnostics.
+Hero Siege Companion watches local Hero Siege traffic, parses the game messages it understands, and turns the useful bits into a clean desktop dashboard: session time, gold and XP rates, mailbox status, Satanic Zone details, tracked drops, item history, run history, and capture diagnostics.
 
-![Hero Siege Companion preview](docs/assets/app.png)
-
-## Features
-
-- Live capture status with packet and parse counts.
-- Session timer, character name, gold earned, XP earned, and per-hour rates.
-- Mailbox state detection from game packets.
-- Satanic Zone name, reset countdown, pros, and cons.
-- Tracked drop counters for Set, Satanic, Heroic, and Angelic items.
-- Item timeline with filters for item type, keys, socketables, materials, and material-like collectibles.
-- Diagnostics panel for parsed events and capture troubleshooting.
-- Local-only desktop app: no account login, no cloud service, and no packet capture files are written by the app.
+![Hero Siege Companion live dashboard](docs/assets/app.png)
 
 ## Download
 
@@ -24,6 +13,39 @@ Download the latest Windows build from the GitHub Releases page:
 [Hero Siege Companion Releases](https://github.com/DemonSkye/Hero-Siege-Companion/releases)
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
+
+Current release target: `v0.0.3`.
+
+## Features
+
+- Live capture status with packet and parse counts.
+- Session timer, character name, gold earned, current gold, XP earned, and per-hour rates.
+- Mailbox state detection from game packets.
+- Satanic Zone name, reset countdown, pros, and cons.
+- Tracked drop counters for Set, Satanic, Heroic, Angelic, non-basic keys, and mined ore.
+- Item timeline with filters for item type, keys, socketables, materials, and material-like collectibles.
+- Expandable diagnostics log with color-coded event labels.
+- Past Runs explorer with high-level local summaries for gold, XP, duration, keys, ore, Heroic drops, and Angelic drops.
+- Compact overlay mode for keeping the important numbers visible while playing.
+- Local-only desktop app: no account login, no cloud service, and no packet capture files are written by the app.
+
+## Compact Overlay
+
+Compact mode shrinks the companion down to a small overlay-friendly view with connection status, clock, session timer, gold, XP, zone countdown, tracked drops, and ore.
+
+![Hero Siege Companion compact mode](docs/assets/compact_mode.png)
+
+It can also sit over the game while staying small enough to keep the playfield readable.
+
+![Hero Siege Companion compact mode over gameplay](docs/assets/full_screen_compact_mode.png)
+
+## Past Runs
+
+Click `End Run` to save a local summary of the current session and reset the live counters. Closing the app also saves the current run, subject to your run-history settings.
+
+Past Runs keeps up to 100 summaries and stores only high-level stats, not packet captures.
+
+![Hero Siege Companion past runs](docs/assets/past_runs.png)
 
 ## Required: Install Npcap
 
@@ -50,6 +72,7 @@ If capture does not start, reinstall Npcap with the WinPcap-compatible option en
 3. Launch `Hero Siege Companion.exe`.
 4. Leave the companion running while you play.
 5. Use the timeline filters to hide noisy item categories such as keys, socketables, and materials.
+6. Use `End Run` when a run is over and you want it saved to Past Runs.
 
 The app only displays information after Hero Siege sends the relevant packet. For example, gold and mailbox state may update after changing zones or visiting town, and Satanic Zone data appears after the game sends a zone packet.
 

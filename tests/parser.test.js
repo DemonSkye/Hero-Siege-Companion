@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { captureMessages, identifyEvent, messageToEvents } = require("../dist/main/shared/parser.js");
-const { StatsEngine } = require("../dist/main/shared/stats.js");
+const { hasRunActivity, StatsEngine } = require("../dist/main/shared/stats.js");
 const { MATERIAL_LIKE_TIMELINE_TYPES } = require("../dist/main/shared/constants.js");
 
 test("identifies renamed packet fields from PR25", () => {
@@ -329,7 +329,84 @@ test("inventory update ext treats fingerprint type zero as helmet", () => {
   assert.equal(events[0].value.label, "Gabriel's Brimmed Fedora");
 });
 
-test("inventory update ext derives set rarity for known set items", () => {
+test("known ring rarities override common packet rarity", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-3909410-651f8a9a56e3a0002-7": {
+            e: 10,
+            a: 878365858,
+            j: 0,
+            b: 48,
+            d: 1,
+            m: 1,
+            c: 1,
+            sh: "d04d415f4cce",
+          },
+          "10-3909410-651f8bf96b6ba0001-7": {
+            e: 10,
+            a: 203653800,
+            j: 0,
+            b: 3,
+            d: 1,
+            m: 1,
+            c: 1,
+            sh: "b529388ebe11",
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events[0].value.label, "Scourge Loop");
+  assert.equal(events[0].value.localizationId, "rings_scourge_loop");
+  assert.equal(events[0].value.rarityName, "Heroic");
+  assert.equal(events[1].value.label, "Stone of Premonition");
+  assert.equal(events[1].value.localizationId, "rings_stone_of_jordan");
+  assert.equal(events[1].value.rarityName, "Heroic");
+  assert.equal(snapshot.items.Set.total, 0);
+  assert.equal(snapshot.items.Heroic.total, 2);
+  assert.equal(snapshot.items.Satanic.total, 0);
+});
+
+test("known item rarity map classifies satanic drops", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        log_ids: {
+          "10-3909410-651faeb896c860006-6": { m: "1073766423", a: 2 },
+        },
+        add: {
+          "10-3909410-651faeb896c860006-6": {
+            e: 10,
+            a: 423215672,
+            j: 0,
+            b: 23,
+            d: 1,
+            m: 1,
+            c: 1,
+            sh: "762b7aed1de4",
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events[0].value.label, "Gem Encrusted Tower");
+  assert.equal(events[0].value.rarityName, "Satanic");
+  assert.equal(snapshot.items.Satanic.total, 1);
+});
+
+test("known item rarity map classifies set boots", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -357,7 +434,7 @@ test("inventory update ext derives set rarity for known set items", () => {
   assert.equal(snapshot.items.Set.total, 1);
 });
 
-test("inventory update ext classifies helper set and blessed overrides", () => {
+test("known item rarity map classifies known helmets", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -393,9 +470,10 @@ test("inventory update ext classifies helper set and blessed overrides", () => {
     events.map((event) => [event.value.label, event.value.rarityName]),
     [
       ["Lunar Prophet's Tiara", "Set"],
-      ["Lava King's Lost Mask", "Blessed"],
+      ["Lava King's Lost Mask", "Heroic"],
     ],
   );
+  assert.equal(snapshot.items.Heroic.total, 1);
   assert.equal(snapshot.items.Set.total, 1);
   assert.equal(snapshot.items.Satanic.total, 0);
 });
@@ -590,6 +668,73 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
     events.map((event) => event.value.label),
     ["Crystal Key", "Devil's Key", "Chaos Key", "Battle Fragment", "The Hanged Man", "Bloodstone", "Tarethium Ore", "Blacksmith's Mallet", "Gold Ore"],
   );
+});
+
+test("run summaries track non-basic keys ore and selected drops", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        stack: {
+          "10-3909410-basic-key-0-12": {
+            pickup_add_data: { a: 1, b: 0, d: 1, o: 99 },
+          },
+          "10-3909410-crystal-key-1-12": {
+            pickup_add_data: { a: 2, b: 1, d: 1, o: 2 },
+          },
+          "10-3909410-devils-key-19-12": {
+            pickup_add_data: { a: 3, b: 19, d: 1, o: 1 },
+          },
+          "10-3909410-copper-ore-27-14": {
+            pickup_add_data: { a: 4, b: 27, d: 1, o: 7 },
+          },
+          "10-3909410-iron-ore-28-14": {
+            pickup_add_data: { a: 5, b: 28, d: 1, o: 5 },
+          },
+        },
+      },
+    },
+    { added_item_object: { rarity: "Heroic", item_id: 101, type: 0 } },
+    { added_item_object: { rarity: "Angelic", item_id: 102, type: 0 } },
+  ]);
+  const stats = new StatsEngine();
+  stats.applyEvents(events);
+  const summary = stats.runSummary();
+
+  assert.deepEqual(
+    summary.keys.map((key) => [key.name, key.total]),
+    [
+      ["Crystal Key", 2],
+      ["Devil's Key", 1],
+    ],
+  );
+  assert.deepEqual(
+    summary.ores.map((ore) => [ore.name, ore.total]),
+    [
+      ["Copper Ore", 7],
+      ["Iron Ore", 5],
+    ],
+  );
+  assert.equal(summary.heroicDrops, 1);
+  assert.equal(summary.angelicDrops, 1);
+});
+
+test("empty run summaries can still be archived when explicitly ended", () => {
+  const stats = new StatsEngine();
+  const summary = stats.runSummary(Date.now() + 1000);
+
+  assert.equal(summary.totalGoldGained, 0);
+  assert.equal(summary.totalXpGained, 0);
+  assert.equal(summary.keys.length, 0);
+  assert.equal(summary.ores.length, 0);
+  assert.equal(hasRunActivity(summary), false);
+});
+
+test("run summary duration supports minimum save thresholds", () => {
+  const stats = new StatsEngine();
+  const startedAt = stats.snapshot().sessionStartedAt;
+  const summary = stats.runSummary(startedAt + 5 * 60 * 1000);
+
+  assert.equal(summary.durationMs, 300000);
 });
 
 test("battle fragments are treated as material-like timeline noise", () => {

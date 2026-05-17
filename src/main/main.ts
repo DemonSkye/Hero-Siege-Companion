@@ -2,12 +2,19 @@ import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { CaptureService, type CaptureUpdate } from "./capture";
-import type { CompanionState, LogEntry } from "../shared/app-state";
-import { createInitialStats, StatsEngine } from "../shared/stats";
+import type { CompanionState, LogEntry, RunArchivePreferences } from "../shared/app-state";
+import { createInitialStats, hasRunActivity, StatsEngine, type PastRunSummary } from "../shared/stats";
 
 const statsEngine = new StatsEngine();
 const logs: LogEntry[] = [];
 const MAX_APP_LOG_BYTES = 2 * 1024 * 1024;
+const MAX_PAST_RUNS = 100;
+const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
+  skipEmptyRuns: false,
+  minDurationMinutes: 0,
+};
+const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeight: 620 };
+const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
 
 const state: CompanionState = {
   captureRunning: false,
@@ -26,13 +33,19 @@ const state: CompanionState = {
     parsedEvents: 0,
   },
   stats: createInitialStats(),
+  pastRuns: [],
+  runArchivePreferences: DEFAULT_RUN_ARCHIVE_PREFERENCES,
   logs,
 };
 
 let mainWindow: BrowserWindow | null = null;
 let captureService: CaptureService | null = null;
 let appLogPath = "";
+let pastRunsPath = "";
+let preferencesPath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
+let compactWindowMode = false;
+const archivedSessionStarts = new Set<number>();
 
 if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
 
@@ -64,10 +77,10 @@ process.on("exit", () => {
 function createWindow(): void {
   const iconPath = resolveIconPath();
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 760,
-    minWidth: 980,
-    minHeight: 620,
+    width: NORMAL_WINDOW_BOUNDS.width,
+    height: NORMAL_WINDOW_BOUNDS.height,
+    minWidth: NORMAL_WINDOW_BOUNDS.minWidth,
+    minHeight: NORMAL_WINDOW_BOUNDS.minHeight,
     autoHideMenuBar: true,
     backgroundColor: "#101217",
     frame: false,
@@ -141,8 +154,15 @@ ipcMain.handle("capture:stop", () => {
   return state;
 });
 ipcMain.handle("stats:reset", () => {
+  const archived = archiveCurrentRun("reset");
   state.stats = statsEngine.reset();
-  addLog("info", "Session stats reset.");
+  addLog("info", archived ? "Run saved and session stats reset." : "Session stats reset. Run did not match save settings.");
+  publishState();
+  return state;
+});
+ipcMain.handle("preferences:set-run-archive", (_event, preferences: Partial<RunArchivePreferences>) => {
+  state.runArchivePreferences = normalizeRunArchivePreferences(preferences);
+  saveRunArchivePreferences(state.runArchivePreferences);
   publishState();
   return state;
 });
@@ -151,17 +171,58 @@ ipcMain.handle("window:minimize", () => {
 });
 ipcMain.handle("window:toggle-maximize", () => {
   if (!mainWindow) return;
+  if (compactWindowMode) {
+    setCompactWindowMode(false);
+    return;
+  }
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
 ipcMain.handle("window:close", () => {
   mainWindow?.close();
 });
+ipcMain.handle("window:set-always-on-top", (_event, enabled: boolean) => {
+  setWindowAlwaysOnTop(Boolean(enabled));
+});
+ipcMain.handle("window:set-compact-mode", (_event, enabled: boolean) => {
+  if (!mainWindow) return;
+  setCompactWindowMode(Boolean(enabled));
+});
+
+function setWindowAlwaysOnTop(enabled: boolean): void {
+  if (!mainWindow) return;
+  mainWindow.setAlwaysOnTop(enabled, "screen-saver");
+  if (enabled) {
+    mainWindow.show();
+    mainWindow.moveTop();
+    mainWindow.focus();
+  }
+}
+
+function setCompactWindowMode(enabled: boolean): void {
+  if (!mainWindow) return;
+  if (compactWindowMode === enabled) {
+    mainWindow.setMaximizable(!enabled);
+    if (mainWindow.isAlwaysOnTop()) mainWindow.moveTop();
+    return;
+  }
+  compactWindowMode = enabled;
+  const bounds = enabled ? COMPACT_WINDOW_BOUNDS : NORMAL_WINDOW_BOUNDS;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  mainWindow.setMaximizable(!enabled);
+  mainWindow.setMinimumSize(bounds.minWidth, bounds.minHeight);
+  mainWindow.setSize(bounds.width, bounds.height, true);
+  if (mainWindow.isAlwaysOnTop()) mainWindow.moveTop();
+}
 
 app.whenReady().then(async () => {
   appLogPath = path.join(app.getPath("userData"), "app-debug.log");
+  pastRunsPath = path.join(app.getPath("userData"), "past-runs.json");
+  preferencesPath = path.join(app.getPath("userData"), "preferences.json");
   const debugLogPath = path.join(app.getPath("userData"), "capture-debug.log");
-  writeAppLog("app-ready", { appLogPath, debugLogPath });
+  state.pastRuns = loadPastRuns();
+  state.runArchivePreferences = loadRunArchivePreferences();
+  writeAppLog("app-ready", { appLogPath, debugLogPath, pastRunsPath, preferencesPath });
   captureService = new CaptureService(applyCaptureUpdate, debugLogPath);
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   createWindow();
@@ -197,6 +258,7 @@ app.on("window-all-closed", () => {
 
 function shutdownCapture(reason: string): void {
   writeAppLog("shutdown-capture", { reason });
+  archiveCurrentRun(reason);
   try {
     captureService?.stop();
   } catch (error) {
@@ -211,6 +273,89 @@ function scheduleForceExit(): void {
     app.exit(0);
   }, 1500);
   forceExitTimer.unref();
+}
+
+function archiveCurrentRun(reason: string): boolean {
+  if (!pastRunsPath) return false;
+  const summary = statsEngine.runSummary();
+  if (archivedSessionStarts.has(summary.sessionStartedAt)) return false;
+  if (!shouldArchiveRun(summary)) return false;
+
+  archivedSessionStarts.add(summary.sessionStartedAt);
+  state.pastRuns = [summary, ...state.pastRuns.filter((run) => run.sessionStartedAt !== summary.sessionStartedAt)].slice(0, MAX_PAST_RUNS);
+  savePastRuns(state.pastRuns);
+  writeAppLog("run-archived", { reason, id: summary.id });
+  addLog("success", `Archived run summary: ${summary.totalGoldGained.toLocaleString()} gold, ${summary.totalXpGained.toLocaleString()} XP.`);
+  return true;
+}
+
+function shouldArchiveRun(summary: PastRunSummary): boolean {
+  const preferences = state.runArchivePreferences;
+  if (preferences.skipEmptyRuns && !hasRunActivity(summary)) return false;
+  return summary.durationMs >= preferences.minDurationMinutes * 60_000;
+}
+
+function loadPastRuns(): PastRunSummary[] {
+  try {
+    if (!fs.existsSync(pastRunsPath)) return [];
+    const raw = fs.readFileSync(pastRunsPath, "utf8");
+    const parsed = JSON.parse(raw) as PastRunSummary[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, MAX_PAST_RUNS).filter(isPastRunSummary);
+  } catch (error) {
+    writeAppLog("past-runs-load-error", { error: error instanceof Error ? error.message : String(error) });
+    return [];
+  }
+}
+
+function savePastRuns(runs: PastRunSummary[]): void {
+  try {
+    fs.writeFileSync(pastRunsPath, `${JSON.stringify(runs.slice(0, MAX_PAST_RUNS), null, 2)}\n`, "utf8");
+  } catch (error) {
+    writeAppLog("past-runs-save-error", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function loadRunArchivePreferences(): RunArchivePreferences {
+  try {
+    if (!fs.existsSync(preferencesPath)) return DEFAULT_RUN_ARCHIVE_PREFERENCES;
+    const parsed = JSON.parse(fs.readFileSync(preferencesPath, "utf8")) as { runArchive?: Partial<RunArchivePreferences> };
+    return normalizeRunArchivePreferences(parsed.runArchive ?? {});
+  } catch (error) {
+    writeAppLog("preferences-load-error", { error: error instanceof Error ? error.message : String(error) });
+    return DEFAULT_RUN_ARCHIVE_PREFERENCES;
+  }
+}
+
+function saveRunArchivePreferences(preferences: RunArchivePreferences): void {
+  try {
+    fs.writeFileSync(preferencesPath, `${JSON.stringify({ runArchive: preferences }, null, 2)}\n`, "utf8");
+  } catch (error) {
+    writeAppLog("preferences-save-error", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function normalizeRunArchivePreferences(preferences: Partial<RunArchivePreferences>): RunArchivePreferences {
+  const minDuration = Number(preferences.minDurationMinutes);
+  return {
+    skipEmptyRuns: Boolean(preferences.skipEmptyRuns),
+    minDurationMinutes: Number.isFinite(minDuration) ? Math.max(0, Math.min(1440, Math.trunc(minDuration))) : 0,
+  };
+}
+
+function isPastRunSummary(value: unknown): value is PastRunSummary {
+  const candidate = value as Partial<PastRunSummary>;
+  return (
+    Boolean(candidate) &&
+    typeof candidate.id === "string" &&
+    typeof candidate.sessionStartedAt === "number" &&
+    typeof candidate.sessionEndedAt === "number" &&
+    typeof candidate.durationMs === "number" &&
+    typeof candidate.totalGoldGained === "number" &&
+    typeof candidate.totalXpGained === "number" &&
+    Array.isArray(candidate.keys) &&
+    Array.isArray(candidate.ores)
+  );
 }
 
 function writeAppLog(type: string, data: Record<string, unknown>): void {

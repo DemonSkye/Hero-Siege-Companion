@@ -12,6 +12,7 @@ import {
 } from "./constants";
 import { asMessageObject, getMessageField, hasMessageField, intMessageField, type MessageObject, type MessageValue } from "./fields";
 import { lookupItemTranslation, type ItemTranslation } from "./item-lookup";
+import { lookupKnownItemRarity } from "./item-rarity";
 import { isSetItemName } from "./set-item-names";
 import { lookupStackItemTranslation } from "./stack-item-lookup";
 
@@ -26,7 +27,6 @@ const ITEM_RARITY_FIELDS = ["rarity", "itemRarity", "item_rarity", "d"];
 const GOLD_DELTA_FIELDS = ["goldAmount", "gold_amount"];
 const SATANIC_ZONE_FIELDS = ["satanicZoneName", "satanic_zone_name"];
 const ACCOUNT_SIGNATURE_FIELDS = ["name", "class", "class_id", "heroLevel", "herolevel", "season", "hardcore"];
-const BLESSED_ITEM_NAMES = new Set(["Lava King's Lost Mask"]);
 
 export interface ParsedEvent<T = unknown> {
   name: EventName;
@@ -368,8 +368,10 @@ function inferItemRarityName(rawRarity: string | number, item: MessageObject, ty
   if (direct && direct !== "Common") return direct;
 
   const identity = `${translation?.localizationId ?? ""} ${translation?.name ?? ""}`.toLowerCase();
+  const knownRarity = lookupKnownItemRarity(type, translation?.name);
+  if (knownRarity) return knownRarity;
+
   if (isSetItemName(translation?.name)) return "Set";
-  if (translation?.name && BLESSED_ITEM_NAMES.has(translation.name)) return "Blessed";
   if (identity.includes("blessed")) return "Blessed";
   if (identity.includes("angelic")) return "Angelic";
   if (identity.includes("unholy")) return "Unholy";

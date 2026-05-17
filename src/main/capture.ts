@@ -425,8 +425,7 @@ function connectionSignature(connections: CaptureConnection[]): string {
 
 function summarizeEvent(event: ParsedEvent): string {
   const json = JSON.stringify(event.value);
-  const trimmed = json.length > MAX_LOG_SNIPPET ? `${json.slice(0, MAX_LOG_SNIPPET)}...` : json;
-  return `Parsed ${event.name}: ${trimmed}`;
+  return `Parsed ${event.name}: ${json}`;
 }
 
 function eventFingerprint(event: ParsedEvent): string {
