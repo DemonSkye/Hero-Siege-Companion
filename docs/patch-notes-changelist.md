@@ -1,5 +1,12 @@
 # Patch Notes Changelist
 
+## v0.0.7 Capture Stability Follow-Up
+
+- Debounced capture filter reopens when Hero Siege briefly changes its active game-server connections.
+- Added a minimum interval between native Npcap handle reopens to reduce crash risk during connection churn.
+- Changed capture reopen order so the old Npcap handle is closed before opening the replacement handle.
+- Added debug logging for scheduled capture reopens so future logs show when connection churn is being intentionally coalesced.
+
 ## v0.0.6 Follow-Up Bugfix Release
 
 - Reduced renderer pressure during heavy Bloodpact loot sessions by batching parsed capture events and publishing state updates at most once per second.
