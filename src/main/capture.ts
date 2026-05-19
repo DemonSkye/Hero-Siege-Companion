@@ -16,8 +16,6 @@ const MAX_DEBUG_LOG_BYTES = 5 * 1024 * 1024;
 const POLL_INTERVAL_MS = 1000;
 const EVENT_DEDUP_WINDOW_MS = 2500;
 const MAX_PARSE_PAYLOAD_CHARS = 1_000_000;
-const CAPTURE_REOPEN_DEBOUNCE_MS = 5000;
-const MIN_CAPTURE_REOPEN_INTERVAL_MS = 15000;
 const PARSER_FAILURE_RESTART_THRESHOLD = 3;
 const PARSER_RECOVERY_DELAY_MS = 750;
 const PARSER_ERROR_LOG_INTERVAL_MS = 5000;
@@ -51,19 +49,12 @@ interface PowerShellConnectionEntry {
   RemotePort: unknown;
 }
 
-interface PendingCaptureReopen {
-  signature: string;
-  connections: CaptureConnection[];
-  allConnections: CaptureConnection[];
-}
-
 export class CaptureService {
   private cap: any = null;
   private buffer = Buffer.alloc(65535);
   private pollTimer: NodeJS.Timeout | null = null;
-  private pendingCaptureReopenTimer: NodeJS.Timeout | null = null;
-  private pendingCaptureReopen: PendingCaptureReopen | null = null;
   private activeSignature = "";
+  private activeLocalAddress = "";
   private lastCaptureOpenAt = 0;
   private readonly packetBuffers = new PacketBuffers();
   private packetsSeen = 0;
@@ -137,9 +128,9 @@ export class CaptureService {
     if (this.parserRecoveryTimer) clearTimeout(this.parserRecoveryTimer);
     this.pollTimer = null;
     this.parserRecoveryTimer = null;
-    this.cancelScheduledCaptureReopen();
     this.closeCapture();
     this.activeSignature = "";
+    this.activeLocalAddress = "";
     this.packetBuffers.clear();
     this.recentEventFingerprints.clear();
     this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
@@ -151,9 +142,9 @@ export class CaptureService {
     this.emit({ connections });
 
     if (currentNetworkState.antiCheatProcessIds.length > 0 && connections.length === 0) {
-      this.cancelScheduledCaptureReopen();
       this.closeCapture();
       this.activeSignature = "";
+      this.activeLocalAddress = "";
       const update: CaptureUpdate = {
         status: "waiting",
         health: { device: null, filter: "" },
@@ -170,9 +161,9 @@ export class CaptureService {
     const captureConnections = selectGameServerConnections(connections);
     const signature = connectionSignature(captureConnections);
     if (!signature) {
-      this.cancelScheduledCaptureReopen();
       if (this.activeSignature !== "") this.emit({ log: { level: "warning", message: "Hero Siege game-server connections disappeared." } });
       this.activeSignature = "";
+      this.activeLocalAddress = "";
       this.closeCapture("no-game-server-connections");
       this.writeDebugLog("capture-waiting-for-game-connections", { connections: summarizeConnections(connections) });
       this.emit({ status: "waiting", health: { device: null, filter: "" } });
@@ -181,43 +172,20 @@ export class CaptureService {
 
     if (signature === this.activeSignature && this.cap) return;
 
-    if (!this.cap) {
-      this.openCapture(signature, captureConnections, connections);
+    const localAddress = unique(captureConnections.map((connection) => connection.localAddress))[0] ?? "";
+    if (this.cap && localAddress === this.activeLocalAddress) {
+      const previousSignature = this.activeSignature;
+      this.activeSignature = signature;
+      this.writeDebugLog("capture-connections-updated", {
+        previousSignature,
+        activeSignature: signature,
+        filterKept: true,
+        connections: summarizeConnections(connections),
+      });
       return;
     }
 
-    this.scheduleCaptureReopen(signature, captureConnections, connections);
-  }
-
-  private scheduleCaptureReopen(signature: string, connections: CaptureConnection[], allConnections = connections): void {
-    this.pendingCaptureReopen = { signature, connections, allConnections };
-    if (this.pendingCaptureReopenTimer) return;
-
-    const now = Date.now();
-    const minIntervalWait = Math.max(MIN_CAPTURE_REOPEN_INTERVAL_MS - (now - this.lastCaptureOpenAt), 0);
-    const delay = Math.max(CAPTURE_REOPEN_DEBOUNCE_MS, minIntervalWait);
-    this.writeDebugLog("capture-reopen-scheduled", {
-      delayMs: delay,
-      activeSignature: this.activeSignature,
-      pendingSignature: signature,
-      connections: summarizeConnections(allConnections),
-    });
-
-    this.pendingCaptureReopenTimer = setTimeout(() => {
-      this.pendingCaptureReopenTimer = null;
-      const pending = this.pendingCaptureReopen;
-      this.pendingCaptureReopen = null;
-      if (!pending || !this.pollTimer) return;
-      if (pending.signature === this.activeSignature && this.cap) return;
-      this.openCapture(pending.signature, pending.connections, pending.allConnections);
-    }, delay);
-    this.pendingCaptureReopenTimer.unref();
-  }
-
-  private cancelScheduledCaptureReopen(): void {
-    if (this.pendingCaptureReopenTimer) clearTimeout(this.pendingCaptureReopenTimer);
-    this.pendingCaptureReopenTimer = null;
-    this.pendingCaptureReopen = null;
+    this.openCapture(signature, captureConnections, connections);
   }
 
   private openCapture(signature: string, connections: CaptureConnection[], allConnections = connections): void {
@@ -254,7 +222,7 @@ export class CaptureService {
       return;
     }
 
-    const filter = `tcp and (${targets.map((target) => `(host ${target.remoteAddress} and port ${target.remotePort})`).join(" or ")}) and len > 30`;
+    const filter = stableCaptureFilter(localAddress);
 
     try {
       this.closeCapture("reopen");
@@ -263,6 +231,7 @@ export class CaptureService {
       nextCap.on("packet", (nbytes: number, truncated: boolean) => this.onPacket(nbytes, truncated));
       this.cap = nextCap;
       this.activeSignature = signature;
+      this.activeLocalAddress = localAddress;
       this.lastCaptureOpenAt = Date.now();
       this.packetBuffers.clear();
       this.recentEventFingerprints.clear();
@@ -444,9 +413,9 @@ export class CaptureService {
     this.consecutiveParserFailures = 0;
     this.packetBuffers.clear();
     this.recentEventFingerprints.clear();
-    this.cancelScheduledCaptureReopen();
     this.closeCapture("parser-recovery");
     this.activeSignature = "";
+    this.activeLocalAddress = "";
     this.writeDebugLog("parser-recovery", { reason, parserRestarts: this.parserRestarts });
     this.emit({
       status: "waiting",
@@ -743,6 +712,13 @@ function uniqueCaptureTargets(connections: CaptureConnection[]): CaptureTarget[]
     targets.push({ remoteAddress: connection.remoteAddress, remotePort: Number(connection.remotePort) });
   }
   return targets;
+}
+
+function stableCaptureFilter(localAddress: string): string {
+  const webPortFilter = Array.from(WEB_REMOTE_PORTS)
+    .map((port) => `port ${port}`)
+    .join(" or ");
+  return `tcp and host ${localAddress} and not (${webPortFilter}) and len > 30`;
 }
 
 function summarizeConnections(connections: CaptureConnection[]): Array<Omit<CaptureConnection, "owningProcess">> {

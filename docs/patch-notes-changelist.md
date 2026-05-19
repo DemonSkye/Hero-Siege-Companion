@@ -1,5 +1,11 @@
 # Patch Notes Changelist
 
+## v0.0.8 Capture Stability Follow-Up
+
+- Stopped reopening the native Npcap capture handle for ordinary Hero Siege connection churn.
+- Switched to a stable local-address capture filter that excludes HTTP/HTTPS traffic so town/codex connection changes do not force a native close/open cycle.
+- Added debug logging when connection signatures change but the existing capture handle is intentionally kept alive.
+
 ## v0.0.7 Capture Stability Follow-Up
 
 - Debounced capture filter reopens when Hero Siege briefly changes its active game-server connections.
