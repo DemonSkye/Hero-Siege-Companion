@@ -4,6 +4,8 @@ Passive live-session tracking for Hero Siege on Windows.
 
 Hero Siege Companion watches local Hero Siege traffic, parses the game messages it understands, and turns the useful bits into a clean desktop dashboard: session time, gold and XP rates, mailbox status, Satanic Zone details, tracked drops, item history, run history, and capture diagnostics.
 
+**Requires Npcap:** install Npcap before running the app so Hero Siege Companion can read local game traffic. See [Required: Install Npcap](#required-install-npcap) for the recommended installer settings.
+
 ![Hero Siege Companion live dashboard](docs/assets/app.png)
 
 ## Download
