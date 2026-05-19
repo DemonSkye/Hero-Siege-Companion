@@ -1,5 +1,13 @@
 # Patch Notes Changelist
 
+## v0.0.9 Diagnostic Logging Follow-Up
+
+- Added low-frequency app heartbeats with capture status, renderer state, memory usage, pending event backlog, and recent stats.
+- Added low-frequency capture heartbeats with native handle state, active connection signature, packet/payload/event counters, parser counters, and packet-buffer size.
+- Added capture refresh error logging so polling failures are visible without stopping capture.
+- Added app-log entries for capture status transitions and high pending-event backlogs.
+- Increased app and capture debug log retention to preserve more context around intermittent crashes.
+
 ## v0.0.8 Capture Stability Follow-Up
 
 - Stopped reopening the native Npcap capture handle for ordinary Hero Siege connection churn.

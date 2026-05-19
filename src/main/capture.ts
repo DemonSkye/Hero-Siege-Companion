@@ -12,8 +12,9 @@ const { Cap, decoders } = capRequire("cap") as any;
 const PROTOCOL = decoders.PROTOCOL;
 const MAX_LOG_SNIPPET = 180;
 const MAX_DEBUG_SNIPPET = 1200;
-const MAX_DEBUG_LOG_BYTES = 5 * 1024 * 1024;
+const MAX_DEBUG_LOG_BYTES = 10 * 1024 * 1024;
 const POLL_INTERVAL_MS = 1000;
+const CAPTURE_DIAGNOSTIC_HEARTBEAT_MS = 15_000;
 const EVENT_DEDUP_WINDOW_MS = 2500;
 const MAX_PARSE_PAYLOAD_CHARS = 1_000_000;
 const PARSER_FAILURE_RESTART_THRESHOLD = 3;
@@ -53,9 +54,14 @@ export class CaptureService {
   private cap: any = null;
   private buffer = Buffer.alloc(65535);
   private pollTimer: NodeJS.Timeout | null = null;
+  private diagnosticHeartbeatTimer: NodeJS.Timeout | null = null;
   private activeSignature = "";
   private activeLocalAddress = "";
   private lastCaptureOpenAt = 0;
+  private lastRefreshAt = 0;
+  private lastPacketAt = 0;
+  private lastPayloadAt = 0;
+  private lastEventAt = 0;
   private readonly packetBuffers = new PacketBuffers();
   private packetsSeen = 0;
   private payloadsAssembled = 0;
@@ -120,14 +126,17 @@ export class CaptureService {
     this.emit({ running: true, status: "waiting", error: null, health: await this.diagnostics() });
     this.writeDebugLog("capture-start", { debugLogPath: this.debugLogPath });
     await this.refreshCapture(initialNetworkState);
-    this.pollTimer = setInterval(() => void this.refreshCapture(), POLL_INTERVAL_MS);
+    this.startDiagnosticHeartbeat();
+    this.pollTimer = setInterval(() => void this.refreshCaptureSafely("poll"), POLL_INTERVAL_MS);
   }
 
   stop(): void {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.parserRecoveryTimer) clearTimeout(this.parserRecoveryTimer);
+    if (this.diagnosticHeartbeatTimer) clearInterval(this.diagnosticHeartbeatTimer);
     this.pollTimer = null;
     this.parserRecoveryTimer = null;
+    this.diagnosticHeartbeatTimer = null;
     this.closeCapture();
     this.activeSignature = "";
     this.activeLocalAddress = "";
@@ -136,7 +145,31 @@ export class CaptureService {
     this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
   }
 
+  private async refreshCaptureSafely(source: string): Promise<void> {
+    try {
+      await this.refreshCapture();
+    } catch (error) {
+      this.writeDebugLog("capture-refresh-error", {
+        source,
+        error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
+        capOpen: Boolean(this.cap),
+        activeSignature: this.activeSignature,
+      });
+      this.emit({
+        status: this.cap ? "running" : "waiting",
+        health: {
+          packetsSeen: this.packetsSeen,
+          payloadsAssembled: this.payloadsAssembled,
+          messagesDecoded: this.messagesDecoded,
+          parsedEvents: this.parsedEvents,
+        },
+        log: { level: "warning", message: `Capture refresh failed but capture is still alive: ${error instanceof Error ? error.message : String(error)}` },
+      });
+    }
+  }
+
   private async refreshCapture(networkState?: HeroSiegeNetworkState): Promise<void> {
+    this.lastRefreshAt = Date.now();
     const currentNetworkState = networkState ?? (await getHeroSiegeNetworkState());
     const connections = currentNetworkState.connections;
     this.emit({ connections });
@@ -277,6 +310,7 @@ export class CaptureService {
     const parsedPacket = getPayload(this.buffer, nbytes);
     if (!parsedPacket) return;
 
+    this.lastPacketAt = Date.now();
     this.packetsSeen += 1;
     const completedPayloads = this.packetBuffers.push(parsedPacket);
     const events: ParsedEvent[] = [];
@@ -289,6 +323,7 @@ export class CaptureService {
       }
 
       this.payloadsAssembled += 1;
+      this.lastPayloadAt = Date.now();
       const messages = this.captureMessagesSafely(payloadText);
       if (!messages) continue;
       this.messagesDecoded += messages.length;
@@ -314,6 +349,7 @@ export class CaptureService {
     }
 
     this.parsedEvents += events.length;
+    this.lastEventAt = Date.now();
     const sample = summarizeEvent(events[0]);
     this.emit({
       events,
@@ -436,7 +472,7 @@ export class CaptureService {
     this.parserRecoveryTimer = setTimeout(() => {
       this.parserRecoveryTimer = null;
       if (!this.pollTimer) return;
-      void this.refreshCapture();
+      void this.refreshCaptureSafely("parser-recovery");
     }, PARSER_RECOVERY_DELAY_MS);
     this.parserRecoveryTimer.unref();
   }
@@ -512,6 +548,36 @@ export class CaptureService {
     this.lastItemDebugPayloadAt = now;
     return true;
   }
+
+  private startDiagnosticHeartbeat(): void {
+    if (this.diagnosticHeartbeatTimer) return;
+    this.diagnosticHeartbeatTimer = setInterval(() => this.writeDiagnosticHeartbeat(), CAPTURE_DIAGNOSTIC_HEARTBEAT_MS);
+    this.diagnosticHeartbeatTimer.unref();
+    this.writeDiagnosticHeartbeat();
+  }
+
+  private writeDiagnosticHeartbeat(): void {
+    this.writeDebugLog("capture-heartbeat", {
+      capOpen: Boolean(this.cap),
+      activeLocalAddress: this.activeLocalAddress || null,
+      activeSignature: this.activeSignature || null,
+      lastCaptureOpenAt: toIsoOrNull(this.lastCaptureOpenAt),
+      lastRefreshAt: toIsoOrNull(this.lastRefreshAt),
+      lastPacketAt: toIsoOrNull(this.lastPacketAt),
+      lastPayloadAt: toIsoOrNull(this.lastPayloadAt),
+      lastEventAt: toIsoOrNull(this.lastEventAt),
+      counters: {
+        packetsSeen: this.packetsSeen,
+        payloadsAssembled: this.payloadsAssembled,
+        messagesDecoded: this.messagesDecoded,
+        parsedEvents: this.parsedEvents,
+        parserErrors: this.parserErrors,
+        parserRestarts: this.parserRestarts,
+      },
+      packetBuffers: this.packetBuffers.stats(),
+      recentEventFingerprints: this.recentEventFingerprints.size,
+    });
+  }
 }
 
 interface ParsedPayload {
@@ -557,6 +623,16 @@ class PacketBuffers {
   clear(): void {
     this.lastAckBySource.clear();
     this.chunksByAck.clear();
+  }
+
+  stats(): { sources: number; ackBuffers: number; bufferedChunks: number } {
+    let bufferedChunks = 0;
+    for (const chunks of this.chunksByAck.values()) bufferedChunks += chunks.length;
+    return {
+      sources: this.lastAckBySource.size,
+      ackBuffers: this.chunksByAck.size,
+      bufferedChunks,
+    };
   }
 }
 
@@ -719,6 +795,10 @@ function stableCaptureFilter(localAddress: string): string {
     .map((port) => `port ${port}`)
     .join(" or ");
   return `tcp and host ${localAddress} and not (${webPortFilter}) and len > 30`;
+}
+
+function toIsoOrNull(timestamp: number): string | null {
+  return timestamp > 0 ? new Date(timestamp).toISOString() : null;
 }
 
 function summarizeConnections(connections: CaptureConnection[]): Array<Omit<CaptureConnection, "owningProcess">> {

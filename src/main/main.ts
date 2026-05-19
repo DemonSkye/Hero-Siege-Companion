@@ -7,7 +7,7 @@ import { createInitialStats, hasRunActivity, StatsEngine, type PastRunSummary } 
 
 const statsEngine = new StatsEngine();
 const logs: LogEntry[] = [];
-const MAX_APP_LOG_BYTES = 2 * 1024 * 1024;
+const MAX_APP_LOG_BYTES = 5 * 1024 * 1024;
 const MAX_PAST_RUNS = 100;
 const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
   skipEmptyRuns: false,
@@ -21,6 +21,7 @@ const RENDERER_RECOVERY_DELAY_MS = 500;
 const MAX_RENDERER_RECOVERIES = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
 const APP_SESSION_HEARTBEAT_MS = 15_000;
+const APP_DIAGNOSTIC_HEARTBEAT_MS = 30_000;
 const STATE_PUBLISH_INTERVAL_MS = 1000;
 
 const state: CompanionState = {
@@ -63,7 +64,9 @@ let windowBounds: WindowBoundsPreferences = {};
 let saveWindowBoundsTimer: NodeJS.Timeout | null = null;
 let rendererRecoveryTimer: NodeJS.Timeout | null = null;
 let appSessionHeartbeatTimer: NodeJS.Timeout | null = null;
+let appDiagnosticHeartbeatTimer: NodeJS.Timeout | null = null;
 let statePublishTimer: NodeJS.Timeout | null = null;
+let lastPendingCaptureEventsLogAt = 0;
 let rendererRecoveryWindowStartedAt = 0;
 let rendererRecoveriesInWindow = 0;
 const appSessionId = `${Date.now()}-${process.pid}`;
@@ -115,6 +118,7 @@ process.on("beforeExit", (code) => {
 process.on("exit", (code) => {
   writeAppLog("process-exit", { code });
   stopAppSessionHeartbeat();
+  stopAppDiagnosticHeartbeat();
   markAppSessionClosed("process-exit");
   shutdownCapture("process-exit");
 });
@@ -224,16 +228,42 @@ function resolveIconPath(): string {
 }
 
 function applyCaptureUpdate(update: CaptureUpdate): void {
+  const previousCaptureStatus = state.captureStatus;
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) state.connections = update.connections;
   if (update.health) state.health = { ...state.health, ...update.health };
 
-  if (update.events?.length) pendingCaptureEvents.push(...update.events);
+  if (update.status && update.status !== previousCaptureStatus) {
+    writeAppLog("capture-status-changed", {
+      previousStatus: previousCaptureStatus,
+      nextStatus: update.status,
+      captureRunning: state.captureRunning,
+      captureError: state.captureError,
+    });
+  }
+
+  if (update.events?.length) {
+    pendingCaptureEvents.push(...update.events);
+    maybeLogPendingCaptureBacklog(update.events.length);
+  }
 
   if (update.log) addLog(update.log.level, update.log.message);
   publishState();
+}
+
+function maybeLogPendingCaptureBacklog(addedEvents: number): void {
+  if (pendingCaptureEvents.length < 250) return;
+  const now = Date.now();
+  if (now - lastPendingCaptureEventsLogAt < 10_000) return;
+  lastPendingCaptureEventsLogAt = now;
+  writeAppLog("capture-event-backlog", {
+    pendingCaptureEvents: pendingCaptureEvents.length,
+    addedEvents,
+    captureStatus: state.captureStatus,
+    health: state.health,
+  });
 }
 
 function addLog(level: LogEntry["level"], message: string): void {
@@ -472,6 +502,7 @@ app.whenReady().then(async () => {
   const debugLogPath = path.join(app.getPath("userData"), "capture-debug.log");
   logPreviousAppSession();
   startAppSessionHeartbeat();
+  startAppDiagnosticHeartbeat();
   state.pastRuns = loadPastRuns();
   state.runArchivePreferences = loadRunArchivePreferences();
   windowBounds = loadWindowBounds();
@@ -578,6 +609,59 @@ function stopAppSessionHeartbeat(): void {
   if (!appSessionHeartbeatTimer) return;
   clearInterval(appSessionHeartbeatTimer);
   appSessionHeartbeatTimer = null;
+}
+
+function startAppDiagnosticHeartbeat(): void {
+  stopAppDiagnosticHeartbeat();
+  appDiagnosticHeartbeatTimer = setInterval(writeAppDiagnosticHeartbeat, APP_DIAGNOSTIC_HEARTBEAT_MS);
+  appDiagnosticHeartbeatTimer.unref();
+  writeAppDiagnosticHeartbeat();
+}
+
+function stopAppDiagnosticHeartbeat(): void {
+  if (!appDiagnosticHeartbeatTimer) return;
+  clearInterval(appDiagnosticHeartbeatTimer);
+  appDiagnosticHeartbeatTimer = null;
+}
+
+function writeAppDiagnosticHeartbeat(): void {
+  const memory = process.memoryUsage();
+  writeAppLog("app-heartbeat", {
+    uptimeSeconds: Math.round(process.uptime()),
+    pid: process.pid,
+    version: app.getVersion(),
+    captureRunning: state.captureRunning,
+    captureStatus: state.captureStatus,
+    captureError: state.captureError,
+    connectionCount: state.connections.length,
+    pendingCaptureEvents: pendingCaptureEvents.length,
+    logRows: logs.length,
+    health: state.health,
+    stats: {
+      lastEventAt: state.stats.lastEventAt,
+      itemTimeline: state.stats.itemTimeline.length,
+      totalGoldEarned: state.stats.totalGoldEarned,
+      totalXpEarned: state.stats.totalXpEarned,
+    },
+    renderer: mainWindow
+      ? {
+          id: mainWindow.id,
+          destroyed: mainWindow.isDestroyed(),
+          visible: !mainWindow.isDestroyed() ? mainWindow.isVisible() : false,
+          focused: !mainWindow.isDestroyed() ? mainWindow.isFocused() : false,
+          minimized: !mainWindow.isDestroyed() ? mainWindow.isMinimized() : false,
+          bounds: !mainWindow.isDestroyed() ? mainWindow.getBounds() : null,
+          url: !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : null,
+        }
+      : null,
+    memory: {
+      rss: memory.rss,
+      heapTotal: memory.heapTotal,
+      heapUsed: memory.heapUsed,
+      external: memory.external,
+      arrayBuffers: memory.arrayBuffers,
+    },
+  });
 }
 
 function markAppSessionClosed(reason: string): void {
