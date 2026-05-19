@@ -371,8 +371,8 @@ function parseAddedItemObject(item: MessageObject, fingerprint?: string): AddedI
 }
 
 function inferItemRarityName(rawRarity: string | number, item: MessageObject, type: number, translation: ItemTranslation | null): string {
-  const direct = ITEM_RARITY[String(rawRarity)] ?? String(rawRarity).replace(/^\w/, (char) => char.toUpperCase());
-  if (direct && direct !== "Common") return direct;
+  const mappedRarity = ITEM_RARITY[String(rawRarity)];
+  if (mappedRarity && mappedRarity !== "Common") return mappedRarity;
 
   const identity = `${translation?.localizationId ?? ""} ${translation?.name ?? ""}`.toLowerCase();
   const knownRarity = lookupKnownItemRarity(type, translation?.name);
@@ -385,7 +385,11 @@ function inferItemRarityName(rawRarity: string | number, item: MessageObject, ty
   if (identity.includes("satan")) return "Satanic";
 
   const isSpecialEquipment = Boolean(translation) && intMessageField(item, ["c"]) === 1 && [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 18].includes(type);
-  return isSpecialEquipment ? "Satanic" : direct || "Unknown";
+  if (isSpecialEquipment) return "Satanic";
+  if (mappedRarity) return mappedRarity;
+
+  const fallback = String(rawRarity).replace(/^\w/, (char) => char.toUpperCase());
+  return fallback && !/^-?\d+$/.test(fallback) ? fallback : "Unknown";
 }
 
 function itemDisplayLabel(item: {

@@ -19,6 +19,10 @@ const MAX_PARSE_PAYLOAD_CHARS = 1_000_000;
 const PARSER_FAILURE_RESTART_THRESHOLD = 3;
 const PARSER_RECOVERY_DELAY_MS = 750;
 const PARSER_ERROR_LOG_INTERVAL_MS = 5000;
+const ITEM_DEBUG_PAYLOAD_INTERVAL_MS = 10_000;
+// Hero Siege gameplay traffic does not currently use HTTP/HTTPS ports.
+// Exclude these transient launcher/CDN connections so they are not captured or logged.
+const WEB_REMOTE_PORTS = new Set([80, 443]);
 
 export interface CaptureUpdate {
   connections?: CaptureConnection[];
@@ -62,6 +66,7 @@ export class CaptureService {
   private parserRecoveryTimer: NodeJS.Timeout | null = null;
   private lastGoldProbeAt = 0;
   private lastAntiCheatWaitLogAt = 0;
+  private lastItemDebugPayloadAt = 0;
   private readonly recentEventFingerprints = new Map<string, number>();
 
   constructor(
@@ -149,11 +154,13 @@ export class CaptureService {
       return;
     }
 
-    const signature = connectionSignature(connections);
+    const captureConnections = selectGameServerConnections(connections);
+    const signature = connectionSignature(captureConnections);
     if (!signature) {
-      if (this.activeSignature !== "") this.emit({ log: { level: "warning", message: "Hero Siege connections disappeared." } });
+      if (this.activeSignature !== "") this.emit({ log: { level: "warning", message: "Hero Siege game-server connections disappeared." } });
       this.activeSignature = "";
-      this.closeCapture();
+      this.closeCapture("no-game-server-connections");
+      this.writeDebugLog("capture-waiting-for-game-connections", { connections: summarizeConnections(connections) });
       this.emit({ status: "waiting", health: { device: null, filter: "" } });
       return;
     }
@@ -161,17 +168,17 @@ export class CaptureService {
     if (signature === this.activeSignature && this.cap) return;
 
     this.activeSignature = signature;
-    this.openCapture(connections);
+    this.openCapture(captureConnections, connections);
   }
 
-  private openCapture(connections: CaptureConnection[]): void {
+  private openCapture(connections: CaptureConnection[], allConnections = connections): void {
     const localAddresses = unique(connections.map((connection) => connection.localAddress));
-    const remoteAddresses = unique(connections.map((connection) => connection.remoteAddress));
     const localAddress = localAddresses[0];
+    const targets = uniqueCaptureTargets(connections);
 
-    if (!localAddress || remoteAddresses.length === 0) {
-      this.writeDebugLog("capture-waiting-for-connections", { connections: summarizeConnections(connections) });
-      this.emit({ status: "waiting", log: { level: "warning", message: "Waiting for usable Hero Siege remote connections." } });
+    if (!localAddress || targets.length === 0) {
+      this.writeDebugLog("capture-waiting-for-connections", { connections: summarizeConnections(allConnections) });
+      this.emit({ status: "waiting", log: { level: "warning", message: "Waiting for usable Hero Siege game-server connections." } });
       return;
     }
 
@@ -183,12 +190,12 @@ export class CaptureService {
           return `${deviceInfo.name}${addresses ? ` (${addresses})` : ""}`;
         })
         .join("; ");
-      this.closeCapture();
+      this.closeCapture("adapter-missing");
       this.writeDebugLog("capture-adapter-missing", {
         localAddress,
-        remoteAddresses,
+        targets,
         devices: devices || "none",
-        connections: summarizeConnections(connections),
+        connections: summarizeConnections(allConnections),
       });
       this.emit({
         status: "error",
@@ -198,13 +205,13 @@ export class CaptureService {
       return;
     }
 
-    const filter = `tcp and (${remoteAddresses.map((address) => `host ${address}`).join(" or ")}) and len > 30`;
+    const filter = `tcp and (${targets.map((target) => `(host ${target.remoteAddress} and port ${target.remotePort})`).join(" or ")}) and len > 30`;
 
     try {
       const nextCap = new Cap();
       const linkType = nextCap.open(device, filter, 10 * 1024 * 1024, this.buffer);
       nextCap.on("packet", (nbytes: number, truncated: boolean) => this.onPacket(nbytes, truncated));
-      this.closeCapture();
+      this.closeCapture("reopen");
       this.cap = nextCap;
       this.packetBuffers.clear();
       this.recentEventFingerprints.clear();
@@ -212,7 +219,8 @@ export class CaptureService {
         device,
         filter,
         linkType,
-        connections: summarizeConnections(connections),
+        targets,
+        connections: summarizeConnections(allConnections),
       });
       this.emit({
         status: "running",
@@ -220,11 +228,12 @@ export class CaptureService {
         log: { level: "success", message: `Capture opened on ${device} (${linkType}).` },
       });
     } catch (error) {
-      this.closeCapture();
+      this.closeCapture("open-error");
       this.writeDebugLog("capture-open-error", {
         error: error instanceof Error ? error.message : String(error),
         filter,
-        connections: summarizeConnections(connections),
+        targets,
+        connections: summarizeConnections(allConnections),
       });
       this.emit({
         status: "error",
@@ -384,7 +393,7 @@ export class CaptureService {
     this.consecutiveParserFailures = 0;
     this.packetBuffers.clear();
     this.recentEventFingerprints.clear();
-    this.closeCapture();
+    this.closeCapture("parser-recovery");
     this.activeSignature = "";
     this.writeDebugLog("parser-recovery", { reason, parserRestarts: this.parserRestarts });
     this.emit({
@@ -411,9 +420,10 @@ export class CaptureService {
     this.parserRecoveryTimer.unref();
   }
 
-  private closeCapture(): void {
+  private closeCapture(reason = "close"): void {
     if (!this.cap) return;
     try {
+      this.writeDebugLog("capture-close", { reason, activeSignature: this.activeSignature });
       this.cap.close();
     } catch {
       // The native module may throw if the handle is already closing.
@@ -455,6 +465,7 @@ export class CaptureService {
 
   private probeDebugPayload(payloadText: string, messages: MessageValue[], events: ParsedEvent[]): void {
     if (!shouldDebugPayload(payloadText, messages, events)) return;
+    if (isOnlyItemEvents(events) && !this.shouldWriteItemDebugPayload()) return;
 
     this.writeDebugLog("payload", {
       eventNames: events.map((event) => event.name),
@@ -472,6 +483,13 @@ export class CaptureService {
     } catch {
       // Diagnostics must never interfere with packet capture.
     }
+  }
+
+  private shouldWriteItemDebugPayload(): boolean {
+    const now = Date.now();
+    if (now - this.lastItemDebugPayloadAt < ITEM_DEBUG_PAYLOAD_INTERVAL_MS) return false;
+    this.lastItemDebugPayloadAt = now;
+    return true;
   }
 }
 
@@ -650,6 +668,31 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+interface CaptureTarget {
+  remoteAddress: string;
+  remotePort: number;
+}
+
+function selectGameServerConnections(connections: CaptureConnection[]): CaptureConnection[] {
+  return connections.filter((connection) => !isLikelyWebConnection(connection));
+}
+
+function isLikelyWebConnection(connection: CaptureConnection): boolean {
+  return WEB_REMOTE_PORTS.has(Number(connection.remotePort));
+}
+
+function uniqueCaptureTargets(connections: CaptureConnection[]): CaptureTarget[] {
+  const seen = new Set<string>();
+  const targets: CaptureTarget[] = [];
+  for (const connection of connections) {
+    const key = `${connection.remoteAddress}:${connection.remotePort}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push({ remoteAddress: connection.remoteAddress, remotePort: Number(connection.remotePort) });
+  }
+  return targets;
+}
+
 function summarizeConnections(connections: CaptureConnection[]): Array<Omit<CaptureConnection, "owningProcess">> {
   return connections.map((connection) => ({
     state: connection.state,
@@ -662,7 +705,7 @@ function summarizeConnections(connections: CaptureConnection[]): Array<Omit<Capt
 
 function connectionSignature(connections: CaptureConnection[]): string {
   return connections
-    .map((connection) => `${connection.localAddress}->${connection.remoteAddress}`)
+    .map((connection) => `${connection.localAddress}->${connection.remoteAddress}:${connection.remotePort}`)
     .sort()
     .filter((value, index, values) => index === 0 || values[index - 1] !== value)
     .join("|");
@@ -703,6 +746,10 @@ function shouldDebugPayload(payloadText: string, messages: MessageValue[], event
     /\b(?:addeditem|rarity|gold|currency|gss|gsh|gns|gnh|gbp|mail)\b/i.test(payloadText) ||
     messages.some((message) => messageHasRoute(message, /^(?:mailbox|satanic_zone)\//i))
   );
+}
+
+function isOnlyItemEvents(events: ParsedEvent[]): boolean {
+  return events.length > 0 && events.every((event) => event.name === EVENT_NAMES.item);
 }
 
 function messageKeySummary(value: MessageValue): string {
@@ -772,7 +819,8 @@ function isUsefulEvent(event: ParsedEvent): boolean {
 
 function shouldLogEvent(event: ParsedEvent): boolean {
   if (event.name === EVENT_NAMES.accountMode) return false;
-  return event.name !== EVENT_NAMES.item || isUsefulEvent(event);
+  if (event.name === EVENT_NAMES.item) return false;
+  return isUsefulEvent(event);
 }
 
 function formatError(error: unknown): string {

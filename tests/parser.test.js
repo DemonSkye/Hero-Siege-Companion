@@ -470,6 +470,40 @@ test("known item rarity map classifies set boots", () => {
   assert.equal(snapshot.items.Set.total, 1);
 });
 
+test("unknown numeric rarity codes still use known item rarity", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      operations: {
+        stack: {
+          "3-80091501-6522a8a12632f0005-1": {
+            target: "3-80091501-6520fd45ae55b0001-1",
+            location: 0,
+            amount: 1,
+            pickup_add_data: {
+              d: 22,
+              e: 0,
+              a: 779271283,
+              j: 0,
+              b: 17,
+              c: 0,
+              sh: "ccf01662a7a0",
+            },
+            targetLocation: 0,
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events[0].value.label, "Pirate Captain's Shirt");
+  assert.equal(events[0].value.rarityName, "Set");
+  assert.equal(snapshot.items.Set.total, 1);
+});
+
 test("known item rarity map classifies known helmets", () => {
   const events = messageToEvents([
     {

@@ -1,5 +1,13 @@
 # Patch Notes Changelist
 
+## v0.0.6 Follow-Up Bugfix Release
+
+- Reduced renderer pressure during heavy Bloodpact loot sessions by batching parsed capture events and publishing state updates at most once per second.
+- Tightened capture filters to Hero Siege game-server host and port pairs, while excluding HTTP/HTTPS launcher or CDN traffic from capture and debug logging.
+- Suppressed routine item-only capture debug payloads and live item log rows so loot-heavy sessions do not flood the renderer or log file.
+- Fixed known item rarity resolution when Hero Siege sends an unknown numeric rarity code, so known Set items such as Aztec Devil and Pirate Captain's Shirt count correctly.
+- Added a regression test for unknown numeric rarity codes falling back to the known item rarity map.
+
 ## v0.0.5 Bugfix Release
 
 - Fixed Bloodpact/private-season sessions so captured `blood_pact` route packets set the companion to GBP mode even before a full account packet arrives.

@@ -21,6 +21,7 @@ const RENDERER_RECOVERY_DELAY_MS = 500;
 const MAX_RENDERER_RECOVERIES = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
 const APP_SESSION_HEARTBEAT_MS = 15_000;
+const STATE_PUBLISH_INTERVAL_MS = 1000;
 
 const state: CompanionState = {
   captureRunning: false,
@@ -47,6 +48,7 @@ const state: CompanionState = {
   logs,
 };
 
+const pendingCaptureEvents: NonNullable<CaptureUpdate["events"]> = [];
 let mainWindow: BrowserWindow | null = null;
 let captureService: CaptureService | null = null;
 let appLogPath = "";
@@ -61,6 +63,7 @@ let windowBounds: WindowBoundsPreferences = {};
 let saveWindowBoundsTimer: NodeJS.Timeout | null = null;
 let rendererRecoveryTimer: NodeJS.Timeout | null = null;
 let appSessionHeartbeatTimer: NodeJS.Timeout | null = null;
+let statePublishTimer: NodeJS.Timeout | null = null;
 let rendererRecoveryWindowStartedAt = 0;
 let rendererRecoveriesInWindow = 0;
 const appSessionId = `${Date.now()}-${process.pid}`;
@@ -208,7 +211,7 @@ function scheduleRendererRecovery(reason: string): void {
     rendererRecoveryTimer = null;
     if (!mainWindow || mainWindow.isDestroyed()) return;
     loadRenderer(mainWindow);
-    publishState();
+    publishStateNow();
     addLog("warning", "Recovered the app window after a renderer crash.");
   }, RENDERER_RECOVERY_DELAY_MS);
   rendererRecoveryTimer.unref();
@@ -227,17 +230,7 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.connections) state.connections = update.connections;
   if (update.health) state.health = { ...state.health, ...update.health };
 
-  if (update.events?.length) {
-    try {
-      state.stats = statsEngine.applyEvents(update.events);
-    } catch (error) {
-      writeAppLog("stats-apply-error", {
-        error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
-        eventNames: update.events.map((event) => event.name),
-      });
-      addLog("error", `Parsed events were dropped after stats update failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  if (update.events?.length) pendingCaptureEvents.push(...update.events);
 
   if (update.log) addLog(update.log.level, update.log.message);
   publishState();
@@ -256,11 +249,39 @@ function addLog(level: LogEntry["level"], message: string): void {
 }
 
 function publishState(): void {
+  if (statePublishTimer) return;
+  statePublishTimer = setTimeout(() => {
+    statePublishTimer = null;
+    publishStateNow();
+  }, STATE_PUBLISH_INTERVAL_MS);
+  statePublishTimer.unref();
+}
+
+function publishStateNow(): void {
+  applyPendingCaptureEvents();
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send("state:updated", state);
 }
 
-ipcMain.handle("state:get", () => state);
+function applyPendingCaptureEvents(): void {
+  if (pendingCaptureEvents.length === 0) return;
+  const events = pendingCaptureEvents.splice(0);
+
+  try {
+    state.stats = statsEngine.applyEvents(events);
+  } catch (error) {
+    writeAppLog("stats-apply-error", {
+      error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
+      eventNames: events.map((event) => event.name),
+    });
+    addLog("error", `Parsed events were dropped after stats update failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+ipcMain.handle("state:get", () => {
+  applyPendingCaptureEvents();
+  return state;
+});
 ipcMain.handle("capture:start", async () => {
   clearLaunchCaptureTimer();
   await captureService?.start();
@@ -314,6 +335,7 @@ ipcMain.handle("capture:stop", () => {
   return state;
 });
 ipcMain.handle("stats:reset", () => {
+  applyPendingCaptureEvents();
   const archived = archiveCurrentRun("reset");
   state.stats = statsEngine.reset();
   addLog("info", archived ? "Run saved and session stats reset." : "Session stats reset. Run did not match save settings.");
@@ -591,6 +613,7 @@ function writeAppSession(phase: string, extra: Record<string, unknown> = {}): vo
 
 function archiveCurrentRun(reason: string): boolean {
   if (!pastRunsPath) return false;
+  applyPendingCaptureEvents();
   const summary = statsEngine.runSummary();
   if (archivedSessionStarts.has(summary.sessionStartedAt)) return false;
   if (!shouldArchiveRun(summary)) return false;
