@@ -114,11 +114,11 @@ export class StatsEngine {
   private applyEvent(event: ParsedEvent): void {
     this.stats.lastEventAt = event.createdAt;
 
-    if (event.name === EVENT_NAMES.account) {
+    if (event.name === EVENT_NAMES.account || event.name === EVENT_NAMES.accountMode) {
       const account = event.value as AccountInfo;
       this.stats.accountName = account.name || this.stats.accountName;
       this.stats.seasonMode = account.seasonMode;
-      this.updateXpTotal(account.experience);
+      if (event.name === EVENT_NAMES.account) this.updateXpTotal(account.experience);
       if (this.lastCurrencyData) this.updateGold(this.lastCurrencyData);
     } else if (event.name === EVENT_NAMES.gold) {
       this.updateGold(event.value as CurrencyData);

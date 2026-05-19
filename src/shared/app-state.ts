@@ -26,6 +26,9 @@ export interface CaptureHealth {
   payloadsAssembled: number;
   messagesDecoded: number;
   parsedEvents: number;
+  parserErrors: number;
+  parserRestarts: number;
+  lastParserError: string | null;
 }
 
 export interface RunArchivePreferences {

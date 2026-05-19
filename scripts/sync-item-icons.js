@@ -12,7 +12,7 @@ const WIKI_API = "https://herosiege.fandom.com/api.php";
 const ITEM_DATABASE_URL = "https://herosiege.net/wiki/Items";
 const TARGET_RARITIES = ["Set", "Satanic", "Heroic", "Angelic", "Unholy"];
 const TARGET_RARITY_SET = new Set(TARGET_RARITIES);
-const USER_AGENT = "HeroSiegeCompanion/0.0.3 (item icon sync)";
+const USER_AGENT = "HeroSiegeCompanion/0.0.4 (item icon sync)";
 
 async function main() {
   fs.mkdirSync(ICON_DIR, { recursive: true });

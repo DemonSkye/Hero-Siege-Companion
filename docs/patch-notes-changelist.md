@@ -1,5 +1,17 @@
 # Patch Notes Changelist
 
+## v0.0.5 Bugfix Release
+
+- Fixed Bloodpact/private-season sessions so captured `blood_pact` route packets set the companion to GBP mode even before a full account packet arrives.
+- Added parser isolation around capture payload decoding, event parsing, event filtering, and diagnostic probes so malformed packets are dropped instead of crashing the main process.
+- Added parser recovery that clears capture buffers, closes the active capture handle, and reopens capture after repeated parser failures.
+- Added parser health counters for errors and recovery restarts in the capture health panel.
+- Added safer parser field access so unexpected or hostile message shapes are skipped without throwing.
+- Added main-process protection around stats updates so a bad parsed event cannot take down the app.
+- Added non-graceful exit diagnostics, including renderer crash recovery, Electron child-process logging, app session heartbeat tracking, local crash dump path logging, and next-launch detection of unclean exits.
+- Reduced capture debug-log noise from routine packets and redacted account/checksum/hash identifiers from debug snippets.
+- Added capture startup diagnostics for adapter lookup, capture-open, capture-open failures, and waiting-for-connection states.
+
 ## Launch And Capture
 
 - Renamed the primary idle action to Launch Game.
@@ -21,6 +33,9 @@
 - Added item icons for recent item timeline and live log rows when assets are available.
 - Added clickable tracked drop counters that expand into per-item drop breakdowns with icon, name, and count.
 - Added per-session drop breakdown tracking by rarity.
+- Added Set and Satanic drop totals to Past Runs.
+- Added expandable Past Run drop counters for Set, Satanic, Heroic, and Angelic drops.
+- Past Runs now save per-item drop details for newly archived runs.
 
 ## Item Assets
 

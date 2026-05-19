@@ -31,14 +31,22 @@ export function getMessageField<T = MessageValue>(
 
   for (const name of names) {
     if (Object.prototype.hasOwnProperty.call(msg, name)) {
-      return coerceMessageValue(msg[name]) as T;
+      try {
+        return coerceMessageValue(msg[name]) as T;
+      } catch {
+        return defaultValue as T;
+      }
     }
   }
 
   const normalizedNames = new Set(names.map(normalizeMessageKey));
-  for (const [key, value] of Object.entries(msg)) {
+  for (const [key, value] of messageEntries(msg)) {
     if (normalizedNames.has(normalizeMessageKey(key))) {
-      return coerceMessageValue(value) as T;
+      try {
+        return coerceMessageValue(value) as T;
+      } catch {
+        return defaultValue as T;
+      }
     }
   }
 
@@ -57,4 +65,13 @@ export function intMessageField(msg: MessageObject | null | undefined, names: st
 
 export function asMessageObject(value: MessageValue | undefined): MessageObject | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as MessageObject) : undefined;
+}
+
+export function messageEntries(value: MessageObject | null | undefined): Array<[string, MessageValue]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  try {
+    return Object.entries(value) as Array<[string, MessageValue]>;
+  } catch {
+    return [];
+  }
 }

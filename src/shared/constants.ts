@@ -130,6 +130,7 @@ export const EVENT_NAMES = {
   gold: "updateGold",
   xp: "updateXP",
   account: "updateAccount",
+  accountMode: "updateAccountMode",
   mail: "updateMail",
   item: "itemAdded",
   satanicZone: "updateSatanicZone",

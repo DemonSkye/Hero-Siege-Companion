@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell, type Rectangle } from "electron";
+import { app, BrowserWindow, clipboard, crashReporter, dialog, ipcMain, nativeImage, shell, type Rectangle } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { CaptureService, type CaptureUpdate } from "./capture";
@@ -17,6 +17,10 @@ const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeigh
 const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
 const STEAM_HERO_SIEGE_URL = "steam://rungameid/269210";
 const LAUNCH_CAPTURE_DELAY_MS = 45_000;
+const RENDERER_RECOVERY_DELAY_MS = 500;
+const MAX_RENDERER_RECOVERIES = 3;
+const RENDERER_RECOVERY_WINDOW_MS = 60_000;
+const APP_SESSION_HEARTBEAT_MS = 15_000;
 
 const state: CompanionState = {
   captureRunning: false,
@@ -33,6 +37,9 @@ const state: CompanionState = {
     payloadsAssembled: 0,
     messagesDecoded: 0,
     parsedEvents: 0,
+    parserErrors: 0,
+    parserRestarts: 0,
+    lastParserError: null,
   },
   stats: createInitialStats(),
   pastRuns: [],
@@ -46,11 +53,18 @@ let appLogPath = "";
 let pastRunsPath = "";
 let preferencesPath = "";
 let windowBoundsPath = "";
+let appSessionPath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
 let launchCaptureTimer: NodeJS.Timeout | null = null;
 let compactWindowMode = false;
 let windowBounds: WindowBoundsPreferences = {};
 let saveWindowBoundsTimer: NodeJS.Timeout | null = null;
+let rendererRecoveryTimer: NodeJS.Timeout | null = null;
+let appSessionHeartbeatTimer: NodeJS.Timeout | null = null;
+let rendererRecoveryWindowStartedAt = 0;
+let rendererRecoveriesInWindow = 0;
+const appSessionId = `${Date.now()}-${process.pid}`;
+const appSessionStartedAt = new Date().toISOString();
 const archivedSessionStarts = new Set<number>();
 
 interface WindowBoundsPreferences {
@@ -59,6 +73,12 @@ interface WindowBoundsPreferences {
 }
 
 if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
+
+try {
+  crashReporter.start({ uploadToServer: false });
+} catch (error) {
+  console.error("Failed to start crash reporter", error);
+}
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
@@ -81,7 +101,18 @@ process.on("unhandledRejection", (reason) => {
   console.error(reason);
 });
 
-process.on("exit", () => {
+process.on("warning", (warning) => {
+  writeAppLog("process-warning", { name: warning.name, message: warning.message, stack: warning.stack });
+});
+
+process.on("beforeExit", (code) => {
+  writeAppLog("process-before-exit", { code });
+});
+
+process.on("exit", (code) => {
+  writeAppLog("process-exit", { code });
+  stopAppSessionHeartbeat();
+  markAppSessionClosed("process-exit");
   shutdownCapture("process-exit");
 });
 
@@ -104,19 +135,83 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, "..", "..", "renderer", "index.html"));
+  loadRenderer(mainWindow);
+  writeAppLog("window-created", { id: mainWindow.id, bounds: mainWindow.getBounds() });
+  mainWindow.on("close", () => {
+    writeAppLog("window-close", { id: mainWindow?.id, captureStatus: state.captureStatus, captureRunning: state.captureRunning });
+  });
   mainWindow.on("closed", () => {
+    writeAppLog("window-closed", {});
     mainWindow = null;
   });
   mainWindow.on("moved", scheduleWindowBoundsSave);
   mainWindow.on("resized", scheduleWindowBoundsSave);
+  mainWindow.webContents.on("unresponsive", () => {
+    writeAppLog("renderer-unresponsive", {
+      windowId: mainWindow?.id,
+      webContentsId: mainWindow?.webContents.id,
+      url: mainWindow?.webContents.getURL(),
+    });
+    addLog("warning", "Renderer became unresponsive.");
+  });
+  mainWindow.webContents.on("responsive", () => {
+    writeAppLog("renderer-responsive", {
+      windowId: mainWindow?.id,
+      webContentsId: mainWindow?.webContents.id,
+      url: mainWindow?.webContents.getURL(),
+    });
+    addLog("info", "Renderer became responsive again.");
+  });
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    writeAppLog("renderer-did-fail-load", { errorCode, errorDescription, validatedURL, isMainFrame });
+  });
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    writeAppLog("renderer-preload-error", { preloadPath, message: error.message, stack: error.stack });
+    addLog("error", `Renderer preload failed: ${error.message}`);
+  });
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     writeAppLog("render-process-gone", {
+      windowId: mainWindow?.id,
+      webContentsId: mainWindow?.webContents.id,
+      url: mainWindow?.webContents.getURL(),
       reason: details.reason,
       exitCode: details.exitCode,
     });
     addLog("error", `Renderer stopped unexpectedly: ${details.reason}.`);
+    scheduleRendererRecovery(details.reason);
   });
+}
+
+function loadRenderer(window: BrowserWindow): void {
+  window.loadFile(path.join(__dirname, "..", "..", "renderer", "index.html"));
+}
+
+function scheduleRendererRecovery(reason: string): void {
+  if (!mainWindow || mainWindow.isDestroyed() || rendererRecoveryTimer) return;
+  if (reason === "clean-exit" || reason === "killed") return;
+
+  const now = Date.now();
+  if (now - rendererRecoveryWindowStartedAt > RENDERER_RECOVERY_WINDOW_MS) {
+    rendererRecoveryWindowStartedAt = now;
+    rendererRecoveriesInWindow = 0;
+  }
+
+  rendererRecoveriesInWindow += 1;
+  if (rendererRecoveriesInWindow > MAX_RENDERER_RECOVERIES) {
+    writeAppLog("renderer-recovery-skipped", { reason, rendererRecoveriesInWindow });
+    addLog("error", "Renderer crashed repeatedly; automatic recovery paused.");
+    return;
+  }
+
+  writeAppLog("renderer-recovery-scheduled", { reason, rendererRecoveriesInWindow });
+  rendererRecoveryTimer = setTimeout(() => {
+    rendererRecoveryTimer = null;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    loadRenderer(mainWindow);
+    publishState();
+    addLog("warning", "Recovered the app window after a renderer crash.");
+  }, RENDERER_RECOVERY_DELAY_MS);
+  rendererRecoveryTimer.unref();
 }
 
 function resolveIconPath(): string {
@@ -133,7 +228,15 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.health) state.health = { ...state.health, ...update.health };
 
   if (update.events?.length) {
-    state.stats = statsEngine.applyEvents(update.events);
+    try {
+      state.stats = statsEngine.applyEvents(update.events);
+    } catch (error) {
+      writeAppLog("stats-apply-error", {
+        error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
+        eventNames: update.events.map((event) => event.name),
+      });
+      addLog("error", `Parsed events were dropped after stats update failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   if (update.log) addLog(update.log.level, update.log.message);
@@ -343,11 +446,23 @@ app.whenReady().then(async () => {
   pastRunsPath = path.join(app.getPath("userData"), "past-runs.json");
   preferencesPath = path.join(app.getPath("userData"), "preferences.json");
   windowBoundsPath = path.join(app.getPath("userData"), "window-bounds.json");
+  appSessionPath = path.join(app.getPath("userData"), "app-session.json");
   const debugLogPath = path.join(app.getPath("userData"), "capture-debug.log");
+  logPreviousAppSession();
+  startAppSessionHeartbeat();
   state.pastRuns = loadPastRuns();
   state.runArchivePreferences = loadRunArchivePreferences();
   windowBounds = loadWindowBounds();
-  writeAppLog("app-ready", { appLogPath, debugLogPath, pastRunsPath, preferencesPath, windowBoundsPath });
+  writeAppLog("app-ready", {
+    appLogPath,
+    debugLogPath,
+    pastRunsPath,
+    preferencesPath,
+    windowBoundsPath,
+    appSessionPath,
+    crashDumpsPath: app.getPath("crashDumps"),
+    lastCrashReport: crashReporter.getLastCrashReport(),
+  });
   captureService = new CaptureService(applyCaptureUpdate, debugLogPath);
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   createWindow();
@@ -373,21 +488,26 @@ app.on("child-process-gone", (_event, details) => {
 });
 
 app.on("before-quit", () => {
+  writeAppLog("before-quit", { exitCode: process.exitCode ?? null });
+  writeAppSession("before-quit");
   shutdownCapture("before-quit");
 });
 
 app.on("will-quit", () => {
+  writeAppLog("will-quit", { exitCode: process.exitCode ?? null });
+  writeAppSession("will-quit");
   shutdownCapture("will-quit");
 });
 
 app.on("window-all-closed", () => {
+  writeAppLog("window-all-closed", {});
   shutdownCapture("window-all-closed");
   app.quit();
   scheduleForceExit();
 });
 
 function shutdownCapture(reason: string): void {
-  writeAppLog("shutdown-capture", { reason });
+  writeAppLog("shutdown-capture", { reason, captureStatus: state.captureStatus, captureRunning: state.captureRunning });
   clearLaunchCaptureTimer();
   archiveCurrentRun(reason);
   try {
@@ -400,10 +520,73 @@ function shutdownCapture(reason: string): void {
 function scheduleForceExit(): void {
   if (forceExitTimer) return;
   forceExitTimer = setTimeout(() => {
-    writeAppLog("force-exit", {});
+    writeAppLog("force-exit", { captureStatus: state.captureStatus, captureRunning: state.captureRunning });
+    writeAppSession("force-exit");
     app.exit(0);
   }, 1500);
   forceExitTimer.unref();
+}
+
+function logPreviousAppSession(): void {
+  try {
+    if (!fs.existsSync(appSessionPath)) return;
+    const previous = JSON.parse(fs.readFileSync(appSessionPath, "utf8")) as Record<string, unknown>;
+    if (previous.phase === "closed" || previous.closedAt) return;
+    writeAppLog("previous-non-graceful-exit", {
+      previousSessionId: previous.sessionId,
+      previousPid: previous.pid,
+      previousPhase: previous.phase,
+      previousStartedAt: previous.startedAt,
+      previousLastHeartbeatAt: previous.lastHeartbeatAt,
+      previousShutdownReason: previous.shutdownReason,
+    });
+  } catch (error) {
+    writeAppLog("previous-session-read-error", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function startAppSessionHeartbeat(): void {
+  writeAppSession("started");
+  stopAppSessionHeartbeat();
+  appSessionHeartbeatTimer = setInterval(() => writeAppSession("heartbeat"), APP_SESSION_HEARTBEAT_MS);
+  appSessionHeartbeatTimer.unref();
+}
+
+function stopAppSessionHeartbeat(): void {
+  if (!appSessionHeartbeatTimer) return;
+  clearInterval(appSessionHeartbeatTimer);
+  appSessionHeartbeatTimer = null;
+}
+
+function markAppSessionClosed(reason: string): void {
+  writeAppSession("closed", { closedAt: new Date().toISOString(), shutdownReason: reason });
+}
+
+function writeAppSession(phase: string, extra: Record<string, unknown> = {}): void {
+  if (!appSessionPath) return;
+  try {
+    fs.writeFileSync(
+      appSessionPath,
+      `${JSON.stringify(
+        {
+          sessionId: appSessionId,
+          pid: process.pid,
+          startedAt: appSessionStartedAt,
+          lastHeartbeatAt: new Date().toISOString(),
+          phase,
+          version: app.getVersion(),
+          platform: process.platform,
+          arch: process.arch,
+          ...extra,
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  } catch (error) {
+    writeAppLog("app-session-write-error", { phase, error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 function archiveCurrentRun(reason: string): boolean {

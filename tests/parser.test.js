@@ -78,6 +78,42 @@ test("gold snapshots track current gold and earned positive deltas", () => {
   assert.equal(snapshot.totalGoldEarned, 55);
 });
 
+test("blood pact route packets set GBP mode before gold snapshots arrive", () => {
+  const stats = new StatsEngine();
+  const modeEvents = messageToEvents([
+    {
+      route: "inventory/item_stack_handler/v1",
+      account_id: 39094,
+      seasonal: 0,
+      hardcore: 0,
+      blood_pact: 6788,
+    },
+  ]);
+
+  stats.applyEvents(modeEvents);
+  const snapshot = stats.applyEvents([
+    ...messageToEvents([{ currencyData: { account_id: 39094, GSS: 10, GSH: 0, GNS: 20, GNH: 0, GBP: 30 } }]),
+  ]);
+
+  assert.deepEqual(modeEvents.map((event) => event.name), ["updateAccountMode"]);
+  assert.equal(snapshot.seasonMode, "GBP");
+  assert.equal(snapshot.totalGold, 30);
+  assert.equal(snapshot.totalXp, 0);
+});
+
+test("parser skips hostile message fields without throwing", () => {
+  const hostile = {};
+  Object.defineProperty(hostile, "currencyData", {
+    enumerable: true,
+    get() {
+      throw new Error("hostile getter");
+    },
+  });
+
+  assert.doesNotThrow(() => messageToEvents([hostile]));
+  assert.deepEqual(messageToEvents([hostile]), []);
+});
+
 test("capture accepts JSON arrays", () => {
   const messages = captureMessages('prefix [{"total_guild_xp":500,"message":"Gained 15 XP"}] suffix');
   const events = messageToEvents(messages);

@@ -22,6 +22,9 @@ const state = ref<CompanionState>({
     payloadsAssembled: 0,
     messagesDecoded: 0,
     parsedEvents: 0,
+    parserErrors: 0,
+    parserRestarts: 0,
+    lastParserError: null,
   },
   stats: createInitialStats(),
   pastRuns: [],
@@ -51,7 +54,7 @@ const timelineType = ref("all");
 const gameExecutablePath = ref("");
 const launchThroughSteam = ref(true);
 const activeTab = ref<"live" | "past">("live");
-const appVersion = "0.0.3";
+const appVersion = "0.0.5";
 const expandedLogIds = ref<Set<string>>(new Set());
 const draftLogLimit = ref(20);
 const draftTimelineLimit = ref(10);
@@ -821,6 +824,7 @@ function itemTypeName(item: Record<string, unknown>): string {
           <span>Npcap: {{ state.health.npcapService }} &middot; WinPcap {{ state.health.winPcapCompatible ? "on" : "off" }} &middot; Admin-only {{ state.health.adminOnly ? "on" : "off" }}</span>
           <span>Filter: {{ state.health.filter || "none" }}</span>
           <span>Payloads: {{ formatNumber(state.health.payloadsAssembled) }} assembled &middot; {{ formatNumber(state.health.messagesDecoded) }} decoded</span>
+          <span>Parser: {{ formatNumber(state.health.parserErrors) }} errors &middot; {{ formatNumber(state.health.parserRestarts) }} restarts</span>
         </div>
       </section>
 

@@ -10,7 +10,7 @@ import {
   SATANIC_ZONE_NAMES,
   WEAPON_TYPE_NAMES,
 } from "./constants";
-import { asMessageObject, getMessageField, hasMessageField, intMessageField, type MessageObject, type MessageValue } from "./fields";
+import { asMessageObject, getMessageField, hasMessageField, intMessageField, messageEntries, type MessageObject, type MessageValue } from "./fields";
 import { lookupItemTranslation, type ItemTranslation } from "./item-lookup";
 import { lookupKnownItemRarity } from "./item-rarity";
 import { isSetItemName } from "./set-item-names";
@@ -27,6 +27,8 @@ const ITEM_RARITY_FIELDS = ["rarity", "itemRarity", "item_rarity", "d"];
 const GOLD_DELTA_FIELDS = ["goldAmount", "gold_amount"];
 const SATANIC_ZONE_FIELDS = ["satanicZoneName", "satanic_zone_name"];
 const ACCOUNT_SIGNATURE_FIELDS = ["name", "class", "class_id", "heroLevel", "herolevel", "season", "hardcore"];
+const ACCOUNT_MODE_HINT_FIELDS = ["blood_pact", "bloodPact"];
+const ACCOUNT_MODE_SIGNATURE_FIELDS = ["hardcore", "season", "seasonal"];
 
 export interface ParsedEvent<T = unknown> {
   name: EventName;
@@ -134,6 +136,8 @@ export function messageToEvents(value: MessageValue | MessageValue[] | null | un
         events.push({ name: eventName, value: parseXp(msg), raw: msg, createdAt: Date.now() });
       } else if (eventName === EVENT_NAMES.account) {
         events.push({ name: eventName, value: parseAccount(msg), raw: msg, createdAt: Date.now() });
+      } else if (eventName === EVENT_NAMES.accountMode) {
+        events.push({ name: eventName, value: parseAccount(msg), raw: msg, createdAt: Date.now() });
       } else if (eventName === EVENT_NAMES.mail) {
         events.push({ name: eventName, value: parseMail(msg), raw: msg, createdAt: Date.now() });
       } else if (eventName === EVENT_NAMES.item) {
@@ -164,6 +168,9 @@ function identifyEvents(msg: MessageObject): EventName[] {
   if (isItemPayload(msg)) events.push(EVENT_NAMES.item);
   if (hasMessageField(msg, SATANIC_ZONE_FIELDS)) events.push(EVENT_NAMES.satanicZone);
   if (hasMessageField(msg, ["experience"]) && hasMessageField(msg, ACCOUNT_SIGNATURE_FIELDS)) events.push(EVENT_NAMES.account);
+  if (hasMessageField(msg, ACCOUNT_MODE_HINT_FIELDS) && hasMessageField(msg, ACCOUNT_MODE_SIGNATURE_FIELDS)) {
+    events.push(EVENT_NAMES.accountMode);
+  }
   if (hasMessageField(msg, XP_GAIN_FIELDS)) events.push(EVENT_NAMES.xp);
 
   return events;
@@ -295,7 +302,7 @@ function extractItemSources(msg: MessageObject): Array<{ fingerprint?: string; i
 
   const operationStack = asMessageObject(getMessageField(operations, ["stack"], undefined));
   if (operationStack) {
-    return Object.entries(operationStack)
+    return messageEntries(operationStack)
       .map(([fingerprint, value]) => ({
         fingerprint,
         item: asMessageObject(getMessageField(asMessageObject(value as MessageValue), ["pickup_add_data", "pickupAddData"], undefined)),
@@ -320,7 +327,7 @@ function extractItemSources(msg: MessageObject): Array<{ fingerprint?: string; i
 }
 
 function objectValuesAsItems(items: MessageObject): Array<{ fingerprint?: string; item: MessageObject }> {
-  return Object.entries(items)
+  return messageEntries(items)
     .filter(([, value]) => value && typeof value === "object" && !Array.isArray(value))
     .map(([fingerprint, item]) => ({ fingerprint, item: item as MessageObject }));
 }

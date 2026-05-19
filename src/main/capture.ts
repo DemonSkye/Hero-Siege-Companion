@@ -15,6 +15,10 @@ const MAX_DEBUG_SNIPPET = 1200;
 const MAX_DEBUG_LOG_BYTES = 5 * 1024 * 1024;
 const POLL_INTERVAL_MS = 1000;
 const EVENT_DEDUP_WINDOW_MS = 2500;
+const MAX_PARSE_PAYLOAD_CHARS = 1_000_000;
+const PARSER_FAILURE_RESTART_THRESHOLD = 3;
+const PARSER_RECOVERY_DELAY_MS = 750;
+const PARSER_ERROR_LOG_INTERVAL_MS = 5000;
 
 export interface CaptureUpdate {
   connections?: CaptureConnection[];
@@ -51,6 +55,11 @@ export class CaptureService {
   private payloadsAssembled = 0;
   private messagesDecoded = 0;
   private parsedEvents = 0;
+  private parserErrors = 0;
+  private parserRestarts = 0;
+  private consecutiveParserFailures = 0;
+  private lastParserErrorLogAt = 0;
+  private parserRecoveryTimer: NodeJS.Timeout | null = null;
   private lastGoldProbeAt = 0;
   private lastAntiCheatWaitLogAt = 0;
   private readonly recentEventFingerprints = new Map<string, number>();
@@ -109,7 +118,9 @@ export class CaptureService {
 
   stop(): void {
     if (this.pollTimer) clearInterval(this.pollTimer);
+    if (this.parserRecoveryTimer) clearTimeout(this.parserRecoveryTimer);
     this.pollTimer = null;
+    this.parserRecoveryTimer = null;
     this.closeCapture();
     this.activeSignature = "";
     this.packetBuffers.clear();
@@ -159,6 +170,7 @@ export class CaptureService {
     const localAddress = localAddresses[0];
 
     if (!localAddress || remoteAddresses.length === 0) {
+      this.writeDebugLog("capture-waiting-for-connections", { connections: summarizeConnections(connections) });
       this.emit({ status: "waiting", log: { level: "warning", message: "Waiting for usable Hero Siege remote connections." } });
       return;
     }
@@ -172,6 +184,12 @@ export class CaptureService {
         })
         .join("; ");
       this.closeCapture();
+      this.writeDebugLog("capture-adapter-missing", {
+        localAddress,
+        remoteAddresses,
+        devices: devices || "none",
+        connections: summarizeConnections(connections),
+      });
       this.emit({
         status: "error",
         error: `Npcap cannot find the adapter for ${localAddress}.`,
@@ -190,6 +208,12 @@ export class CaptureService {
       this.cap = nextCap;
       this.packetBuffers.clear();
       this.recentEventFingerprints.clear();
+      this.writeDebugLog("capture-open", {
+        device,
+        filter,
+        linkType,
+        connections: summarizeConnections(connections),
+      });
       this.emit({
         status: "running",
         health: { device, filter },
@@ -197,6 +221,11 @@ export class CaptureService {
       });
     } catch (error) {
       this.closeCapture();
+      this.writeDebugLog("capture-open-error", {
+        error: error instanceof Error ? error.message : String(error),
+        filter,
+        connections: summarizeConnections(connections),
+      });
       this.emit({
         status: "error",
         error: error instanceof Error ? error.message : String(error),
@@ -209,10 +238,7 @@ export class CaptureService {
     try {
       this.processPacket(nbytes, truncated);
     } catch (error) {
-      this.emit({
-        status: "running",
-        log: { level: "error", message: `Packet processing failed but capture stayed alive: ${formatError(error)}` },
-      });
+      this.recordParserFailure("packet", error, "");
     }
   }
 
@@ -228,15 +254,23 @@ export class CaptureService {
 
     for (const payloadText of completedPayloads) {
       if (!isLikelyParseablePayload(payloadText)) continue;
+      if (payloadText.length > MAX_PARSE_PAYLOAD_CHARS) {
+        this.recordParserFailure("payload-size", new Error(`Payload exceeded ${MAX_PARSE_PAYLOAD_CHARS} characters.`), payloadText);
+        continue;
+      }
 
       this.payloadsAssembled += 1;
-      const messages = captureMessages(payloadText);
+      const messages = this.captureMessagesSafely(payloadText);
+      if (!messages) continue;
       this.messagesDecoded += messages.length;
-      const nextEvents = messageToEvents(messages);
-      const usefulEvents = nextEvents.filter(isUsefulEvent).filter((event) => !this.isDuplicateEvent(event));
+      const nextEvents = this.messageToEventsSafely(messages, payloadText);
+      if (!nextEvents) continue;
+      const usefulEvents = this.filterEventsSafely(nextEvents, payloadText);
+      if (!usefulEvents) continue;
       events.push(...usefulEvents);
-      this.probeDebugPayload(payloadText, messages, usefulEvents);
-      this.probeGoldPayload(payloadText, usefulEvents);
+      this.consecutiveParserFailures = 0;
+      this.runParserProbeSafely("debug-payload", () => this.probeDebugPayload(payloadText, messages, usefulEvents), payloadText);
+      this.runParserProbeSafely("gold-payload", () => this.probeGoldPayload(payloadText, usefulEvents), payloadText);
     }
 
     if (events.length === 0) {
@@ -259,9 +293,122 @@ export class CaptureService {
         payloadsAssembled: this.payloadsAssembled,
         messagesDecoded: this.messagesDecoded,
         parsedEvents: this.parsedEvents,
+        parserErrors: this.parserErrors,
+        parserRestarts: this.parserRestarts,
+        lastParserError: null,
       },
       log: shouldLogEvent(events[0]) ? { level: "debug", message: sample } : undefined,
     });
+  }
+
+  private captureMessagesSafely(payloadText: string): MessageValue[] | null {
+    try {
+      return captureMessages(payloadText);
+    } catch (error) {
+      this.recordParserFailure("captureMessages", error, payloadText);
+      return null;
+    }
+  }
+
+  private messageToEventsSafely(messages: MessageValue[], payloadText: string): ParsedEvent[] | null {
+    try {
+      return messageToEvents(messages);
+    } catch (error) {
+      this.recordParserFailure("messageToEvents", error, payloadText);
+      return null;
+    }
+  }
+
+  private filterEventsSafely(events: ParsedEvent[], payloadText: string): ParsedEvent[] | null {
+    try {
+      return events.filter(isUsefulEvent).filter((event) => !this.isDuplicateEvent(event));
+    } catch (error) {
+      this.recordParserFailure("eventFilter", error, payloadText);
+      return null;
+    }
+  }
+
+  private runParserProbeSafely(stage: string, probe: () => void, payloadText: string): void {
+    try {
+      probe();
+    } catch (error) {
+      this.recordParserFailure(stage, error, payloadText);
+    }
+  }
+
+  private recordParserFailure(stage: string, error: unknown, payloadText: string): void {
+    this.parserErrors += 1;
+    this.consecutiveParserFailures += 1;
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    const snippet = payloadText ? sanitizeDebugSnippet(payloadText) : "";
+
+    this.writeDebugLog("parser-error", {
+      stage,
+      error: message,
+      stack,
+      consecutiveParserFailures: this.consecutiveParserFailures,
+      parserErrors: this.parserErrors,
+      parserRestarts: this.parserRestarts,
+      snippet,
+    });
+
+    const now = Date.now();
+    const update: CaptureUpdate = {
+      status: "running",
+      health: {
+        packetsSeen: this.packetsSeen,
+        payloadsAssembled: this.payloadsAssembled,
+        messagesDecoded: this.messagesDecoded,
+        parsedEvents: this.parsedEvents,
+        parserErrors: this.parserErrors,
+        parserRestarts: this.parserRestarts,
+        lastParserError: `${stage}: ${message}`,
+      },
+    };
+    if (now - this.lastParserErrorLogAt >= PARSER_ERROR_LOG_INTERVAL_MS) {
+      this.lastParserErrorLogAt = now;
+      update.log = { level: "error", message: `Parser error isolated at ${stage}; capture is still running. ${message}` };
+    }
+    this.emit(update);
+
+    if (this.consecutiveParserFailures >= PARSER_FAILURE_RESTART_THRESHOLD) {
+      this.recoverParser(`${stage}: ${message}`);
+    }
+  }
+
+  private recoverParser(reason: string): void {
+    if (this.parserRecoveryTimer) return;
+
+    this.parserRestarts += 1;
+    this.consecutiveParserFailures = 0;
+    this.packetBuffers.clear();
+    this.recentEventFingerprints.clear();
+    this.closeCapture();
+    this.activeSignature = "";
+    this.writeDebugLog("parser-recovery", { reason, parserRestarts: this.parserRestarts });
+    this.emit({
+      status: "waiting",
+      health: {
+        device: null,
+        filter: "",
+        packetsSeen: this.packetsSeen,
+        payloadsAssembled: this.payloadsAssembled,
+        messagesDecoded: this.messagesDecoded,
+        parsedEvents: this.parsedEvents,
+        parserErrors: this.parserErrors,
+        parserRestarts: this.parserRestarts,
+        lastParserError: reason,
+      },
+      log: { level: "warning", message: "Parser failed repeatedly; capture buffers were reset and capture will reopen." },
+    });
+
+    this.parserRecoveryTimer = setTimeout(() => {
+      this.parserRecoveryTimer = null;
+      if (!this.pollTimer) return;
+      void this.refreshCapture();
+    }, PARSER_RECOVERY_DELAY_MS);
+    this.parserRecoveryTimer.unref();
   }
 
   private closeCapture(): void {
@@ -503,6 +650,16 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function summarizeConnections(connections: CaptureConnection[]): Array<Omit<CaptureConnection, "owningProcess">> {
+  return connections.map((connection) => ({
+    state: connection.state,
+    localAddress: connection.localAddress,
+    localPort: connection.localPort,
+    remoteAddress: connection.remoteAddress,
+    remotePort: connection.remotePort,
+  }));
+}
+
 function connectionSignature(connections: CaptureConnection[]): string {
   return connections
     .map((connection) => `${connection.localAddress}->${connection.remoteAddress}`)
@@ -530,10 +687,20 @@ function looksLikeSpecialProtocol(text: string): boolean {
 }
 
 function shouldDebugPayload(payloadText: string, messages: MessageValue[], events: ParsedEvent[]): boolean {
-  if (events.some((event) => event.name === EVENT_NAMES.item || event.name === EVENT_NAMES.gold || event.name === EVENT_NAMES.mail)) return true;
+  if (
+    events.some(
+      (event) =>
+        event.name === EVENT_NAMES.item ||
+        event.name === EVENT_NAMES.gold ||
+        event.name === EVENT_NAMES.mail ||
+        event.name === EVENT_NAMES.satanicZone,
+    )
+  ) {
+    return true;
+  }
+
   return (
-    looksLikeSpecialProtocol(payloadText) ||
-    /\b(?:addeditem|inventory|operation|rarity|gold|currency|gss|gsh|gns|gnh|gbp|mail)\b/i.test(payloadText) ||
+    /\b(?:addeditem|rarity|gold|currency|gss|gsh|gns|gnh|gbp|mail)\b/i.test(payloadText) ||
     messages.some((message) => messageHasRoute(message, /^(?:mailbox|satanic_zone)\//i))
   );
 }
@@ -547,11 +714,28 @@ function messageKeySummary(value: MessageValue): string {
 }
 
 function sanitizeDebugSnippet(text: string): string {
-  return text
+  const normalized = text
     .replace(/\0/g, "")
     .replace(/[^\x09\x0a\x0d\x20-\x7e]+/g, " ")
-    .replace(/\s+/g, " ")
-    .slice(0, MAX_DEBUG_SNIPPET);
+    .replace(/\s+/g, " ");
+
+  return redactSensitiveDebugText(normalized).slice(0, MAX_DEBUG_SNIPPET);
+}
+
+function redactSensitiveDebugText(text: string): string {
+  return text
+    .replace(
+      /\b(account_id|unique_account_id|crossregion_identifier|identifier|checksum|previous_ig_hash|previous_hash|game_state_hash)=([^&\s]+)/gi,
+      "$1=<redacted>",
+    )
+    .replace(
+      /"((?:account_id|unique_account_id|crossregion_identifier))"\s*:\s*\d+/gi,
+      '"$1":"<redacted>"',
+    )
+    .replace(
+      /"((?:identifier|checksum|previous_ig_hash|previous_hash|game_state_hash|newIdentifierHash|timestampPrevHash))"\s*:\s*"[^"]*"/gi,
+      '"$1":"<redacted>"',
+    );
 }
 
 function messageHasRoute(value: MessageValue, routePattern: RegExp): boolean {
@@ -587,6 +771,7 @@ function isUsefulEvent(event: ParsedEvent): boolean {
 }
 
 function shouldLogEvent(event: ParsedEvent): boolean {
+  if (event.name === EVENT_NAMES.accountMode) return false;
   return event.name !== EVENT_NAMES.item || isUsefulEvent(event);
 }
 
