@@ -2,7 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CompanionState, LogEntry, RunArchivePreferences } from "../../shared/app-state";
 import { ITEM_TYPE_NAMES, MATERIAL_LIKE_TIMELINE_TYPES } from "../../shared/constants";
-import { createInitialStats, type PastRunSummary, type ResourceCounter } from "../../shared/stats";
+import { allItemIconNames, lookupItemIconFile } from "../../shared/item-icons";
+import { allItemTranslationNames } from "../../shared/item-lookup";
+import { allStackItemTranslationNames } from "../../shared/stack-item-lookup";
+import { createInitialStats, type ItemDropCounter, type PastRunSummary, type ResourceCounter } from "../../shared/stats";
 
 const state = ref<CompanionState>({
   captureRunning: false,
@@ -37,12 +40,16 @@ const logLimitOptions = [10, 20, 50, 100, 250, 500];
 const timelineLimit = ref(10);
 const showCaptureDetails = ref(false);
 const showSettings = ref(false);
+const showCompactShopping = ref(false);
 const alwaysOnTop = ref(false);
 const compactMode = ref(false);
+const lockCompactLocation = ref(false);
 const hideSocketables = ref(false);
 const hideKeys = ref(false);
 const hideMaterials = ref(false);
 const timelineType = ref("all");
+const gameExecutablePath = ref("");
+const launchThroughSteam = ref(true);
 const activeTab = ref<"live" | "past">("live");
 const appVersion = "0.0.3";
 const expandedLogIds = ref<Set<string>>(new Set());
@@ -50,13 +57,28 @@ const draftLogLimit = ref(20);
 const draftTimelineLimit = ref(10);
 const draftShowCaptureDetails = ref(false);
 const draftAlwaysOnTop = ref(false);
+const draftLockCompactLocation = ref(false);
 const draftHideSocketables = ref(false);
 const draftHideKeys = ref(false);
 const draftHideMaterials = ref(false);
 const draftTimelineType = ref("all");
+const draftGameExecutablePath = ref("");
+const draftLaunchThroughSteam = ref(true);
 const draftSkipEmptyRuns = ref(false);
 const draftMinRunDurationMinutes = ref(0);
+const shoppingListItems = ref<string[]>([]);
+const shoppingDraftItem = ref("");
+const activeShoppingIndex = ref(0);
+const copiedShoppingItem = ref("");
+const expandedDropRarity = ref<string | null>(null);
+let toastTimer: number | null = null;
 const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
+const DEFAULT_SHOPPING_LIST = ["Copper Ore", "Iron Ore", "Gold Ore", "Ruby", "Jade", "Tarethium Ore"];
+const SHOPPING_SUGGESTION_LIMIT = 8;
+const shoppingAutocompleteNames = Array.from(
+  new Set([...DEFAULT_SHOPPING_LIST, ...allStackItemTranslationNames(), ...allItemTranslationNames(), ...allItemIconNames()]),
+).sort((a, b) => a.localeCompare(b));
+const itemIconImages = import.meta.glob("../../../img/items/*", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 const oreImages: Record<string, string> = {
   "Copper Ore": new URL("../../../img/Material_Copper_Ore.webp", import.meta.url).href,
   "Iron Ore": new URL("../../../img/Material_Iron_Ore.webp", import.meta.url).href,
@@ -97,10 +119,14 @@ interface UiPreferences {
   timelineLimit: number;
   showCaptureDetails: boolean;
   alwaysOnTop: boolean;
+  lockCompactLocation: boolean;
   hideSocketables: boolean;
   hideKeys: boolean;
   hideMaterials: boolean;
   timelineType: string;
+  shoppingListItems: string[];
+  gameExecutablePath: string;
+  launchThroughSteam: boolean;
 }
 
 const defaultPreferences: UiPreferences = {
@@ -108,10 +134,14 @@ const defaultPreferences: UiPreferences = {
   timelineLimit: 10,
   showCaptureDetails: false,
   alwaysOnTop: false,
+  lockCompactLocation: false,
   hideSocketables: false,
   hideKeys: false,
   hideMaterials: false,
   timelineType: "all",
+  shoppingListItems: DEFAULT_SHOPPING_LIST,
+  gameExecutablePath: "",
+  launchThroughSteam: true,
 };
 
 const itemTypeOptions = computed(() =>
@@ -149,6 +179,7 @@ const trackedItems = computed(() => {
     total: state.value.stats.items[rarity]?.total ?? 0,
     mf: state.value.stats.items[rarity]?.mf ?? 0,
     perHour: state.value.stats.itemsPerHour[rarity] ?? 0,
+    drops: itemDropBreakdown(rarity),
   }));
 });
 const compactTrackedItems = computed(() => trackedItems.value.filter((item) => item.total > 0 || ["Set", "Satanic", "Heroic", "Angelic"].includes(item.rarity)));
@@ -164,6 +195,15 @@ const filteredItemTimeline = computed(() =>
 const visibleItemTimeline = computed(() => filteredItemTimeline.value.slice(0, timelineLimit.value));
 const recentLogs = computed(() => state.value.logs.slice(0, logLimit.value));
 const pastRuns = computed(() => state.value.pastRuns ?? []);
+const activeShoppingItem = computed(() => shoppingListItems.value[activeShoppingIndex.value] ?? shoppingListItems.value[0] ?? "");
+const shoppingSuggestions = computed(() => {
+  const query = shoppingDraftItem.value.trim().toLowerCase();
+  const existing = new Set(shoppingListItems.value.map((item) => item.toLowerCase()));
+  if (!query) return shoppingAutocompleteNames.filter((name) => !existing.has(name.toLowerCase())).slice(0, SHOPPING_SUGGESTION_LIMIT);
+  return shoppingAutocompleteNames
+    .filter((name) => !existing.has(name.toLowerCase()) && name.toLowerCase().includes(query))
+    .slice(0, SHOPPING_SUGGESTION_LIMIT);
+});
 
 onMounted(async () => {
   applyPreferences(loadPreferences());
@@ -177,19 +217,28 @@ onMounted(async () => {
   }, 1000);
 });
 
-watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType], () => {
+watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems], () => {
   savePreferences(currentPreferences());
+  clampActiveShoppingIndex();
+}, { deep: true });
+
+watch(compactMode, (enabled) => {
+  if (!enabled) showCompactShopping.value = false;
 });
 
 onUnmounted(() => {
   unsubscribe?.();
   if (clock) window.clearInterval(clock);
+  if (toastTimer) window.clearTimeout(toastTimer);
 });
 
 async function toggleCapture() {
   state.value = state.value.captureRunning
     ? await window.heroSiegeCompanion.stopCapture()
-    : await window.heroSiegeCompanion.startCapture();
+    : await window.heroSiegeCompanion.launchGameOrCapture({
+        executablePath: currentPreferences().gameExecutablePath,
+        launchThroughSteam: currentPreferences().launchThroughSteam,
+      });
 }
 
 async function resetStats() {
@@ -243,10 +292,14 @@ function currentPreferences(): UiPreferences {
     timelineLimit: timelineLimit.value,
     showCaptureDetails: showCaptureDetails.value,
     alwaysOnTop: alwaysOnTop.value,
+    lockCompactLocation: lockCompactLocation.value,
     hideSocketables: hideSocketables.value,
     hideKeys: hideKeys.value,
     hideMaterials: hideMaterials.value,
     timelineType: timelineType.value,
+    shoppingListItems: shoppingListItems.value,
+    gameExecutablePath: gameExecutablePath.value,
+    launchThroughSteam: launchThroughSteam.value,
   };
 }
 
@@ -255,10 +308,15 @@ function applyPreferences(preferences: UiPreferences) {
   timelineLimit.value = preferences.timelineLimit;
   showCaptureDetails.value = preferences.showCaptureDetails;
   alwaysOnTop.value = preferences.alwaysOnTop;
+  lockCompactLocation.value = preferences.lockCompactLocation;
   hideSocketables.value = preferences.hideSocketables;
   hideKeys.value = preferences.hideKeys;
   hideMaterials.value = preferences.hideMaterials;
   timelineType.value = preferences.timelineType;
+  shoppingListItems.value = preferences.shoppingListItems;
+  gameExecutablePath.value = preferences.gameExecutablePath;
+  launchThroughSteam.value = preferences.launchThroughSteam;
+  clampActiveShoppingIndex();
 }
 
 function currentDraftPreferences(): UiPreferences {
@@ -267,10 +325,14 @@ function currentDraftPreferences(): UiPreferences {
     timelineLimit: draftTimelineLimit.value,
     showCaptureDetails: draftShowCaptureDetails.value,
     alwaysOnTop: draftAlwaysOnTop.value,
+    lockCompactLocation: draftLockCompactLocation.value,
     hideSocketables: draftHideSocketables.value,
     hideKeys: draftHideKeys.value,
     hideMaterials: draftHideMaterials.value,
     timelineType: draftTimelineType.value,
+    shoppingListItems: shoppingListItems.value,
+    gameExecutablePath: draftGameExecutablePath.value.trim(),
+    launchThroughSteam: draftLaunchThroughSteam.value,
   };
 }
 
@@ -279,10 +341,13 @@ function loadDraftPreferences(preferences: UiPreferences) {
   draftTimelineLimit.value = preferences.timelineLimit;
   draftShowCaptureDetails.value = preferences.showCaptureDetails;
   draftAlwaysOnTop.value = preferences.alwaysOnTop;
+  draftLockCompactLocation.value = preferences.lockCompactLocation;
   draftHideSocketables.value = preferences.hideSocketables;
   draftHideKeys.value = preferences.hideKeys;
   draftHideMaterials.value = preferences.hideMaterials;
   draftTimelineType.value = preferences.timelineType;
+  draftGameExecutablePath.value = preferences.gameExecutablePath;
+  draftLaunchThroughSteam.value = preferences.launchThroughSteam;
   draftSkipEmptyRuns.value = state.value.runArchivePreferences.skipEmptyRuns;
   draftMinRunDurationMinutes.value = state.value.runArchivePreferences.minDurationMinutes;
 }
@@ -320,10 +385,14 @@ function normalizePreferences(value: Partial<UiPreferences>): UiPreferences {
     timelineLimit: validTimelineLimit,
     showCaptureDetails: Boolean(value.showCaptureDetails),
     alwaysOnTop: Boolean(value.alwaysOnTop),
+    lockCompactLocation: Boolean(value.lockCompactLocation),
     hideSocketables: Boolean(value.hideSocketables),
     hideKeys: Boolean(value.hideKeys),
     hideMaterials: Boolean(value.hideMaterials),
     timelineType: validTimelineType,
+    shoppingListItems: normalizeShoppingList(value.shoppingListItems),
+    gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
+    launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
   };
 }
 
@@ -339,9 +408,78 @@ function normalizeRunDurationMinutes(value: number): number {
   return Number.isFinite(minutes) ? Math.max(0, Math.min(1440, Math.trunc(minutes))) : 0;
 }
 
+async function chooseGameExecutable() {
+  const selected = await window.heroSiegeCompanion.chooseGameExecutable();
+  if (!selected) return;
+  draftGameExecutablePath.value = selected;
+}
+
 async function syncWindowMode() {
   await window.heroSiegeCompanion.setAlwaysOnTop(alwaysOnTop.value);
-  await window.heroSiegeCompanion.setCompactMode(compactMode.value);
+  await window.heroSiegeCompanion.setCompactMode(compactMode.value, lockCompactLocation.value);
+}
+
+async function copyShoppingItem(item: string, advance: boolean) {
+  const trimmed = item.trim();
+  if (!trimmed) return;
+  await window.heroSiegeCompanion.writeClipboardText(trimmed);
+  copiedShoppingItem.value = trimmed;
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    copiedShoppingItem.value = "";
+    toastTimer = null;
+  }, 1600);
+
+  const index = shoppingListItems.value.findIndex((candidate) => candidate === item);
+  if (index >= 0) activeShoppingIndex.value = index;
+  if (advance) moveToNextShoppingItem();
+}
+
+function addShoppingItem(value = shoppingDraftItem.value) {
+  const trimmed = value.trim();
+  const canonical = shoppingAutocompleteNames.find((name) => name.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
+  const [normalized] = normalizeShoppingList([canonical]);
+  if (!normalized) return;
+  const exists = shoppingListItems.value.some((item) => item.toLowerCase() === normalized.toLowerCase());
+  if (!exists) shoppingListItems.value = [...shoppingListItems.value, normalized];
+  const index = shoppingListItems.value.findIndex((item) => item.toLowerCase() === normalized.toLowerCase());
+  if (index >= 0) activeShoppingIndex.value = index;
+  shoppingDraftItem.value = "";
+}
+
+function removeShoppingItem(item: string) {
+  const index = shoppingListItems.value.findIndex((candidate) => candidate === item);
+  shoppingListItems.value = shoppingListItems.value.filter((candidate) => candidate !== item);
+  if (index >= 0 && activeShoppingIndex.value >= index) activeShoppingIndex.value = Math.max(0, activeShoppingIndex.value - 1);
+  clampActiveShoppingIndex();
+}
+
+function moveToNextShoppingItem() {
+  if (shoppingListItems.value.length === 0) return;
+  activeShoppingIndex.value = (activeShoppingIndex.value + 1) % shoppingListItems.value.length;
+}
+
+function clampActiveShoppingIndex() {
+  if (shoppingListItems.value.length === 0) {
+    activeShoppingIndex.value = 0;
+    return;
+  }
+  activeShoppingIndex.value = Math.min(activeShoppingIndex.value, shoppingListItems.value.length - 1);
+}
+
+function normalizeShoppingList(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : DEFAULT_SHOPPING_LIST;
+  const normalized = values.map((item) => String(item).trim()).filter(Boolean);
+  return Array.from(new Set(normalized)).slice(0, 100);
+}
+
+function toggleDropBreakdown(rarity: string) {
+  expandedDropRarity.value = expandedDropRarity.value === rarity ? null : rarity;
+}
+
+function itemDropBreakdown(rarity: string): ItemDropCounter[] {
+  const breakdown = state.value.stats.itemBreakdown?.[rarity] ?? {};
+  return Object.values(breakdown).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 }
 
 function formatNumber(value: number): string {
@@ -381,6 +519,20 @@ function resourceRecordTotal(resources: Record<string, ResourceCounter>): number
 
 function resourceImage(resource: ResourceCounter, kind: "key" | "ore"): string {
   return kind === "key" ? (keyImages[resource.name] ?? "") : (oreImages[resource.name] ?? "");
+}
+
+function itemIconUrl(name: string | undefined): string {
+  const file = lookupItemIconFile(name);
+  return file ? (itemIconImages[`../../../img/items/${file}`] ?? "") : "";
+}
+
+function logItemIconUrl(log: LogEntry): string {
+  const payload = parsedLogPayload(log);
+  const item = firstLogItem(payload);
+  if (item) return itemIconUrl(stringField(item, "label") || stringField(item, "localizationId"));
+
+  const rawPayload = parsedLogText(log);
+  return itemIconUrl(extractJsonString(rawPayload, "label") || extractJsonString(rawPayload, "localizationId"));
 }
 
 function runTitle(run: PastRunSummary): string {
@@ -523,6 +675,9 @@ function itemTypeName(item: Record<string, unknown>): string {
         <span :class="['status-dot', state.captureStatus]"></span>
         <strong>{{ state.captureStatus === "running" ? "Connected" : captureStatusLabel }}</strong>
         <span class="compact-parsed">{{ formatNumber(state.health.parsedEvents) }} parsed</span>
+        <button class="compact-shopping-toggle" type="button" @click="showCompactShopping = !showCompactShopping" title="Shopping list" aria-label="Shopping list">
+          List
+        </button>
         <span class="compact-clock">{{ compactClock }}</span>
       </div>
       <div class="compact-primary">
@@ -553,6 +708,27 @@ function itemTypeName(item: Record<string, unknown>): string {
           <strong>{{ formatNumber(oreDropTotal) }}</strong>
         </div>
       </div>
+      <section v-if="showCompactShopping" class="compact-shopping-tray" aria-label="Shopping list">
+        <div class="compact-shopping-head">
+          <div>
+            <span>Shopping List</span>
+            <strong>{{ activeShoppingItem || "Empty" }}</strong>
+          </div>
+          <button class="compact-shopping-close" type="button" @click="showCompactShopping = false" title="Dismiss shopping list" aria-label="Dismiss shopping list">×</button>
+        </div>
+        <div v-if="shoppingListItems.length" class="compact-shopping-list">
+          <button
+            v-for="item in shoppingListItems"
+            :key="item"
+            type="button"
+            :class="['shopping-item', { active: item === activeShoppingItem }]"
+            @click="copyShoppingItem(item, true)"
+          >
+            {{ item }}
+          </button>
+        </div>
+        <p v-else class="compact-shopping-empty">Add item names in full view.</p>
+      </section>
     </section>
 
     <section v-if="!compactMode" class="topbar">
@@ -564,7 +740,7 @@ function itemTypeName(item: Record<string, unknown>): string {
         <button class="icon-button ghost" type="button" @click="openSettings" title="Settings" aria-label="Settings">⚙</button>
         <button class="icon-button ghost" type="button" @click="resetStats" title="Save this run to Past Runs and reset session stats">End Run</button>
         <button class="icon-button primary" type="button" @click="toggleCapture">
-          {{ state.captureRunning ? "Stop Capture" : "Start Capture" }}
+          {{ state.captureRunning ? "Stop Capture" : "Launch Game" }}
         </button>
       </div>
     </section>
@@ -672,11 +848,32 @@ function itemTypeName(item: Record<string, unknown>): string {
             </div>
           </div>
           <div class="item-grid">
-            <div v-for="item in trackedItems" :key="item.rarity" :class="['item-counter', item.rarity.toLowerCase()]">
+            <button
+              v-for="item in trackedItems"
+              :key="item.rarity"
+              type="button"
+              :class="['item-counter', item.rarity.toLowerCase(), { expanded: expandedDropRarity === item.rarity }]"
+              @click="toggleDropBreakdown(item.rarity)"
+            >
               <span>{{ item.rarity }}</span>
               <strong>{{ formatNumber(item.total) }}</strong>
               <small>{{ formatNumber(item.mf) }} MF &middot; {{ formatNumber(item.perHour) }}/h</small>
+            </button>
+          </div>
+          <div v-if="expandedDropRarity" class="drop-breakdown" :class="expandedDropRarity.toLowerCase()">
+            <div class="drop-breakdown-head">
+              <strong>{{ expandedDropRarity }} drops</strong>
+              <span>{{ itemDropBreakdown(expandedDropRarity).length }} unique</span>
             </div>
+            <div v-if="itemDropBreakdown(expandedDropRarity).length" class="drop-breakdown-list">
+              <div v-for="drop in itemDropBreakdown(expandedDropRarity)" :key="drop.name" class="drop-breakdown-row">
+                <img v-if="itemIconUrl(drop.name)" class="drop-breakdown-icon" :src="itemIconUrl(drop.name)" :alt="drop.name" />
+                <span v-else class="drop-breakdown-icon drop-breakdown-icon-empty" aria-hidden="true"></span>
+                <span class="drop-breakdown-name">{{ drop.name }}</span>
+                <strong>{{ formatNumber(drop.total) }}</strong>
+              </div>
+            </div>
+            <p v-else class="empty-copy">No {{ expandedDropRarity.toLowerCase() }} drops yet.</p>
           </div>
           <div class="drop-resource-grid" aria-label="Resource drops">
             <div class="drop-resource-counter keys">
@@ -726,6 +923,8 @@ function itemTypeName(item: Record<string, unknown>): string {
           </div>
           <div v-if="visibleItemTimeline.length" class="timeline">
             <div v-for="item in visibleItemTimeline" :key="`${item.createdAt}-${item.id}-${item.fingerprint}`" class="timeline-row">
+              <img v-if="itemIconUrl(item.label)" class="timeline-icon" :src="itemIconUrl(item.label)" :alt="item.label" />
+              <span v-else class="timeline-icon timeline-icon-empty" aria-hidden="true"></span>
               <span :class="['rarity-pill', item.rarity.toLowerCase()]">{{ item.rarity }}</span>
               <strong>{{ item.label || (item.id ? `#${item.id}` : "Unknown item") }}</strong>
               <small>
@@ -737,6 +936,42 @@ function itemTypeName(item: Record<string, unknown>): string {
           </div>
           <p v-else-if="state.stats.itemTimeline.length" class="empty-copy">All recent items are hidden by the current filters.</p>
           <p v-else class="empty-copy">No tracked item drops in this session yet.</p>
+        </article>
+
+        <article class="panel shopping-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Marketplace</p>
+              <h2>Shopping List</h2>
+            </div>
+            <span class="shopping-count">{{ shoppingListItems.length }} saved</span>
+          </div>
+          <form class="shopping-form" @submit.prevent="addShoppingItem()">
+            <div class="shopping-input-wrap">
+              <input
+                v-model="shoppingDraftItem"
+                type="text"
+                list="shopping-item-suggestions"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Add item"
+                title="Add marketplace search item"
+              />
+              <datalist id="shopping-item-suggestions">
+                <option v-for="name in shoppingSuggestions" :key="name" :value="name"></option>
+              </datalist>
+            </div>
+            <button class="icon-button primary shopping-add" type="submit">Add</button>
+          </form>
+          <div v-if="shoppingListItems.length" class="shopping-list">
+            <div v-for="item in shoppingListItems" :key="item" :class="['shopping-item-row', { active: item === activeShoppingItem }]">
+              <button type="button" class="shopping-item" @click="copyShoppingItem(item, false)">
+                {{ item }}
+              </button>
+              <button class="shopping-remove" type="button" @click="removeShoppingItem(item)" title="Remove item" :aria-label="`Remove ${item}`">×</button>
+            </div>
+          </div>
+          <p v-else class="empty-copy">Add item names here to copy marketplace searches quickly.</p>
         </article>
 
         <article class="panel log-panel">
@@ -756,6 +991,8 @@ function itemTypeName(item: Record<string, unknown>): string {
             <button v-for="log in recentLogs" :key="log.id" type="button" :class="[logClass(log), { expanded: isLogExpanded(log) }]" @click="toggleLog(log)">
               <span class="log-time">{{ formatTime(log.createdAt) }}</span>
               <span :class="['log-event', logEventTone(log)]">{{ logEventLabel(log) }}</span>
+              <img v-if="logItemIconUrl(log)" class="log-icon" :src="logItemIconUrl(log)" alt="" />
+              <span v-else class="log-icon log-icon-empty" aria-hidden="true"></span>
               <p class="log-message">{{ logSummary(log) }}</p>
               <pre v-if="isLogExpanded(log)" class="log-full">{{ log.message }}</pre>
             </button>
@@ -883,6 +1120,17 @@ function itemTypeName(item: Record<string, unknown>): string {
               <option v-for="option in itemTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </label>
+          <label class="settings-stack">
+            <span>Launch from other source</span>
+            <div :class="['path-setting', { disabled: draftLaunchThroughSteam }]">
+              <input v-model="draftGameExecutablePath" type="text" spellcheck="false" title="Path to Hero Siege executable" :disabled="draftLaunchThroughSteam" />
+              <button class="icon-button ghost" type="button" @click="chooseGameExecutable" :disabled="draftLaunchThroughSteam">Browse</button>
+            </div>
+          </label>
+          <label class="settings-check">
+            <input v-model="draftLaunchThroughSteam" type="checkbox" />
+            <span>Launch through Steam</span>
+          </label>
           <label class="settings-check">
             <input v-model="draftShowCaptureDetails" type="checkbox" />
             <span>Show capture details</span>
@@ -890,6 +1138,10 @@ function itemTypeName(item: Record<string, unknown>): string {
           <label class="settings-check">
             <input v-model="draftAlwaysOnTop" type="checkbox" />
             <span>Always on top</span>
+          </label>
+          <label class="settings-check">
+            <input v-model="draftLockCompactLocation" type="checkbox" />
+            <span>Lock compact and full views to their last locations</span>
           </label>
           <label class="settings-check">
             <input v-model="draftHideSocketables" type="checkbox" />
@@ -922,6 +1174,7 @@ function itemTypeName(item: Record<string, unknown>): string {
         </div>
       </section>
     </div>
+    <div v-if="copiedShoppingItem" class="toast-bubble" role="status">Copied {{ copiedShoppingItem }} to clipboard</div>
     <span class="app-version">v{{ appVersion }}</span>
     <div class="resize-grip" aria-hidden="true"></div>
   </main>

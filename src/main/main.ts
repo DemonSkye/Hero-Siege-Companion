@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell, type Rectangle } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { CaptureService, type CaptureUpdate } from "./capture";
@@ -15,6 +15,8 @@ const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
 };
 const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeight: 620 };
 const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
+const STEAM_HERO_SIEGE_URL = "steam://rungameid/269210";
+const LAUNCH_CAPTURE_DELAY_MS = 45_000;
 
 const state: CompanionState = {
   captureRunning: false,
@@ -43,9 +45,18 @@ let captureService: CaptureService | null = null;
 let appLogPath = "";
 let pastRunsPath = "";
 let preferencesPath = "";
+let windowBoundsPath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
+let launchCaptureTimer: NodeJS.Timeout | null = null;
 let compactWindowMode = false;
+let windowBounds: WindowBoundsPreferences = {};
+let saveWindowBoundsTimer: NodeJS.Timeout | null = null;
 const archivedSessionStarts = new Set<number>();
+
+interface WindowBoundsPreferences {
+  normal?: Rectangle;
+  compact?: Rectangle;
+}
 
 if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
 
@@ -97,6 +108,8 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+  mainWindow.on("moved", scheduleWindowBoundsSave);
+  mainWindow.on("resized", scheduleWindowBoundsSave);
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     writeAppLog("render-process-gone", {
       reason: details.reason,
@@ -146,10 +159,54 @@ function publishState(): void {
 
 ipcMain.handle("state:get", () => state);
 ipcMain.handle("capture:start", async () => {
+  clearLaunchCaptureTimer();
   await captureService?.start();
   return state;
 });
+ipcMain.handle("game:launch-or-capture", async (_event, options: { executablePath?: string; launchThroughSteam?: boolean }) => {
+  const service = captureService;
+  if (service && (await service.hasHeroSiegeProcess())) {
+    clearLaunchCaptureTimer();
+    await service.start();
+    return state;
+  }
+
+  const launchThroughSteam = Boolean(options?.launchThroughSteam);
+  if (launchThroughSteam) {
+    try {
+      await shell.openExternal(STEAM_HERO_SIEGE_URL);
+      addLog("info", "Launched Hero Siege through Steam. Capture will try to start automatically in about 45 seconds.");
+      scheduleLaunchCaptureAttempt();
+    } catch (error) {
+      addLog("error", `Failed to launch Hero Siege through Steam: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    const normalizedPath = String(options?.executablePath ?? "").trim();
+    if (!normalizedPath) {
+      addLog("warning", "Hero Siege is not running. Choose a non-Steam Hero Siege executable in Settings, then click Launch Game.");
+      publishState();
+      return state;
+    }
+
+    if (!fs.existsSync(normalizedPath)) {
+      addLog("error", `Hero Siege executable was not found: ${normalizedPath}`);
+      publishState();
+      return state;
+    }
+
+    const launchError = await shell.openPath(normalizedPath);
+    if (launchError) {
+      addLog("error", `Failed to launch Hero Siege: ${launchError}`);
+    } else {
+      addLog("info", "Launched Hero Siege. Capture will try to start automatically in about 45 seconds.");
+      scheduleLaunchCaptureAttempt();
+    }
+  }
+  publishState();
+  return state;
+});
 ipcMain.handle("capture:stop", () => {
+  clearLaunchCaptureTimer();
   captureService?.stop();
   return state;
 });
@@ -184,9 +241,24 @@ ipcMain.handle("window:close", () => {
 ipcMain.handle("window:set-always-on-top", (_event, enabled: boolean) => {
   setWindowAlwaysOnTop(Boolean(enabled));
 });
-ipcMain.handle("window:set-compact-mode", (_event, enabled: boolean) => {
+ipcMain.handle("window:set-compact-mode", (_event, enabled: boolean, lockPositions = false) => {
   if (!mainWindow) return;
-  setCompactWindowMode(Boolean(enabled));
+  setCompactWindowMode(Boolean(enabled), Boolean(lockPositions));
+});
+ipcMain.handle("clipboard:write-text", (_event, value: string) => {
+  clipboard.writeText(String(value));
+});
+ipcMain.handle("game:choose-executable", async () => {
+  const options = {
+    title: "Choose Hero Siege executable",
+    properties: ["openFile"],
+    filters: [
+      { name: "Executable", extensions: ["exe"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  } satisfies Electron.OpenDialogOptions;
+  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  return result.canceled ? null : result.filePaths[0] ?? null;
 });
 
 function setWindowAlwaysOnTop(enabled: boolean): void {
@@ -199,36 +271,94 @@ function setWindowAlwaysOnTop(enabled: boolean): void {
   }
 }
 
-function setCompactWindowMode(enabled: boolean): void {
+function scheduleLaunchCaptureAttempt(): void {
+  clearLaunchCaptureTimer();
+  launchCaptureTimer = setTimeout(() => {
+    launchCaptureTimer = null;
+    void attemptCaptureAfterLaunch();
+  }, LAUNCH_CAPTURE_DELAY_MS);
+  launchCaptureTimer.unref();
+}
+
+function clearLaunchCaptureTimer(): void {
+  if (!launchCaptureTimer) return;
+  clearTimeout(launchCaptureTimer);
+  launchCaptureTimer = null;
+}
+
+async function attemptCaptureAfterLaunch(): Promise<void> {
+  if (!captureService || state.captureRunning) return;
+  addLog("info", "Checking for Hero Siege after launch delay.");
+  await captureService.start();
+  publishState();
+}
+
+function setCompactWindowMode(enabled: boolean, lockPositions = false): void {
   if (!mainWindow) return;
   if (compactWindowMode === enabled) {
     mainWindow.setMaximizable(!enabled);
+    if (lockPositions) restoreWindowBounds(enabled ? "compact" : "normal");
     if (mainWindow.isAlwaysOnTop()) mainWindow.moveTop();
     return;
   }
+  saveCurrentWindowBounds();
   compactWindowMode = enabled;
   const bounds = enabled ? COMPACT_WINDOW_BOUNDS : NORMAL_WINDOW_BOUNDS;
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   mainWindow.setMaximizable(!enabled);
   mainWindow.setMinimumSize(bounds.minWidth, bounds.minHeight);
-  mainWindow.setSize(bounds.width, bounds.height, true);
+  if (lockPositions && restoreWindowBounds(enabled ? "compact" : "normal")) {
+    // Restored from the user's saved location.
+  } else {
+    mainWindow.setSize(bounds.width, bounds.height, true);
+  }
   if (mainWindow.isAlwaysOnTop()) mainWindow.moveTop();
+}
+
+function restoreWindowBounds(mode: keyof WindowBoundsPreferences): boolean {
+  if (!mainWindow) return false;
+  const minimums = mode === "compact" ? COMPACT_WINDOW_BOUNDS : NORMAL_WINDOW_BOUNDS;
+  const bounds = withMinimumBounds(windowBounds[mode], minimums);
+  if (!bounds) return false;
+  mainWindow.setBounds(bounds, true);
+  return true;
+}
+
+function scheduleWindowBoundsSave(): void {
+  if (saveWindowBoundsTimer) clearTimeout(saveWindowBoundsTimer);
+  saveWindowBoundsTimer = setTimeout(() => {
+    saveWindowBoundsTimer = null;
+    saveCurrentWindowBounds();
+  }, 250);
+}
+
+function saveCurrentWindowBounds(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
+  windowBounds[compactWindowMode ? "compact" : "normal"] = mainWindow.getBounds();
+  saveWindowBounds();
 }
 
 app.whenReady().then(async () => {
   appLogPath = path.join(app.getPath("userData"), "app-debug.log");
   pastRunsPath = path.join(app.getPath("userData"), "past-runs.json");
   preferencesPath = path.join(app.getPath("userData"), "preferences.json");
+  windowBoundsPath = path.join(app.getPath("userData"), "window-bounds.json");
   const debugLogPath = path.join(app.getPath("userData"), "capture-debug.log");
   state.pastRuns = loadPastRuns();
   state.runArchivePreferences = loadRunArchivePreferences();
-  writeAppLog("app-ready", { appLogPath, debugLogPath, pastRunsPath, preferencesPath });
+  windowBounds = loadWindowBounds();
+  writeAppLog("app-ready", { appLogPath, debugLogPath, pastRunsPath, preferencesPath, windowBoundsPath });
   captureService = new CaptureService(applyCaptureUpdate, debugLogPath);
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   createWindow();
   addLog("info", "Hero Siege Companion started.");
   addLog("info", `Capture debug log: ${debugLogPath}`);
-  await captureService.start();
+  if (await captureService.hasHeroSiegeProcess()) {
+    await captureService.start();
+  } else {
+    addLog("info", "Hero Siege is not running yet. Launch the game, wait for the main menu, then click Launch Game.");
+    publishState();
+  }
 });
 
 app.on("child-process-gone", (_event, details) => {
@@ -258,6 +388,7 @@ app.on("window-all-closed", () => {
 
 function shutdownCapture(reason: string): void {
   writeAppLog("shutdown-capture", { reason });
+  clearLaunchCaptureTimer();
   archiveCurrentRun(reason);
   try {
     captureService?.stop();
@@ -314,6 +445,53 @@ function savePastRuns(runs: PastRunSummary[]): void {
   } catch (error) {
     writeAppLog("past-runs-save-error", { error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+function loadWindowBounds(): WindowBoundsPreferences {
+  try {
+    if (!fs.existsSync(windowBoundsPath)) return {};
+    const parsed = JSON.parse(fs.readFileSync(windowBoundsPath, "utf8")) as WindowBoundsPreferences;
+    return {
+      normal: normalizeWindowBounds(parsed.normal),
+      compact: normalizeWindowBounds(parsed.compact),
+    };
+  } catch (error) {
+    writeAppLog("window-bounds-load-error", { error: error instanceof Error ? error.message : String(error) });
+    return {};
+  }
+}
+
+function saveWindowBounds(): void {
+  try {
+    fs.writeFileSync(windowBoundsPath, `${JSON.stringify(windowBounds, null, 2)}\n`, "utf8");
+  } catch (error) {
+    writeAppLog("window-bounds-save-error", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function normalizeWindowBounds(bounds: Rectangle | undefined): Rectangle | undefined {
+  if (!bounds) return undefined;
+  const x = Number(bounds.x);
+  const y = Number(bounds.y);
+  const width = Number(bounds.width);
+  const height = Number(bounds.height);
+  if (![x, y, width, height].every(Number.isFinite)) return undefined;
+  if (width < 120 || height < 100) return undefined;
+  return { x: Math.trunc(x), y: Math.trunc(y), width: Math.trunc(width), height: Math.trunc(height) };
+}
+
+function withMinimumBounds(
+  bounds: Rectangle | undefined,
+  minimums: { width: number; height: number; minWidth: number; minHeight: number },
+): Rectangle | undefined {
+  const normalized = normalizeWindowBounds(bounds);
+  if (!normalized) return undefined;
+  return {
+    x: normalized.x,
+    y: normalized.y,
+    width: Math.max(normalized.width, minimums.minWidth),
+    height: Math.max(normalized.height, minimums.minHeight),
+  };
 }
 
 function loadRunArchivePreferences(): RunArchivePreferences {

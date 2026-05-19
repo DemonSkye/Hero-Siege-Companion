@@ -26,6 +26,21 @@ export interface CaptureUpdate {
   error?: string | null;
 }
 
+interface HeroSiegeNetworkState {
+  gameProcessIds: number[];
+  antiCheatProcessIds: number[];
+  connections: CaptureConnection[];
+}
+
+interface PowerShellConnectionEntry {
+  OwningProcess: unknown;
+  State: unknown;
+  LocalAddress: unknown;
+  LocalPort: unknown;
+  RemoteAddress: unknown;
+  RemotePort: unknown;
+}
+
 export class CaptureService {
   private cap: any = null;
   private buffer = Buffer.alloc(65535);
@@ -37,6 +52,7 @@ export class CaptureService {
   private messagesDecoded = 0;
   private parsedEvents = 0;
   private lastGoldProbeAt = 0;
+  private lastAntiCheatWaitLogAt = 0;
   private readonly recentEventFingerprints = new Map<string, number>();
 
   constructor(
@@ -53,12 +69,41 @@ export class CaptureService {
     };
   }
 
+  async hasHeroSiegeProcess(): Promise<boolean> {
+    return (await getHeroSiegeNetworkState()).gameProcessIds.length > 0;
+  }
+
   async start(): Promise<void> {
     if (this.pollTimer) return;
 
+    const initialNetworkState = await getHeroSiegeNetworkState();
+    if (initialNetworkState.gameProcessIds.length === 0) {
+      this.emit({
+        running: false,
+        status: "idle",
+        error: null,
+        connections: [],
+        health: await this.diagnostics(),
+        log: { level: "info", message: "Hero Siege is not running. Start the game, wait for it to finish launching, then click Launch Game." },
+      });
+      return;
+    }
+
+    if (initialNetworkState.antiCheatProcessIds.length > 0 && initialNetworkState.connections.length === 0) {
+      this.emit({
+        running: false,
+        status: "idle",
+        error: null,
+        connections: [],
+        health: await this.diagnostics(),
+        log: { level: "warning", message: "Easy Anti-Cheat is still launching Hero Siege. Wait for the game to reach the menu, then click Launch Game." },
+      });
+      return;
+    }
+
     this.emit({ running: true, status: "waiting", error: null, health: await this.diagnostics() });
     this.writeDebugLog("capture-start", { debugLogPath: this.debugLogPath });
-    await this.refreshCapture();
+    await this.refreshCapture(initialNetworkState);
     this.pollTimer = setInterval(() => void this.refreshCapture(), POLL_INTERVAL_MS);
   }
 
@@ -72,9 +117,26 @@ export class CaptureService {
     this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
   }
 
-  private async refreshCapture(): Promise<void> {
-    const connections = await getHeroSiegeConnections();
+  private async refreshCapture(networkState?: HeroSiegeNetworkState): Promise<void> {
+    const currentNetworkState = networkState ?? (await getHeroSiegeNetworkState());
+    const connections = currentNetworkState.connections;
     this.emit({ connections });
+
+    if (currentNetworkState.antiCheatProcessIds.length > 0 && connections.length === 0) {
+      this.closeCapture();
+      this.activeSignature = "";
+      const update: CaptureUpdate = {
+        status: "waiting",
+        health: { device: null, filter: "" },
+      };
+      const now = Date.now();
+      if (now - this.lastAntiCheatWaitLogAt > 30_000) {
+        this.lastAntiCheatWaitLogAt = now;
+        update.log = { level: "warning", message: "Easy Anti-Cheat is launching Hero Siege; capture is waiting." };
+      }
+      this.emit(update);
+      return;
+    }
 
     const signature = connectionSignature(connections);
     if (!signature) {
@@ -335,47 +397,73 @@ function getPayload(buffer: Buffer, nbytes: number): ParsedPayload | null {
   };
 }
 
-async function getHeroSiegeConnections(): Promise<CaptureConnection[]> {
+async function getHeroSiegeNetworkState(): Promise<HeroSiegeNetworkState> {
   const script = `
     $processes = Get-Process |
       Where-Object {
-        ($_.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant().StartsWith('herosiege')
-      } |
-      Select-Object -ExpandProperty Id;
+        $normalizedName = ($_.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant();
+        $normalizedName.StartsWith('herosiege') -and
+        -not $normalizedName.Contains('companion')
+      };
 
-    if (-not $processes) {
-      '[]';
-      exit 0;
+    $antiCheatProcesses = Get-Process |
+      Where-Object {
+        (($_.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant()).StartsWith('easyanticheat')
+      };
+
+    $processIds = @($processes | Select-Object -ExpandProperty Id);
+    $connections = @();
+
+    if ($processIds.Count -gt 0) {
+      $connections = @(
+        Get-NetTCPConnection -ErrorAction SilentlyContinue |
+          Where-Object {
+            $processIds -contains $_.OwningProcess -and
+            $_.RemoteAddress -and
+            $_.RemoteAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') -and
+            $_.RemoteAddress -notlike '*:*'
+          } |
+          Select-Object OwningProcess, State, LocalAddress, LocalPort, RemoteAddress, RemotePort
+      );
     }
 
-    Get-NetTCPConnection -ErrorAction SilentlyContinue |
-      Where-Object {
-        $processes -contains $_.OwningProcess -and
-        $_.RemoteAddress -and
-        $_.RemoteAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') -and
-        $_.RemoteAddress -notlike '*:*'
-      } |
-      Select-Object OwningProcess, State, LocalAddress, LocalPort, RemoteAddress, RemotePort |
-      ConvertTo-Json -Compress
+    [PSCustomObject]@{
+      gameProcessIds = @($processIds);
+      antiCheatProcessIds = @($antiCheatProcesses | Select-Object -ExpandProperty Id);
+      connections = @($connections);
+    } | ConvertTo-Json -Compress
   `;
 
   const output = await runPowerShell(script);
-  if (!output) return [];
+  if (!output) return { gameProcessIds: [], antiCheatProcessIds: [], connections: [] };
 
   try {
     const parsed = JSON.parse(output) as any;
-    const entries = Array.isArray(parsed) ? parsed : [parsed];
-    return entries.map((entry) => ({
-      owningProcess: Number(entry.OwningProcess),
-      state: entry.State,
-      localAddress: String(entry.LocalAddress),
-      localPort: Number(entry.LocalPort),
-      remoteAddress: String(entry.RemoteAddress),
-      remotePort: Number(entry.RemotePort),
-    }));
+    const entries: PowerShellConnectionEntry[] = Array.isArray(parsed.connections)
+      ? parsed.connections
+      : parsed.connections
+        ? [parsed.connections]
+        : [];
+    return {
+      gameProcessIds: normalizeNumberArray(parsed.gameProcessIds),
+      antiCheatProcessIds: normalizeNumberArray(parsed.antiCheatProcessIds),
+      connections: entries.map((entry) => ({
+        owningProcess: Number(entry.OwningProcess),
+        state: String(entry.State),
+        localAddress: String(entry.LocalAddress),
+        localPort: Number(entry.LocalPort),
+        remoteAddress: String(entry.RemoteAddress),
+        remotePort: Number(entry.RemotePort),
+      })),
+    };
   } catch {
-    return [];
+    return { gameProcessIds: [], antiCheatProcessIds: [], connections: [] };
   }
+}
+
+function normalizeNumberArray(value: unknown): number[] {
+  const values = Array.isArray(value) ? value : value === null || value === undefined ? [] : [value];
+  return values.map(Number).filter(Number.isFinite);
 }
 
 async function getNpcapServiceStatus(): Promise<string> {

@@ -6,6 +6,12 @@ export interface ItemCounter {
   mf: number;
 }
 
+export interface ItemDropCounter {
+  name: string;
+  total: number;
+  mf: number;
+}
+
 export interface ResourceCounter {
   id: number;
   name: string;
@@ -39,6 +45,7 @@ export interface CompanionStats {
   xpPerHour: number;
   items: Record<string, ItemCounter>;
   itemsPerHour: Record<string, number>;
+  itemBreakdown: Record<string, Record<string, ItemDropCounter>>;
   keys: Record<string, ResourceCounter>;
   ores: Record<string, ResourceCounter>;
   itemTimeline: ItemTimelineEntry[];
@@ -166,6 +173,7 @@ export class StatsEngine {
     if (trackedRarity) {
       this.stats.items[trackedRarity].total += 1;
       if (item.mfDrop === 1) this.stats.items[trackedRarity].mf += 1;
+      incrementItemBreakdown(this.stats.itemBreakdown[trackedRarity], item.label, item.amount, item.mfDrop === 1);
     }
 
     if (item.type === 12 && item.id !== BASIC_KEY_ID) {
@@ -241,10 +249,12 @@ function normalizeTrackedRarity(rarity: string): string | null {
 export function createInitialStats(): CompanionStats {
   const items: Record<string, ItemCounter> = {};
   const itemsPerHour: Record<string, number> = {};
+  const itemBreakdown: Record<string, Record<string, ItemDropCounter>> = {};
   const ores: Record<string, ResourceCounter> = {};
   for (const rarity of TRACKED_RARITIES) {
     items[rarity] = { total: 0, mf: 0 };
     itemsPerHour[rarity] = 0;
+    itemBreakdown[rarity] = {};
   }
   for (const [id, name] of Object.entries(ORE_MATERIALS)) {
     ores[name] = { id: Number(id), name, total: 0 };
@@ -263,6 +273,7 @@ export function createInitialStats(): CompanionStats {
     xpPerHour: 0,
     items,
     itemsPerHour,
+    itemBreakdown,
     keys: {},
     ores,
     itemTimeline: [],
@@ -304,6 +315,14 @@ function incrementResource(resources: Record<string, ResourceCounter>, id: numbe
   const total = Math.max(amount || 1, 1);
   resources[name] = resources[name] ?? { id, name, total: 0 };
   resources[name].total += total;
+}
+
+function incrementItemBreakdown(items: Record<string, ItemDropCounter>, name: string, amount: number, magicFind: boolean): void {
+  const normalizedName = name?.trim() || "Unknown item";
+  const total = Math.max(amount || 1, 1);
+  items[normalizedName] = items[normalizedName] ?? { name: normalizedName, total: 0, mf: 0 };
+  items[normalizedName].total += total;
+  if (magicFind) items[normalizedName].mf += total;
 }
 
 function resourceList(resources: Record<string, ResourceCounter>): ResourceCounter[] {

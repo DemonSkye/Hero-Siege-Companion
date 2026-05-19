@@ -907,6 +907,10 @@ export function lookupItemTranslation(type: number, gameId: number, weaponType =
   return looseMatches.length === 1 ? looseMatches[0] : null;
 }
 
+export function allItemTranslationNames(): string[] {
+  return Array.from(new Set([...ITEM_TRANSLATIONS, ...ITEM_TRANSLATION_OVERRIDES].map((item) => item.name))).sort((a, b) => a.localeCompare(b));
+}
+
 function lookupKey(type: number, gameId: number, weaponType = 0): string {
   return `${type}:${gameId}:${weaponType}`;
 }

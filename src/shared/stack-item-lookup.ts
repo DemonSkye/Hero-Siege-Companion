@@ -171,3 +171,7 @@ const stackLookup = new Map(STACK_ITEM_TRANSLATIONS.map((item) => [`${item.type}
 export function lookupStackItemTranslation(type: number, gameId: number): ItemTranslation | null {
   return stackLookup.get(`${type}:${gameId}`) ?? null;
 }
+
+export function allStackItemTranslationNames(): string[] {
+  return Array.from(new Set(STACK_ITEM_TRANSLATIONS.map((item) => item.name))).sort((a, b) => a.localeCompare(b));
+}
