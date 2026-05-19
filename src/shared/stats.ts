@@ -61,8 +61,11 @@ export interface PastRunSummary {
   accountName: string;
   totalGoldGained: number;
   totalXpGained: number;
+  setDrops: number;
+  satanicDrops: number;
   heroicDrops: number;
   angelicDrops: number;
+  itemBreakdown: Record<string, Record<string, ItemDropCounter>>;
   keys: ResourceCounter[];
   ores: ResourceCounter[];
 }
@@ -291,8 +294,11 @@ export function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.no
     accountName: stats.accountName,
     totalGoldGained: stats.totalGoldEarned,
     totalXpGained: stats.totalXpEarned,
+    setDrops: stats.items.Set?.total ?? 0,
+    satanicDrops: stats.items.Satanic?.total ?? 0,
     heroicDrops: stats.items.Heroic?.total ?? 0,
     angelicDrops: stats.items.Angelic?.total ?? 0,
+    itemBreakdown: structuredCloneCompat(stats.itemBreakdown),
     keys: resourceList(stats.keys),
     ores: resourceList(stats.ores),
   };
@@ -304,6 +310,8 @@ export function hasRunActivity(summary: PastRunSummary): boolean {
   return (
     summary.totalGoldGained > 0 ||
     summary.totalXpGained > 0 ||
+    (summary.setDrops ?? 0) > 0 ||
+    (summary.satanicDrops ?? 0) > 0 ||
     summary.heroicDrops > 0 ||
     summary.angelicDrops > 0 ||
     keyTotal > 0 ||

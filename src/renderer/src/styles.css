@@ -1397,7 +1397,7 @@ h2 {
 
 .past-run-metrics {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
@@ -1429,6 +1429,30 @@ h2 {
   font-size: 18px;
   line-height: 1.15;
   overflow-wrap: anywhere;
+}
+
+.past-run-drops {
+  display: grid;
+  gap: 10px;
+}
+
+.past-run-drop-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.past-run-drop-grid .item-counter {
+  min-height: 92px;
+  padding: 12px;
+}
+
+.past-run-drop-grid .item-counter strong {
+  font-size: 24px;
+}
+
+.past-run-drop-breakdown .drop-breakdown-list {
+  max-height: 220px;
 }
 
 .resource-columns {
@@ -1689,7 +1713,11 @@ h2 {
   }
 
   .past-run-metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .past-run-drop-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .resource-columns {

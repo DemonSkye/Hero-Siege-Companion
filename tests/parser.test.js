@@ -695,6 +695,8 @@ test("run summaries track non-basic keys ore and selected drops", () => {
     },
     { added_item_object: { rarity: "Heroic", item_id: 101, type: 0 } },
     { added_item_object: { rarity: "Angelic", item_id: 102, type: 0 } },
+    { added_item_object: { rarity: "Set", item_id: 103, type: 0 } },
+    { added_item_object: { rarity: "Satanic", item_id: 104, type: 0 } },
   ]);
   const stats = new StatsEngine();
   stats.applyEvents(events);
@@ -714,8 +716,12 @@ test("run summaries track non-basic keys ore and selected drops", () => {
       ["Iron Ore", 5],
     ],
   );
+  assert.equal(summary.setDrops, 1);
+  assert.equal(summary.satanicDrops, 1);
   assert.equal(summary.heroicDrops, 1);
   assert.equal(summary.angelicDrops, 1);
+  assert.equal(Object.values(summary.itemBreakdown.Set).reduce((total, drop) => total + drop.total, 0), 1);
+  assert.equal(Object.values(summary.itemBreakdown.Satanic).reduce((total, drop) => total + drop.total, 0), 1);
 });
 
 test("empty run summaries can still be archived when explicitly ended", () => {

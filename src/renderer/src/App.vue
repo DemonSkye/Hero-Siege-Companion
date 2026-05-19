@@ -71,10 +71,12 @@ const shoppingDraftItem = ref("");
 const activeShoppingIndex = ref(0);
 const copiedShoppingItem = ref("");
 const expandedDropRarity = ref<string | null>(null);
+const expandedPastRunDropKey = ref<string | null>(null);
 let toastTimer: number | null = null;
 const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
 const DEFAULT_SHOPPING_LIST = ["Copper Ore", "Iron Ore", "Gold Ore", "Ruby", "Jade", "Tarethium Ore"];
 const SHOPPING_SUGGESTION_LIMIT = 8;
+const TRACKED_RARITY_ORDER = ["Set", "Satanic", "Heroic", "Angelic"];
 const shoppingAutocompleteNames = Array.from(
   new Set([...DEFAULT_SHOPPING_LIST, ...allStackItemTranslationNames(), ...allItemTranslationNames(), ...allItemIconNames()]),
 ).sort((a, b) => a.localeCompare(b));
@@ -173,8 +175,7 @@ const compactClock = computed(() => new Date(now.value).toLocaleTimeString([], {
 const keyDropTotal = computed(() => resourceRecordTotal(state.value.stats.keys));
 const oreDropTotal = computed(() => resourceRecordTotal(state.value.stats.ores));
 const trackedItems = computed(() => {
-  const order = ["Set", "Satanic", "Heroic", "Angelic"];
-  return order.map((rarity) => ({
+  return TRACKED_RARITY_ORDER.map((rarity) => ({
     rarity,
     total: state.value.stats.items[rarity]?.total ?? 0,
     mf: state.value.stats.items[rarity]?.mf ?? 0,
@@ -477,9 +478,55 @@ function toggleDropBreakdown(rarity: string) {
   expandedDropRarity.value = expandedDropRarity.value === rarity ? null : rarity;
 }
 
+function togglePastRunDropBreakdown(run: PastRunSummary, rarity: string) {
+  const key = pastRunDropKey(run, rarity);
+  expandedPastRunDropKey.value = expandedPastRunDropKey.value === key ? null : key;
+}
+
 function itemDropBreakdown(rarity: string): ItemDropCounter[] {
   const breakdown = state.value.stats.itemBreakdown?.[rarity] ?? {};
+  return sortedDropBreakdown(breakdown);
+}
+
+function runTrackedItems(run: PastRunSummary) {
+  return TRACKED_RARITY_ORDER.map((rarity) => ({
+    rarity,
+    total: runDropTotal(run, rarity),
+    mf: runDropMf(run, rarity),
+    drops: runDropBreakdown(run, rarity),
+  }));
+}
+
+function runDropTotal(run: PastRunSummary, rarity: string): number {
+  if (rarity === "Set") return run.setDrops ?? breakdownTotal(run.itemBreakdown?.Set);
+  if (rarity === "Satanic") return run.satanicDrops ?? breakdownTotal(run.itemBreakdown?.Satanic);
+  if (rarity === "Heroic") return run.heroicDrops ?? breakdownTotal(run.itemBreakdown?.Heroic);
+  if (rarity === "Angelic") return run.angelicDrops ?? breakdownTotal(run.itemBreakdown?.Angelic);
+  return breakdownTotal(run.itemBreakdown?.[rarity]);
+}
+
+function runDropMf(run: PastRunSummary, rarity: string): number {
+  return Object.values(run.itemBreakdown?.[rarity] ?? {}).reduce((total, drop) => total + drop.mf, 0);
+}
+
+function runDropBreakdown(run: PastRunSummary, rarity: string): ItemDropCounter[] {
+  return sortedDropBreakdown(run.itemBreakdown?.[rarity] ?? {});
+}
+
+function pastRunDropKey(run: PastRunSummary, rarity: string): string {
+  return `${run.id}:${rarity}`;
+}
+
+function isPastRunDropExpanded(run: PastRunSummary, rarity: string): boolean {
+  return expandedPastRunDropKey.value === pastRunDropKey(run, rarity);
+}
+
+function sortedDropBreakdown(breakdown: Record<string, ItemDropCounter>): ItemDropCounter[] {
   return Object.values(breakdown).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+}
+
+function breakdownTotal(breakdown: Record<string, ItemDropCounter> | undefined): number {
+  return Object.values(breakdown ?? {}).reduce((total, drop) => total + drop.total, 0);
 }
 
 function formatNumber(value: number): string {
@@ -1031,14 +1078,6 @@ function itemTypeName(item: Record<string, unknown>): string {
                   <strong>{{ formatNumber(run.totalXpGained) }}</strong>
                 </div>
                 <div>
-                  <span>Heroic</span>
-                  <strong>{{ formatNumber(run.heroicDrops) }}</strong>
-                </div>
-                <div>
-                  <span>Angelic</span>
-                  <strong>{{ formatNumber(run.angelicDrops) }}</strong>
-                </div>
-                <div>
                   <span>Keys</span>
                   <strong>{{ formatNumber(runResourceTotal(run.keys)) }}</strong>
                 </div>
@@ -1046,6 +1085,39 @@ function itemTypeName(item: Record<string, unknown>): string {
                   <span>Ore</span>
                   <strong>{{ formatNumber(runResourceTotal(run.ores)) }}</strong>
                 </div>
+              </div>
+
+              <div class="past-run-drops">
+                <div class="past-run-drop-grid">
+                  <button
+                    v-for="item in runTrackedItems(run)"
+                    :key="`${run.id}-${item.rarity}`"
+                    type="button"
+                    :class="['item-counter', item.rarity.toLowerCase(), { expanded: isPastRunDropExpanded(run, item.rarity) }]"
+                    @click="togglePastRunDropBreakdown(run, item.rarity)"
+                  >
+                    <span>{{ item.rarity }}</span>
+                    <strong>{{ formatNumber(item.total) }}</strong>
+                    <small>{{ formatNumber(item.mf) }} MF &middot; {{ item.drops.length }} unique</small>
+                  </button>
+                </div>
+                <template v-for="item in runTrackedItems(run)" :key="`${run.id}-${item.rarity}-details`">
+                  <div v-if="isPastRunDropExpanded(run, item.rarity)" class="drop-breakdown past-run-drop-breakdown" :class="item.rarity.toLowerCase()">
+                    <div class="drop-breakdown-head">
+                      <strong>{{ item.rarity }} drops</strong>
+                      <span>{{ item.drops.length }} unique</span>
+                    </div>
+                    <div v-if="item.drops.length" class="drop-breakdown-list">
+                      <div v-for="drop in item.drops" :key="`${run.id}-${item.rarity}-${drop.name}`" class="drop-breakdown-row">
+                        <img v-if="itemIconUrl(drop.name)" class="drop-breakdown-icon" :src="itemIconUrl(drop.name)" :alt="drop.name" />
+                        <span v-else class="drop-breakdown-icon drop-breakdown-icon-empty" aria-hidden="true"></span>
+                        <span class="drop-breakdown-name">{{ drop.name }}</span>
+                        <strong>{{ formatNumber(drop.total) }}</strong>
+                      </div>
+                    </div>
+                    <p v-else class="empty-copy">No saved {{ item.rarity.toLowerCase() }} item detail for this run.</p>
+                  </div>
+                </template>
               </div>
 
               <div class="resource-columns">
