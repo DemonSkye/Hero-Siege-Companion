@@ -36,6 +36,10 @@ export interface RunArchivePreferences {
   minDurationMinutes: number;
 }
 
+export interface CapturePreferences {
+  createDebugMode: boolean;
+}
+
 export interface CompanionState {
   captureRunning: boolean;
   captureStatus: "idle" | "waiting" | "running" | "error";
@@ -45,5 +49,6 @@ export interface CompanionState {
   stats: CompanionStats;
   pastRuns: PastRunSummary[];
   runArchivePreferences: RunArchivePreferences;
+  capturePreferences: CapturePreferences;
   logs: LogEntry[];
 }

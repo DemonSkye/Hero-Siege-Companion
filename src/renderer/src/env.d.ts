@@ -1,4 +1,4 @@
-import type { CompanionState, RunArchivePreferences } from "../../shared/app-state";
+import type { CapturePreferences, CompanionState, RunArchivePreferences } from "../../shared/app-state";
 
 declare global {
   interface Window {
@@ -10,6 +10,7 @@ declare global {
       chooseGameExecutable: () => Promise<string | null>;
       resetStats: () => Promise<CompanionState>;
       setRunArchivePreferences: (preferences: RunArchivePreferences) => Promise<CompanionState>;
+      setCapturePreferences: (preferences: CapturePreferences) => Promise<CompanionState>;
       minimizeWindow: () => Promise<void>;
       toggleMaximizeWindow: () => Promise<void>;
       closeWindow: () => Promise<void>;

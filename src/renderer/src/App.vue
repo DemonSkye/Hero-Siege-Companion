@@ -1,11 +1,11 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { CompanionState, LogEntry, RunArchivePreferences } from "../../shared/app-state";
+import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences } from "../../shared/app-state";
 import { ITEM_TYPE_NAMES, MATERIAL_LIKE_TIMELINE_TYPES } from "../../shared/constants";
 import { allItemIconNames, lookupItemIconFile } from "../../shared/item-icons";
 import { allItemTranslationNames } from "../../shared/item-lookup";
 import { allStackItemTranslationNames } from "../../shared/stack-item-lookup";
-import { createInitialStats, type ItemDropCounter, type PastRunSummary, type ResourceCounter } from "../../shared/stats";
+import { createInitialStats, type ItemDropCounter, type ItemTimelineEntry, type PastRunSummary, type ResourceCounter } from "../../shared/stats";
 
 const state = ref<CompanionState>({
   captureRunning: false,
@@ -32,6 +32,9 @@ const state = ref<CompanionState>({
     skipEmptyRuns: false,
     minDurationMinutes: 0,
   },
+  capturePreferences: {
+    createDebugMode: false,
+  },
   logs: [],
 });
 
@@ -53,7 +56,7 @@ const hideMaterials = ref(false);
 const timelineType = ref("all");
 const gameExecutablePath = ref("");
 const launchThroughSteam = ref(true);
-const activeTab = ref<"live" | "past">("live");
+const activeTab = ref<"live" | "past" | "filter">("live");
 const appVersion = "0.0.9";
 const expandedLogIds = ref<Set<string>>(new Set());
 const draftLogLimit = ref(20);
@@ -67,10 +70,17 @@ const draftHideMaterials = ref(false);
 const draftTimelineType = ref("all");
 const draftGameExecutablePath = ref("");
 const draftLaunchThroughSteam = ref(true);
+const draftCreateDebugMode = ref(false);
 const draftSkipEmptyRuns = ref(false);
 const draftMinRunDurationMinutes = ref(0);
 const shoppingListItems = ref<string[]>([]);
 const shoppingDraftItem = ref("");
+const itemFilterGroups = ref<ItemFilterGroup[]>([]);
+const itemFilterMuted = ref(false);
+const itemFilterDraftItem = ref("");
+const itemFilterDraftGroupName = ref("");
+const activeItemFilterGroupId = ref("");
+const lastItemFilterMatch = ref<ItemFilterMatch | null>(null);
 const activeShoppingIndex = ref(0);
 const copiedShoppingItem = ref("");
 const expandedDropRarity = ref<string | null>(null);
@@ -80,6 +90,33 @@ const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
 const DEFAULT_SHOPPING_LIST = ["Copper Ore", "Iron Ore", "Gold Ore", "Ruby", "Jade", "Tarethium Ore"];
 const SHOPPING_SUGGESTION_LIMIT = 8;
 const TRACKED_RARITY_ORDER = ["Set", "Satanic", "Heroic", "Angelic"];
+const ITEM_FILTER_RARITIES = ["Set", "Satanic", "Heroic", "Angelic", "Unholy", "Runeword"];
+const ITEM_FILTER_SOUNDS = [
+  { id: "crystal-tink", name: "Crystal Tink" },
+  { id: "coin-ping", name: "Coin Ping" },
+  { id: "bell-chime", name: "Bell Chime" },
+  { id: "rune-spark", name: "Rune Spark" },
+  { id: "deep-gong", name: "Deep Gong" },
+  { id: "soft-pop", name: "Soft Pop" },
+  { id: "bright-cascade", name: "Bright Cascade" },
+  { id: "low-pulse", name: "Low Pulse" },
+] as const;
+const DEFAULT_ITEM_FILTER_GROUPS: ItemFilterGroup[] = [
+  {
+    id: "sample-group",
+    name: "Sample Group",
+    enabled: true,
+    soundId: "crystal-tink",
+    volume: 70,
+    cooldownMs: 1200,
+    rarities: ["Heroic"],
+    types: [],
+    items: [],
+  },
+];
+const itemFilterSeenTimelineKeys = new Set<string>();
+const itemFilterLastPlayedAt = new Map<string, number>();
+let audioContext: AudioContext | null = null;
 const shoppingAutocompleteNames = Array.from(
   new Set([...DEFAULT_SHOPPING_LIST, ...allStackItemTranslationNames(), ...allItemTranslationNames(), ...allItemIconNames()]),
 ).sort((a, b) => a.localeCompare(b));
@@ -132,6 +169,49 @@ interface UiPreferences {
   shoppingListItems: string[];
   gameExecutablePath: string;
   launchThroughSteam: boolean;
+  itemFilterGroups: ItemFilterGroup[];
+  itemFilterMuted: boolean;
+}
+
+interface ItemFilterSpecificItem {
+  name: string;
+  soundId: string;
+}
+
+interface ItemFilterGroup {
+  id: string;
+  name: string;
+  enabled: boolean;
+  soundId: string;
+  volume: number;
+  cooldownMs: number;
+  rarities: string[];
+  types: number[];
+  items: ItemFilterSpecificItem[];
+}
+
+interface ItemFilterMatch {
+  itemLabel: string;
+  groupName: string;
+  soundName: string;
+  createdAt: number;
+}
+
+interface PastRunAggregate {
+  runCount: number;
+  totalDurationMs: number;
+  averageDurationMs: number;
+  totalGold: number;
+  totalXp: number;
+  goldPerHour: number;
+  xpPerHour: number;
+  bestGoldPerHour: number;
+  bestXpPerHour: number;
+  totalKeys: number;
+  totalOres: number;
+  totalMfDrops: number;
+  drops: Array<{ rarity: string; total: number; mf: number; unique: number }>;
+  topDrops: ItemDropCounter[];
 }
 
 const defaultPreferences: UiPreferences = {
@@ -147,6 +227,8 @@ const defaultPreferences: UiPreferences = {
   shoppingListItems: DEFAULT_SHOPPING_LIST,
   gameExecutablePath: "",
   launchThroughSteam: true,
+  itemFilterGroups: DEFAULT_ITEM_FILTER_GROUPS,
+  itemFilterMuted: false,
 };
 
 const itemTypeOptions = computed(() =>
@@ -199,7 +281,16 @@ const filteredItemTimeline = computed(() =>
 const visibleItemTimeline = computed(() => filteredItemTimeline.value.slice(0, timelineLimit.value));
 const recentLogs = computed(() => state.value.logs.slice(0, logLimit.value));
 const pastRuns = computed(() => state.value.pastRuns ?? []);
+const allRunAggregate = computed(() => aggregatePastRuns(pastRuns.value));
+const recentRunAggregate = computed(() => aggregatePastRuns(pastRuns.value.slice(0, 10)));
+const aggregatePanels = computed(() => [
+  { key: "all", title: "All Runs", subtitle: `${allRunAggregate.value.runCount} saved`, aggregate: allRunAggregate.value },
+  { key: "recent", title: "Last 10 Runs", subtitle: `${recentRunAggregate.value.runCount} included`, aggregate: recentRunAggregate.value },
+]);
 const activeShoppingItem = computed(() => shoppingListItems.value[activeShoppingIndex.value] ?? shoppingListItems.value[0] ?? "");
+const activeItemFilterGroups = computed(() => itemFilterGroups.value.filter((group) => group.enabled));
+const watchedItemCount = computed(() => itemFilterGroups.value.reduce((total, group) => total + group.items.length, 0));
+const selectedItemFilterGroup = computed(() => itemFilterGroups.value.find((group) => group.id === activeItemFilterGroupId.value) ?? itemFilterGroups.value[0] ?? null);
 const shoppingSuggestions = computed(() => {
   const query = shoppingDraftItem.value.trim().toLowerCase();
   const existing = new Set(shoppingListItems.value.map((item) => item.toLowerCase()));
@@ -213,7 +304,9 @@ onMounted(async () => {
   applyPreferences(loadPreferences());
   await syncWindowMode();
   state.value = await window.heroSiegeCompanion.getState();
+  initializeItemFilterSeenItems(state.value.stats.itemTimeline);
   unsubscribe = window.heroSiegeCompanion.onStateUpdated((nextState) => {
+    processItemFilterTimeline(nextState.stats.itemTimeline);
     state.value = nextState;
   });
   clock = window.setInterval(() => {
@@ -221,9 +314,10 @@ onMounted(async () => {
   }, 1000);
 });
 
-watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems], () => {
+watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, itemFilterGroups, itemFilterMuted], () => {
   savePreferences(currentPreferences());
   clampActiveShoppingIndex();
+  clampActiveItemFilterGroup();
 }, { deep: true });
 
 watch(compactMode, (enabled) => {
@@ -274,12 +368,14 @@ function closeSettings() {
 
 function resetDraftPreferences() {
   loadDraftPreferences(defaultPreferences);
+  draftCreateDebugMode.value = false;
 }
 
 async function applyDraftPreferences() {
   applyPreferences(currentDraftPreferences());
   savePreferences(currentPreferences());
   state.value = await window.heroSiegeCompanion.setRunArchivePreferences(currentDraftRunArchivePreferences());
+  state.value = await window.heroSiegeCompanion.setCapturePreferences(currentDraftCapturePreferences());
   showSettings.value = false;
   await syncWindowMode();
 }
@@ -304,6 +400,8 @@ function currentPreferences(): UiPreferences {
     shoppingListItems: shoppingListItems.value,
     gameExecutablePath: gameExecutablePath.value,
     launchThroughSteam: launchThroughSteam.value,
+    itemFilterGroups: itemFilterGroups.value,
+    itemFilterMuted: itemFilterMuted.value,
   };
 }
 
@@ -320,7 +418,10 @@ function applyPreferences(preferences: UiPreferences) {
   shoppingListItems.value = preferences.shoppingListItems;
   gameExecutablePath.value = preferences.gameExecutablePath;
   launchThroughSteam.value = preferences.launchThroughSteam;
+  itemFilterGroups.value = preferences.itemFilterGroups;
+  itemFilterMuted.value = preferences.itemFilterMuted;
   clampActiveShoppingIndex();
+  clampActiveItemFilterGroup();
 }
 
 function currentDraftPreferences(): UiPreferences {
@@ -337,6 +438,8 @@ function currentDraftPreferences(): UiPreferences {
     shoppingListItems: shoppingListItems.value,
     gameExecutablePath: draftGameExecutablePath.value.trim(),
     launchThroughSteam: draftLaunchThroughSteam.value,
+    itemFilterGroups: itemFilterGroups.value,
+    itemFilterMuted: itemFilterMuted.value,
   };
 }
 
@@ -352,6 +455,7 @@ function loadDraftPreferences(preferences: UiPreferences) {
   draftTimelineType.value = preferences.timelineType;
   draftGameExecutablePath.value = preferences.gameExecutablePath;
   draftLaunchThroughSteam.value = preferences.launchThroughSteam;
+  draftCreateDebugMode.value = state.value.capturePreferences.createDebugMode;
   draftSkipEmptyRuns.value = state.value.runArchivePreferences.skipEmptyRuns;
   draftMinRunDurationMinutes.value = state.value.runArchivePreferences.minDurationMinutes;
 }
@@ -359,10 +463,10 @@ function loadDraftPreferences(preferences: UiPreferences) {
 function loadPreferences(): UiPreferences {
   try {
     const raw = window.localStorage.getItem(PREFERENCES_STORAGE_KEY);
-    if (!raw) return defaultPreferences;
+    if (!raw) return normalizePreferences(defaultPreferences);
     return normalizePreferences(JSON.parse(raw) as Partial<UiPreferences>);
   } catch {
-    return defaultPreferences;
+    return normalizePreferences(defaultPreferences);
   }
 }
 
@@ -397,6 +501,8 @@ function normalizePreferences(value: Partial<UiPreferences>): UiPreferences {
     shoppingListItems: normalizeShoppingList(value.shoppingListItems),
     gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
+    itemFilterGroups: normalizeItemFilterGroups(value.itemFilterGroups),
+    itemFilterMuted: Boolean(value.itemFilterMuted),
   };
 }
 
@@ -404,6 +510,12 @@ function currentDraftRunArchivePreferences(): RunArchivePreferences {
   return {
     skipEmptyRuns: draftSkipEmptyRuns.value,
     minDurationMinutes: normalizeRunDurationMinutes(draftMinRunDurationMinutes.value),
+  };
+}
+
+function currentDraftCapturePreferences(): CapturePreferences {
+  return {
+    createDebugMode: draftCreateDebugMode.value,
   };
 }
 
@@ -477,6 +589,349 @@ function normalizeShoppingList(value: unknown): string[] {
   return Array.from(new Set(normalized)).slice(0, 100);
 }
 
+function normalizeItemFilterGroups(value: unknown): ItemFilterGroup[] {
+  const groups = Array.isArray(value) ? value : DEFAULT_ITEM_FILTER_GROUPS;
+  const normalized = groups.map(normalizeItemFilterGroup).filter(Boolean) as ItemFilterGroup[];
+  return normalized.length ? normalized.slice(0, 40) : structuredCloneCompat(DEFAULT_ITEM_FILTER_GROUPS);
+}
+
+function normalizeItemFilterGroup(value: unknown): ItemFilterGroup | null {
+  if (!isRecord(value)) return null;
+  const id = stringField(value, "id") || `group-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const volume = Number(value.volume);
+  const cooldownMs = Number(value.cooldownMs);
+  return {
+    id,
+    name: stringField(value, "name") || "Untitled Group",
+    enabled: value.enabled === undefined ? true : Boolean(value.enabled),
+    soundId: validSoundId(stringField(value, "soundId")) ? stringField(value, "soundId") : ITEM_FILTER_SOUNDS[0].id,
+    volume: Number.isFinite(volume) ? Math.max(0, Math.min(100, Math.trunc(volume))) : 70,
+    cooldownMs: Number.isFinite(cooldownMs) ? Math.max(0, Math.min(30_000, Math.trunc(cooldownMs))) : 1000,
+    rarities: normalizeStringList(value.rarities).filter((rarity) => ITEM_FILTER_RARITIES.includes(rarity)),
+    types: normalizeNumberList(value.types).filter((type) => Object.prototype.hasOwnProperty.call(ITEM_TYPE_NAMES, type)),
+    items: normalizeSpecificItems(value.items),
+  };
+}
+
+function normalizeSpecificItems(value: unknown): ItemFilterSpecificItem[] {
+  const values = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const items: ItemFilterSpecificItem[] = [];
+  for (const item of values) {
+    const name = typeof item === "string" ? item.trim() : isRecord(item) ? stringField(item, "name").trim() : "";
+    if (!name) continue;
+    const normalizedName = name.toLowerCase();
+    if (seen.has(normalizedName)) continue;
+    seen.add(normalizedName);
+    const soundId = isRecord(item) && validSoundId(stringField(item, "soundId")) ? stringField(item, "soundId") : "";
+    items.push({ name, soundId });
+  }
+  return items.slice(0, 150);
+}
+
+function normalizeStringList(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : [];
+  return Array.from(new Set(values.map((item) => String(item).trim()).filter(Boolean)));
+}
+
+function normalizeNumberList(value: unknown): number[] {
+  const values = Array.isArray(value) ? value : [];
+  return Array.from(new Set(values.map(Number).filter(Number.isFinite).map(Math.trunc)));
+}
+
+function validSoundId(soundId: string): boolean {
+  return ITEM_FILTER_SOUNDS.some((sound) => sound.id === soundId);
+}
+
+function soundName(soundId: string): string {
+  return ITEM_FILTER_SOUNDS.find((sound) => sound.id === soundId)?.name ?? ITEM_FILTER_SOUNDS[0].name;
+}
+
+function addItemFilterGroup() {
+  const name = itemFilterDraftGroupName.value.trim() || `Group ${itemFilterGroups.value.length + 1}`;
+  const nextGroup: ItemFilterGroup = {
+    id: `group-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name,
+    enabled: true,
+    soundId: ITEM_FILTER_SOUNDS[0].id,
+    volume: 70,
+    cooldownMs: 1000,
+    rarities: [],
+    types: [],
+    items: [],
+  };
+  itemFilterGroups.value = [...itemFilterGroups.value, nextGroup];
+  activeItemFilterGroupId.value = nextGroup.id;
+  itemFilterDraftGroupName.value = "";
+}
+
+function removeItemFilterGroup(group: ItemFilterGroup) {
+  itemFilterGroups.value = itemFilterGroups.value.filter((candidate) => candidate.id !== group.id);
+  clampActiveItemFilterGroup();
+}
+
+function selectItemFilterGroup(group: ItemFilterGroup) {
+  activeItemFilterGroupId.value = group.id;
+}
+
+function addItemToFilterGroup(group: ItemFilterGroup, value = itemFilterDraftItem.value) {
+  const trimmed = value.trim();
+  const canonical = shoppingAutocompleteNames.find((name) => name.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
+  if (!canonical) return;
+  if (group.items.some((item) => item.name.toLowerCase() === canonical.toLowerCase())) return;
+  group.items = [...group.items, { name: canonical, soundId: "" }];
+  itemFilterDraftItem.value = "";
+}
+
+function removeItemFromFilterGroup(group: ItemFilterGroup, item: ItemFilterSpecificItem) {
+  group.items = group.items.filter((candidate) => candidate !== item);
+}
+
+function toggleFilterRarity(group: ItemFilterGroup, rarity: string, enabled: boolean) {
+  const next = new Set(group.rarities);
+  if (enabled) next.add(rarity);
+  else next.delete(rarity);
+  group.rarities = Array.from(next);
+}
+
+function toggleFilterType(group: ItemFilterGroup, type: number, enabled: boolean) {
+  const next = new Set(group.types);
+  if (enabled) next.add(type);
+  else next.delete(type);
+  group.types = Array.from(next).sort((a, b) => a - b);
+}
+
+function eventChecked(event: Event): boolean {
+  return Boolean((event.target as HTMLInputElement | null)?.checked);
+}
+
+function clampActiveItemFilterGroup() {
+  if (itemFilterGroups.value.length === 0) {
+    activeItemFilterGroupId.value = "";
+    return;
+  }
+  if (!itemFilterGroups.value.some((group) => group.id === activeItemFilterGroupId.value)) {
+    activeItemFilterGroupId.value = itemFilterGroups.value[0].id;
+  }
+}
+
+function initializeItemFilterSeenItems(items: ItemTimelineEntry[]) {
+  itemFilterSeenTimelineKeys.clear();
+  for (const item of items) itemFilterSeenTimelineKeys.add(itemTimelineKey(item));
+}
+
+function processItemFilterTimeline(items: ItemTimelineEntry[]) {
+  const nextItems = items.filter((item) => !itemFilterSeenTimelineKeys.has(itemTimelineKey(item))).reverse();
+  for (const item of nextItems) {
+    itemFilterSeenTimelineKeys.add(itemTimelineKey(item));
+    const match = matchItemFilter(item);
+    if (match) handleItemFilterMatch(match);
+  }
+}
+
+function matchItemFilter(item: ItemTimelineEntry): { group: ItemFilterGroup; soundId: string; item: ItemTimelineEntry } | null {
+  const label = item.label || (item.id ? `#${item.id}` : "");
+  const normalizedLabel = label.toLowerCase();
+  for (const group of activeItemFilterGroups.value) {
+    const specificItem = group.items.find((candidate) => candidate.name.toLowerCase() === normalizedLabel);
+    if (specificItem) return { group, soundId: specificItem.soundId || group.soundId, item };
+  }
+
+  for (const group of activeItemFilterGroups.value) {
+    const hasGroupCriteria = group.rarities.length > 0 || group.types.length > 0;
+    if (!hasGroupCriteria) continue;
+    const matchesRarity = group.rarities.length === 0 || group.rarities.some((rarity) => rarity.toLowerCase() === item.rarity.toLowerCase());
+    const matchesType = group.types.length === 0 || group.types.includes(item.type);
+    if (matchesRarity && matchesType) return { group, soundId: group.soundId, item };
+  }
+
+  return null;
+}
+
+function handleItemFilterMatch(match: { group: ItemFilterGroup; soundId: string; item: ItemTimelineEntry }) {
+  const nowMs = Date.now();
+  lastItemFilterMatch.value = {
+    itemLabel: match.item.label || `Type ${match.item.type} #${match.item.id}`,
+    groupName: match.group.name,
+    soundName: soundName(match.soundId),
+    createdAt: nowMs,
+  };
+  if (itemFilterMuted.value) return;
+  const lastPlayedAt = itemFilterLastPlayedAt.get(match.group.id) ?? 0;
+  if (nowMs - lastPlayedAt < match.group.cooldownMs) return;
+  itemFilterLastPlayedAt.set(match.group.id, nowMs);
+  void playItemFilterSound(match.soundId, match.group.volume).catch(() => {
+    // Audio feedback should never interfere with capture or rendering.
+  });
+}
+
+function itemTimelineKey(item: ItemTimelineEntry): string {
+  return `${item.createdAt}:${item.fingerprint ?? ""}:${item.type}:${item.id}:${item.label}`;
+}
+
+async function testItemFilterSound(soundId = selectedItemFilterGroup.value?.soundId ?? ITEM_FILTER_SOUNDS[0].id, volume = selectedItemFilterGroup.value?.volume ?? 70) {
+  try {
+    await playItemFilterSound(soundId, volume);
+  } catch (error) {
+    // Some systems block audio until the next direct user gesture.
+    console.warn("Item filter sound did not play", error);
+  }
+}
+
+async function playItemFilterSound(soundId: string, volume: number) {
+  const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return;
+  audioContext = audioContext ?? new AudioContextClass();
+  if (audioContext.state === "suspended") await audioContext.resume();
+  const gain = audioContext.createGain();
+  gain.gain.value = Math.max(0, Math.min(volume, 100)) / 100;
+  gain.connect(audioContext.destination);
+  playSoundPreset(audioContext, gain, soundId);
+}
+
+function playSoundPreset(context: AudioContext, output: GainNode, soundId: string) {
+  const now = context.currentTime;
+  if (soundId === "crystal-tink") {
+    playImpactNoise(context, output, now, 1.95, 0.9, 360, 11_800, 0.035);
+    playBell(context, output, now, [690, 1710, 4520, 5680, 6820, 9020], 2.02, 0.95);
+    playTone(context, output, 3440, now + 0.018, 1.45, "square", 0.16, 5);
+    return;
+  }
+  if (soundId === "coin-ping") {
+    playImpactNoise(context, output, now, 1.05, 0.45, 620, 8200, 0.024);
+    playBell(context, output, now, [880, 1760, 3520, 5280], 1.12, 0.55);
+    return;
+  }
+  if (soundId === "bell-chime") {
+    playImpactNoise(context, output, now, 1.55, 0.56, 420, 9200, 0.03);
+    playBell(context, output, now, [520, 1040, 2080, 4160, 6240], 1.62, 0.68);
+    return;
+  }
+  if (soundId === "rune-spark") {
+    playImpactNoise(context, output, now, 1.72, 0.7, 820, 12_400, 0.026);
+    [780, 1560, 3120, 4680, 6240, 9360].forEach((frequency, index) => {
+      playTone(context, output, frequency, now + index * 0.018, 1.5 - index * 0.08, index % 2 === 0 ? "triangle" : "sawtooth", 0.52 / (index + 1), index % 2 === 0 ? 7 : -6);
+    });
+    return;
+  }
+  if (soundId === "deep-gong") {
+    playImpactNoise(context, output, now, 1.45, 0.48, 90, 3600, 0.042);
+    playBell(context, output, now, [132, 198, 396, 792, 1584], 1.6, 0.62);
+    return;
+  }
+  if (soundId === "soft-pop") {
+    playImpactNoise(context, output, now, 0.82, 0.28, 150, 2800, 0.032);
+    playBell(context, output, now, [330, 660, 990], 0.75, 0.34);
+    return;
+  }
+  if (soundId === "bright-cascade") {
+    playImpactNoise(context, output, now, 1.9, 0.78, 740, 12_000, 0.024);
+    [988, 1319, 1760, 2349, 3136, 4186].forEach((frequency, index) => {
+      playTone(context, output, frequency * 1.35, now + index * 0.045, 1.65 - index * 0.1, index % 2 === 0 ? "sine" : "triangle", 0.58 / (index + 1), index % 2 === 0 ? -4 : 4);
+    });
+    return;
+  }
+  if (soundId === "low-pulse") {
+    playImpactNoise(context, output, now, 1.05, 0.34, 60, 1800, 0.04);
+    playBell(context, output, now, [82, 123, 246, 492], 1.05, 0.45);
+    return;
+  }
+
+  playImpactNoise(context, output, now, 1.9, 0.8, 360, 11_000, 0.03);
+  playBell(context, output, now, [690, 1710, 4520, 5680, 6820], 1.95, 0.88);
+}
+
+function playBell(context: AudioContext, output: GainNode, start: number, frequencies: number[], duration: number, level: number) {
+  frequencies.forEach((frequency, index) => {
+    playTone(
+      context,
+      output,
+      frequency,
+      start + index * 0.012,
+      duration * (1 - index * 0.08),
+      index % 2 === 0 ? "sine" : "triangle",
+      level / (index + 1),
+      index % 2 === 0 ? 0 : 7,
+    );
+  });
+}
+
+function playTone(
+  context: AudioContext,
+  output: GainNode,
+  frequency: number,
+  start: number,
+  duration: number,
+  type: OscillatorType,
+  level: number,
+  detune = 0,
+) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = type;
+  oscillator.frequency.value = frequency;
+  oscillator.detune.value = detune;
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(Math.max(level, 0.0001), start + 0.006);
+  gain.gain.exponentialRampToValueAtTime(Math.max(level * 0.34, 0.0001), start + Math.min(0.16, duration * 0.22));
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gain);
+  gain.connect(output);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.03);
+}
+
+function playImpactNoise(
+  context: AudioContext,
+  output: GainNode,
+  start: number,
+  duration: number,
+  level: number,
+  lowCut: number,
+  highCut: number,
+  attackSeconds: number,
+) {
+  const frameCount = Math.max(1, Math.floor(context.sampleRate * duration));
+  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let index = 0; index < frameCount; index += 1) {
+    const progress = index / frameCount;
+    const decay = Math.exp(-progress * 5.2);
+    const attackBoost = progress < 0.035 ? 1.9 : 1;
+    data[index] = (Math.random() * 2 - 1) * decay * attackBoost;
+  }
+
+  const source = context.createBufferSource();
+  const highpass = context.createBiquadFilter();
+  const lowpass = context.createBiquadFilter();
+  const peaking = context.createBiquadFilter();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  highpass.type = "highpass";
+  highpass.frequency.value = lowCut;
+  lowpass.type = "lowpass";
+  lowpass.frequency.value = highCut;
+  peaking.type = "peaking";
+  peaking.frequency.value = 5600;
+  peaking.Q.value = 1.4;
+  peaking.gain.value = 7;
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(Math.max(level, 0.0001), start + attackSeconds);
+  gain.gain.exponentialRampToValueAtTime(Math.max(level * 0.2, 0.0001), start + Math.min(0.22, duration * 0.24));
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  source.connect(highpass);
+  highpass.connect(lowpass);
+  lowpass.connect(peaking);
+  peaking.connect(gain);
+  gain.connect(output);
+  source.start(start);
+  source.stop(start + duration + 0.02);
+}
+
+function structuredCloneCompat<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function toggleDropBreakdown(rarity: string) {
   expandedDropRarity.value = expandedDropRarity.value === rarity ? null : rarity;
 }
@@ -514,6 +969,52 @@ function runDropMf(run: PastRunSummary, rarity: string): number {
 
 function runDropBreakdown(run: PastRunSummary, rarity: string): ItemDropCounter[] {
   return sortedDropBreakdown(run.itemBreakdown?.[rarity] ?? {});
+}
+
+function aggregatePastRuns(runs: PastRunSummary[]): PastRunAggregate {
+  const aggregateDrops: Record<string, ItemDropCounter> = {};
+  const rarityDrops = TRACKED_RARITY_ORDER.map((rarity) => {
+    let total = 0;
+    let mf = 0;
+    const uniqueNames = new Set<string>();
+    for (const run of runs) {
+      total += runDropTotal(run, rarity);
+      const drops = runDropBreakdown(run, rarity);
+      for (const drop of drops) {
+        uniqueNames.add(drop.name);
+        mf += drop.mf;
+        aggregateDrops[drop.name] = aggregateDrops[drop.name] ?? { name: drop.name, total: 0, mf: 0 };
+        aggregateDrops[drop.name].total += drop.total;
+        aggregateDrops[drop.name].mf += drop.mf;
+      }
+    }
+    return { rarity, total, mf, unique: uniqueNames.size };
+  });
+  const totalDurationMs = runs.reduce((total, run) => total + Math.max(run.durationMs, 0), 0);
+  const totalGold = runs.reduce((total, run) => total + run.totalGoldGained, 0);
+  const totalXp = runs.reduce((total, run) => total + run.totalXpGained, 0);
+
+  return {
+    runCount: runs.length,
+    totalDurationMs,
+    averageDurationMs: runs.length ? totalDurationMs / runs.length : 0,
+    totalGold,
+    totalXp,
+    goldPerHour: ratePerHour(totalGold, totalDurationMs),
+    xpPerHour: ratePerHour(totalXp, totalDurationMs),
+    bestGoldPerHour: Math.max(0, ...runs.map((run) => ratePerHour(run.totalGoldGained, run.durationMs))),
+    bestXpPerHour: Math.max(0, ...runs.map((run) => ratePerHour(run.totalXpGained, run.durationMs))),
+    totalKeys: runs.reduce((total, run) => total + runResourceTotal(run.keys), 0),
+    totalOres: runs.reduce((total, run) => total + runResourceTotal(run.ores), 0),
+    totalMfDrops: rarityDrops.reduce((total, drop) => total + drop.mf, 0),
+    drops: rarityDrops,
+    topDrops: sortedDropBreakdown(aggregateDrops).slice(0, 5),
+  };
+}
+
+function ratePerHour(value: number, durationMs: number): number {
+  if (durationMs <= 0) return 0;
+  return Math.trunc(value / (durationMs / 3_600_000));
 }
 
 function pastRunDropKey(run: PastRunSummary, rarity: string): string {
@@ -798,6 +1299,9 @@ function itemTypeName(item: Record<string, unknown>): string {
     <div v-if="!compactMode" class="app-scroll">
       <nav class="view-tabs" aria-label="Companion views">
         <button type="button" :class="{ active: activeTab === 'live' }" @click="activeTab = 'live'">Live Session</button>
+        <button type="button" :class="{ active: activeTab === 'filter' }" @click="activeTab = 'filter'">
+          Item Filter <span class="info-bubble" data-tip="Sounds are triggered from captured network traffic, so alerts can arrive a couple seconds after the item appears in game.">i</span>
+        </button>
         <button type="button" :class="{ active: activeTab === 'past' }" @click="activeTab = 'past'">Past Runs</button>
       </nav>
 
@@ -993,7 +1497,7 @@ function itemTypeName(item: Record<string, unknown>): string {
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Marketplace</p>
-              <h2>Shopping List</h2>
+              <h2>Shopping List <span class="info-bubble" data-tip="The shopping list is currently for quickly copying item names into the shop. Future API changes may expose more market surface area, but the developers do not want market automation here right now.">i</span></h2>
             </div>
             <span class="shopping-count">{{ shoppingListItems.length }} saved</span>
           </div>
@@ -1025,6 +1529,47 @@ function itemTypeName(item: Record<string, unknown>): string {
           <p v-else class="empty-copy">Add item names here to copy marketplace searches quickly.</p>
         </article>
 
+        <article class="panel item-filter-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Loot Audio</p>
+              <h2>Item Filter <span class="info-bubble" data-tip="Sounds are triggered from captured network traffic, so alerts can arrive a couple seconds after the item appears in game.">i</span></h2>
+            </div>
+            <div class="item-filter-actions">
+              <button class="icon-button ghost" type="button" @click="itemFilterMuted = !itemFilterMuted">{{ itemFilterMuted ? "Unmute" : "Mute" }}</button>
+              <button class="icon-button ghost" type="button" @click="testItemFilterSound()">Test</button>
+            </div>
+          </div>
+          <div class="item-filter-status-grid">
+            <div>
+              <span>Status</span>
+              <strong>{{ itemFilterMuted ? "Muted" : "Armed" }}</strong>
+            </div>
+            <div>
+              <span>Groups</span>
+              <strong>{{ activeItemFilterGroups.length }}/{{ itemFilterGroups.length }}</strong>
+            </div>
+            <div>
+              <span>Watched</span>
+              <strong>{{ watchedItemCount }}</strong>
+            </div>
+          </div>
+          <div class="item-filter-last">
+            <span>Last match</span>
+            <strong>{{ lastItemFilterMatch?.itemLabel || "None this session" }}</strong>
+            <small v-if="lastItemFilterMatch">{{ lastItemFilterMatch.groupName }} &middot; {{ lastItemFilterMatch.soundName }} &middot; {{ formatTime(lastItemFilterMatch.createdAt) }}</small>
+            <small v-else>Matching starts from new drops after the app opens.</small>
+          </div>
+          <div v-if="activeItemFilterGroups.length" class="item-filter-card-groups">
+            <div v-for="group in activeItemFilterGroups" :key="group.id" class="item-filter-card-group">
+              <strong>{{ group.name }}</strong>
+              <span>{{ soundName(group.soundId) }} &middot; {{ group.volume }}% &middot; {{ group.cooldownMs }}ms</span>
+            </div>
+          </div>
+          <p v-else class="empty-copy">No enabled filter groups. Configure groups in the Item Filter tab.</p>
+          <button class="icon-button primary item-filter-configure" type="button" @click="activeTab = 'filter'">Configure Filter</button>
+        </article>
+
         <article class="panel log-panel">
           <div class="panel-heading">
             <div>
@@ -1052,6 +1597,134 @@ function itemTypeName(item: Record<string, unknown>): string {
       </section>
       </section>
 
+      <section v-else-if="activeTab === 'filter'" class="item-filter-view">
+        <article class="panel item-filter-page">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Loot Audio</p>
+              <h2>Item Filter <span class="info-bubble" data-tip="Sounds are triggered from captured network traffic, so alerts can arrive a couple seconds after the item appears in game.">i</span></h2>
+            </div>
+            <div class="item-filter-actions">
+              <button class="icon-button ghost" type="button" @click="itemFilterMuted = !itemFilterMuted">{{ itemFilterMuted ? "Unmute All" : "Mute All" }}</button>
+              <button class="icon-button primary" type="button" @click="testItemFilterSound()">Test Selected</button>
+            </div>
+          </div>
+
+          <div class="item-filter-layout">
+            <aside class="item-filter-group-sidebar" aria-label="Item filter groups">
+              <form class="item-filter-add-group" @submit.prevent="addItemFilterGroup">
+                <input v-model="itemFilterDraftGroupName" type="text" placeholder="New group" spellcheck="false" />
+                <button class="icon-button primary" type="submit">Add</button>
+              </form>
+              <div class="item-filter-group-list">
+                <button
+                  v-for="group in itemFilterGroups"
+                  :key="group.id"
+                  type="button"
+                  :class="['item-filter-group-button', { active: selectedItemFilterGroup?.id === group.id, disabled: !group.enabled }]"
+                  @click="selectItemFilterGroup(group)"
+                >
+                  <strong>{{ group.name }}</strong>
+                  <span>{{ group.enabled ? "Enabled" : "Disabled" }} &middot; {{ soundName(group.soundId) }}</span>
+                </button>
+              </div>
+            </aside>
+
+            <section v-if="selectedItemFilterGroup" class="item-filter-editor">
+              <div class="item-filter-editor-head">
+                <label class="settings-check">
+                  <input v-model="selectedItemFilterGroup.enabled" type="checkbox" />
+                  <span>Enabled</span>
+                </label>
+                <button class="icon-button ghost" type="button" @click="removeItemFilterGroup(selectedItemFilterGroup)">Remove Group</button>
+              </div>
+
+              <div class="item-filter-editor-grid">
+                <label class="settings-row">
+                  <span>Group name</span>
+                  <input v-model="selectedItemFilterGroup.name" type="text" spellcheck="false" />
+                </label>
+                <label class="settings-row">
+                  <span>Sound</span>
+                  <div class="sound-picker">
+                    <select v-model="selectedItemFilterGroup.soundId">
+                      <option v-for="sound in ITEM_FILTER_SOUNDS" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
+                    </select>
+                    <button class="sound-test-button" type="button" @click="testItemFilterSound(selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" aria-label="Play selected group sound">Play</button>
+                  </div>
+                </label>
+                <label class="settings-row">
+                  <span>Volume</span>
+                  <input v-model.number="selectedItemFilterGroup.volume" type="range" min="0" max="100" />
+                </label>
+                <label class="settings-row">
+                  <span>Cooldown</span>
+                  <div class="number-setting">
+                    <input v-model.number="selectedItemFilterGroup.cooldownMs" type="number" min="0" max="30000" step="100" />
+                    <small>ms</small>
+                  </div>
+                </label>
+              </div>
+
+              <div class="item-filter-rule-section">
+                <div class="item-filter-rule-heading">
+                  <strong>Rarities</strong>
+                  <span>Empty means any rarity.</span>
+                </div>
+                <div class="item-filter-chip-grid">
+                  <label v-for="rarity in ITEM_FILTER_RARITIES" :key="rarity" class="filter-box">
+                    <input :checked="selectedItemFilterGroup.rarities.includes(rarity)" type="checkbox" @change="toggleFilterRarity(selectedItemFilterGroup, rarity, eventChecked($event))" />
+                    <span>{{ rarity }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="item-filter-rule-section">
+                <div class="item-filter-rule-heading">
+                  <strong>Item types</strong>
+                  <span>Empty means any type.</span>
+                </div>
+                <div class="item-filter-type-grid">
+                  <label v-for="option in itemTypeOptions" :key="option.value" class="filter-box">
+                    <input :checked="selectedItemFilterGroup.types.includes(Number(option.value))" type="checkbox" @change="toggleFilterType(selectedItemFilterGroup, Number(option.value), eventChecked($event))" />
+                    <span>{{ option.label }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="item-filter-rule-section">
+                <div class="item-filter-rule-heading">
+                  <strong>Watched items</strong>
+                  <span>Search known item names. Exact matches can override the group sound.</span>
+                </div>
+                <form class="item-filter-add-item" @submit.prevent="addItemToFilterGroup(selectedItemFilterGroup)">
+                  <input v-model="itemFilterDraftItem" type="search" list="item-filter-suggestions" placeholder="Search item name" autocomplete="off" spellcheck="false" />
+                  <button class="icon-button primary" type="submit">Add</button>
+                </form>
+                <datalist id="item-filter-suggestions">
+                  <option v-for="name in shoppingAutocompleteNames" :key="name" :value="name"></option>
+                </datalist>
+                <div v-if="selectedItemFilterGroup.items.length" class="item-filter-specific-list">
+                  <div v-for="item in selectedItemFilterGroup.items" :key="item.name" class="item-filter-specific-row">
+                    <span>{{ item.name }}</span>
+                    <div class="sound-picker">
+                      <select v-model="item.soundId">
+                        <option value="">Group sound</option>
+                        <option v-for="sound in ITEM_FILTER_SOUNDS" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
+                      </select>
+                      <button class="sound-test-button" type="button" @click="testItemFilterSound(item.soundId || selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" :aria-label="`Play sound for ${item.name}`">Play</button>
+                    </div>
+                    <button class="shopping-remove" type="button" @click="removeItemFromFilterGroup(selectedItemFilterGroup, item)" :aria-label="`Remove ${item.name}`">×</button>
+                  </div>
+                </div>
+                <p v-else class="empty-copy">Add exact item names for high-priority watched drops.</p>
+              </div>
+            </section>
+            <p v-else class="empty-copy">Add a group to start building an item filter.</p>
+          </div>
+        </article>
+      </section>
+
       <section v-else class="past-runs-view">
         <article class="panel past-runs-panel">
           <div class="panel-heading">
@@ -1060,6 +1733,57 @@ function itemTypeName(item: Record<string, unknown>): string {
               <h2>Past Runs</h2>
             </div>
             <span class="past-run-count">{{ pastRuns.length }}/100 saved</span>
+          </div>
+
+          <div v-if="pastRuns.length" class="past-run-aggregate-grid">
+            <section v-for="panel in aggregatePanels" :key="panel.key" class="past-run-aggregate">
+              <div class="aggregate-heading">
+                <div>
+                  <h3>{{ panel.title }}</h3>
+                  <span>{{ panel.subtitle }} &middot; Avg {{ formatDuration(panel.aggregate.averageDurationMs) }}</span>
+                </div>
+                <strong>{{ formatDuration(panel.aggregate.totalDurationMs) }}</strong>
+              </div>
+              <div class="aggregate-metrics">
+                <div>
+                  <span>Gold/h</span>
+                  <strong>{{ formatNumber(panel.aggregate.goldPerHour) }}</strong>
+                  <small>Best {{ formatNumber(panel.aggregate.bestGoldPerHour) }}</small>
+                </div>
+                <div>
+                  <span>XP/h</span>
+                  <strong>{{ formatNumber(panel.aggregate.xpPerHour) }}</strong>
+                  <small>Best {{ formatNumber(panel.aggregate.bestXpPerHour) }}</small>
+                </div>
+                <div>
+                  <span>Keys</span>
+                  <strong>{{ formatNumber(panel.aggregate.totalKeys) }}</strong>
+                  <small>{{ formatNumber(panel.aggregate.totalOres) }} ore</small>
+                </div>
+                <div>
+                  <span>MF drops</span>
+                  <strong>{{ formatNumber(panel.aggregate.totalMfDrops) }}</strong>
+                  <small>{{ formatNumber(panel.aggregate.totalGold) }} gold</small>
+                </div>
+              </div>
+              <div class="aggregate-drop-grid">
+                <div v-for="drop in panel.aggregate.drops" :key="`${panel.key}-${drop.rarity}`" :class="['aggregate-drop', drop.rarity.toLowerCase()]">
+                  <span>{{ drop.rarity }}</span>
+                  <strong>{{ formatNumber(drop.total) }}</strong>
+                  <small>{{ formatNumber(drop.mf) }} MF &middot; {{ formatNumber(drop.unique) }} unique</small>
+                </div>
+              </div>
+              <div class="aggregate-top-drops">
+                <span>Top drops</span>
+                <div v-if="panel.aggregate.topDrops.length" class="aggregate-top-list">
+                  <div v-for="drop in panel.aggregate.topDrops" :key="`${panel.key}-${drop.name}`">
+                    <span>{{ drop.name }}</span>
+                    <strong>{{ formatNumber(drop.total) }}</strong>
+                  </div>
+                </div>
+                <small v-else>No tracked drops yet.</small>
+              </div>
+            </section>
           </div>
 
           <div v-if="pastRuns.length" class="past-runs-list">
@@ -1178,65 +1902,68 @@ function itemTypeName(item: Record<string, unknown>): string {
 
         <div class="settings-grid">
           <label class="settings-row">
-            <span>Log history</span>
+            <span class="settings-label">Log history <span class="info-bubble" data-tip="Controls how many Live Log entries remain visible in the diagnostics panel.">i</span></span>
             <select v-model.number="draftLogLimit" title="Visible log history">
               <option v-for="option in logLimitOptions" :key="option" :value="option">{{ option }}</option>
             </select>
           </label>
           <label class="settings-row">
-            <span>Item timeline history</span>
+            <span class="settings-label">Item timeline history <span class="info-bubble" data-tip="Controls how many recent item drops remain visible in the item timeline.">i</span></span>
             <select v-model.number="draftTimelineLimit" title="Visible item timeline history">
               <option v-for="option in logLimitOptions" :key="option" :value="option">{{ option }}</option>
             </select>
           </label>
           <label class="settings-row">
-            <span>Timeline type</span>
+            <span class="settings-label">Timeline type <span class="info-bubble" data-tip="Filters the recent item timeline to a single item type when you want to inspect one category.">i</span></span>
             <select v-model="draftTimelineType" title="Filter item timeline by item type">
               <option value="all">All</option>
               <option v-for="option in itemTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </label>
-          <label class="settings-stack">
-            <span>Launch from other source</span>
-            <div :class="['path-setting', { disabled: draftLaunchThroughSteam }]">
-              <input v-model="draftGameExecutablePath" type="text" spellcheck="false" title="Path to Hero Siege executable" :disabled="draftLaunchThroughSteam" />
-              <button class="icon-button ghost" type="button" @click="chooseGameExecutable" :disabled="draftLaunchThroughSteam">Browse</button>
+          <div class="settings-launch-row settings-wide">
+            <label class="settings-inline-check">
+              <input v-model="draftLaunchThroughSteam" type="checkbox" />
+              <span class="settings-label">Launch through Steam <span class="info-bubble" data-tip="Uses Steam's Hero Siege launch URL when you click Launch Game. Uncheck this to choose a standalone Hero Siege executable instead.">i</span></span>
+            </label>
+            <div v-if="!draftLaunchThroughSteam" class="path-setting">
+              <input v-model="draftGameExecutablePath" type="text" spellcheck="false" title="Path to Hero Siege executable" />
+              <button class="icon-button ghost" type="button" @click="chooseGameExecutable">Browse</button>
             </div>
-          </label>
-          <label class="settings-check">
-            <input v-model="draftLaunchThroughSteam" type="checkbox" />
-            <span>Launch through Steam</span>
-          </label>
+          </div>
           <label class="settings-check">
             <input v-model="draftShowCaptureDetails" type="checkbox" />
-            <span>Show capture details</span>
+            <span class="settings-label">Show capture details <span class="info-bubble" data-tip="Shows adapter, filter, parser, and packet counters in the live status area.">i</span></span>
+          </label>
+          <label class="settings-check">
+            <input v-model="draftCreateDebugMode" type="checkbox" />
+            <span class="settings-label">Verbose live logging <span class="info-bubble" data-tip="Logs every parsed drop to Live Log. Useful for Blood Pact or extreme endgame farming diagnostics; use with caution because it can get noisy.">i</span></span>
           </label>
           <label class="settings-check">
             <input v-model="draftAlwaysOnTop" type="checkbox" />
-            <span>Always on top</span>
+            <span class="settings-label">Always on top <span class="info-bubble" data-tip="Keeps the companion above other windows while you play.">i</span></span>
           </label>
           <label class="settings-check">
             <input v-model="draftLockCompactLocation" type="checkbox" />
-            <span>Lock compact and full views to their last locations</span>
+            <span class="settings-label">Lock saved window positions <span class="info-bubble" data-tip="Restores the compact and full windows to their last saved positions when switching modes.">i</span></span>
           </label>
           <label class="settings-check">
             <input v-model="draftHideSocketables" type="checkbox" />
-            <span>Hide socketable items</span>
+            <span class="settings-label">Hide socketable items <span class="info-bubble" data-tip="Removes socketables from the recent item timeline so rarer item drops are easier to scan.">i</span></span>
           </label>
           <label class="settings-check">
             <input v-model="draftHideKeys" type="checkbox" />
-            <span>Hide key items</span>
+            <span class="settings-label">Hide key items <span class="info-bubble" data-tip="Removes keys from the recent item timeline; key totals are still tracked elsewhere.">i</span></span>
           </label>
           <label class="settings-check">
             <input v-model="draftHideMaterials" type="checkbox" />
-            <span>Hide material and collectible items</span>
+            <span class="settings-label">Hide materials <span class="info-bubble" data-tip="Removes materials and collectibles from the recent item timeline while keeping resource counters intact.">i</span></span>
           </label>
           <label class="settings-check">
             <input v-model="draftSkipEmptyRuns" type="checkbox" />
-            <span>Don't save empty runs</span>
+            <span class="settings-label">Don't save empty runs <span class="info-bubble" data-tip="Prevents Past Runs entries when a session has no tracked activity.">i</span></span>
           </label>
           <label class="settings-row">
-            <span>Only save runs over</span>
+            <span class="settings-label">Only save runs over <span class="info-bubble" data-tip="Requires runs to last this many minutes before they are saved to Past Runs.">i</span></span>
             <div class="number-setting">
               <input v-model.number="draftMinRunDurationMinutes" type="number" min="0" max="1440" step="1" title="Minimum run duration in minutes" />
               <small>min</small>

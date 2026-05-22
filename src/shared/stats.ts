@@ -88,11 +88,13 @@ export class StatsEngine {
   private stats: CompanionStats = createInitialStats();
   private seenItemFingerprints = new Set<string>();
   private lastCurrencyData: CurrencyData | null = null;
+  private goldMode: string | null = null;
 
   reset(): CompanionStats {
     this.stats = createInitialStats();
     this.seenItemFingerprints.clear();
     this.lastCurrencyData = null;
+    this.goldMode = null;
     return this.snapshot();
   }
 
@@ -138,23 +140,24 @@ export class StatsEngine {
   private updateGold(currency: CurrencyData): void {
     this.lastCurrencyData = currency;
 
+    const mode = this.stats.seasonMode;
+    if (mode) {
+      const currentGold = currency[mode as keyof CurrencyData];
+      if (typeof currentGold === "number") {
+        if (this.stats.totalGold !== 0 && this.goldMode === mode) {
+          const diff = currentGold - this.stats.totalGold;
+          if (diff > 0) this.stats.totalGoldEarned += diff;
+        }
+        this.stats.totalGold = currentGold;
+        this.goldMode = mode;
+        return;
+      }
+    }
+
     if (currency.delta && currency.delta > 0) {
       this.stats.totalGoldEarned += currency.delta;
       if (this.stats.totalGold !== 0) this.stats.totalGold += currency.delta;
-      return;
     }
-
-    const mode = this.stats.seasonMode;
-    if (!mode) return;
-
-    const currentGold = currency[mode as keyof CurrencyData];
-    if (typeof currentGold !== "number") return;
-
-    if (this.stats.totalGold !== 0) {
-      const diff = currentGold - this.stats.totalGold;
-      if (diff > 0) this.stats.totalGoldEarned += diff;
-    }
-    this.stats.totalGold = currentGold;
   }
 
   private updateXpTotal(totalXp: number): void {

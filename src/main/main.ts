@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, crashReporter, dialog, ipcMain, nativeIm
 import fs from "node:fs";
 import path from "node:path";
 import { CaptureService, type CaptureUpdate } from "./capture";
-import type { CompanionState, LogEntry, RunArchivePreferences } from "../shared/app-state";
+import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences } from "../shared/app-state";
 import { createInitialStats, hasRunActivity, StatsEngine, type PastRunSummary } from "../shared/stats";
 
 const statsEngine = new StatsEngine();
@@ -12,6 +12,9 @@ const MAX_PAST_RUNS = 100;
 const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
   skipEmptyRuns: false,
   minDurationMinutes: 0,
+};
+const DEFAULT_CAPTURE_PREFERENCES: CapturePreferences = {
+  createDebugMode: false,
 };
 const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeight: 620 };
 const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
@@ -46,6 +49,7 @@ const state: CompanionState = {
   stats: createInitialStats(),
   pastRuns: [],
   runArchivePreferences: DEFAULT_RUN_ARCHIVE_PREFERENCES,
+  capturePreferences: DEFAULT_CAPTURE_PREFERENCES,
   logs,
 };
 
@@ -249,6 +253,9 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
     maybeLogPendingCaptureBacklog(update.events.length);
   }
 
+  if (update.logs?.length) {
+    for (const log of update.logs) addLog(log.level, log.message);
+  }
   if (update.log) addLog(update.log.level, update.log.message);
   publishState();
 }
@@ -375,6 +382,16 @@ ipcMain.handle("stats:reset", () => {
 ipcMain.handle("preferences:set-run-archive", (_event, preferences: Partial<RunArchivePreferences>) => {
   state.runArchivePreferences = normalizeRunArchivePreferences(preferences);
   saveRunArchivePreferences(state.runArchivePreferences);
+  publishState();
+  return state;
+});
+ipcMain.handle("preferences:set-capture", (_event, preferences: Partial<CapturePreferences>) => {
+  const nextPreferences = normalizeCapturePreferences(preferences);
+  const changed = state.capturePreferences.createDebugMode !== nextPreferences.createDebugMode;
+  state.capturePreferences = nextPreferences;
+  captureService?.setCreateDebugMode(nextPreferences.createDebugMode);
+  saveCapturePreferences(state.capturePreferences);
+  if (changed) addLog("info", `Verbose live logging ${nextPreferences.createDebugMode ? "enabled" : "disabled"}.`);
   publishState();
   return state;
 });
@@ -505,6 +522,7 @@ app.whenReady().then(async () => {
   startAppDiagnosticHeartbeat();
   state.pastRuns = loadPastRuns();
   state.runArchivePreferences = loadRunArchivePreferences();
+  state.capturePreferences = loadCapturePreferences();
   windowBounds = loadWindowBounds();
   writeAppLog("app-ready", {
     appLogPath,
@@ -516,7 +534,7 @@ app.whenReady().then(async () => {
     crashDumpsPath: app.getPath("crashDumps"),
     lastCrashReport: crashReporter.getLastCrashReport(),
   });
-  captureService = new CaptureService(applyCaptureUpdate, debugLogPath);
+  captureService = new CaptureService(applyCaptureUpdate, debugLogPath, state.capturePreferences.createDebugMode);
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   createWindow();
   addLog("info", "Hero Siege Companion started.");
@@ -787,7 +805,7 @@ function withMinimumBounds(
 function loadRunArchivePreferences(): RunArchivePreferences {
   try {
     if (!fs.existsSync(preferencesPath)) return DEFAULT_RUN_ARCHIVE_PREFERENCES;
-    const parsed = JSON.parse(fs.readFileSync(preferencesPath, "utf8")) as { runArchive?: Partial<RunArchivePreferences> };
+    const parsed = loadPreferencesFile() as { runArchive?: Partial<RunArchivePreferences> };
     return normalizeRunArchivePreferences(parsed.runArchive ?? {});
   } catch (error) {
     writeAppLog("preferences-load-error", { error: error instanceof Error ? error.message : String(error) });
@@ -797,7 +815,7 @@ function loadRunArchivePreferences(): RunArchivePreferences {
 
 function saveRunArchivePreferences(preferences: RunArchivePreferences): void {
   try {
-    fs.writeFileSync(preferencesPath, `${JSON.stringify({ runArchive: preferences }, null, 2)}\n`, "utf8");
+    savePreferencesFile({ ...loadPreferencesFile(), runArchive: preferences });
   } catch (error) {
     writeAppLog("preferences-save-error", { error: error instanceof Error ? error.message : String(error) });
   }
@@ -809,6 +827,41 @@ function normalizeRunArchivePreferences(preferences: Partial<RunArchivePreferenc
     skipEmptyRuns: Boolean(preferences.skipEmptyRuns),
     minDurationMinutes: Number.isFinite(minDuration) ? Math.max(0, Math.min(1440, Math.trunc(minDuration))) : 0,
   };
+}
+
+function loadCapturePreferences(): CapturePreferences {
+  try {
+    if (!fs.existsSync(preferencesPath)) return DEFAULT_CAPTURE_PREFERENCES;
+    const parsed = loadPreferencesFile() as { capture?: Partial<CapturePreferences> };
+    return normalizeCapturePreferences(parsed.capture ?? {});
+  } catch (error) {
+    writeAppLog("preferences-load-error", { error: error instanceof Error ? error.message : String(error) });
+    return DEFAULT_CAPTURE_PREFERENCES;
+  }
+}
+
+function saveCapturePreferences(preferences: CapturePreferences): void {
+  try {
+    savePreferencesFile({ ...loadPreferencesFile(), capture: preferences });
+  } catch (error) {
+    writeAppLog("preferences-save-error", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function normalizeCapturePreferences(preferences: Partial<CapturePreferences>): CapturePreferences {
+  return {
+    createDebugMode: Boolean(preferences.createDebugMode),
+  };
+}
+
+function loadPreferencesFile(): Record<string, unknown> {
+  if (!preferencesPath || !fs.existsSync(preferencesPath)) return {};
+  const parsed = JSON.parse(fs.readFileSync(preferencesPath, "utf8")) as unknown;
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+}
+
+function savePreferencesFile(preferences: Record<string, unknown>): void {
+  fs.writeFileSync(preferencesPath, `${JSON.stringify(preferences, null, 2)}\n`, "utf8");
 }
 
 function isPastRunSummary(value: unknown): value is PastRunSummary {

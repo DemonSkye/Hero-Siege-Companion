@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CompanionState, RunArchivePreferences } from "../shared/app-state";
+import type { CapturePreferences, CompanionState, RunArchivePreferences } from "../shared/app-state";
 
 contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   getState: (): Promise<CompanionState> => ipcRenderer.invoke("state:get"),
@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   resetStats: (): Promise<CompanionState> => ipcRenderer.invoke("stats:reset"),
   setRunArchivePreferences: (preferences: RunArchivePreferences): Promise<CompanionState> =>
     ipcRenderer.invoke("preferences:set-run-archive", preferences),
+  setCapturePreferences: (preferences: CapturePreferences): Promise<CompanionState> =>
+    ipcRenderer.invoke("preferences:set-capture", preferences),
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke("window:toggle-maximize"),
   closeWindow: (): Promise<void> => ipcRenderer.invoke("window:close"),

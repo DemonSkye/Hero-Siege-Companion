@@ -101,6 +101,36 @@ test("blood pact route packets set GBP mode before gold snapshots arrive", () =>
   assert.equal(snapshot.totalXp, 0);
 });
 
+test("gold mode changes reset baseline instead of counting cross-mode totals as earned", () => {
+  const stats = new StatsEngine();
+  const currencyEvents = messageToEvents([{ currencyData: { account_id: 39094, GSS: 2797371, GSH: 0, GNS: 0, GNH: 0, GBP: 278 } }]);
+
+  stats.applyEvents(messageToEvents([{ route: "inventory/item_stack_handler/v1", seasonal: 0, hardcore: 0, blood_pact: 6788 }]));
+  stats.applyEvents(currencyEvents);
+  let snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+
+  assert.equal(snapshot.seasonMode, "GSS");
+  assert.equal(snapshot.totalGold, 2797371);
+  assert.equal(snapshot.totalGoldEarned, 0);
+
+  stats.applyEvents(messageToEvents([{ route: "inventory/item_stack_handler/v1", seasonal: 0, hardcore: 0, blood_pact: 6788 }]));
+  snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+
+  assert.equal(snapshot.totalGold, 2797371);
+  assert.equal(snapshot.totalGoldEarned, 0);
+});
+
+test("gold snapshots take precedence over noisy delta fields", () => {
+  const stats = new StatsEngine();
+
+  stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+  stats.applyEvents(messageToEvents([{ currencyData: { account_id: 39094, GSS: 1000, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
+  const snapshot = stats.applyEvents(messageToEvents([{ goldAmount: 999999, currencyData: { account_id: 39094, GSS: 1100, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
+
+  assert.equal(snapshot.totalGold, 1100);
+  assert.equal(snapshot.totalGoldEarned, 100);
+});
+
 test("parser skips hostile message fields without throwing", () => {
   const hostile = {};
   Object.defineProperty(hostile, "currencyData", {

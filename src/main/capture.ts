@@ -30,6 +30,7 @@ export interface CaptureUpdate {
   health?: Partial<CaptureHealth>;
   events?: ParsedEvent[];
   log?: { level: "info" | "success" | "warning" | "error" | "debug"; message: string };
+  logs?: Array<{ level: "info" | "success" | "warning" | "error" | "debug"; message: string }>;
   running?: boolean;
   status?: "idle" | "waiting" | "running" | "error";
   error?: string | null;
@@ -75,12 +76,18 @@ export class CaptureService {
   private lastGoldProbeAt = 0;
   private lastAntiCheatWaitLogAt = 0;
   private lastItemDebugPayloadAt = 0;
+  private captureRequested = false;
   private readonly recentEventFingerprints = new Map<string, number>();
 
   constructor(
     private readonly emit: (update: CaptureUpdate) => void,
     private readonly debugLogPath?: string,
+    private createDebugMode = false,
   ) {}
+
+  setCreateDebugMode(enabled: boolean): void {
+    this.createDebugMode = enabled;
+  }
 
   async diagnostics(): Promise<Partial<CaptureHealth>> {
     const registry = await getNpcapRegistry();
@@ -96,10 +103,13 @@ export class CaptureService {
   }
 
   async start(): Promise<void> {
-    if (this.pollTimer) return;
+    if (this.captureRequested || this.pollTimer) return;
+    this.captureRequested = true;
 
     const initialNetworkState = await getHeroSiegeNetworkState();
+    if (!this.captureRequested) return;
     if (initialNetworkState.gameProcessIds.length === 0) {
+      this.captureRequested = false;
       this.emit({
         running: false,
         status: "idle",
@@ -112,6 +122,7 @@ export class CaptureService {
     }
 
     if (initialNetworkState.antiCheatProcessIds.length > 0 && initialNetworkState.connections.length === 0) {
+      this.captureRequested = false;
       this.emit({
         running: false,
         status: "idle",
@@ -131,6 +142,7 @@ export class CaptureService {
   }
 
   stop(): void {
+    this.captureRequested = false;
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.parserRecoveryTimer) clearTimeout(this.parserRecoveryTimer);
     if (this.diagnosticHeartbeatTimer) clearInterval(this.diagnosticHeartbeatTimer);
@@ -149,6 +161,7 @@ export class CaptureService {
     try {
       await this.refreshCapture();
     } catch (error) {
+      if (!this.captureRequested) return;
       this.writeDebugLog("capture-refresh-error", {
         source,
         error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
@@ -169,8 +182,10 @@ export class CaptureService {
   }
 
   private async refreshCapture(networkState?: HeroSiegeNetworkState): Promise<void> {
+    if (!this.captureRequested) return;
     this.lastRefreshAt = Date.now();
     const currentNetworkState = networkState ?? (await getHeroSiegeNetworkState());
+    if (!this.captureRequested) return;
     const connections = currentNetworkState.connections;
     this.emit({ connections });
 
@@ -276,6 +291,7 @@ export class CaptureService {
         connections: summarizeConnections(allConnections),
       });
       this.emit({
+        running: true,
         status: "running",
         health: { device, filter },
         log: { level: "success", message: `Capture opened on ${device} (${linkType}).` },
@@ -351,6 +367,9 @@ export class CaptureService {
     this.parsedEvents += events.length;
     this.lastEventAt = Date.now();
     const sample = summarizeEvent(events[0]);
+    const debugLogs = this.createDebugMode
+      ? events.filter((event) => shouldLogEvent(event, this.createDebugMode)).map((event) => ({ level: "debug" as const, message: summarizeEvent(event) }))
+      : undefined;
     this.emit({
       events,
       health: {
@@ -362,7 +381,8 @@ export class CaptureService {
         parserRestarts: this.parserRestarts,
         lastParserError: null,
       },
-      log: shouldLogEvent(events[0]) ? { level: "debug", message: sample } : undefined,
+      log: !this.createDebugMode && shouldLogEvent(events[0], this.createDebugMode) ? { level: "debug", message: sample } : undefined,
+      logs: debugLogs?.length ? debugLogs : undefined,
     });
   }
 
@@ -522,7 +542,7 @@ export class CaptureService {
 
   private probeDebugPayload(payloadText: string, messages: MessageValue[], events: ParsedEvent[]): void {
     if (!shouldDebugPayload(payloadText, messages, events)) return;
-    if (isOnlyItemEvents(events) && !this.shouldWriteItemDebugPayload()) return;
+    if (isOnlyItemEvents(events) && !this.createDebugMode && !this.shouldWriteItemDebugPayload()) return;
 
     this.writeDebugLog("payload", {
       eventNames: events.map((event) => event.name),
@@ -925,9 +945,9 @@ function isUsefulEvent(event: ParsedEvent): boolean {
   return true;
 }
 
-function shouldLogEvent(event: ParsedEvent): boolean {
+function shouldLogEvent(event: ParsedEvent, createDebugMode = false): boolean {
   if (event.name === EVENT_NAMES.accountMode) return false;
-  if (event.name === EVENT_NAMES.item) return false;
+  if (event.name === EVENT_NAMES.item && !createDebugMode) return false;
   return isUsefulEvent(event);
 }
 
