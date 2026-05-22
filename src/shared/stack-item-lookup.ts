@@ -175,3 +175,7 @@ export function lookupStackItemTranslation(type: number, gameId: number): ItemTr
 export function allStackItemTranslationNames(): string[] {
   return Array.from(new Set(STACK_ITEM_TRANSLATIONS.map((item) => item.name))).sort((a, b) => a.localeCompare(b));
 }
+
+export function allStackItemTranslations(): ItemTranslation[] {
+  return [...STACK_ITEM_TRANSLATIONS];
+}

@@ -3,8 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences } from "../../shared/app-state";
 import { ITEM_TYPE_NAMES, MATERIAL_LIKE_TIMELINE_TYPES } from "../../shared/constants";
 import { allItemIconNames, lookupItemIconFile } from "../../shared/item-icons";
-import { allItemTranslationNames } from "../../shared/item-lookup";
-import { allStackItemTranslationNames } from "../../shared/stack-item-lookup";
+import { allItemTranslations, type ItemTranslation } from "../../shared/item-lookup";
+import { allStackItemTranslations } from "../../shared/stack-item-lookup";
 import { createInitialStats, type ItemDropCounter, type ItemTimelineEntry, type PastRunSummary, type ResourceCounter } from "../../shared/stats";
 
 const state = ref<CompanionState>({
@@ -89,6 +89,7 @@ let toastTimer: number | null = null;
 const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
 const DEFAULT_SHOPPING_LIST = ["Copper Ore", "Iron Ore", "Gold Ore", "Ruby", "Jade", "Tarethium Ore"];
 const SHOPPING_SUGGESTION_LIMIT = 8;
+const ITEM_FILTER_SUGGESTION_LIMIT = 12;
 const TRACKED_RARITY_ORDER = ["Set", "Satanic", "Heroic", "Angelic"];
 const ITEM_FILTER_RARITIES = ["Set", "Satanic", "Heroic", "Angelic", "Unholy", "Runeword"];
 const ITEM_FILTER_SOUNDS = [
@@ -117,9 +118,9 @@ const DEFAULT_ITEM_FILTER_GROUPS: ItemFilterGroup[] = [
 const itemFilterSeenTimelineKeys = new Set<string>();
 const itemFilterLastPlayedAt = new Map<string, number>();
 let audioContext: AudioContext | null = null;
-const shoppingAutocompleteNames = Array.from(
-  new Set([...DEFAULT_SHOPPING_LIST, ...allStackItemTranslationNames(), ...allItemTranslationNames(), ...allItemIconNames()]),
-).sort((a, b) => a.localeCompare(b));
+const itemNameOptions = itemNameOptionList();
+const itemNameOptionByNormalizedName = new Map(itemNameOptions.map((option) => [normalizeLookupText(option.name), option]));
+const shoppingAutocompleteNames = itemNameOptions.map((option) => option.name);
 const itemIconImages = import.meta.glob("../../../img/items/*", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 const oreImages: Record<string, string> = {
   "Copper Ore": new URL("../../../img/Material_Copper_Ore.webp", import.meta.url).href,
@@ -176,6 +177,7 @@ interface UiPreferences {
 interface ItemFilterSpecificItem {
   name: string;
   soundId: string;
+  typeLabel: string;
 }
 
 interface ItemFilterGroup {
@@ -237,6 +239,45 @@ const itemTypeOptions = computed(() =>
     .sort((a, b) => a.label.localeCompare(b.label)),
 );
 
+function itemNameOptionList(): Array<{ name: string; typeLabel: string; sortName: string }> {
+  const options = new Map<string, { name: string; typeLabel: string; sortName: string }>();
+  const addOption = (name: string, typeLabel: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const key = normalizeLookupText(trimmed);
+    const existing = options.get(key);
+    if (!existing || typeLabel !== "Item") {
+      options.set(key, { name: trimmed, typeLabel, sortName: normalizeSortText(trimmed) });
+    }
+  };
+
+  for (const name of DEFAULT_SHOPPING_LIST) addOption(name, inferredItemTypeLabel(name));
+  for (const item of allStackItemTranslations()) addOption(item.name, itemTypeLabelFromTranslation(item));
+  for (const item of allItemTranslations()) addOption(item.name, itemTypeLabelFromTranslation(item));
+  for (const name of allItemIconNames()) addOption(name, inferredItemTypeLabel(name));
+
+  return Array.from(options.values()).sort((a, b) => a.typeLabel.localeCompare(b.typeLabel) || a.sortName.localeCompare(b.sortName));
+}
+
+function itemTypeLabelFromTranslation(item: ItemTranslation): string {
+  return ITEM_TYPE_NAMES[item.type] ?? "Item";
+}
+
+function inferredItemTypeLabel(name: string): string {
+  const normalized = normalizeLookupText(name);
+  if (normalized.includes("key")) return "Key";
+  if (normalized.includes("ore") || ["ruby", "jade"].includes(normalized)) return "Material";
+  return "Item";
+}
+
+function normalizeLookupText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizeSortText(value: string): string {
+  return normalizeLookupText(value).replace(/^(?:the|a|an) /, "");
+}
+
 const captureStatusLabel = computed(() => {
   if (state.value.captureStatus === "running") return "Capturing";
   if (state.value.captureStatus === "waiting") return "Waiting for Hero Siege";
@@ -289,8 +330,9 @@ const aggregatePanels = computed(() => [
 ]);
 const activeShoppingItem = computed(() => shoppingListItems.value[activeShoppingIndex.value] ?? shoppingListItems.value[0] ?? "");
 const activeItemFilterGroups = computed(() => itemFilterGroups.value.filter((group) => group.enabled));
-const watchedItemCount = computed(() => itemFilterGroups.value.reduce((total, group) => total + group.items.length, 0));
+const watchedItemCount = computed(() => itemFilterGroups.value.reduce((total, group) => total + new Set(group.items.map((item) => normalizeLookupText(item.name))).size, 0));
 const selectedItemFilterGroup = computed(() => itemFilterGroups.value.find((group) => group.id === activeItemFilterGroupId.value) ?? itemFilterGroups.value[0] ?? null);
+const selectedItemFilterGroupedItems = computed(() => itemFilterGroupedItems(selectedItemFilterGroup.value));
 const shoppingSuggestions = computed(() => {
   const query = shoppingDraftItem.value.trim().toLowerCase();
   const existing = new Set(shoppingListItems.value.map((item) => item.toLowerCase()));
@@ -298,6 +340,14 @@ const shoppingSuggestions = computed(() => {
   return shoppingAutocompleteNames
     .filter((name) => !existing.has(name.toLowerCase()) && name.toLowerCase().includes(query))
     .slice(0, SHOPPING_SUGGESTION_LIMIT);
+});
+const itemFilterSuggestions = computed(() => {
+  const query = normalizeLookupText(itemFilterDraftItem.value);
+  if (query.length < 3) return [];
+  const existing = new Set((selectedItemFilterGroup.value?.items ?? []).map((item) => normalizeLookupText(item.name)));
+  return shoppingAutocompleteNames
+    .filter((name) => !existing.has(normalizeLookupText(name)) && normalizeLookupText(name).includes(query))
+    .slice(0, ITEM_FILTER_SUGGESTION_LIMIT);
 });
 
 onMounted(async () => {
@@ -620,13 +670,14 @@ function normalizeSpecificItems(value: unknown): ItemFilterSpecificItem[] {
   for (const item of values) {
     const name = typeof item === "string" ? item.trim() : isRecord(item) ? stringField(item, "name").trim() : "";
     if (!name) continue;
-    const normalizedName = name.toLowerCase();
+    const canonical = canonicalItemName(name);
+    const normalizedName = normalizeLookupText(canonical);
     if (seen.has(normalizedName)) continue;
     seen.add(normalizedName);
     const soundId = isRecord(item) && validSoundId(stringField(item, "soundId")) ? stringField(item, "soundId") : "";
-    items.push({ name, soundId });
+    items.push({ name: canonical, soundId, typeLabel: itemTypeLabelForName(canonical) });
   }
-  return items.slice(0, 150);
+  return sortSpecificItems(items).slice(0, 150);
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -676,15 +727,51 @@ function selectItemFilterGroup(group: ItemFilterGroup) {
 
 function addItemToFilterGroup(group: ItemFilterGroup, value = itemFilterDraftItem.value) {
   const trimmed = value.trim();
-  const canonical = shoppingAutocompleteNames.find((name) => name.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
+  const canonical = canonicalItemName(trimmed);
   if (!canonical) return;
-  if (group.items.some((item) => item.name.toLowerCase() === canonical.toLowerCase())) return;
-  group.items = [...group.items, { name: canonical, soundId: "" }];
+  const normalizedName = normalizeLookupText(canonical);
+  if (group.items.some((item) => normalizeLookupText(item.name) === normalizedName)) return;
+  group.items = normalizeSpecificItems([...group.items, { name: canonical, soundId: "", typeLabel: itemTypeLabelForName(canonical) }]);
   itemFilterDraftItem.value = "";
 }
 
 function removeItemFromFilterGroup(group: ItemFilterGroup, item: ItemFilterSpecificItem) {
-  group.items = group.items.filter((candidate) => candidate !== item);
+  const normalizedName = normalizeLookupText(item.name);
+  group.items = group.items.filter((candidate) => normalizeLookupText(candidate.name) !== normalizedName);
+}
+
+function canonicalItemName(name: string): string {
+  const trimmed = name.trim();
+  return itemNameOptionByNormalizedName.get(normalizeLookupText(trimmed))?.name ?? trimmed;
+}
+
+function itemTypeLabelForName(name: string): string {
+  return itemNameOptionByNormalizedName.get(normalizeLookupText(name))?.typeLabel ?? inferredItemTypeLabel(name);
+}
+
+function sortSpecificItems(items: ItemFilterSpecificItem[]): ItemFilterSpecificItem[] {
+  return [...items].sort((a, b) => itemTypeLabelForName(a.name).localeCompare(itemTypeLabelForName(b.name)) || normalizeSortText(a.name).localeCompare(normalizeSortText(b.name)));
+}
+
+function itemFilterGroupedItems(group: ItemFilterGroup | null): Array<{ typeLabel: string; items: ItemFilterSpecificItem[] }> {
+  if (!group) return [];
+  const groups = new Map<string, ItemFilterSpecificItem[]>();
+  const seen = new Set<string>();
+  for (const item of sortSpecificItems(group.items)) {
+    const canonical = canonicalItemName(item.name);
+    const normalizedName = normalizeLookupText(canonical);
+    if (seen.has(normalizedName)) continue;
+    seen.add(normalizedName);
+    const typeLabel = itemTypeLabelForName(canonical);
+    item.name = canonical;
+    item.typeLabel = typeLabel;
+    const items = groups.get(typeLabel) ?? [];
+    items.push(item);
+    groups.set(typeLabel, items);
+  }
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([typeLabel, items]) => ({ typeLabel, items }));
 }
 
 function toggleFilterRarity(group: ItemFilterGroup, rarity: string, enabled: boolean) {
@@ -732,8 +819,9 @@ function processItemFilterTimeline(items: ItemTimelineEntry[]) {
 function matchItemFilter(item: ItemTimelineEntry): { group: ItemFilterGroup; soundId: string; item: ItemTimelineEntry } | null {
   const label = item.label || (item.id ? `#${item.id}` : "");
   const normalizedLabel = label.toLowerCase();
+  const normalizedLookupLabel = normalizeLookupText(label);
   for (const group of activeItemFilterGroups.value) {
-    const specificItem = group.items.find((candidate) => candidate.name.toLowerCase() === normalizedLabel);
+    const specificItem = group.items.find((candidate) => normalizeLookupText(candidate.name) === normalizedLookupLabel);
     if (specificItem) return { group, soundId: specificItem.soundId || group.soundId, item };
   }
 
@@ -1697,25 +1785,34 @@ function itemTypeName(item: Record<string, unknown>): string {
                   <strong>Watched items</strong>
                   <span>Search known item names. Exact matches can override the group sound.</span>
                 </div>
-                <form class="item-filter-add-item" @submit.prevent="addItemToFilterGroup(selectedItemFilterGroup)">
-                  <input v-model="itemFilterDraftItem" type="search" list="item-filter-suggestions" placeholder="Search item name" autocomplete="off" spellcheck="false" />
-                  <button class="icon-button primary" type="submit">Add</button>
-                </form>
-                <datalist id="item-filter-suggestions">
-                  <option v-for="name in shoppingAutocompleteNames" :key="name" :value="name"></option>
-                </datalist>
-                <div v-if="selectedItemFilterGroup.items.length" class="item-filter-specific-list">
-                  <div v-for="item in selectedItemFilterGroup.items" :key="item.name" class="item-filter-specific-row">
-                    <span>{{ item.name }}</span>
-                    <div class="sound-picker">
-                      <select v-model="item.soundId">
-                        <option value="">Group sound</option>
-                        <option v-for="sound in ITEM_FILTER_SOUNDS" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
-                      </select>
-                      <button class="sound-test-button" type="button" @click="testItemFilterSound(item.soundId || selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" :aria-label="`Play sound for ${item.name}`">Play</button>
-                    </div>
-                    <button class="shopping-remove" type="button" @click="removeItemFromFilterGroup(selectedItemFilterGroup, item)" :aria-label="`Remove ${item.name}`">×</button>
+                <div class="item-filter-search-wrap">
+                  <form class="item-filter-add-item" @submit.prevent="addItemToFilterGroup(selectedItemFilterGroup)">
+                    <input v-model="itemFilterDraftItem" type="search" placeholder="Search item name" autocomplete="off" spellcheck="false" />
+                    <button class="icon-button primary" type="submit">Add</button>
+                  </form>
+                  <div v-if="itemFilterDraftItem.trim().length >= 3 && itemFilterSuggestions.length" class="item-filter-suggestions">
+                    <button v-for="name in itemFilterSuggestions" :key="name" type="button" @click="addItemToFilterGroup(selectedItemFilterGroup, name)">
+                      {{ name }}
+                    </button>
                   </div>
+                  <p v-else-if="itemFilterDraftItem.trim().length > 0 && itemFilterDraftItem.trim().length < 3" class="item-filter-search-hint">Type at least 3 characters for suggestions.</p>
+                  <p v-else-if="itemFilterDraftItem.trim().length >= 3" class="item-filter-search-hint">No matching known items.</p>
+                </div>
+                <div v-if="selectedItemFilterGroupedItems.length" class="item-filter-specific-list">
+                  <section v-for="itemGroup in selectedItemFilterGroupedItems" :key="itemGroup.typeLabel" class="item-filter-specific-type">
+                    <h4>{{ itemGroup.typeLabel }}</h4>
+                    <div v-for="item in itemGroup.items" :key="`${itemGroup.typeLabel}-${item.name}`" class="item-filter-specific-row">
+                      <span>{{ item.name }}</span>
+                      <div class="sound-picker">
+                        <select v-model="item.soundId">
+                          <option value="">Group sound</option>
+                          <option v-for="sound in ITEM_FILTER_SOUNDS" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
+                        </select>
+                        <button class="sound-test-button" type="button" @click="testItemFilterSound(item.soundId || selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" :aria-label="`Play sound for ${item.name}`">Play</button>
+                      </div>
+                      <button class="shopping-remove" type="button" @click="removeItemFromFilterGroup(selectedItemFilterGroup, item)" :aria-label="`Remove ${item.name}`">×</button>
+                    </div>
+                  </section>
                 </div>
                 <p v-else class="empty-copy">Add exact item names for high-priority watched drops.</p>
               </div>

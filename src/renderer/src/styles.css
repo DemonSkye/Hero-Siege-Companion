@@ -653,6 +653,12 @@ h2 {
   transform: translate(0, 0);
 }
 
+.view-tabs .info-bubble::after {
+  top: calc(100% + 8px);
+  bottom: auto;
+  z-index: 50;
+}
+
 .metric strong {
   margin: 8px 0 4px;
   color: #ffffff;
@@ -906,6 +912,15 @@ h2 {
   margin-bottom: 10px;
 }
 
+.item-filter-search-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.item-filter-search-wrap .item-filter-add-item {
+  margin-bottom: 0;
+}
+
 .item-filter-add-group input,
 .item-filter-add-item input,
 .item-filter-editor-grid input[type="text"],
@@ -920,6 +935,59 @@ h2 {
   background: #181b22;
   color: #e9edf4;
   font: inherit;
+}
+
+.item-filter-suggestions {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 6px;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.item-filter-suggestions::-webkit-scrollbar {
+  width: 9px;
+}
+
+.item-filter-suggestions::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.item-filter-suggestions::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(18, 21, 27, 0.92);
+  border-radius: 999px;
+  background: #3f9487;
+}
+
+.item-filter-suggestions button {
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #e8edf5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.item-filter-suggestions button:hover {
+  border-color: rgba(137, 216, 199, 0.35);
+  background: rgba(137, 216, 199, 0.1);
+  color: #dffff8;
+}
+
+.item-filter-search-hint {
+  margin: 0;
+  color: #9fa8b8;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .sound-picker {
@@ -1104,8 +1172,21 @@ h2 {
 
 .item-filter-specific-list {
   display: grid;
+  align-content: start;
+  gap: 14px;
+  max-height: clamp(260px, calc(100vh - 430px), 620px);
+}
+
+.item-filter-specific-type {
+  display: grid;
   gap: 8px;
-  max-height: 240px;
+}
+
+.item-filter-specific-type h4 {
+  margin: 0;
+  color: #cbd2df;
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .item-filter-specific-row {
