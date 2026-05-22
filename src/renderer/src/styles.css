@@ -1179,13 +1179,15 @@ h2 {
 
 .item-filter-specific-type {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .item-filter-specific-type h4 {
   margin: 0;
-  color: #cbd2df;
-  font-size: 13px;
+  padding: 4px 0 6px;
+  border-bottom: 1px solid rgba(137, 216, 199, 0.26);
+  color: #89d8c7;
+  font-size: 15px;
   font-weight: 900;
 }
 
@@ -1194,6 +1196,9 @@ h2 {
   grid-template-columns: minmax(0, 1fr) minmax(210px, 300px) 34px;
   gap: 8px;
   align-items: center;
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(137, 216, 199, 0.18);
 }
 
 .item-filter-specific-row > span {
