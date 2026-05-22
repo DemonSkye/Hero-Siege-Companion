@@ -372,10 +372,11 @@ function parseAddedItemObject(item: MessageObject, fingerprint?: string): AddedI
 
 function inferItemRarityName(rawRarity: string | number, item: MessageObject, type: number, translation: ItemTranslation | null): string {
   const mappedRarity = ITEM_RARITY[String(rawRarity)];
-  if (mappedRarity && mappedRarity !== "Common") return mappedRarity;
 
   const identity = `${translation?.localizationId ?? ""} ${translation?.name ?? ""}`.toLowerCase();
   const knownRarity = lookupKnownItemRarity(type, translation?.name);
+  if (knownRarity && shouldKnownRarityOverridePacket(mappedRarity)) return knownRarity;
+  if (mappedRarity && mappedRarity !== "Common") return mappedRarity;
   if (knownRarity) return knownRarity;
 
   if (isSetItemName(translation?.name)) return "Set";
@@ -390,6 +391,10 @@ function inferItemRarityName(rawRarity: string | number, item: MessageObject, ty
 
   const fallback = String(rawRarity).replace(/^\w/, (char) => char.toUpperCase());
   return fallback && !/^-?\d+$/.test(fallback) ? fallback : "Unknown";
+}
+
+function shouldKnownRarityOverridePacket(mappedRarity: string | undefined): boolean {
+  return mappedRarity === undefined || ["Common", "Superior", "Rare", "Mythic"].includes(mappedRarity);
 }
 
 function itemDisplayLabel(item: {

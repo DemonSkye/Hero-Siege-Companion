@@ -440,6 +440,49 @@ test("known ring rarities override common packet rarity", () => {
   assert.equal(snapshot.items.Satanic.total, 0);
 });
 
+test("known item rarities override superior packet rarity", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-3909410-bloodletters-crown-33-0": {
+            e: 10,
+            a: 25605711,
+            j: 0,
+            b: 33,
+            d: 2,
+            c: 1,
+            sh: "superior-set",
+          },
+          "10-3909410-wakaykas-tomahawk-0-3": {
+            e: 10,
+            a: 203653800,
+            j: 16,
+            b: 0,
+            d: 2,
+            c: 1,
+            sh: "superior-satanic",
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.deepEqual(
+    events.map((event) => [event.value.label, event.value.rarityName]),
+    [
+      ["Blood-letter's Crown", "Set"],
+      ["Wakayka's Tomahawk", "Satanic"],
+    ],
+  );
+  assert.equal(snapshot.items.Set.total, 1);
+  assert.equal(snapshot.items.Satanic.total, 1);
+});
+
 test("known item rarity map classifies satanic drops", () => {
   const events = messageToEvents([
     {
