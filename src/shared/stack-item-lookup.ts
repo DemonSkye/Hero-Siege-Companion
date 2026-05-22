@@ -4,6 +4,9 @@ const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "stack_basic_key", name: "Basic Key", gameId: 0, type: 12, weaponType: 0 },
   { localizationId: "stack_crystal_key", name: "Crystal Key", gameId: 1, type: 12, weaponType: 0 },
   { localizationId: "stack_bifrost_key", name: "Bifr\u00f6st Key", gameId: 2, type: 12, weaponType: 0 },
+  { localizationId: "stack_ruby_key", name: "Ruby Key", gameId: 7, type: 12, weaponType: 0 },
+  { localizationId: "stack_curacan_key", name: "Curacan Key", gameId: 31, type: 12, weaponType: 0 },
+  { localizationId: "stack_terror_key", name: "Key of Terror", gameId: 5, type: 12, weaponType: 0 },
   { localizationId: "stack_smelly_cheese", name: "Smelly Cheese", gameId: 9, type: 12, weaponType: 0 },
   { localizationId: "stack_cellar_key", name: "Cellar Key", gameId: 10, type: 12, weaponType: 0 },
   { localizationId: "stack_tower_key", name: "Tower Key", gameId: 11, type: 12, weaponType: 0 },
@@ -37,6 +40,7 @@ const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "stack_satans_horn", name: "Satan's Horn", gameId: 7, type: 13, weaponType: 0 },
   { localizationId: "stack_soul_of_anguish", name: "Soul of Anguish", gameId: 14, type: 13, weaponType: 0 },
   { localizationId: "stack_scroll_of_ra", name: "Scroll of Ra", gameId: 17, type: 13, weaponType: 0 },
+  { localizationId: "stack_inf_scroll_of_ra", name: "Infernal Scroll of Ra", gameId: 52, type: 13, weaponType: 0 },
   { localizationId: "stack_colosseum_fragment", name: "Colosseum Fragment", gameId: 18, type: 13, weaponType: 0 },
   { localizationId: "stack_death", name: "Death", gameId: 19, type: 13, weaponType: 0 },
   { localizationId: "stack_the_fool", name: "The Fool", gameId: 21, type: 13, weaponType: 0 },
@@ -163,7 +167,12 @@ const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "stack_flawed_diamond", name: "Flawed Diamond", gameId: 131, type: 15, weaponType: 0 },
   { localizationId: "stack_diamond", name: "Diamond", gameId: 132, type: 15, weaponType: 0 },
   { localizationId: "stack_flawless_diamond", name: "Flawless Diamond", gameId: 133, type: 15, weaponType: 0 },
-  { localizationId: "stack_perfect_diamond", name: "Perfect Diamond", gameId: 134, type: 15, weaponType: 0 },
+  { localizationId: "stack_perfect_diamond", name: "Perfect Diamond", gameId: 134, type: 15, weaponType: 0 },  
+  { localizationId: "stack_inf_colosseum_fragment", name: "Infernal Colosseum Fragment", gameId: 53, type: 13, weaponType: 0 },
+  { localizationId: "stack_inf_dimensional_shard", name: "Infernal Dimensional Shard", gameId: 42, type: 13, weaponType: 0 },
+  { localizationId: "stack_inf_battle_fragment", name: "Infernal Battle Fragment", gameId: 41, type: 13, weaponType: 0 },
+  { localizationId: "stack_blessed_dice", name: "Blessed Dice", gameId: 67, type: 14, weaponType: 0 },
+  { localizationId: "stack_tinkerers_toolkit", name: "Tinkerer's Toolkit", gameId: 52, type: 14, weaponType: 0 },
 ];
 
 const stackLookup = new Map(STACK_ITEM_TRANSLATIONS.map((item) => [`${item.type}:${item.gameId}`, item]));
