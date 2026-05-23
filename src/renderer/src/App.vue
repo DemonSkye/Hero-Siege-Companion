@@ -29,8 +29,18 @@ import {
 } from "./lib/item-filters";
 import { ITEM_TYPE_OPTIONS, SHOPPING_SUGGESTION_LIMIT, shoppingAutocompleteNames } from "./lib/item-options";
 import {
+  activeItemResearchEntries,
+  isItemResearchCandidate,
+  normalizeItemResearchEntries,
+  updateItemResearchEntry,
+  upsertItemResearchEntry,
+  type ItemResearchEntry,
+} from "./lib/item-research";
+import {
   LOG_LIMIT_OPTIONS,
+  createConfigurationExportPayload,
   defaultPreferences,
+  importConfigurationPayload,
   loadPreferences,
   normalizeRunDurationMinutes,
   normalizeShoppingList,
@@ -42,6 +52,7 @@ import {
   resourceRecordTotal,
   sortedDropBreakdown,
 } from "./lib/past-runs";
+import { normalizePostRunReportConfig, type PostRunReportConfig } from "./lib/report-config";
 import { normalizeLookupText } from "./lib/text";
 
 const state = ref<CompanionState>({
@@ -94,7 +105,7 @@ const timelineType = ref("all");
 const gameExecutablePath = ref("");
 const launchThroughSteam = ref(true);
 const activeTab = ref<"live" | "past" | "filter">("live");
-const appVersion = "0.1.4";
+const appVersion = "0.1.5";
 const expandedLogIds = ref<Set<string>>(new Set());
 const draftLogLimit = ref(20);
 const draftTimelineLimit = ref(10);
@@ -104,29 +115,42 @@ const draftLockCompactLocation = ref(false);
 const draftHideSocketables = ref(false);
 const draftHideKeys = ref(false);
 const draftHideMaterials = ref(false);
+const draftDeveloperItemResearchEnabled = ref(false);
+const draftUnknownItemAudioPrompt = ref(false);
 const draftTimelineType = ref("all");
 const draftGameExecutablePath = ref("");
 const draftLaunchThroughSteam = ref(true);
 const draftCreateDebugMode = ref(false);
 const draftSkipEmptyRuns = ref(false);
 const draftMinRunDurationMinutes = ref(0);
+const configIncludeAppSettings = ref(true);
+const configIncludeRunSaving = ref(true);
+const configIncludeReportTracking = ref(true);
+const configIncludeLootFilters = ref(true);
+const configIncludeItemResearch = ref(false);
 const shoppingListItems = ref<string[]>([]);
 const shoppingDraftItem = ref("");
 const itemFilterGroups = ref<ItemFilterGroup[]>([]);
 const itemFilterMuted = ref(false);
+const postRunReport = ref<PostRunReportConfig>(defaultPreferences.postRunReport);
+const developerItemResearchEnabled = ref(false);
+const unknownItemAudioPrompt = ref(false);
+const itemResearchEntries = ref<ItemResearchEntry[]>([]);
 const itemFilterDraftItem = ref("");
 const itemFilterDraftGroupName = ref("");
 const activeItemFilterGroupId = ref("");
 const lastItemFilterMatch = ref<ItemFilterMatch | null>(null);
 const activeShoppingIndex = ref(0);
-const copiedShoppingItem = ref("");
+const toastMessage = ref("");
 const expandedDropRarity = ref<string | null>(null);
 const expandedPastRunDropKey = ref<string | null>(null);
 const availableUpdate = ref<ReleaseUpdateInfo | null>(null);
 let toastTimer: number | null = null;
 const IGNORED_UPDATE_STORAGE_KEY = "hero-siege-companion:ignored-update:v1";
 const itemFilterSeenTimelineKeys = new Set<string>();
+const itemResearchSeenTimelineKeys = new Set<string>();
 const itemFilterLastPlayedAt = new Map<string, number>();
+let lastUnknownItemPromptAt = 0;
 const itemTypeOptions = ITEM_TYPE_OPTIONS;
 
 const captureStatusLabel = computed(() => {
@@ -176,6 +200,7 @@ const pastRuns = computed(() => state.value.pastRuns ?? []);
 const activeShoppingItem = computed(() => shoppingListItems.value[activeShoppingIndex.value] ?? shoppingListItems.value[0] ?? "");
 const activeItemFilterGroups = computed(() => itemFilterGroups.value.filter((group) => group.enabled));
 const watchedItemCount = computed(() => itemFilterGroups.value.reduce((total, group) => total + new Set(group.items.map((item) => normalizeLookupText(item.name))).size, 0));
+const unresolvedItemResearchEntries = computed(() => activeItemResearchEntries(itemResearchEntries.value));
 const selectedItemFilterGroup = computed(() => itemFilterGroups.value.find((group) => group.id === activeItemFilterGroupId.value) ?? itemFilterGroups.value[0] ?? null);
 const selectedItemFilterGroupedItems = computed(() => itemFilterGroupedItems(selectedItemFilterGroup.value));
 const shoppingSuggestions = computed(() => {
@@ -200,8 +225,10 @@ onMounted(async () => {
   await syncWindowMode();
   state.value = await window.heroSiegeCompanion.getState();
   initializeItemFilterSeenItems(state.value.stats.itemTimeline);
+  initializeItemResearchSeenItems(state.value.stats.itemTimeline);
   unsubscribe = window.heroSiegeCompanion.onStateUpdated((nextState) => {
     processItemFilterTimeline(nextState.stats.itemTimeline);
+    processItemResearchTimeline(nextState.stats.itemTimeline);
     state.value = nextState;
   });
   void checkForUpdateNotice();
@@ -210,7 +237,7 @@ onMounted(async () => {
   }, 1000);
 });
 
-watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, itemFilterGroups, itemFilterMuted], () => {
+watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, itemFilterGroups, itemFilterMuted, postRunReport, developerItemResearchEnabled, unknownItemAudioPrompt, itemResearchEntries], () => {
   savePreferences(currentPreferences());
   clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
@@ -276,6 +303,55 @@ async function applyDraftPreferences() {
   await syncWindowMode();
 }
 
+async function exportConfiguration() {
+  try {
+    const payload = createConfigurationExportPayload(
+      currentDraftPreferences(),
+      currentDraftRunArchivePreferences(),
+      currentDraftCapturePreferences(),
+      currentConfigurationTransferOptions(),
+    );
+    const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2));
+    if (exported) showToast("Configuration exported");
+  } catch {
+    showToast("Configuration export failed");
+  }
+}
+
+async function importConfiguration() {
+  try {
+    const contents = await window.heroSiegeCompanion.importConfiguration();
+    if (!contents) return;
+
+    const imported = importConfigurationPayload(contents, currentPreferences(), currentConfigurationTransferOptions());
+    applyPreferences(imported.uiPreferences);
+    savePreferences(currentPreferences());
+
+    if (imported.runArchivePreferences) {
+      state.value = await window.heroSiegeCompanion.setRunArchivePreferences(imported.runArchivePreferences);
+    }
+    if (imported.capturePreferences) {
+      state.value = await window.heroSiegeCompanion.setCapturePreferences(imported.capturePreferences);
+    }
+
+    loadDraftPreferences(currentPreferences());
+    await syncWindowMode();
+    showToast("Configuration imported");
+  } catch {
+    showToast("Configuration import failed");
+  }
+}
+
+function currentConfigurationTransferOptions() {
+  return {
+    includeAppSettings: configIncludeAppSettings.value,
+    includeRunSaving: configIncludeRunSaving.value,
+    includeReportTracking: configIncludeReportTracking.value,
+    includeLootFilters: configIncludeLootFilters.value,
+    includeItemResearch: configIncludeItemResearch.value,
+  };
+}
+
 async function toggleCompactMode() {
   compactMode.value = !compactMode.value;
   if (compactMode.value) showSettings.value = false;
@@ -298,6 +374,10 @@ function currentPreferences(): UiPreferences {
     launchThroughSteam: launchThroughSteam.value,
     itemFilterGroups: itemFilterGroups.value,
     itemFilterMuted: itemFilterMuted.value,
+    postRunReport: postRunReport.value,
+    developerItemResearchEnabled: developerItemResearchEnabled.value,
+    unknownItemAudioPrompt: unknownItemAudioPrompt.value,
+    itemResearchEntries: itemResearchEntries.value,
   };
 }
 
@@ -316,6 +396,10 @@ function applyPreferences(preferences: UiPreferences) {
   launchThroughSteam.value = preferences.launchThroughSteam;
   itemFilterGroups.value = preferences.itemFilterGroups;
   itemFilterMuted.value = preferences.itemFilterMuted;
+  postRunReport.value = preferences.postRunReport;
+  developerItemResearchEnabled.value = preferences.developerItemResearchEnabled;
+  unknownItemAudioPrompt.value = preferences.unknownItemAudioPrompt;
+  itemResearchEntries.value = preferences.itemResearchEntries;
   clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
 }
@@ -336,7 +420,15 @@ function currentDraftPreferences(): UiPreferences {
     launchThroughSteam: draftLaunchThroughSteam.value,
     itemFilterGroups: itemFilterGroups.value,
     itemFilterMuted: itemFilterMuted.value,
+    postRunReport: postRunReport.value,
+    developerItemResearchEnabled: draftDeveloperItemResearchEnabled.value,
+    unknownItemAudioPrompt: draftDeveloperItemResearchEnabled.value && draftUnknownItemAudioPrompt.value,
+    itemResearchEntries: itemResearchEntries.value,
   };
+}
+
+function updatePostRunReportConfig(value: PostRunReportConfig) {
+  postRunReport.value = normalizePostRunReportConfig(value);
 }
 
 function loadDraftPreferences(preferences: UiPreferences) {
@@ -348,6 +440,8 @@ function loadDraftPreferences(preferences: UiPreferences) {
   draftHideSocketables.value = preferences.hideSocketables;
   draftHideKeys.value = preferences.hideKeys;
   draftHideMaterials.value = preferences.hideMaterials;
+  draftDeveloperItemResearchEnabled.value = preferences.developerItemResearchEnabled;
+  draftUnknownItemAudioPrompt.value = preferences.unknownItemAudioPrompt;
   draftTimelineType.value = preferences.timelineType;
   draftGameExecutablePath.value = preferences.gameExecutablePath;
   draftLaunchThroughSteam.value = preferences.launchThroughSteam;
@@ -410,16 +504,20 @@ async function copyShoppingItem(item: string, advance: boolean) {
   const trimmed = item.trim();
   if (!trimmed) return;
   await window.heroSiegeCompanion.writeClipboardText(trimmed);
-  copiedShoppingItem.value = trimmed;
-  if (toastTimer) window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => {
-    copiedShoppingItem.value = "";
-    toastTimer = null;
-  }, 1600);
+  showToast(`Copied ${trimmed} to clipboard`);
 
   const index = shoppingListItems.value.findIndex((candidate) => candidate === item);
   if (index >= 0) activeShoppingIndex.value = index;
   if (advance) moveToNextShoppingItem();
+}
+
+function showToast(message: string) {
+  toastMessage.value = message;
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toastMessage.value = "";
+    toastTimer = null;
+  }, 1800);
 }
 
 function addShoppingItem(value = shoppingDraftItem.value) {
@@ -508,6 +606,47 @@ function processItemFilterTimeline(items: ItemTimelineEntry[]) {
     const match = matchItemFilter(item, activeItemFilterGroups.value);
     if (match) handleItemFilterMatch(match);
   }
+}
+
+function initializeItemResearchSeenItems(items: ItemTimelineEntry[]) {
+  itemResearchSeenTimelineKeys.clear();
+  for (const item of items) itemResearchSeenTimelineKeys.add(itemTimelineKey(item));
+}
+
+function processItemResearchTimeline(items: ItemTimelineEntry[]) {
+  const nextItems = items.filter((item) => !itemResearchSeenTimelineKeys.has(itemTimelineKey(item))).reverse();
+  for (const item of nextItems) {
+    itemResearchSeenTimelineKeys.add(itemTimelineKey(item));
+    if (!developerItemResearchEnabled.value || !isItemResearchCandidate(item)) continue;
+    itemResearchEntries.value = upsertItemResearchEntry(itemResearchEntries.value, item);
+    maybePromptUnknownItem();
+  }
+}
+
+function maybePromptUnknownItem() {
+  if (!unknownItemAudioPrompt.value) return;
+  const nowMs = Date.now();
+  if (nowMs - lastUnknownItemPromptAt < 5000) return;
+  lastUnknownItemPromptAt = nowMs;
+  void playItemFilterSound("low-pulse", 45).catch(() => {
+    // Item research audio is optional and should never affect capture.
+  });
+}
+
+function saveItemResearchEntry(signature: string, value: { resolvedName: string; notes: string }) {
+  itemResearchEntries.value = updateItemResearchEntry(itemResearchEntries.value, signature, value);
+}
+
+function ignoreItemResearchEntry(signature: string) {
+  itemResearchEntries.value = updateItemResearchEntry(itemResearchEntries.value, signature, { ignored: true });
+}
+
+function resetItemResearchEntry(signature: string) {
+  itemResearchEntries.value = updateItemResearchEntry(itemResearchEntries.value, signature, { resolvedName: "", notes: "", ignored: false });
+}
+
+function clearResolvedItemResearchEntries() {
+  itemResearchEntries.value = normalizeItemResearchEntries(itemResearchEntries.value.filter((entry) => !entry.resolvedName.trim() && !entry.ignored));
 }
 
 function handleItemFilterMatch(match: ItemFilterRuleMatch) {
@@ -658,15 +797,29 @@ function toggleLog(log: LogEntry) {
         :selected-item-filter-grouped-items="selectedItemFilterGroupedItems"
         :item-filter-suggestions="itemFilterSuggestions"
         :item-type-options="itemTypeOptions"
+        :developer-item-research-enabled="developerItemResearchEnabled"
+        :item-research-entries="itemResearchEntries"
+        :unresolved-item-research-count="unresolvedItemResearchEntries.length"
         @add-group="addItemFilterGroup"
         @select-group="selectItemFilterGroup"
         @remove-group="removeItemFilterGroup"
         @add-item-to-group="addItemToFilterGroup"
         @remove-item-from-group="removeItemFromFilterGroup"
         @test-sound="testItemFilterSound"
+        @save-item-research-entry="saveItemResearchEntry"
+        @ignore-item-research-entry="ignoreItemResearchEntry"
+        @reset-item-research-entry="resetItemResearchEntry"
+        @clear-resolved-item-research-entries="clearResolvedItemResearchEntries"
       />
 
-      <PastRunsView v-else v-model:expanded-drop-key="expandedPastRunDropKey" :past-runs="pastRuns" />
+      <PastRunsView
+        v-else
+        :expanded-drop-key="expandedPastRunDropKey"
+        :report-config="postRunReport"
+        :past-runs="pastRuns"
+        @update:expanded-drop-key="expandedPastRunDropKey = $event"
+        @update:report-config="updatePostRunReportConfig"
+      />
     </div>
     <SettingsModal
       v-if="showSettings"
@@ -682,16 +835,25 @@ function toggleLog(log: LogEntry) {
       v-model:hide-socketables="draftHideSocketables"
       v-model:hide-keys="draftHideKeys"
       v-model:hide-materials="draftHideMaterials"
+      v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
+      v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
       v-model:skip-empty-runs="draftSkipEmptyRuns"
       v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
+      v-model:config-include-app-settings="configIncludeAppSettings"
+      v-model:config-include-run-saving="configIncludeRunSaving"
+      v-model:config-include-report-tracking="configIncludeReportTracking"
+      v-model:config-include-loot-filters="configIncludeLootFilters"
+      v-model:config-include-item-research="configIncludeItemResearch"
       :log-limit-options="logLimitOptions"
       :item-type-options="itemTypeOptions"
       @close="closeSettings"
       @choose-game-executable="chooseGameExecutable"
+      @export-configuration="exportConfiguration"
+      @import-configuration="importConfiguration"
       @reset="resetDraftPreferences"
       @apply="applyDraftPreferences"
     />
-    <div v-if="copiedShoppingItem" class="toast-bubble" role="status">Copied {{ copiedShoppingItem }} to clipboard</div>
+    <div v-if="toastMessage" class="toast-bubble" role="status">{{ toastMessage }}</div>
     <span class="app-version">v{{ appVersion }}</span>
     <div class="resize-grip" aria-hidden="true"></div>
   </main>

@@ -95,7 +95,8 @@ button {
 .app-scroll {
   min-height: 0;
   flex: 1;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0 8px 22px 0;
   scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
   scrollbar-width: thin;
@@ -938,6 +939,92 @@ h2 {
   gap: 14px;
 }
 
+.item-research-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 211, 138, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 211, 138, 0.055);
+}
+
+.item-research-list {
+  display: grid;
+  gap: 8px;
+  max-height: 250px;
+  overflow: auto;
+  padding-right: 6px;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.item-research-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.item-research-row.resolved {
+  border-color: rgba(67, 180, 118, 0.2);
+  background: rgba(67, 180, 118, 0.07);
+}
+
+.item-research-row.ignored {
+  opacity: 0.56;
+}
+
+.item-research-meta {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.item-research-meta strong,
+.item-research-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-research-meta strong {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.item-research-meta span {
+  color: #9fa8b8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.item-research-row input {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  background: #181b22;
+  color: #e9edf4;
+  font: inherit;
+  font-size: 12px;
+}
+
+.item-research-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.item-research-clear {
+  justify-self: end;
+}
+
 .item-filter-group-sidebar,
 .item-filter-editor {
   min-height: 0;
@@ -1773,17 +1860,65 @@ h2 {
 }
 
 .past-runs-view {
+  min-width: 0;
   margin-top: 10px;
+  overflow-x: hidden;
 }
 
 .past-runs-panel {
+  min-width: 0;
   min-height: calc(100vh - 178px);
+  overflow-x: hidden;
 }
 
 .past-run-count {
   color: #9fa8b8;
   font-size: 12px;
   font-weight: 800;
+}
+
+.past-runs-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-config-modal {
+  width: min(900px, calc(100vw - 48px));
+}
+
+.report-config-modal-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  margin: 18px 0;
+  padding-right: 6px;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.report-config-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tracked-report-item-list {
+  display: grid;
+  gap: 7px;
+  max-height: 170px;
+  overflow: auto;
+  padding-right: 6px;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.tracked-report-item-row {
+  grid-template-columns: minmax(0, 1fr) 34px;
 }
 
 .past-run-aggregate-grid {
@@ -1838,6 +1973,10 @@ h2 {
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.13);
+}
+
+.dynamic-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
 }
 
 .aggregate-metrics div,
@@ -1918,7 +2057,8 @@ h2 {
   display: grid;
   max-height: calc(100vh - 260px);
   gap: 12px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-right: 8px;
   scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
   scrollbar-width: thin;
@@ -1943,7 +2083,8 @@ h2 {
   display: grid;
   gap: 12px;
   max-height: min(520px, calc(100vh - 300px));
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 8px;
@@ -2023,6 +2164,14 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.past-run-metrics small {
+  display: block;
+  margin-top: 3px;
+  color: #9fa8b8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .past-run-drops {
   display: grid;
   gap: 10px;
@@ -2049,7 +2198,7 @@ h2 {
 
 .resource-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
 }
 
@@ -2103,8 +2252,10 @@ h2 {
   inset: 0;
   z-index: 20;
   display: grid;
-  place-items: center;
-  padding: 24px;
+  align-items: start;
+  justify-items: center;
+  overflow: auto;
+  padding: 72px 24px 24px;
   background: rgba(6, 8, 12, 0.6);
   backdrop-filter: blur(10px);
 }
@@ -2166,7 +2317,8 @@ h2 {
 .settings-row,
 .settings-check,
 .settings-stack,
-.settings-launch-row {
+.settings-launch-row,
+.settings-config-row {
   display: flex;
   min-height: 38px;
   align-items: center;
@@ -2199,7 +2351,8 @@ h2 {
 .settings-row .info-bubble::after,
 .settings-check .info-bubble::after,
 .settings-stack .info-bubble::after,
-.settings-launch-row .info-bubble::after {
+.settings-launch-row .info-bubble::after,
+.settings-config-row .info-bubble::after {
   top: calc(100% + 8px);
   bottom: auto;
   left: 0;
@@ -2210,7 +2363,8 @@ h2 {
 .settings-row .info-bubble:hover::after,
 .settings-check .info-bubble:hover::after,
 .settings-stack .info-bubble:hover::after,
-.settings-launch-row .info-bubble:hover::after {
+.settings-launch-row .info-bubble:hover::after,
+.settings-config-row .info-bubble:hover::after {
   transform: translate(0, 0);
 }
 
@@ -2301,6 +2455,26 @@ h2 {
   grid-template-columns: minmax(210px, auto) minmax(0, 1fr);
 }
 
+.settings-config-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.settings-config-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.settings-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-inline-check {
   display: inline-flex;
   min-width: 0;
@@ -2365,11 +2539,23 @@ h2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .past-runs-heading-actions {
+    justify-content: flex-start;
+  }
+
+  .report-config-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
   .resource-columns {
     grid-template-columns: 1fr;
   }
 
   .item-filter-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .item-research-row {
     grid-template-columns: 1fr;
   }
 
@@ -2394,6 +2580,14 @@ h2 {
 
   .settings-launch-row {
     grid-template-columns: 1fr;
+  }
+
+  .settings-config-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-config-actions {
+    justify-content: flex-start;
   }
 
   .settings-row select,

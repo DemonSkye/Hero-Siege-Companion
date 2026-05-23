@@ -1,25 +1,58 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { PastRunSummary } from "../../../shared/stats";
 import { formatDateTime, formatDuration, formatNumber, formatTime } from "../lib/format";
 import { itemIconUrl, resourceImage } from "../lib/item-assets";
-import { aggregatePastRuns, pastRunDropKey, runResourceTotal, runTrackedItems } from "../lib/past-runs";
+import { ITEM_FILTER_SUGGESTION_LIMIT } from "../lib/item-filters";
+import { shoppingAutocompleteNames } from "../lib/item-options";
+import { aggregatePastRuns, pastRunDropKey, runResourceTotal, runResourceTypeCount, runTrackedItems, type PastRunAggregate } from "../lib/past-runs";
+import {
+  defaultPostRunReportConfig,
+  isDefaultPostRunReportConfig,
+  REPORT_METRIC_OPTIONS,
+  REPORT_RESOURCE_DRAWER_OPTIONS,
+  REPORT_TOP_DROP_LIMIT_OPTIONS,
+  type PostRunReportConfig,
+  type ReportMetricId,
+  type ReportResourceDrawerId,
+} from "../lib/report-config";
 
 const props = defineProps<{
   pastRuns: PastRunSummary[];
   expandedDropKey: string | null;
+  reportConfig: PostRunReportConfig;
 }>();
 
 const emit = defineEmits<{
   "update:expandedDropKey": [value: string | null];
+  "update:reportConfig": [value: PostRunReportConfig];
 }>();
 
-const allRunAggregate = computed(() => aggregatePastRuns(props.pastRuns));
-const recentRunAggregate = computed(() => aggregatePastRuns(props.pastRuns.slice(0, 10)));
+const showReportConfig = ref(false);
+const reportDraftItem = ref("");
+
+const allRunAggregate = computed(() => aggregatePastRuns(props.pastRuns, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, props.reportConfig.trackedItems));
+const recentRunAggregate = computed(() => aggregatePastRuns(props.pastRuns.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, props.reportConfig.trackedItems));
 const aggregatePanels = computed(() => [
   { key: "all", title: "All Runs", subtitle: `${allRunAggregate.value.runCount} saved`, aggregate: allRunAggregate.value },
   { key: "recent", title: "Last 10 Runs", subtitle: `${recentRunAggregate.value.runCount} included`, aggregate: recentRunAggregate.value },
 ]);
+const reportMetricOptions = REPORT_METRIC_OPTIONS;
+const reportResourceDrawerOptions = REPORT_RESOURCE_DRAWER_OPTIONS;
+const reportTopDropLimitOptions = REPORT_TOP_DROP_LIMIT_OPTIONS;
+const reportTrackingLabel = computed(() => (isDefaultPostRunReportConfig(props.reportConfig) ? "Default tracking" : "Custom tracking"));
+const reportTrackingDetail = computed(() => {
+  if (props.reportConfig.trackedItems.length > 0) return `${props.reportConfig.trackedItems.length} tracked recap items`;
+  return "All saved drops in selected rarities";
+});
+const reportItemSuggestions = computed(() => {
+  const query = reportDraftItem.value.trim().toLowerCase();
+  const existing = new Set(props.reportConfig.trackedItems.map((item) => item.toLowerCase()));
+  if (!query) return shoppingAutocompleteNames.filter((name) => !existing.has(name.toLowerCase())).slice(0, ITEM_FILTER_SUGGESTION_LIMIT);
+  return shoppingAutocompleteNames
+    .filter((name) => !existing.has(name.toLowerCase()) && name.toLowerCase().includes(query))
+    .slice(0, ITEM_FILTER_SUGGESTION_LIMIT);
+});
 
 function togglePastRunDropBreakdown(run: PastRunSummary, rarity: string) {
   const key = pastRunDropKey(run, rarity);
@@ -33,6 +66,111 @@ function isPastRunDropExpanded(run: PastRunSummary, rarity: string): boolean {
 function runTitle(run: PastRunSummary): string {
   return run.accountName || "Hero Siege Run";
 }
+
+function toggleReportMetric(metric: ReportMetricId, enabled: boolean) {
+  emit("update:reportConfig", { ...props.reportConfig, summaryMetrics: toggledList(props.reportConfig.summaryMetrics, metric, enabled) });
+}
+
+function toggleReportRarity(rarity: string, enabled: boolean) {
+  emit("update:reportConfig", { ...props.reportConfig, dropRarities: toggledList(props.reportConfig.dropRarities, rarity, enabled) });
+}
+
+function toggleReportResourceDrawer(drawer: ReportResourceDrawerId, enabled: boolean) {
+  emit("update:reportConfig", { ...props.reportConfig, resourceDrawers: toggledList(props.reportConfig.resourceDrawers, drawer, enabled) });
+}
+
+function updateTopDropLimit(event: Event) {
+  const value = Number((event.target as HTMLSelectElement | null)?.value);
+  emit("update:reportConfig", { ...props.reportConfig, topDropLimit: value });
+}
+
+function resetReportConfig() {
+  emit("update:reportConfig", defaultPostRunReportConfig);
+  reportDraftItem.value = "";
+}
+
+function addTrackedReportItem(value = reportDraftItem.value) {
+  const trimmed = value.trim();
+  if (!trimmed) return;
+  const canonical = shoppingAutocompleteNames.find((name) => name.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
+  const exists = props.reportConfig.trackedItems.some((item) => item.toLowerCase() === canonical.toLowerCase());
+  if (!exists) {
+    emit("update:reportConfig", { ...props.reportConfig, trackedItems: [...props.reportConfig.trackedItems, canonical] });
+  }
+  reportDraftItem.value = "";
+}
+
+function removeTrackedReportItem(item: string) {
+  emit("update:reportConfig", {
+    ...props.reportConfig,
+    trackedItems: props.reportConfig.trackedItems.filter((candidate) => candidate.toLowerCase() !== item.toLowerCase()),
+  });
+}
+
+function aggregateMetricCards(aggregate: PastRunAggregate) {
+  const cards: Record<ReportMetricId, { label: string; value: number; detail: string }> = {
+    gold: { label: "Gold/h", value: aggregate.goldPerHour, detail: `Best ${formatNumber(aggregate.bestGoldPerHour)}` },
+    xp: { label: "XP/h", value: aggregate.xpPerHour, detail: `Best ${formatNumber(aggregate.bestXpPerHour)}` },
+    keys: { label: "Keys", value: aggregate.totalKeys, detail: `${formatNumber(averagePerRun(aggregate.totalKeys, aggregate.runCount))}/run` },
+    ores: { label: "Ore", value: aggregate.totalOres, detail: `${formatNumber(averagePerRun(aggregate.totalOres, aggregate.runCount))}/run` },
+    materials: { label: "Materials", value: aggregate.totalMaterials, detail: `${formatNumber(averagePerRun(aggregate.totalMaterials, aggregate.runCount))}/run` },
+    mfDrops: { label: "MF drops", value: aggregate.totalMfDrops, detail: `${formatNumber(aggregate.totalGold)} gold` },
+  };
+  return props.reportConfig.summaryMetrics.map((metric) => cards[metric]).filter(Boolean);
+}
+
+function runMetricCards(run: PastRunSummary) {
+  const cards: Record<ReportMetricId, { label: string; value: number; detail: string }> = {
+    gold: { label: "Gold", value: run.totalGoldGained, detail: `${formatNumber(ratePerHour(run.totalGoldGained, run.durationMs))}/h` },
+    xp: { label: "XP", value: run.totalXpGained, detail: `${formatNumber(ratePerHour(run.totalXpGained, run.durationMs))}/h` },
+    keys: { label: "Keys", value: runResourceTotal(run.keys), detail: `${runResourceTypeCount(run.keys)} types` },
+    ores: { label: "Ore", value: runResourceTotal(run.ores), detail: `${runResourceTypeCount(run.ores)} types` },
+    materials: { label: "Materials", value: runResourceTotal(run.materials ?? []), detail: `${runResourceTypeCount(run.materials)} types` },
+    mfDrops: { label: "MF drops", value: runMfDropTotal(run), detail: `${runDropTotal(run)} tracked` },
+  };
+  return props.reportConfig.summaryMetrics.map((metric) => cards[metric]).filter(Boolean);
+}
+
+function resourceDrawers(run: PastRunSummary) {
+  const drawers: Record<ReportResourceDrawerId, { id: ReportResourceDrawerId; title: string; empty: string; resources: NonNullable<PastRunSummary["materials"]>; imageKind: "key" | "ore" | "material" }> = {
+    materials: { id: "materials", title: "Materials", empty: "No materials logged.", resources: run.materials ?? [], imageKind: "material" },
+    keys: { id: "keys", title: "Non-basic keys", empty: "No non-basic keys logged.", resources: run.keys, imageKind: "key" },
+    ores: { id: "ores", title: "Ore mined", empty: "No ore logged.", resources: run.ores, imageKind: "ore" },
+  };
+  return props.reportConfig.resourceDrawers.map((drawer) => drawers[drawer]).filter(Boolean);
+}
+
+function runDrops(run: PastRunSummary) {
+  return runTrackedItems(run, props.reportConfig.dropRarities, props.reportConfig.trackedItems);
+}
+
+function runMfDropTotal(run: PastRunSummary): number {
+  return runDrops(run).reduce((total, item) => total + item.mf, 0);
+}
+
+function runDropTotal(run: PastRunSummary): number {
+  return runDrops(run).reduce((total, item) => total + item.total, 0);
+}
+
+function ratePerHour(value: number, durationMs: number): number {
+  if (durationMs <= 0) return 0;
+  return Math.trunc(value / (durationMs / 3_600_000));
+}
+
+function averagePerRun(value: number, runCount: number): number {
+  return runCount ? Math.trunc(value / runCount) : 0;
+}
+
+function toggledList<T extends string>(values: T[], value: T, enabled: boolean): T[] {
+  const next = new Set(values);
+  if (enabled) next.add(value);
+  else next.delete(value);
+  return Array.from(next);
+}
+
+function eventChecked(event: Event): boolean {
+  return Boolean((event.target as HTMLInputElement | null)?.checked);
+}
 </script>
 
 <template>
@@ -43,8 +181,109 @@ function runTitle(run: PastRunSummary): string {
           <p class="eyebrow">History</p>
           <h2>Past Runs</h2>
         </div>
-        <span class="past-run-count">{{ pastRuns.length }}/100 saved</span>
+        <div class="past-runs-heading-actions">
+          <button class="icon-button ghost" type="button" @click="showReportConfig = true">Configure Tracked</button>
+          <span class="info-bubble" data-tip="Everything is tracked by default. Use Configure Tracked when you only want specific recap items or report sections.">i</span>
+          <span class="past-run-count">{{ pastRuns.length }}/100 saved</span>
+        </div>
       </div>
+
+      <Teleport to="body">
+        <div v-if="showReportConfig" class="modal-backdrop" @click.self="showReportConfig = false">
+          <section class="settings-panel report-config-modal" role="dialog" aria-modal="true" aria-labelledby="report-config-title">
+          <div class="settings-heading">
+            <div>
+              <p class="eyebrow">Recap</p>
+              <h2 id="report-config-title">Configure Tracked</h2>
+              <p class="settings-note">{{ reportTrackingLabel }} controls what appears in Past Runs without changing saved run data.</p>
+            </div>
+            <button class="settings-close" type="button" title="Close tracked report settings" aria-label="Close tracked report settings" @click="showReportConfig = false">x</button>
+          </div>
+
+          <div class="report-config-modal-body">
+            <section class="item-filter-rule-section">
+              <div class="item-filter-rule-heading">
+                <strong>Tracked recap items</strong>
+                <span>Empty means every saved drop in selected rarities.</span>
+              </div>
+              <div class="item-filter-search-wrap">
+                <form class="item-filter-add-item" @submit.prevent="addTrackedReportItem()">
+                  <input v-model="reportDraftItem" type="search" placeholder="Search item name" autocomplete="off" spellcheck="false" />
+                  <button class="icon-button primary" type="submit">Add</button>
+                </form>
+                <div v-if="reportDraftItem.trim().length >= 3 && reportItemSuggestions.length" class="item-filter-suggestions">
+                  <button v-for="name in reportItemSuggestions" :key="name" type="button" @click="addTrackedReportItem(name)">
+                    {{ name }}
+                  </button>
+                </div>
+                <p v-else-if="reportDraftItem.trim().length > 0 && reportDraftItem.trim().length < 3" class="item-filter-search-hint">Type at least 3 characters for suggestions.</p>
+                <p v-else-if="reportDraftItem.trim().length >= 3" class="item-filter-search-hint">No matching known items.</p>
+              </div>
+              <div v-if="reportConfig.trackedItems.length" class="tracked-report-item-list">
+                <div v-for="item in reportConfig.trackedItems" :key="item" class="item-filter-specific-row tracked-report-item-row">
+                  <span>{{ item }}</span>
+                  <button class="shopping-remove" type="button" @click="removeTrackedReportItem(item)" :aria-label="`Remove ${item}`">x</button>
+                </div>
+              </div>
+              <p v-else class="empty-copy">Default tracking is active.</p>
+            </section>
+
+            <section class="report-config-modal-grid">
+              <div class="item-filter-rule-section">
+                <div class="item-filter-rule-heading">
+                  <strong>Cards</strong>
+                  <span>Summary cards shown in aggregate and run recaps.</span>
+                </div>
+                <div class="item-filter-chip-grid">
+                  <label v-for="option in reportMetricOptions" :key="option.id" class="filter-box">
+                    <input :checked="reportConfig.summaryMetrics.includes(option.id)" type="checkbox" @change="toggleReportMetric(option.id, eventChecked($event))" />
+                    <span>{{ option.label }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="item-filter-rule-section">
+                <div class="item-filter-rule-heading">
+                  <strong>Drops</strong>
+                  <span>Rarity groups included in item recaps.</span>
+                </div>
+                <div class="item-filter-chip-grid">
+                  <label v-for="rarity in ['Set', 'Satanic', 'Heroic', 'Angelic']" :key="rarity" class="filter-box">
+                    <input :checked="reportConfig.dropRarities.includes(rarity)" type="checkbox" @change="toggleReportRarity(rarity, eventChecked($event))" />
+                    <span>{{ rarity }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="item-filter-rule-section">
+                <div class="item-filter-rule-heading">
+                  <strong>Drawers</strong>
+                  <span>Resource drawers under each run.</span>
+                </div>
+                <div class="item-filter-chip-grid">
+                  <label v-for="option in reportResourceDrawerOptions" :key="option.id" class="filter-box">
+                    <input :checked="reportConfig.resourceDrawers.includes(option.id)" type="checkbox" @change="toggleReportResourceDrawer(option.id, eventChecked($event))" />
+                    <span>{{ option.label }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <label class="settings-row">
+                <span>Top drops</span>
+                <select :value="reportConfig.topDropLimit" @change="updateTopDropLimit">
+                  <option v-for="option in reportTopDropLimitOptions" :key="option" :value="option">{{ option }}</option>
+                </select>
+              </label>
+            </section>
+          </div>
+
+          <div class="settings-actions">
+            <button class="icon-button ghost" type="button" @click="resetReportConfig">Reset Tracking</button>
+            <button class="icon-button primary" type="button" @click="showReportConfig = false">Done</button>
+          </div>
+          </section>
+        </div>
+      </Teleport>
 
       <div v-if="pastRuns.length" class="past-run-aggregate-grid">
         <section v-for="panel in aggregatePanels" :key="panel.key" class="past-run-aggregate">
@@ -55,26 +294,11 @@ function runTitle(run: PastRunSummary): string {
             </div>
             <strong>{{ formatDuration(panel.aggregate.totalDurationMs) }}</strong>
           </div>
-          <div class="aggregate-metrics">
-            <div>
-              <span>Gold/h</span>
-              <strong>{{ formatNumber(panel.aggregate.goldPerHour) }}</strong>
-              <small>Best {{ formatNumber(panel.aggregate.bestGoldPerHour) }}</small>
-            </div>
-            <div>
-              <span>XP/h</span>
-              <strong>{{ formatNumber(panel.aggregate.xpPerHour) }}</strong>
-              <small>Best {{ formatNumber(panel.aggregate.bestXpPerHour) }}</small>
-            </div>
-            <div>
-              <span>Keys</span>
-              <strong>{{ formatNumber(panel.aggregate.totalKeys) }}</strong>
-              <small>{{ formatNumber(panel.aggregate.totalOres) }} ore</small>
-            </div>
-            <div>
-              <span>MF drops</span>
-              <strong>{{ formatNumber(panel.aggregate.totalMfDrops) }}</strong>
-              <small>{{ formatNumber(panel.aggregate.totalGold) }} gold</small>
+          <div class="aggregate-metrics dynamic-metrics">
+            <div v-for="metric in aggregateMetricCards(panel.aggregate)" :key="`${panel.key}-${metric.label}`">
+              <span>{{ metric.label }}</span>
+              <strong>{{ formatNumber(metric.value) }}</strong>
+              <small>{{ metric.detail }}</small>
             </div>
           </div>
           <div class="aggregate-drop-grid">
@@ -107,29 +331,18 @@ function runTitle(run: PastRunSummary): string {
             <div class="past-run-time">{{ formatTime(run.sessionEndedAt) }}</div>
           </div>
 
-          <div class="past-run-metrics">
-            <div>
-              <span>Gold</span>
-              <strong>{{ formatNumber(run.totalGoldGained) }}</strong>
-            </div>
-            <div>
-              <span>XP</span>
-              <strong>{{ formatNumber(run.totalXpGained) }}</strong>
-            </div>
-            <div>
-              <span>Keys</span>
-              <strong>{{ formatNumber(runResourceTotal(run.keys)) }}</strong>
-            </div>
-            <div>
-              <span>Ore</span>
-              <strong>{{ formatNumber(runResourceTotal(run.ores)) }}</strong>
+          <div class="past-run-metrics dynamic-metrics">
+            <div v-for="metric in runMetricCards(run)" :key="`${run.id}-${metric.label}`">
+              <span>{{ metric.label }}</span>
+              <strong>{{ formatNumber(metric.value) }}</strong>
+              <small>{{ metric.detail }}</small>
             </div>
           </div>
 
           <div class="past-run-drops">
             <div class="past-run-drop-grid">
               <button
-                v-for="item in runTrackedItems(run)"
+                v-for="item in runDrops(run)"
                 :key="`${run.id}-${item.rarity}`"
                 type="button"
                 :class="['item-counter', item.rarity.toLowerCase(), { expanded: isPastRunDropExpanded(run, item.rarity) }]"
@@ -140,7 +353,7 @@ function runTitle(run: PastRunSummary): string {
                 <small>{{ formatNumber(item.mf) }} MF &middot; {{ item.drops.length }} unique</small>
               </button>
             </div>
-            <template v-for="item in runTrackedItems(run)" :key="`${run.id}-${item.rarity}-details`">
+            <template v-for="item in runDrops(run)" :key="`${run.id}-${item.rarity}-details`">
               <div v-if="isPastRunDropExpanded(run, item.rarity)" class="drop-breakdown past-run-drop-breakdown" :class="item.rarity.toLowerCase()">
                 <div class="drop-breakdown-head">
                   <strong>{{ item.rarity }} drops</strong>
@@ -160,38 +373,21 @@ function runTitle(run: PastRunSummary): string {
           </div>
 
           <div class="resource-columns">
-            <div class="resource-column">
-              <h4>Non-basic keys</h4>
-              <div v-if="run.keys.length" class="resource-list">
+            <div v-for="drawer in resourceDrawers(run)" :key="`${run.id}-${drawer.id}`" class="resource-column">
+              <h4>{{ drawer.title }}</h4>
+              <div v-if="drawer.resources.length" class="resource-list">
                 <div
-                  v-for="key in run.keys"
-                  :key="`${run.id}-${key.name}`"
+                  v-for="resource in drawer.resources"
+                  :key="`${run.id}-${drawer.id}-${resource.name}`"
                   class="resource-chip"
-                  :class="{ 'resource-chip-no-image': !resourceImage(key, 'key') }"
+                  :class="{ 'resource-chip-no-image': !resourceImage(resource, drawer.imageKind) }"
                 >
-                  <img v-if="resourceImage(key, 'key')" :src="resourceImage(key, 'key')" :alt="key.name" />
-                  <span>{{ key.name }}</span>
-                  <strong>{{ formatNumber(key.total) }}</strong>
+                  <img v-if="resourceImage(resource, drawer.imageKind)" :src="resourceImage(resource, drawer.imageKind)" :alt="resource.name" />
+                  <span>{{ resource.name }}</span>
+                  <strong>{{ formatNumber(resource.total) }}</strong>
                 </div>
               </div>
-              <p v-else class="empty-copy">No non-basic keys logged.</p>
-            </div>
-
-            <div class="resource-column">
-              <h4>Ore mined</h4>
-              <div v-if="run.ores.length" class="resource-list">
-                <div
-                  v-for="ore in run.ores"
-                  :key="`${run.id}-${ore.name}`"
-                  class="resource-chip"
-                  :class="{ 'resource-chip-no-image': !resourceImage(ore, 'ore') }"
-                >
-                  <img v-if="resourceImage(ore, 'ore')" :src="resourceImage(ore, 'ore')" :alt="ore.name" />
-                  <span>{{ ore.name }}</span>
-                  <strong>{{ formatNumber(ore.total) }}</strong>
-                </div>
-              </div>
-              <p v-else class="empty-copy">No ore logged.</p>
+              <p v-else class="empty-copy">{{ drawer.empty }}</p>
             </div>
           </div>
         </section>

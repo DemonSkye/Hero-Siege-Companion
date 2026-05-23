@@ -16,7 +16,7 @@ Download the latest Windows build from the GitHub Releases page:
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
 
-Current release target: `v0.0.9`.
+Current release target: `v0.1.4`.
 
 ## Features
 
@@ -26,14 +26,19 @@ Current release target: `v0.0.9`.
 - Satanic Zone name, reset countdown, pros, and cons.
 - Tracked drop counters for Set, Satanic, Heroic, Angelic, non-basic keys, and mined ore.
 - Item timeline with filters for item type, keys, socketables, materials, and material-like collectibles.
+- Loot audio item filter with custom groups, rarity/type rules, exact watched items, per-item sound overrides, volume, cooldowns, and a global mute.
+- Shopping list for quickly copying saved item names into marketplace searches.
 - Expandable diagnostics log with color-coded event labels.
-- Past Runs explorer with high-level local summaries for gold, XP, duration, keys, ore, Heroic drops, and Angelic drops.
-- Compact overlay mode for keeping the important numbers visible while playing.
+- Past Runs explorer with local summaries for duration, gold, XP, keys, ore, Set/Satanic/Heroic/Angelic drops, top drops, and per-run item breakdowns.
+- Compact overlay mode for keeping capture status, session stats, zone timer, drop counts, ore, and the shopping list visible while playing.
+- Launch helper that can start Hero Siege through Steam or a selected executable.
+- Settings for always-on-top, saved compact/full window positions, timeline filters, run-history rules, and verbose live logging.
+- Release update notice when a newer GitHub release is available.
 - Local-only desktop app: no account login, no cloud service, and no packet capture files are written by the app.
 
 ## Compact Overlay
 
-Compact mode shrinks the companion down to a small overlay-friendly view with connection status, clock, session timer, gold, XP, zone countdown, tracked drops, and ore.
+Compact mode shrinks the companion down to a small overlay-friendly view with connection status, clock, session timer, gold, XP, zone countdown, tracked drops, ore, and quick shopping-list access.
 
 ![Hero Siege Companion compact mode](docs/assets/compact_mode.png)
 
@@ -48,6 +53,12 @@ Click `End Run` to save a local summary of the current session and reset the liv
 Past Runs keeps up to 100 summaries and stores only high-level stats, not packet captures.
 
 ![Hero Siege Companion past runs](docs/assets/past_runs.png)
+
+## Loot Audio And Shopping List
+
+The Item Filter tab lets you create sound groups for drops you care about. Groups can match by rarity, item type, or exact item name. Exact watched items can use the group sound or their own sound override.
+
+The Shopping List keeps saved item names one click away so you can copy marketplace searches quickly from either full view or compact mode.
 
 ## Required: Install Npcap
 
@@ -72,9 +83,11 @@ If capture does not start, reinstall Npcap with the WinPcap-compatible option en
 1. Install Npcap using the settings above.
 2. Start Hero Siege.
 3. Launch `Hero Siege Companion.exe`.
-4. Leave the companion running while you play.
-5. Use the timeline filters to hide noisy item categories such as keys, socketables, and materials.
-6. Use `End Run` when a run is over and you want it saved to Past Runs.
+4. Use `Launch Game` or start Hero Siege yourself.
+5. Leave the companion running while you play.
+6. Use timeline filters to hide noisy item categories such as keys, socketables, and materials.
+7. Use the Item Filter tab to set up loot sounds for drops you care about.
+8. Use `End Run` when a run is over and you want it saved to Past Runs.
 
 The app only displays information after Hero Siege sends the relevant packet. For example, gold and mailbox state may update after changing zones or visiting town, and Satanic Zone data appears after the game sends a zone packet.
 

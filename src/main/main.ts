@@ -31,6 +31,7 @@ const STATE_PUBLISH_INTERVAL_MS = 1000;
 const GITHUB_RELEASES_URL = "https://github.com/DemonSkye/Hero-Siege-Companion/releases";
 const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/DemonSkye/Hero-Siege-Companion/releases/latest";
 const RELEASE_CHECK_TIMEOUT_MS = 6000;
+const MAX_CONFIGURATION_IMPORT_BYTES = 1024 * 1024;
 
 const state: CompanionState = {
   captureRunning: false,
@@ -402,6 +403,47 @@ ipcMain.handle("preferences:set-capture", (_event, preferences: Partial<CaptureP
   if (changed) addLog("info", `Verbose live logging ${nextPreferences.createDebugMode ? "enabled" : "disabled"}.`);
   publishState();
   return state;
+});
+ipcMain.handle("configuration:export", async (_event, json: string) => {
+  const contents = String(json ?? "").trim();
+  if (!contents) return false;
+
+  const options = {
+    title: "Export Hero Siege Companion configuration",
+    defaultPath: "hero-siege-companion-config.json",
+    filters: [
+      { name: "JSON", extensions: ["json"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  } satisfies Electron.SaveDialogOptions;
+  const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
+  if (result.canceled || !result.filePath) return false;
+
+  fs.writeFileSync(result.filePath, `${contents}\n`, "utf8");
+  addLog("success", "Configuration exported.");
+  return true;
+});
+ipcMain.handle("configuration:import", async () => {
+  const options = {
+    title: "Import Hero Siege Companion configuration",
+    properties: ["openFile"],
+    filters: [
+      { name: "JSON", extensions: ["json"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  } satisfies Electron.OpenDialogOptions;
+  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  if (result.canceled) return null;
+
+  const filePath = result.filePaths[0];
+  if (!filePath) return null;
+  const stats = fs.statSync(filePath);
+  if (stats.size > MAX_CONFIGURATION_IMPORT_BYTES) {
+    throw new Error("Configuration file is too large.");
+  }
+
+  addLog("info", "Configuration selected for import.");
+  return fs.readFileSync(filePath, "utf8");
 });
 ipcMain.handle("window:minimize", () => {
   mainWindow?.minimize();

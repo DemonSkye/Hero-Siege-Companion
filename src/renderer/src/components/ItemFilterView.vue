@@ -9,6 +9,7 @@ import {
   type ItemFilterGroup,
   type ItemFilterSpecificItem,
 } from "../lib/item-filters";
+import type { ItemResearchEntry } from "../lib/item-research";
 
 interface ItemTypeOption {
   value: string;
@@ -24,6 +25,9 @@ const props = defineProps<{
   itemFilterSuggestions: string[];
   itemTypeOptions: ItemTypeOption[];
   itemFilterMuted: boolean;
+  developerItemResearchEnabled: boolean;
+  itemResearchEntries: ItemResearchEntry[];
+  unresolvedItemResearchCount: number;
 }>();
 
 const emit = defineEmits<{
@@ -36,6 +40,10 @@ const emit = defineEmits<{
   addItemToGroup: [group: ItemFilterGroup, value?: string];
   removeItemFromGroup: [group: ItemFilterGroup, item: ItemFilterSpecificItem];
   testSound: [soundId?: string, volume?: number];
+  saveItemResearchEntry: [signature: string, value: { resolvedName: string; notes: string }];
+  ignoreItemResearchEntry: [signature: string];
+  resetItemResearchEntry: [signature: string];
+  clearResolvedItemResearchEntries: [];
 }>();
 
 const mutedModel = computed({
@@ -56,6 +64,18 @@ const itemDraftModel = computed({
 function eventChecked(event: Event): boolean {
   return Boolean((event.target as HTMLInputElement | null)?.checked);
 }
+
+function saveResearchEntry(entry: ItemResearchEntry) {
+  emit("saveItemResearchEntry", entry.signature, { resolvedName: entry.resolvedName, notes: entry.notes });
+}
+
+function entryTypeLabel(entry: ItemResearchEntry): string {
+  return props.itemTypeOptions.find((option) => Number(option.value) === entry.type)?.label ?? `Type ${entry.type}`;
+}
+
+function formatSeen(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 </script>
 
 <template>
@@ -71,6 +91,30 @@ function eventChecked(event: Event): boolean {
           <button class="icon-button primary" type="button" @click="$emit('testSound')">Test Selected</button>
         </div>
       </div>
+
+      <section v-if="developerItemResearchEnabled" class="item-research-panel">
+        <div class="item-filter-rule-heading">
+          <strong>Item Research</strong>
+          <span>{{ unresolvedItemResearchCount }} unresolved &middot; local developer notebook</span>
+        </div>
+        <div v-if="itemResearchEntries.length" class="item-research-list">
+          <article v-for="entry in itemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName, ignored: entry.ignored }]">
+            <div class="item-research-meta">
+              <strong>{{ entry.resolvedName || entry.label }}</strong>
+              <span>{{ entry.rarity }} &middot; {{ entryTypeLabel(entry) }} #{{ entry.id }} &middot; Q{{ entry.dropQuality }} &middot; {{ entry.count }} seen &middot; {{ formatSeen(entry.lastSeenAt) }}</span>
+            </div>
+            <input v-model="entry.resolvedName" type="text" placeholder="Actual item name" spellcheck="false" />
+            <input v-model="entry.notes" type="text" placeholder="Notes" spellcheck="false" />
+            <div class="item-research-actions">
+              <button class="sound-test-button" type="button" @click="saveResearchEntry(entry)">Save</button>
+              <button v-if="entry.ignored || entry.resolvedName" class="sound-test-button" type="button" @click="$emit('resetItemResearchEntry', entry.signature)">Reset</button>
+              <button v-else class="shopping-remove" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)" :aria-label="`Ignore ${entry.label}`">x</button>
+            </div>
+          </article>
+        </div>
+        <p v-else class="empty-copy">Unresolved item signatures will appear here after developer item research is enabled.</p>
+        <button v-if="itemResearchEntries.some((entry) => entry.resolvedName || entry.ignored)" class="icon-button ghost item-research-clear" type="button" @click="$emit('clearResolvedItemResearchEntries')">Clear Resolved</button>
+      </section>
 
       <div class="item-filter-layout">
         <aside class="item-filter-group-sidebar" aria-label="Item filter groups">

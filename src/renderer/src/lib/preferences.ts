@@ -1,6 +1,9 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
+import type { CapturePreferences, RunArchivePreferences } from "../../../shared/app-state";
 import { DEFAULT_ITEM_FILTER_GROUPS, normalizeItemFilterGroups, type ItemFilterGroup } from "./item-filters";
 import { DEFAULT_SHOPPING_LIST } from "./item-options";
+import { normalizeItemResearchEntries, type ItemResearchEntry } from "./item-research";
+import { defaultPostRunReportConfig, normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
 
 export interface UiPreferences {
   logLimit: number;
@@ -17,6 +20,41 @@ export interface UiPreferences {
   launchThroughSteam: boolean;
   itemFilterGroups: ItemFilterGroup[];
   itemFilterMuted: boolean;
+  postRunReport: PostRunReportConfig;
+  developerItemResearchEnabled: boolean;
+  unknownItemAudioPrompt: boolean;
+  itemResearchEntries: ItemResearchEntry[];
+}
+
+export interface ConfigurationTransferOptions {
+  includeAppSettings: boolean;
+  includeRunSaving: boolean;
+  includeReportTracking: boolean;
+  includeLootFilters: boolean;
+  includeItemResearch: boolean;
+}
+
+export interface ConfigurationExportPayload {
+  app: "hero-siege-companion";
+  kind: "configuration";
+  version: 1;
+  exportedAt: string;
+  includes: {
+    appSettings: boolean;
+    runSaving: boolean;
+    reportTracking: boolean;
+    lootFilters: boolean;
+    itemResearch: boolean;
+  };
+  uiPreferences: Partial<UiPreferences>;
+  runArchivePreferences?: RunArchivePreferences;
+  capturePreferences?: CapturePreferences;
+}
+
+export interface ConfigurationImportResult {
+  uiPreferences: UiPreferences;
+  runArchivePreferences?: RunArchivePreferences;
+  capturePreferences?: CapturePreferences;
 }
 
 export const LOG_LIMIT_OPTIONS = [10, 20, 50, 100, 250, 500];
@@ -37,7 +75,28 @@ export const defaultPreferences: UiPreferences = {
   launchThroughSteam: true,
   itemFilterGroups: DEFAULT_ITEM_FILTER_GROUPS,
   itemFilterMuted: false,
+  postRunReport: defaultPostRunReportConfig,
+  developerItemResearchEnabled: false,
+  unknownItemAudioPrompt: false,
+  itemResearchEntries: [],
 };
+
+const APP_SETTING_KEYS: Array<keyof UiPreferences> = [
+  "logLimit",
+  "timelineLimit",
+  "showCaptureDetails",
+  "alwaysOnTop",
+  "lockCompactLocation",
+  "hideSocketables",
+  "hideKeys",
+  "hideMaterials",
+  "timelineType",
+  "shoppingListItems",
+  "gameExecutablePath",
+  "launchThroughSteam",
+  "developerItemResearchEnabled",
+  "unknownItemAudioPrompt",
+];
 
 export function loadPreferences(): UiPreferences {
   try {
@@ -57,7 +116,79 @@ export function savePreferences(preferences: UiPreferences) {
   }
 }
 
-function normalizePreferences(value: Partial<UiPreferences>): UiPreferences {
+export function createConfigurationExportPayload(
+  uiPreferences: UiPreferences,
+  runArchivePreferences: RunArchivePreferences,
+  capturePreferences: CapturePreferences,
+  options: ConfigurationTransferOptions,
+): ConfigurationExportPayload {
+  const exportedUiPreferences: Partial<UiPreferences> = { ...normalizePreferences(uiPreferences) };
+  if (!options.includeAppSettings) {
+    for (const key of APP_SETTING_KEYS) delete exportedUiPreferences[key];
+  }
+  if (!options.includeReportTracking) {
+    delete exportedUiPreferences.postRunReport;
+  }
+  if (!options.includeLootFilters) {
+    delete exportedUiPreferences.itemFilterGroups;
+    delete exportedUiPreferences.itemFilterMuted;
+  }
+  if (!options.includeItemResearch) {
+    delete exportedUiPreferences.itemResearchEntries;
+  }
+
+  return {
+    app: "hero-siege-companion",
+    kind: "configuration",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    includes: {
+      appSettings: options.includeAppSettings,
+      runSaving: options.includeRunSaving,
+      reportTracking: options.includeReportTracking,
+      lootFilters: options.includeLootFilters,
+      itemResearch: options.includeItemResearch,
+    },
+    uiPreferences: exportedUiPreferences,
+    runArchivePreferences: options.includeRunSaving ? normalizeRunArchivePreferences(runArchivePreferences) : undefined,
+    capturePreferences: options.includeAppSettings ? normalizeCapturePreferences(capturePreferences) : undefined,
+  };
+}
+
+export function importConfigurationPayload(
+  rawPayload: string | unknown,
+  currentPreferences: UiPreferences,
+  options: ConfigurationTransferOptions,
+): ConfigurationImportResult {
+  const parsed = typeof rawPayload === "string" ? JSON.parse(rawPayload) as unknown : rawPayload;
+  const payload = isRecord(parsed) ? parsed : {};
+  const rawUiPreferences = isRecord(payload.uiPreferences) ? payload.uiPreferences : payload;
+  const nextUiPreferences: Partial<UiPreferences> = { ...currentPreferences, ...rawUiPreferences };
+
+  if (!options.includeAppSettings) {
+    for (const key of APP_SETTING_KEYS) nextUiPreferences[key] = currentPreferences[key];
+  }
+  if (!options.includeReportTracking) {
+    nextUiPreferences.postRunReport = currentPreferences.postRunReport;
+  }
+  if (!options.includeLootFilters) {
+    nextUiPreferences.itemFilterGroups = currentPreferences.itemFilterGroups;
+    nextUiPreferences.itemFilterMuted = currentPreferences.itemFilterMuted;
+  }
+  if (!options.includeItemResearch) {
+    nextUiPreferences.itemResearchEntries = currentPreferences.itemResearchEntries;
+  }
+
+  return {
+    uiPreferences: normalizePreferences(nextUiPreferences),
+    runArchivePreferences:
+      options.includeRunSaving && isRecord(payload.runArchivePreferences) ? normalizeRunArchivePreferences(payload.runArchivePreferences) : undefined,
+    capturePreferences:
+      options.includeAppSettings && isRecord(payload.capturePreferences) ? normalizeCapturePreferences(payload.capturePreferences) : undefined,
+  };
+}
+
+export function normalizePreferences(value: Partial<UiPreferences>): UiPreferences {
   const validLogLimit = LOG_LIMIT_OPTIONS.includes(Number(value.logLimit)) ? Number(value.logLimit) : defaultPreferences.logLimit;
   const validTimelineLimit = LOG_LIMIT_OPTIONS.includes(Number(value.timelineLimit))
     ? Number(value.timelineLimit)
@@ -82,6 +213,10 @@ function normalizePreferences(value: Partial<UiPreferences>): UiPreferences {
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
     itemFilterGroups: normalizeItemFilterGroups(value.itemFilterGroups),
     itemFilterMuted: Boolean(value.itemFilterMuted),
+    postRunReport: normalizePostRunReportConfig(value.postRunReport),
+    developerItemResearchEnabled: Boolean(value.developerItemResearchEnabled),
+    unknownItemAudioPrompt: Boolean(value.unknownItemAudioPrompt),
+    itemResearchEntries: normalizeItemResearchEntries(value.itemResearchEntries),
   };
 }
 
@@ -94,4 +229,23 @@ export function normalizeShoppingList(value: unknown): string[] {
 export function normalizeRunDurationMinutes(value: number): number {
   const minutes = Number(value);
   return Number.isFinite(minutes) ? Math.max(0, Math.min(1440, Math.trunc(minutes))) : 0;
+}
+
+export function normalizeRunArchivePreferences(value: unknown): RunArchivePreferences {
+  const preferences = isRecord(value) ? value : {};
+  return {
+    skipEmptyRuns: Boolean(preferences.skipEmptyRuns),
+    minDurationMinutes: normalizeRunDurationMinutes(Number(preferences.minDurationMinutes)),
+  };
+}
+
+export function normalizeCapturePreferences(value: unknown): CapturePreferences {
+  const preferences = isRecord(value) ? value : {};
+  return {
+    createDebugMode: Boolean(preferences.createDebugMode),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

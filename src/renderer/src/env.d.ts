@@ -11,6 +11,8 @@ declare global {
       resetStats: () => Promise<CompanionState>;
       setRunArchivePreferences: (preferences: RunArchivePreferences) => Promise<CompanionState>;
       setCapturePreferences: (preferences: CapturePreferences) => Promise<CompanionState>;
+      exportConfiguration: (json: string) => Promise<boolean>;
+      importConfiguration: () => Promise<string | null>;
       minimizeWindow: () => Promise<void>;
       toggleMaximizeWindow: () => Promise<void>;
       closeWindow: () => Promise<void>;

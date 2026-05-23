@@ -49,6 +49,7 @@ export interface CompanionStats {
   itemBreakdown: Record<string, Record<string, ItemDropCounter>>;
   keys: Record<string, ResourceCounter>;
   ores: Record<string, ResourceCounter>;
+  materials: Record<string, ResourceCounter>;
   itemTimeline: ItemTimelineEntry[];
   satanicZone: SatanicZoneInfo | null;
   lastEventAt: number | null;
@@ -69,6 +70,7 @@ export interface PastRunSummary {
   itemBreakdown: Record<string, Record<string, ItemDropCounter>>;
   keys: ResourceCounter[];
   ores: ResourceCounter[];
+  materials: ResourceCounter[];
 }
 
 const TRACKED_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
@@ -172,15 +174,16 @@ export class StatsEngine {
   private updateItem(item: AddedItemObject, createdAt: number): void {
     const rarity = item.rarityName;
     const trackedRarity = UNTRACKED_ITEM_TYPES.has(item.type) ? null : normalizeTrackedRarity(rarity);
+    const itemAmount = Math.max(item.amount || 1, 1);
     if (item.fingerprint) {
       if (this.seenItemFingerprints.has(item.fingerprint)) return;
       this.seenItemFingerprints.add(item.fingerprint);
     }
 
     if (trackedRarity) {
-      this.stats.items[trackedRarity].total += 1;
-      if (item.mfDrop === 1) this.stats.items[trackedRarity].mf += 1;
-      incrementItemBreakdown(this.stats.itemBreakdown[trackedRarity], item.label, item.amount, item.mfDrop === 1);
+      this.stats.items[trackedRarity].total += itemAmount;
+      if (item.mfDrop === 1) this.stats.items[trackedRarity].mf += itemAmount;
+      incrementItemBreakdown(this.stats.itemBreakdown[trackedRarity], item.label, itemAmount, item.mfDrop === 1);
     }
 
     if (item.type === 12 && item.id !== BASIC_KEY_ID) {
@@ -189,7 +192,9 @@ export class StatsEngine {
 
     const oreName = item.type === 14 ? ORE_MATERIALS[item.id] : undefined;
     if (oreName) {
-      incrementResource(this.stats.ores, item.id, oreName, item.amount);
+      incrementResource(this.stats.ores, item.id, oreName, itemAmount);
+    } else if (item.type === 13 || item.type === 14) {
+      incrementResource(this.stats.materials, item.id, item.label, itemAmount);
     }
 
     this.stats.itemTimeline.unshift({
@@ -284,6 +289,7 @@ export function createInitialStats(): CompanionStats {
     itemBreakdown,
     keys: {},
     ores,
+    materials: {},
     itemTimeline: [],
     satanicZone: null,
     lastEventAt: null,
@@ -306,12 +312,14 @@ function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now()): P
     itemBreakdown: structuredCloneCompat(stats.itemBreakdown),
     keys: resourceList(stats.keys),
     ores: resourceList(stats.ores),
+    materials: resourceList(stats.materials),
   };
 }
 
 export function hasRunActivity(summary: PastRunSummary): boolean {
   const keyTotal = summary.keys.reduce((total, key) => total + key.total, 0);
   const oreTotal = summary.ores.reduce((total, ore) => total + ore.total, 0);
+  const materialTotal = (summary.materials ?? []).reduce((total, material) => total + material.total, 0);
   return (
     summary.totalGoldGained > 0 ||
     summary.totalXpGained > 0 ||
@@ -320,7 +328,8 @@ export function hasRunActivity(summary: PastRunSummary): boolean {
     summary.heroicDrops > 0 ||
     summary.angelicDrops > 0 ||
     keyTotal > 0 ||
-    oreTotal > 0
+    oreTotal > 0 ||
+    materialTotal > 0
   );
 }
 

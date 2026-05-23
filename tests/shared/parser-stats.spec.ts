@@ -1,9 +1,13 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import assert from "node:assert/strict";
+import { test } from "vitest";
 
-const { captureMessages, identifyEvent, messageToEvents } = require("../dist/main/shared/parser.js");
-const { hasRunActivity, StatsEngine } = require("../dist/main/shared/stats.js");
-const { MATERIAL_LIKE_TIMELINE_TYPES } = require("../dist/main/shared/constants.js");
+import { MATERIAL_LIKE_TIMELINE_TYPES } from "../../src/shared/constants";
+import { captureMessages, identifyEvent, messageToEvents } from "../../src/shared/parser";
+import { hasRunActivity, StatsEngine } from "../../src/shared/stats";
+
+// These specs are packet-shaped on purpose. They preserve the odd payloads and
+// edge cases we have seen in Hero Siege traffic so parser changes break here
+// before they break live capture, item counters, or Past Runs.
 
 test("identifies renamed packet fields from PR25", () => {
   const cases = [
@@ -1042,6 +1046,9 @@ test("run summaries track non-basic keys ore and selected drops", () => {
           "10-3909410-iron-ore-28-14": {
             pickup_add_data: { a: 5, b: 28, d: 1, o: 5 },
           },
+          "10-3909410-battle-fragment-0-13": {
+            pickup_add_data: { a: 6, b: 0, d: 1, o: 3 },
+          },
         },
       },
     },
@@ -1068,12 +1075,43 @@ test("run summaries track non-basic keys ore and selected drops", () => {
       ["Iron Ore", 5],
     ],
   );
+  assert.deepEqual(
+    summary.materials.map((material) => [material.name, material.total]),
+    [["Battle Fragment", 3]],
+  );
   assert.equal(summary.setDrops, 1);
   assert.equal(summary.satanicDrops, 1);
   assert.equal(summary.heroicDrops, 1);
   assert.equal(summary.angelicDrops, 1);
   assert.equal(Object.values(summary.itemBreakdown.Set).reduce((total, drop) => total + drop.total, 0), 1);
   assert.equal(Object.values(summary.itemBreakdown.Satanic).reduce((total, drop) => total + drop.total, 0), 1);
+});
+
+test("tracked drop cards and breakdowns both count stacked item amounts", () => {
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents([
+    {
+      name: "itemAdded",
+      createdAt: Date.now(),
+      value: {
+        source: "inventory",
+        rarityName: "Satanic",
+        label: "Battle Worn Gauntlets",
+        id: 1,
+        type: 4,
+        seed: 1,
+        dropQuality: 6,
+        amount: 2,
+        mfDrop: 1,
+        fingerprint: "stacked-satanic",
+      },
+    },
+  ]);
+
+  assert.equal(snapshot.items.Satanic.total, 2);
+  assert.equal(snapshot.items.Satanic.mf, 2);
+  assert.equal(snapshot.itemBreakdown.Satanic["Battle Worn Gauntlets"].total, 2);
+  assert.equal(snapshot.itemBreakdown.Satanic["Battle Worn Gauntlets"].mf, 2);
 });
 
 test("empty run summaries can still be archived when explicitly ended", () => {

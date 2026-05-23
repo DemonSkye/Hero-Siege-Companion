@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
     ipcRenderer.invoke("preferences:set-run-archive", preferences),
   setCapturePreferences: (preferences: CapturePreferences): Promise<CompanionState> =>
     ipcRenderer.invoke("preferences:set-capture", preferences),
+  exportConfiguration: (json: string): Promise<boolean> => ipcRenderer.invoke("configuration:export", json),
+  importConfiguration: (): Promise<string | null> => ipcRenderer.invoke("configuration:import"),
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke("window:toggle-maximize"),
   closeWindow: (): Promise<void> => ipcRenderer.invoke("window:close"),

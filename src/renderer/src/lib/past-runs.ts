@@ -2,7 +2,7 @@ import type { ItemDropCounter, PastRunSummary, ResourceCounter } from "../../../
 
 export const TRACKED_RARITY_ORDER = ["Set", "Satanic", "Heroic", "Angelic"];
 
-interface PastRunAggregate {
+export interface PastRunAggregate {
   runCount: number;
   totalDurationMs: number;
   averageDurationMs: number;
@@ -14,21 +14,23 @@ interface PastRunAggregate {
   bestXpPerHour: number;
   totalKeys: number;
   totalOres: number;
+  totalMaterials: number;
   totalMfDrops: number;
   drops: Array<{ rarity: string; total: number; mf: number; unique: number }>;
   topDrops: ItemDropCounter[];
 }
 
-export function runTrackedItems(run: PastRunSummary) {
-  return TRACKED_RARITY_ORDER.map((rarity) => ({
+export function runTrackedItems(run: PastRunSummary, rarities = TRACKED_RARITY_ORDER, trackedItems: string[] = []) {
+  return rarities.map((rarity) => ({
     rarity,
-    total: runDropTotal(run, rarity),
-    mf: runDropMf(run, rarity),
-    drops: runDropBreakdown(run, rarity),
+    total: runDropTotal(run, rarity, trackedItems),
+    mf: runDropMf(run, rarity, trackedItems),
+    drops: runDropBreakdown(run, rarity, trackedItems),
   }));
 }
 
-function runDropTotal(run: PastRunSummary, rarity: string): number {
+function runDropTotal(run: PastRunSummary, rarity: string, trackedItems: string[] = []): number {
+  if (trackedItems.length > 0) return breakdownTotal(filteredBreakdown(run.itemBreakdown?.[rarity], trackedItems));
   if (rarity === "Set") return run.setDrops ?? breakdownTotal(run.itemBreakdown?.Set);
   if (rarity === "Satanic") return run.satanicDrops ?? breakdownTotal(run.itemBreakdown?.Satanic);
   if (rarity === "Heroic") return run.heroicDrops ?? breakdownTotal(run.itemBreakdown?.Heroic);
@@ -36,23 +38,23 @@ function runDropTotal(run: PastRunSummary, rarity: string): number {
   return breakdownTotal(run.itemBreakdown?.[rarity]);
 }
 
-function runDropMf(run: PastRunSummary, rarity: string): number {
-  return Object.values(run.itemBreakdown?.[rarity] ?? {}).reduce((total, drop) => total + drop.mf, 0);
+function runDropMf(run: PastRunSummary, rarity: string, trackedItems: string[] = []): number {
+  return Object.values(filteredBreakdown(run.itemBreakdown?.[rarity], trackedItems)).reduce((total, drop) => total + drop.mf, 0);
 }
 
-function runDropBreakdown(run: PastRunSummary, rarity: string): ItemDropCounter[] {
-  return sortedDropBreakdown(run.itemBreakdown?.[rarity] ?? {});
+function runDropBreakdown(run: PastRunSummary, rarity: string, trackedItems: string[] = []): ItemDropCounter[] {
+  return sortedDropBreakdown(filteredBreakdown(run.itemBreakdown?.[rarity], trackedItems));
 }
 
-export function aggregatePastRuns(runs: PastRunSummary[]): PastRunAggregate {
+export function aggregatePastRuns(runs: PastRunSummary[], rarities = TRACKED_RARITY_ORDER, topDropLimit = 8, trackedItems: string[] = []): PastRunAggregate {
   const aggregateDrops: Record<string, ItemDropCounter> = {};
-  const rarityDrops = TRACKED_RARITY_ORDER.map((rarity) => {
+  const rarityDrops = rarities.map((rarity) => {
     let total = 0;
     let mf = 0;
     const uniqueNames = new Set<string>();
     for (const run of runs) {
-      total += runDropTotal(run, rarity);
-      const drops = runDropBreakdown(run, rarity);
+      total += runDropTotal(run, rarity, trackedItems);
+      const drops = runDropBreakdown(run, rarity, trackedItems);
       for (const drop of drops) {
         uniqueNames.add(drop.name);
         mf += drop.mf;
@@ -79,9 +81,10 @@ export function aggregatePastRuns(runs: PastRunSummary[]): PastRunAggregate {
     bestXpPerHour: Math.max(0, ...runs.map((run) => ratePerHour(run.totalXpGained, run.durationMs))),
     totalKeys: runs.reduce((total, run) => total + runResourceTotal(run.keys), 0),
     totalOres: runs.reduce((total, run) => total + runResourceTotal(run.ores), 0),
+    totalMaterials: runs.reduce((total, run) => total + runResourceTotal(run.materials ?? []), 0),
     totalMfDrops: rarityDrops.reduce((total, drop) => total + drop.mf, 0),
     drops: rarityDrops,
-    topDrops: sortedDropBreakdown(aggregateDrops).slice(0, 5),
+    topDrops: sortedDropBreakdown(aggregateDrops).slice(0, topDropLimit),
   };
 }
 
@@ -102,8 +105,23 @@ function breakdownTotal(breakdown: Record<string, ItemDropCounter> | undefined):
   return Object.values(breakdown ?? {}).reduce((total, drop) => total + drop.total, 0);
 }
 
+function filteredBreakdown(breakdown: Record<string, ItemDropCounter> | undefined, trackedItems: string[] = []): Record<string, ItemDropCounter> {
+  const values = breakdown ?? {};
+  if (trackedItems.length === 0) return values;
+  const tracked = new Set(trackedItems.map(normalizeDropName));
+  return Object.fromEntries(Object.entries(values).filter(([name]) => tracked.has(normalizeDropName(name))));
+}
+
+function normalizeDropName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export function runResourceTotal(resources: ResourceCounter[]): number {
   return resources.reduce((total, resource) => total + resource.total, 0);
+}
+
+export function runResourceTypeCount(resources: ResourceCounter[] | undefined): number {
+  return (resources ?? []).filter((resource) => resource.total > 0).length;
 }
 
 export function resourceRecordTotal(resources: Record<string, ResourceCounter>): number {

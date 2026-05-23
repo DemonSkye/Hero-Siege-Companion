@@ -39,8 +39,10 @@ const keyImages: Record<string, string> = {
   "Storage Key": new URL("../../../../img/keys/Keys_Storage_Key.png", import.meta.url).href,
 };
 
-export function resourceImage(resource: ResourceCounter, kind: "key" | "ore"): string {
-  return kind === "key" ? (keyImages[resource.name] ?? "") : (oreImages[resource.name] ?? "");
+export function resourceImage(resource: ResourceCounter, kind: "key" | "ore" | "material"): string {
+  if (kind === "key") return keyImages[resource.name] ?? "";
+  if (kind === "ore") return oreImages[resource.name] ?? "";
+  return itemIconUrl(resource.name) || oreImages[resource.name] || "";
 }
 
 export function itemIconUrl(name: string | undefined): string {

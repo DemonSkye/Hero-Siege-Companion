@@ -12,6 +12,8 @@ defineProps<{
 defineEmits<{
   close: [];
   chooseGameExecutable: [];
+  exportConfiguration: [];
+  importConfiguration: [];
   reset: [];
   apply: [];
 }>();
@@ -30,6 +32,13 @@ const draftHideKeys = defineModel<boolean>("hideKeys", { required: true });
 const draftHideMaterials = defineModel<boolean>("hideMaterials", { required: true });
 const draftSkipEmptyRuns = defineModel<boolean>("skipEmptyRuns", { required: true });
 const draftMinRunDurationMinutes = defineModel<number>("minRunDurationMinutes", { required: true });
+const draftDeveloperItemResearchEnabled = defineModel<boolean>("developerItemResearchEnabled", { required: true });
+const draftUnknownItemAudioPrompt = defineModel<boolean>("unknownItemAudioPrompt", { required: true });
+const configIncludeAppSettings = defineModel<boolean>("configIncludeAppSettings", { required: true });
+const configIncludeRunSaving = defineModel<boolean>("configIncludeRunSaving", { required: true });
+const configIncludeReportTracking = defineModel<boolean>("configIncludeReportTracking", { required: true });
+const configIncludeLootFilters = defineModel<boolean>("configIncludeLootFilters", { required: true });
+const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearch", { required: true });
 </script>
 
 <template>
@@ -41,7 +50,7 @@ const draftMinRunDurationMinutes = defineModel<number>("minRunDurationMinutes", 
           <h2 id="settings-title">Settings</h2>
           <p class="settings-note">These preferences are saved on this device and restored between sessions.</p>
         </div>
-        <button class="settings-close" type="button" title="Close settings" aria-label="Close settings" @click="$emit('close')">×</button>
+        <button class="settings-close" type="button" title="Close settings" aria-label="Close settings" @click="$emit('close')">x</button>
       </div>
 
       <div class="settings-grid">
@@ -103,6 +112,14 @@ const draftMinRunDurationMinutes = defineModel<number>("minRunDurationMinutes", 
           <span class="settings-label">Hide materials <span class="info-bubble" data-tip="Removes materials and collectibles from the recent item timeline while keeping resource counters intact.">i</span></span>
         </label>
         <label class="settings-check">
+          <input v-model="draftDeveloperItemResearchEnabled" type="checkbox" />
+          <span class="settings-label">Developer item research <span class="info-bubble" data-tip="Adds an opt-in local research queue for unresolved item IDs so drops can help build better lookup data.">i</span></span>
+        </label>
+        <label class="settings-check">
+          <input v-model="draftUnknownItemAudioPrompt" :disabled="!draftDeveloperItemResearchEnabled" type="checkbox" />
+          <span class="settings-label">Prompt on unknown drops <span class="info-bubble" data-tip="Plays a quiet cue when a new unresolved item signature appears while developer item research is enabled.">i</span></span>
+        </label>
+        <label class="settings-check">
           <input v-model="draftSkipEmptyRuns" type="checkbox" />
           <span class="settings-label">Don't save empty runs <span class="info-bubble" data-tip="Prevents Past Runs entries when a session has no tracked activity.">i</span></span>
         </label>
@@ -113,6 +130,35 @@ const draftMinRunDurationMinutes = defineModel<number>("minRunDurationMinutes", 
             <small>min</small>
           </div>
         </label>
+        <div class="settings-config-row settings-wide">
+          <span class="settings-label">Configuration JSON <span class="info-bubble" data-tip="These checkboxes control what gets exported and what gets applied when importing. Unchecked areas are left alone on import.">i</span></span>
+          <div class="settings-config-checks" aria-label="Configuration sections">
+            <label class="settings-inline-check">
+              <input v-model="configIncludeAppSettings" type="checkbox" />
+              <span class="settings-label">App settings</span>
+            </label>
+            <label class="settings-inline-check">
+              <input v-model="configIncludeRunSaving" type="checkbox" />
+              <span class="settings-label">Run saving</span>
+            </label>
+            <label class="settings-inline-check">
+              <input v-model="configIncludeReportTracking" type="checkbox" />
+              <span class="settings-label">Report tracking</span>
+            </label>
+            <label class="settings-inline-check">
+              <input v-model="configIncludeLootFilters" type="checkbox" />
+              <span class="settings-label">Loot filters</span>
+            </label>
+            <label class="settings-inline-check">
+              <input v-model="configIncludeItemResearch" type="checkbox" />
+              <span class="settings-label">Research data</span>
+            </label>
+          </div>
+          <div class="settings-config-actions">
+            <button class="icon-button ghost" type="button" @click="$emit('importConfiguration')">Import JSON</button>
+            <button class="icon-button ghost" type="button" @click="$emit('exportConfiguration')">Export JSON</button>
+          </div>
+        </div>
       </div>
 
       <div class="settings-actions">
