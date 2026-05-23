@@ -139,7 +139,7 @@ const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearc
             </label>
             <label class="settings-inline-check">
               <input v-model="configIncludeRunSaving" type="checkbox" />
-              <span class="settings-label">Run saving</span>
+              <span class="settings-label">Past run settings</span>
             </label>
             <label class="settings-inline-check">
               <input v-model="configIncludeReportTracking" type="checkbox" />

@@ -3,9 +3,9 @@ import { computed, ref } from "vue";
 import type { PastRunSummary } from "../../../shared/stats";
 import { formatDateTime, formatDuration, formatNumber, formatTime } from "../lib/format";
 import { itemIconUrl, resourceImage } from "../lib/item-assets";
-import { ITEM_FILTER_SUGGESTION_LIMIT } from "../lib/item-filters";
+import { ITEM_FILTER_SUGGESTION_LIMIT, itemTypeLabelForName } from "../lib/item-filters";
 import { shoppingAutocompleteNames } from "../lib/item-options";
-import { aggregatePastRuns, pastRunDropKey, runResourceTotal, runResourceTypeCount, runTrackedItems, type PastRunAggregate } from "../lib/past-runs";
+import { TRACKED_RARITY_ORDER, aggregatePastRuns, pastRunDropKey, runResourceTotal, runResourceTypeCount, runTrackedItems, type PastRunAggregate } from "../lib/past-runs";
 import {
   createReportItemGroup,
   defaultPostRunReportConfig,
@@ -13,7 +13,6 @@ import {
   REPORT_METRIC_OPTIONS,
   REPORT_RESOURCE_DRAWER_OPTIONS,
   REPORT_TOP_DROP_LIMIT_OPTIONS,
-  reportConfigTrackedItems,
   type PostRunReportConfig,
   type ReportItemGroup,
   type ReportMetricId,
@@ -35,12 +34,13 @@ const showReportConfig = ref(false);
 const reportDraftItem = ref("");
 const reportDraftGroupName = ref("");
 const selectedReportGroupId = ref("");
+const expandedResourceDrawers = ref<Set<string>>(new Set());
 
-const activeReportItems = computed(() => reportConfigTrackedItems(props.reportConfig));
 const reportItemGroups = computed(() => props.reportConfig.itemGroups);
 const selectedReportGroup = computed(() => reportItemGroups.value.find((group) => group.id === selectedReportGroupId.value) ?? reportItemGroups.value[0] ?? null);
-const allRunAggregate = computed(() => aggregatePastRuns(props.pastRuns, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, activeReportItems.value));
-const recentRunAggregate = computed(() => aggregatePastRuns(props.pastRuns.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, activeReportItems.value));
+const activeReportGroups = computed(() => reportItemGroups.value.filter((group) => group.enabled));
+const allRunAggregate = computed(() => aggregatePastRuns(props.pastRuns, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
+const recentRunAggregate = computed(() => aggregatePastRuns(props.pastRuns.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
 const aggregatePanels = computed(() => [
   { key: "all", title: "All Runs", subtitle: `${allRunAggregate.value.runCount} saved`, aggregate: allRunAggregate.value },
   { key: "recent", title: "Last 10 Runs", subtitle: `${recentRunAggregate.value.runCount} included`, aggregate: recentRunAggregate.value },
@@ -51,11 +51,12 @@ const reportTopDropLimitOptions = REPORT_TOP_DROP_LIMIT_OPTIONS;
 const isDefaultReportConfig = computed(() => isDefaultPostRunReportConfig(props.reportConfig));
 const reportModeLabel = computed(() => (isDefaultReportConfig.value ? "Default report" : "Custom report"));
 const reportGroupHelp = computed(() => {
-  if (activeReportItems.value.length > 0) {
-    return `${activeReportItems.value.length} exact items included from enabled recap groups.`;
+  if (activeReportGroups.value.length > 0) {
+    return "Enabled groups are combined. Empty rarities mean any rarity; empty watched items mean any item in the selected rarities.";
   }
-  return "No enabled group has items, so drop recaps include every saved drop from the selected rarities.";
+  return "No enabled groups, so drop recaps include every saved drop from the default rarities.";
 });
+const selectedReportGroupedItems = computed(() => groupedReportItems(selectedReportGroup.value));
 const reportItemSuggestions = computed(() => {
   const query = reportDraftItem.value.trim().toLowerCase();
   const existing = new Set((selectedReportGroup.value?.items ?? []).map((item) => item.toLowerCase()));
@@ -80,10 +81,6 @@ function runTitle(run: PastRunSummary): string {
 
 function toggleReportMetric(metric: ReportMetricId, enabled: boolean) {
   emit("update:reportConfig", { ...props.reportConfig, summaryMetrics: toggledList(props.reportConfig.summaryMetrics, metric, enabled) });
-}
-
-function toggleReportRarity(rarity: string, enabled: boolean) {
-  emit("update:reportConfig", { ...props.reportConfig, dropRarities: toggledList(props.reportConfig.dropRarities, rarity, enabled) });
 }
 
 function toggleReportResourceDrawer(drawer: ReportResourceDrawerId, enabled: boolean) {
@@ -132,6 +129,14 @@ function updateReportItemGroup(group: ReportItemGroup, patch: Partial<ReportItem
       : candidate,
   );
   emit("update:reportConfig", { ...props.reportConfig, trackedItems: [], itemGroups: groups });
+}
+
+function updateReportGroupName(group: ReportItemGroup, event: Event) {
+  updateReportItemGroup(group, { name: (event.target as HTMLInputElement | null)?.value ?? "" });
+}
+
+function toggleReportGroupRarity(group: ReportItemGroup, rarity: string, enabled: boolean) {
+  updateReportItemGroup(group, { rarities: toggledList(group.rarities, rarity, enabled) });
 }
 
 function addTrackedReportItem(group: ReportItemGroup, value = reportDraftItem.value) {
@@ -184,8 +189,29 @@ function resourceDrawers(run: PastRunSummary) {
   return props.reportConfig.resourceDrawers.map((drawer) => drawers[drawer]).filter(Boolean);
 }
 
+function resourceDrawerKey(run: PastRunSummary, drawerId: ReportResourceDrawerId): string {
+  return `${run.id}:${drawerId}`;
+}
+
+function isResourceDrawerExpanded(run: PastRunSummary, drawerId: ReportResourceDrawerId): boolean {
+  return expandedResourceDrawers.value.has(resourceDrawerKey(run, drawerId));
+}
+
+function toggleResourceDrawer(run: PastRunSummary, drawerId: ReportResourceDrawerId, totalResources: number) {
+  if (totalResources <= 3) return;
+  const key = resourceDrawerKey(run, drawerId);
+  const next = new Set(expandedResourceDrawers.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedResourceDrawers.value = next;
+}
+
+function visibleDrawerResources(run: PastRunSummary, drawer: ReturnType<typeof resourceDrawers>[number]) {
+  return isResourceDrawerExpanded(run, drawer.id) ? drawer.resources : drawer.resources.slice(0, 3);
+}
+
 function runDrops(run: PastRunSummary) {
-  return runTrackedItems(run, props.reportConfig.dropRarities, activeReportItems.value);
+  return runTrackedItems(run, props.reportConfig.dropRarities, [], activeReportGroups.value);
 }
 
 function runMfDropTotal(run: PastRunSummary): number {
@@ -214,6 +240,18 @@ function toggledList<T extends string>(values: T[], value: T, enabled: boolean):
 
 function eventChecked(event: Event): boolean {
   return Boolean((event.target as HTMLInputElement | null)?.checked);
+}
+
+function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: string; items: string[] }> {
+  if (!group) return [];
+  const groups = new Map<string, string[]>();
+  for (const item of [...group.items].sort((left, right) => itemTypeLabelForName(left).localeCompare(itemTypeLabelForName(right)) || left.localeCompare(right))) {
+    const typeLabel = itemTypeLabelForName(item);
+    const items = groups.get(typeLabel) ?? [];
+    items.push(item);
+    groups.set(typeLabel, items);
+  }
+  return Array.from(groups.entries()).map(([typeLabel, items]) => ({ typeLabel, items }));
 }
 </script>
 
@@ -274,38 +312,83 @@ function eventChecked(event: Event): boolean {
 
                 <div v-if="selectedReportGroup" class="report-item-group-editor">
                   <div class="item-filter-editor-head">
-                    <div>
-                      <h3>{{ selectedReportGroup.name }}</h3>
-                      <span>{{ selectedReportGroup.enabled ? "Included in report" : "Disabled" }}</span>
-                    </div>
-                    <label class="settings-inline-check">
+                    <label class="settings-check">
                       <input :checked="selectedReportGroup.enabled" type="checkbox" @change="updateReportItemGroup(selectedReportGroup, { enabled: eventChecked($event) })" />
-                      <span class="settings-label">Include group</span>
+                      <span>Enabled</span>
                     </label>
-                    <button class="icon-button ghost" type="button" @click="removeReportItemGroup(selectedReportGroup)">Remove</button>
+                    <button class="icon-button ghost" type="button" @click="removeReportItemGroup(selectedReportGroup)">Remove Group</button>
                   </div>
 
-                  <div class="item-filter-search-wrap">
-                    <form class="item-filter-add-item" @submit.prevent="addTrackedReportItem(selectedReportGroup)">
-                      <input v-model="reportDraftItem" type="search" placeholder="Search item name" autocomplete="off" spellcheck="false" />
-                      <button class="icon-button primary" type="submit">Add Item</button>
-                    </form>
-                    <div v-if="reportDraftItem.trim().length >= 3 && reportItemSuggestions.length" class="item-filter-suggestions">
-                      <button v-for="name in reportItemSuggestions" :key="name" type="button" @click="addTrackedReportItem(selectedReportGroup, name)">
-                        {{ name }}
-                      </button>
+                  <label class="settings-row">
+                    <span>Group name</span>
+                    <input :value="selectedReportGroup.name" type="text" spellcheck="false" @input="updateReportGroupName(selectedReportGroup, $event)" />
+                  </label>
+
+                  <div class="item-filter-rule-section">
+                    <div class="item-filter-rule-heading">
+                      <strong>Rarities</strong>
+                      <span>Empty means any rarity.</span>
                     </div>
-                    <p v-else-if="reportDraftItem.trim().length > 0 && reportDraftItem.trim().length < 3" class="item-filter-search-hint">Type at least 3 characters for suggestions.</p>
-                    <p v-else-if="reportDraftItem.trim().length >= 3" class="item-filter-search-hint">No matching known items.</p>
+                    <div class="item-filter-chip-grid">
+                      <label v-for="rarity in TRACKED_RARITY_ORDER" :key="rarity" class="filter-box">
+                        <input :checked="selectedReportGroup.rarities.includes(rarity)" type="checkbox" @change="toggleReportGroupRarity(selectedReportGroup, rarity, eventChecked($event))" />
+                        <span>{{ rarity }}</span>
+                      </label>
+                    </div>
                   </div>
 
-                  <div v-if="selectedReportGroup.items.length" class="tracked-report-item-list">
-                    <div v-for="item in selectedReportGroup.items" :key="item" class="item-filter-specific-row tracked-report-item-row">
-                      <span>{{ item }}</span>
-                      <button class="shopping-remove" type="button" @click="removeTrackedReportItem(selectedReportGroup, item)" :aria-label="`Remove ${item}`">x</button>
+                  <div class="item-filter-rule-section">
+                    <div class="item-filter-rule-heading">
+                      <strong>Watched items</strong>
+                      <span>Empty means any item matching the selected rarities.</span>
+                    </div>
+                    <div class="item-filter-search-wrap">
+                      <form class="item-filter-add-item" @submit.prevent="addTrackedReportItem(selectedReportGroup)">
+                        <input v-model="reportDraftItem" type="search" placeholder="Search item name" autocomplete="off" spellcheck="false" />
+                        <button class="icon-button primary" type="submit">Add</button>
+                      </form>
+                      <div v-if="reportDraftItem.trim().length >= 3 && reportItemSuggestions.length" class="item-filter-suggestions">
+                        <button v-for="name in reportItemSuggestions" :key="name" type="button" @click="addTrackedReportItem(selectedReportGroup, name)">
+                          {{ name }}
+                        </button>
+                      </div>
+                      <p v-else-if="reportDraftItem.trim().length > 0 && reportDraftItem.trim().length < 3" class="item-filter-search-hint">Type at least 3 characters for suggestions.</p>
+                      <p v-else-if="reportDraftItem.trim().length >= 3" class="item-filter-search-hint">No matching known items.</p>
+                    </div>
+
+                    <div v-if="selectedReportGroupedItems.length" class="item-filter-specific-list report-specific-list">
+                      <section v-for="itemGroup in selectedReportGroupedItems" :key="itemGroup.typeLabel" class="item-filter-specific-type">
+                        <h4>{{ itemGroup.typeLabel }}</h4>
+                        <div v-for="item in itemGroup.items" :key="`${itemGroup.typeLabel}-${item}`" class="item-filter-specific-row tracked-report-item-row">
+                          <span>{{ item }}</span>
+                          <button class="shopping-remove" type="button" @click="removeTrackedReportItem(selectedReportGroup, item)" :aria-label="`Remove ${item}`">x</button>
+                        </div>
+                      </section>
+                    </div>
+                    <p v-else class="empty-copy">Add exact item names when this group should only count specific drops.</p>
+                  </div>
+                </div>
+                <div v-else class="report-item-group-editor report-item-group-empty">
+                  <div class="item-filter-editor-head">
+                    <div>
+                      <h3>No recap group selected</h3>
+                      <span>Create a group to customize which drops appear in Past Runs.</span>
                     </div>
                   </div>
-                  <p v-else class="empty-copy">This group has no items yet.</p>
+                  <div class="item-filter-rule-section">
+                    <div class="item-filter-rule-heading">
+                      <strong>Rarities</strong>
+                      <span>Groups can include Set, Satanic, Heroic, or Angelic drops.</span>
+                    </div>
+                    <p class="empty-copy">After adding a group, rarity checkboxes appear here just like the Item Filter rules.</p>
+                  </div>
+                  <div class="item-filter-rule-section">
+                    <div class="item-filter-rule-heading">
+                      <strong>Watched items</strong>
+                      <span>Groups can include all matching drops or exact item names.</span>
+                    </div>
+                    <p class="empty-copy">Exact item search appears here after a group exists.</p>
+                  </div>
                 </div>
               </div>
               <p class="empty-copy">{{ reportGroupHelp }}</p>
@@ -321,19 +404,6 @@ function eventChecked(event: Event): boolean {
                   <label v-for="option in reportMetricOptions" :key="option.id" class="filter-box">
                     <input :checked="reportConfig.summaryMetrics.includes(option.id)" type="checkbox" @change="toggleReportMetric(option.id, eventChecked($event))" />
                     <span>{{ option.label }}</span>
-                  </label>
-                </div>
-              </div>
-
-              <div class="item-filter-rule-section">
-                <div class="item-filter-rule-heading">
-                  <strong>Drops</strong>
-                  <span>Rarity groups included in item recaps.</span>
-                </div>
-                <div class="item-filter-chip-grid">
-                  <label v-for="rarity in ['Set', 'Satanic', 'Heroic', 'Angelic']" :key="rarity" class="filter-box">
-                    <input :checked="reportConfig.dropRarities.includes(rarity)" type="checkbox" @change="toggleReportRarity(rarity, eventChecked($event))" />
-                    <span>{{ rarity }}</span>
                   </label>
                 </div>
               </div>
@@ -457,10 +527,21 @@ function eventChecked(event: Event): boolean {
 
           <div class="resource-columns">
             <div v-for="drawer in resourceDrawers(run)" :key="`${run.id}-${drawer.id}`" class="resource-column">
-              <h4>{{ drawer.title }}</h4>
-              <div v-if="drawer.resources.length" class="resource-list">
+              <button
+                class="resource-column-toggle"
+                type="button"
+                :disabled="drawer.resources.length <= 3"
+                :aria-expanded="isResourceDrawerExpanded(run, drawer.id)"
+                @click="toggleResourceDrawer(run, drawer.id, drawer.resources.length)"
+              >
+                <h4>{{ drawer.title }}</h4>
+                <span v-if="drawer.resources.length > 3">
+                  {{ isResourceDrawerExpanded(run, drawer.id) ? "Show less" : `+${drawer.resources.length - 3} more` }}
+                </span>
+              </button>
+              <div v-if="drawer.resources.length" :class="['resource-list', { expanded: isResourceDrawerExpanded(run, drawer.id) }]">
                 <div
-                  v-for="resource in drawer.resources"
+                  v-for="resource in visibleDrawerResources(run, drawer)"
                   :key="`${run.id}-${drawer.id}-${resource.name}`"
                   class="resource-chip"
                   :class="{ 'resource-chip-no-image': !resourceImage(resource, drawer.imageKind) }"

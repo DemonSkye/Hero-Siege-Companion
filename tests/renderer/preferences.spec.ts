@@ -94,6 +94,7 @@ describe("renderer preferences persistence", () => {
           id: "legacy-focus-items",
           name: "Focus Items",
           enabled: true,
+          rarities: [],
           items: ["Sash of the Magi"],
         },
       ],
@@ -140,7 +141,26 @@ describe("renderer preferences persistence", () => {
       ...defaultPreferences,
       logLimit: 100,
       itemFilterMuted: false,
-      postRunReport: { ...defaultPostRunReportConfig, topDropLimit: 5 },
+      postRunReport: {
+        ...defaultPostRunReportConfig,
+        topDropLimit: 5,
+        itemGroups: [
+          {
+            id: "bosses",
+            name: "Bosses",
+            enabled: true,
+            rarities: ["Satanic"],
+            items: ["Battle Worn Gauntlets"],
+          },
+          {
+            id: "disabled",
+            name: "Disabled",
+            enabled: false,
+            rarities: ["Heroic"],
+            items: ["Ignored Heroic"],
+          },
+        ],
+      },
       itemResearchEntries: [],
     };
 
@@ -160,6 +180,36 @@ describe("renderer preferences persistence", () => {
     expect(payload.uiPreferences.itemFilterMuted).toBeUndefined();
     expect(payload.uiPreferences.itemResearchEntries).toBeUndefined();
     expect(payload.uiPreferences.postRunReport).toMatchObject({ topDropLimit: 5 });
+    expect(payload.uiPreferences.postRunReport?.itemGroups).toEqual([
+      {
+        id: "bosses",
+        name: "Bosses",
+        enabled: true,
+        rarities: ["Satanic"],
+        items: ["Battle Worn Gauntlets"],
+      },
+      {
+        id: "disabled",
+        name: "Disabled",
+        enabled: false,
+        rarities: ["Heroic"],
+        items: ["Ignored Heroic"],
+      },
+    ]);
+
+    const reportExcludedPayload = createConfigurationExportPayload(
+      imported,
+      { skipEmptyRuns: true, minDurationMinutes: 12 },
+      { createDebugMode: true },
+      {
+        includeAppSettings: true,
+        includeRunSaving: true,
+        includeReportTracking: false,
+        includeLootFilters: false,
+        includeItemResearch: false,
+      },
+    );
+    expect(reportExcludedPayload.uiPreferences.postRunReport).toBeUndefined();
 
     const result = importConfigurationPayload(payload, current, {
       includeAppSettings: true,

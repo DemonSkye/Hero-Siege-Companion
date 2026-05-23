@@ -1891,10 +1891,6 @@ h2 {
   gap: 8px;
 }
 
-.report-config-modal {
-  width: min(900px, calc(100vw - 48px));
-}
-
 .report-config-modal-body {
   display: grid;
   gap: 14px;
@@ -1914,7 +1910,7 @@ h2 {
 
 .report-item-group-layout {
   display: grid;
-  grid-template-columns: minmax(210px, 0.36fr) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 0.32fr) minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
 }
@@ -1928,11 +1924,12 @@ h2 {
 .report-item-group-editor {
   display: grid;
   min-width: 0;
+  align-content: start;
   gap: 12px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.13);
+}
+
+.report-item-group-empty {
+  opacity: 0.88;
 }
 
 .report-item-group-editor .item-filter-editor-head {
@@ -1955,18 +1952,12 @@ h2 {
   font-weight: 800;
 }
 
-.tracked-report-item-list {
-  display: grid;
-  gap: 7px;
-  max-height: 170px;
-  overflow: auto;
-  padding-right: 6px;
-  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
-  scrollbar-width: thin;
-}
-
 .tracked-report-item-row {
   grid-template-columns: minmax(0, 1fr) 34px;
+}
+
+.report-specific-list {
+  max-height: clamp(170px, calc(100vh - 610px), 360px);
 }
 
 .past-run-aggregate-grid {
@@ -2254,10 +2245,62 @@ h2 {
   margin: 0 0 8px;
 }
 
+.resource-column-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.resource-column-toggle:disabled {
+  cursor: default;
+}
+
+.resource-column-toggle h4 {
+  margin: 0;
+}
+
+.resource-column-toggle span {
+  color: #89d8c7;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .resource-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.resource-list.expanded {
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 6px;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.resource-list.expanded::-webkit-scrollbar {
+  width: 9px;
+}
+
+.resource-list.expanded::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.resource-list.expanded::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(18, 21, 27, 0.92);
+  border-radius: 999px;
+  background: #3f9487;
 }
 
 .resource-chip {
@@ -2318,6 +2361,10 @@ h2 {
   background: #141820;
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.42);
   padding: 18px;
+}
+
+.settings-panel.report-config-modal {
+  width: min(88vw, 1800px);
 }
 
 .settings-heading,
@@ -2603,6 +2650,10 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .resource-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .item-filter-layout {
     grid-template-columns: 1fr;
   }
@@ -2619,6 +2670,10 @@ h2 {
 @media (max-width: 760px) {
   .settings-panel {
     width: min(520px, calc(100vw - 28px));
+  }
+
+  .settings-panel.report-config-modal {
+    width: min(620px, calc(100vw - 28px));
   }
 
   .settings-grid {

@@ -7,6 +7,7 @@ export interface ReportItemGroup {
   id: string;
   name: string;
   enabled: boolean;
+  rarities: string[];
   items: string[];
 }
 
@@ -77,17 +78,9 @@ export function createReportItemGroup(name: string, index: number): ReportItemGr
     id: `report-group-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name: cleanGroupName(name) || `Group ${index + 1}`,
     enabled: true,
+    rarities: [],
     items: [],
   };
-}
-
-export function reportConfigTrackedItems(config: PostRunReportConfig): string[] {
-  const groupedItems = normalizeTrackedItems(
-    config.itemGroups
-      .filter((group) => group.enabled)
-      .flatMap((group) => group.items),
-  );
-  return groupedItems.length ? groupedItems : normalizeTrackedItems(config.trackedItems);
 }
 
 export function normalizeReportItemGroups(value: unknown, legacyTrackedItems: string[] = []): ReportItemGroup[] {
@@ -100,6 +93,7 @@ export function normalizeReportItemGroups(value: unknown, legacyTrackedItems: st
       id: "legacy-focus-items",
       name: "Focus Items",
       enabled: true,
+      rarities: [],
       items: legacyTrackedItems,
     },
   ];
@@ -138,6 +132,7 @@ function normalizeReportItemGroup(value: unknown): ReportItemGroup | null {
     id,
     name,
     enabled: candidate.enabled === undefined ? true : Boolean(candidate.enabled),
+    rarities: normalizeOptionList(candidate.rarities, TRACKED_RARITY_ORDER, []),
     items: normalizeTrackedItems(candidate.items),
   };
 }
