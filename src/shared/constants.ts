@@ -133,6 +133,7 @@ export const EVENT_NAMES = {
   accountMode: "updateAccountMode",
   mail: "updateMail",
   item: "itemAdded",
+  itemDrop: "itemDropped",
   satanicZone: "updateSatanicZone",
 } as const;
 

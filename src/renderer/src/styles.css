@@ -142,6 +142,45 @@ button {
   border-radius: 8px;
 }
 
+.update-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(137, 216, 199, 0.26);
+  border-radius: 8px;
+  background: rgba(22, 35, 38, 0.92);
+}
+
+.update-banner div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.update-banner strong {
+  color: #f7f8fb;
+  font-size: 14px;
+}
+
+.update-banner span {
+  overflow: hidden;
+  color: #aab3c2;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .topbar-title {
   min-width: 0;
 }

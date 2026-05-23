@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CapturePreferences, CompanionState, RunArchivePreferences } from "../shared/app-state";
+import type { CapturePreferences, CompanionState, ReleaseUpdateInfo, RunArchivePreferences } from "../shared/app-state";
 
 contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   getState: (): Promise<CompanionState> => ipcRenderer.invoke("state:get"),
@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   setAlwaysOnTop: (enabled: boolean): Promise<void> => ipcRenderer.invoke("window:set-always-on-top", enabled),
   setCompactMode: (enabled: boolean, lockPositions: boolean): Promise<void> => ipcRenderer.invoke("window:set-compact-mode", enabled, lockPositions),
   writeClipboardText: (value: string): Promise<void> => ipcRenderer.invoke("clipboard:write-text", value),
+  checkForUpdate: (): Promise<ReleaseUpdateInfo | null> => ipcRenderer.invoke("updates:check"),
+  openRelease: (url?: string): Promise<void> => ipcRenderer.invoke("updates:open-release", url),
   onStateUpdated: (callback: (state: CompanionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: CompanionState) => callback(state);
     ipcRenderer.on("state:updated", listener);

@@ -7,7 +7,7 @@
 // Unholy: 19
 // Runeword: 92
 // Normalized item names are used so punctuation and diacritics do not affect lookup.
-export type KnownItemRarity = "Satanic" | "Set" | "Angelic" | "Heroic" | "Unholy" | "Runeword";
+type KnownItemRarity = "Satanic" | "Set" | "Angelic" | "Heroic" | "Unholy" | "Runeword";
 
 const ITEM_RARITY_BY_NAME: Record<string, KnownItemRarity> = {
   "abomination's brain": "Set",

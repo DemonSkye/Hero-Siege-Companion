@@ -883,6 +883,7 @@ const ITEM_TRANSLATION_OVERRIDES: ItemTranslation[] = [
 
 const exactLookup = new Map<string, ItemTranslation>();
 const looseLookup = new Map<string, ItemTranslation[]>();
+const nameLookup = new Map<string, ItemTranslation>();
 
 for (const item of ITEM_TRANSLATIONS) {
   exactLookup.set(lookupKey(item.type, item.gameId, item.weaponType), item);
@@ -890,11 +891,13 @@ for (const item of ITEM_TRANSLATIONS) {
   const matches = looseLookup.get(looseKey) ?? [];
   matches.push(item);
   looseLookup.set(looseKey, matches);
+  nameLookup.set(normalizeItemName(item.name), item);
 }
 
 for (const item of ITEM_TRANSLATION_OVERRIDES) {
   exactLookup.set(lookupKey(item.type, item.gameId, item.weaponType), item);
   looseLookup.set(lookupKey(item.type, item.gameId), [item]);
+  nameLookup.set(normalizeItemName(item.name), item);
 }
 
 export function lookupItemTranslation(type: number, gameId: number, weaponType = 0): ItemTranslation | null {
@@ -907,8 +910,8 @@ export function lookupItemTranslation(type: number, gameId: number, weaponType =
   return looseMatches.length === 1 ? looseMatches[0] : null;
 }
 
-export function allItemTranslationNames(): string[] {
-  return Array.from(new Set([...ITEM_TRANSLATIONS, ...ITEM_TRANSLATION_OVERRIDES].map((item) => item.name))).sort((a, b) => a.localeCompare(b));
+export function lookupItemTranslationByName(name: string): ItemTranslation | null {
+  return nameLookup.get(normalizeItemName(name)) ?? null;
 }
 
 export function allItemTranslations(): ItemTranslation[] {
@@ -917,4 +920,16 @@ export function allItemTranslations(): ItemTranslation[] {
 
 function lookupKey(type: number, gameId: number, weaponType = 0): string {
   return `${type}:${gameId}:${weaponType}`;
+}
+
+function normalizeItemName(name: string): string {
+  return name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’‘`´]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }

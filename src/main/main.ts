@@ -1,8 +1,9 @@
 import { app, BrowserWindow, clipboard, crashReporter, dialog, ipcMain, nativeImage, shell, type Rectangle } from "electron";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 import { CaptureService, type CaptureUpdate } from "./capture";
-import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences } from "../shared/app-state";
+import type { CapturePreferences, CompanionState, LogEntry, ReleaseUpdateInfo, RunArchivePreferences } from "../shared/app-state";
 import { createInitialStats, hasRunActivity, StatsEngine, type PastRunSummary } from "../shared/stats";
 
 const statsEngine = new StatsEngine();
@@ -20,12 +21,16 @@ const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeigh
 const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
 const STEAM_HERO_SIEGE_URL = "steam://rungameid/269210";
 const LAUNCH_CAPTURE_DELAY_MS = 45_000;
+const GAME_PROCESS_MONITOR_MS = 12_000;
 const RENDERER_RECOVERY_DELAY_MS = 500;
 const MAX_RENDERER_RECOVERIES = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
 const APP_SESSION_HEARTBEAT_MS = 15_000;
 const APP_DIAGNOSTIC_HEARTBEAT_MS = 30_000;
 const STATE_PUBLISH_INTERVAL_MS = 1000;
+const GITHUB_RELEASES_URL = "https://github.com/DemonSkye/Hero-Siege-Companion/releases";
+const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/DemonSkye/Hero-Siege-Companion/releases/latest";
+const RELEASE_CHECK_TIMEOUT_MS = 6000;
 
 const state: CompanionState = {
   captureRunning: false,
@@ -63,6 +68,7 @@ let windowBoundsPath = "";
 let appSessionPath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
 let launchCaptureTimer: NodeJS.Timeout | null = null;
+let gameProcessMonitorTimer: NodeJS.Timeout | null = null;
 let compactWindowMode = false;
 let windowBounds: WindowBoundsPreferences = {};
 let saveWindowBoundsTimer: NodeJS.Timeout | null = null;
@@ -71,6 +77,8 @@ let appSessionHeartbeatTimer: NodeJS.Timeout | null = null;
 let appDiagnosticHeartbeatTimer: NodeJS.Timeout | null = null;
 let statePublishTimer: NodeJS.Timeout | null = null;
 let lastPendingCaptureEventsLogAt = 0;
+let lastGameProcessAutoStartLogAt = 0;
+let gameProcessMonitorActive = false;
 let rendererRecoveryWindowStartedAt = 0;
 let rendererRecoveriesInWindow = 0;
 const appSessionId = `${Date.now()}-${process.pid}`;
@@ -420,6 +428,13 @@ ipcMain.handle("window:set-compact-mode", (_event, enabled: boolean, lockPositio
 ipcMain.handle("clipboard:write-text", (_event, value: string) => {
   clipboard.writeText(String(value));
 });
+ipcMain.handle("updates:check", async () => checkForReleaseUpdate());
+ipcMain.handle("updates:open-release", async (_event, url?: string) => {
+  const target = typeof url === "string" && /^https:\/\/github\.com\/DemonSkye\/Hero-Siege-Companion\/releases(?:\/|$)/i.test(url)
+    ? url
+    : GITHUB_RELEASES_URL;
+  await shell.openExternal(target);
+});
 ipcMain.handle("game:choose-executable", async () => {
   const options = {
     title: "Choose Hero Siege executable",
@@ -432,6 +447,92 @@ ipcMain.handle("game:choose-executable", async () => {
   const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : result.filePaths[0] ?? null;
 });
+
+async function checkForReleaseUpdate(): Promise<ReleaseUpdateInfo | null> {
+  try {
+    const release = await fetchLatestRelease();
+    const version = normalizeReleaseVersion(release.tag_name || release.name || "");
+    const currentVersion = normalizeReleaseVersion(app.getVersion());
+    if (!version || !isNewerVersion(version, currentVersion)) return null;
+
+    return {
+      version,
+      currentVersion,
+      name: release.name || `Release ${version}`,
+      url: release.html_url || `${GITHUB_RELEASES_URL}/tag/v${version}`,
+      publishedAt: release.published_at || "",
+    };
+  } catch (error) {
+    writeAppLog("release-check-error", { error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
+}
+
+function fetchLatestRelease(): Promise<GitHubReleasePayload> {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      GITHUB_LATEST_RELEASE_API_URL,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": `Hero-Siege-Companion/${app.getVersion()}`,
+        },
+        timeout: RELEASE_CHECK_TIMEOUT_MS,
+      },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          if ((response.statusCode ?? 0) < 200 || (response.statusCode ?? 0) >= 300) {
+            reject(new Error(`GitHub release check returned HTTP ${response.statusCode ?? "unknown"}.`));
+            return;
+          }
+
+          try {
+            resolve(JSON.parse(body) as GitHubReleasePayload);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+
+    request.on("timeout", () => {
+      request.destroy(new Error("GitHub release check timed out."));
+    });
+    request.on("error", reject);
+  });
+}
+
+interface GitHubReleasePayload {
+  tag_name?: string;
+  name?: string;
+  html_url?: string;
+  published_at?: string;
+}
+
+function normalizeReleaseVersion(value: string): string {
+  const match = value.trim().match(/^v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/);
+  return match?.[1] ?? "";
+}
+
+function isNewerVersion(candidate: string, current: string): boolean {
+  const candidateParts = parseVersionParts(candidate);
+  const currentParts = parseVersionParts(current);
+  for (let index = 0; index < 3; index += 1) {
+    if (candidateParts[index] > currentParts[index]) return true;
+    if (candidateParts[index] < currentParts[index]) return false;
+  }
+  return false;
+}
+
+function parseVersionParts(version: string): [number, number, number] {
+  const [major = "0", minor = "0", patch = "0"] = version.split(/[+-]/)[0].split(".");
+  return [major, minor, patch].map((part) => Number.parseInt(part, 10) || 0) as [number, number, number];
+}
 
 function setWindowAlwaysOnTop(enabled: boolean): void {
   if (!mainWindow) return;
@@ -463,6 +564,40 @@ async function attemptCaptureAfterLaunch(): Promise<void> {
   addLog("info", "Checking for Hero Siege after launch delay.");
   await captureService.start();
   publishState();
+}
+
+function startGameProcessMonitor(): void {
+  if (gameProcessMonitorTimer) return;
+  gameProcessMonitorTimer = setInterval(() => {
+    void syncCaptureToGameProcess("monitor");
+  }, GAME_PROCESS_MONITOR_MS);
+  gameProcessMonitorTimer.unref();
+  void syncCaptureToGameProcess("startup");
+}
+
+function stopGameProcessMonitor(): void {
+  if (!gameProcessMonitorTimer) return;
+  clearInterval(gameProcessMonitorTimer);
+  gameProcessMonitorTimer = null;
+}
+
+async function syncCaptureToGameProcess(source: string): Promise<void> {
+  if (!captureService || state.captureRunning || gameProcessMonitorActive) return;
+  gameProcessMonitorActive = true;
+  try {
+    if (!(await captureService.hasHeroSiegeProcess())) return;
+    writeAppLog("game-process-detected", { source, captureStatus: state.captureStatus });
+    const now = Date.now();
+    if (now - lastGameProcessAutoStartLogAt > 60_000) {
+      lastGameProcessAutoStartLogAt = now;
+      addLog("info", "Hero Siege is running; starting capture automatically.");
+    }
+    clearLaunchCaptureTimer();
+    await captureService.start();
+    publishState();
+  } finally {
+    gameProcessMonitorActive = false;
+  }
 }
 
 function setCompactWindowMode(enabled: boolean, lockPositions = false): void {
@@ -517,6 +652,7 @@ app.whenReady().then(async () => {
   windowBoundsPath = path.join(app.getPath("userData"), "window-bounds.json");
   appSessionPath = path.join(app.getPath("userData"), "app-session.json");
   const debugLogPath = path.join(app.getPath("userData"), "capture-debug.log");
+  const wideDebugLogPath = path.join(app.getPath("userData"), "capture-wide-debug.log");
   logPreviousAppSession();
   startAppSessionHeartbeat();
   startAppDiagnosticHeartbeat();
@@ -527,6 +663,7 @@ app.whenReady().then(async () => {
   writeAppLog("app-ready", {
     appLogPath,
     debugLogPath,
+    wideDebugLogPath,
     pastRunsPath,
     preferencesPath,
     windowBoundsPath,
@@ -534,17 +671,19 @@ app.whenReady().then(async () => {
     crashDumpsPath: app.getPath("crashDumps"),
     lastCrashReport: crashReporter.getLastCrashReport(),
   });
-  captureService = new CaptureService(applyCaptureUpdate, debugLogPath, state.capturePreferences.createDebugMode);
+  captureService = new CaptureService(applyCaptureUpdate, debugLogPath, wideDebugLogPath, state.capturePreferences.createDebugMode);
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   createWindow();
   addLog("info", "Hero Siege Companion started.");
   addLog("info", `Capture debug log: ${debugLogPath}`);
+  addLog("info", `Wide capture log: ${wideDebugLogPath}`);
   if (await captureService.hasHeroSiegeProcess()) {
     await captureService.start();
   } else {
     addLog("info", "Hero Siege is not running yet. Launch the game, wait for the main menu, then click Launch Game.");
     publishState();
   }
+  startGameProcessMonitor();
 });
 
 app.on("child-process-gone", (_event, details) => {
@@ -580,6 +719,7 @@ app.on("window-all-closed", () => {
 function shutdownCapture(reason: string): void {
   writeAppLog("shutdown-capture", { reason, captureStatus: state.captureStatus, captureRunning: state.captureRunning });
   clearLaunchCaptureTimer();
+  stopGameProcessMonitor();
   archiveCurrentRun(reason);
   try {
     captureService?.stop();

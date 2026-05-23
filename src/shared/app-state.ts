@@ -40,6 +40,14 @@ export interface CapturePreferences {
   createDebugMode: boolean;
 }
 
+export interface ReleaseUpdateInfo {
+  version: string;
+  currentVersion: string;
+  name: string;
+  url: string;
+  publishedAt: string;
+}
+
 export interface CompanionState {
   captureRunning: boolean;
   captureStatus: "idle" | "waiting" | "running" | "error";

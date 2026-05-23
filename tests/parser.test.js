@@ -267,25 +267,234 @@ test("inventory update ext adds items from short fields", () => {
   assert.equal(snapshot.items.Heroic.mf, 0);
 });
 
-test("generated ground loot is not treated as picked up items", () => {
+test("generated ground itemData is not treated as a named drop", () => {
   const payload = {
     status: 1,
     message: "ok",
     itemData: {
-      "10-3909410-generated": {
+      "10-3909410-6526ec544f10a0003-7": {
+        n: 4,
         e: 10,
-        a: 1,
-        gid: 99,
-        b: 4,
-        d: 1,
+        j: 0,
+        gid: 2864038,
+        b: 9,
+        d: 2,
         c: 0,
+        a: 949407396,
+        sh: "51ebbc6be752",
       },
     },
+    operationTime: 1716400000000,
+    itemGenHash: "ground-sync",
   };
 
   const events = messageToEvents([payload]);
 
   assert.deepEqual(events, []);
+});
+
+test("correlated generated itemData can track c0 drops", () => {
+  const fingerprint = "10-3909410-6526f7d8f85a20001-12";
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      __hscTrustedGeneratedDrop: true,
+      itemData: {
+        [fingerprint]: {
+          e: 0,
+          j: 0,
+          gid: 4555085,
+          b: 0,
+          d: 3,
+          c: 0,
+          a: 741364673,
+          sh: "3c95d08b6c44",
+        },
+      },
+      operationTime: 0.0008349418640136719,
+      itemGenHash: "df23fb4b507e9621c6d07cd59149093ea43b02f2b78ceecee29d33f816b7a1b7",
+    },
+  ]);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].name, "itemDropped");
+  assert.equal(events[0].value.fingerprint, fingerprint);
+  assert.equal(events[0].value.source, "server");
+  assert.equal(events[0].value.type, 12);
+});
+
+test("generated ground itemData is ignored until an inventory pickup event", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      itemData: {
+        "10-3909410-ground-6": {
+          e: 10,
+          a: 1,
+          b: 8,
+          d: 9,
+          c: 0,
+        },
+      },
+    },
+    {
+      status: 1,
+      message: "ok",
+      operations: {
+        stack: {
+          "10-3909410-ground-6": {
+            pickup_add_data: {
+              e: 10,
+              a: 1,
+              b: 8,
+              d: 9,
+              c: 0,
+            },
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.name), ["itemAdded"]);
+  assert.equal(snapshot.items.Heroic.total, 1);
+  assert.equal(snapshot.itemTimeline.length, 1);
+});
+
+test("trusted generated itemData tracks dropped named items before pickup", () => {
+  const fingerprint = "10-3909410-6526f323f6e300003-8";
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      itemData: {
+        "10-3909410-6526f323f6e1a0001-8": {
+          n: 2,
+          e: 10,
+          j: 0,
+          gid: 4140471,
+          b: 13,
+          d: 2,
+          c: 0,
+          a: 314445609,
+          sh: "4d5932bcc19d",
+        },
+        [fingerprint]: {
+          e: 10,
+          j: 0,
+          gid: 4140865,
+          b: 21,
+          m: true,
+          d: 2,
+          c: 1,
+          a: 932090865,
+          sh: "a695ed322539",
+        },
+      },
+      operationTime: 0.001130819320678711,
+      itemGenHash: "df23fb4b507e9621c6d07cd59149093ea43b02f2b78ceecee29d33f816b7a1b7",
+    },
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      goldAmount: 0,
+      operations: {
+        add: {
+          [fingerprint]: {
+            sh: "a695ed322539",
+            a: 932090865,
+            e: 10,
+            j: 0,
+            b: 21,
+            m: 1,
+            d: 2,
+            c: 1,
+          },
+        },
+        log_ids: {
+          [fingerprint]: {
+            a: 2,
+            m: "1073774613",
+          },
+        },
+      },
+      newHashes: {},
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.name), ["itemDropped", "itemAdded"]);
+  assert.equal(events[0].value.fingerprint, fingerprint);
+  assert.equal(events[0].value.label, "Sash of the Magi");
+  assert.equal(events[0].value.rarityName, "Satanic");
+  assert.equal(events[0].value.mfDrop, 1);
+  assert.equal(snapshot.items.Satanic.total, 1);
+  assert.equal(snapshot.items.Satanic.mf, 1);
+  assert.equal(snapshot.itemTimeline.length, 1);
+});
+
+test("server just found messages can produce named drop events", () => {
+  const events = messageToEvents([
+    {
+      message: "SERVER: [Softcore] Dante just found [Fumacinha's Favela Flipflop]",
+    },
+  ]);
+
+  assert.equal(events[0].name, "itemDropped");
+  assert.equal(events[0].value.source, "server");
+  assert.equal(events[0].value.label, "Fumacinha's Favela Flipflop");
+  assert.equal(events[0].value.type, 2);
+});
+
+test("inventory item_data payloads are treated as picked up items", () => {
+  const events = messageToEvents([
+    {
+      route: "inventory/item_stack_handler/v1",
+      item_data: {
+        a: 676909917,
+        b: 71,
+        d: 6,
+        c: 1,
+        m: 1,
+      },
+      fingerprint: "8-4653008-6501d20d1309c0002-1",
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events[0].name, "itemAdded");
+  assert.equal(events[0].value.rarityName, "Satanic");
+  assert.equal(snapshot.items.Satanic.total, 1);
+  assert.equal(snapshot.items.Satanic.mf, 1);
+});
+
+test("inventory item_data pickup_add_data payloads are treated as picked up items", () => {
+  const events = messageToEvents([
+    {
+      route: "inventory/item_stack_handler/v1",
+      item_data: {
+        pickup_add_data: {
+          a: 624778371,
+          b: 8,
+          d: 9,
+          c: 0,
+        },
+      },
+      fingerprint: "8-4653008-6501d20d1308a0001-6",
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events[0].name, "itemAdded");
+  assert.equal(events[0].value.rarityName, "Heroic");
+  assert.equal(snapshot.items.Heroic.total, 1);
 });
 
 test("common inventory pickups still appear in timeline", () => {

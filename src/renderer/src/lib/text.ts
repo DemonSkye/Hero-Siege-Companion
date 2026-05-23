@@ -1,0 +1,33 @@
+export function normalizeLookupText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function normalizeSortText(value: string): string {
+  return normalizeLookupText(value).replace(/^(?:the|a|an) /, "");
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+export function stringField(record: Record<string, unknown>, field: string): string {
+  const value = record[field];
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+export function extractJsonString(text: string, field: string): string {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`"${escaped}"\\s*:\\s*"([^"]*)"`, "i"));
+  return match?.[1] ?? "";
+}
+
+export function extractJsonNumber(text: string, field: string): number | null {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`"${escaped}"\\s*:\\s*(-?\\d+)`, "i"));
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+export function structuredCloneCompat<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}

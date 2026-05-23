@@ -9,7 +9,7 @@ function normalizeMessageKey(key: string): string {
   return String(key).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-export function coerceMessageValue(value: MessageValue | undefined): MessageValue | undefined {
+function coerceMessageValue(value: MessageValue | undefined): MessageValue | undefined {
   if (typeof value !== "string") return value;
 
   const stripped = value.trim();
@@ -59,6 +59,7 @@ export function hasMessageField(msg: MessageObject | null | undefined, names: st
 
 export function intMessageField(msg: MessageObject | null | undefined, names: string[], defaultValue = 0): number {
   const value = getMessageField(msg, names, defaultValue);
+  if (typeof value === "boolean") return value ? 1 : 0;
   const parsed = Number.parseInt(String(value), 10);
   return Number.isFinite(parsed) ? parsed : defaultValue;
 }

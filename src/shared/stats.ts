@@ -19,6 +19,7 @@ export interface ResourceCounter {
 }
 
 export interface ItemTimelineEntry {
+  source: AddedItemObject["source"];
   rarity: string;
   label: string;
   localizationId?: string;
@@ -130,7 +131,7 @@ export class StatsEngine {
       this.stats.totalXpEarned += Math.trunc(xp / 0.15);
     } else if (event.name === EVENT_NAMES.mail) {
       this.stats.hasMail = Boolean(event.value);
-    } else if (event.name === EVENT_NAMES.item) {
+    } else if (event.name === EVENT_NAMES.item || event.name === EVENT_NAMES.itemDrop) {
       this.updateItem(event.value as AddedItemObject, event.createdAt);
     } else if (event.name === EVENT_NAMES.satanicZone) {
       this.updateSatanicZone(event.value as SatanicZoneInfo);
@@ -192,6 +193,7 @@ export class StatsEngine {
     }
 
     this.stats.itemTimeline.unshift({
+      source: item.source,
       rarity,
       label: item.label,
       localizationId: item.localizationId,
@@ -288,7 +290,7 @@ export function createInitialStats(): CompanionStats {
   };
 }
 
-export function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now()): PastRunSummary {
+function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now()): PastRunSummary {
   return {
     id: `${stats.sessionStartedAt}-${sessionEndedAt}`,
     sessionStartedAt: stats.sessionStartedAt,

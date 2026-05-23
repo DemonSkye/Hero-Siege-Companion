@@ -1,5 +1,5 @@
 // Generated from https://hero-siege-helper.vercel.app/items/sets on 2026-05-16.
-export const SET_ITEM_NAMES = new Set<string>([
+const SET_ITEM_NAMES = new Set<string>([
   "Abomination's Brain",
   "Abomination's Eye",
   "Abomination's Heart",

@@ -1,4 +1,4 @@
-import type { CapturePreferences, CompanionState, RunArchivePreferences } from "../../shared/app-state";
+import type { CapturePreferences, CompanionState, ReleaseUpdateInfo, RunArchivePreferences } from "../../shared/app-state";
 
 declare global {
   interface Window {
@@ -17,6 +17,8 @@ declare global {
       setAlwaysOnTop: (enabled: boolean) => Promise<void>;
       setCompactMode: (enabled: boolean, lockPositions: boolean) => Promise<void>;
       writeClipboardText: (value: string) => Promise<void>;
+      checkForUpdate: () => Promise<ReleaseUpdateInfo | null>;
+      openRelease: (url?: string) => Promise<void>;
       onStateUpdated: (callback: (state: CompanionState) => void) => () => void;
     };
   }
