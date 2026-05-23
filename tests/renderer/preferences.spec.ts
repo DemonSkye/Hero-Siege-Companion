@@ -88,7 +88,15 @@ describe("renderer preferences persistence", () => {
       dropRarities: ["Satanic"],
       resourceDrawers: ["materials"],
       topDropLimit: 10,
-      trackedItems: ["Sash of the Magi"],
+      trackedItems: [],
+      itemGroups: [
+        {
+          id: "legacy-focus-items",
+          name: "Focus Items",
+          enabled: true,
+          items: ["Sash of the Magi"],
+        },
+      ],
     });
     expect(preferences.developerItemResearchEnabled).toBe(true);
     expect(preferences.unknownItemAudioPrompt).toBe(true);

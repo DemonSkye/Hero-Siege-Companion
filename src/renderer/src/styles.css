@@ -233,6 +233,11 @@ h2 {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .window-controls {
   display: inline-grid;
   grid-template-columns: repeat(4, 34px);
@@ -1907,6 +1912,49 @@ h2 {
   gap: 10px;
 }
 
+.report-item-group-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.36fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.report-item-group-list {
+  max-height: 230px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.report-item-group-editor {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.report-item-group-editor .item-filter-editor-head {
+  align-items: flex-start;
+}
+
+.report-item-group-editor .item-filter-editor-head > div {
+  min-width: 0;
+}
+
+.report-item-group-editor h3 {
+  margin: 0 0 3px;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.report-item-group-editor .item-filter-editor-head span:not(.settings-label) {
+  color: #9fa8b8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .tracked-report-item-list {
   display: grid;
   gap: 7px;
@@ -2544,6 +2592,10 @@ h2 {
   }
 
   .report-config-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-item-group-layout {
     grid-template-columns: 1fr;
   }
 

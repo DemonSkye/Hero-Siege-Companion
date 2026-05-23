@@ -187,8 +187,8 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Crystal Key");
     expect(wrapper.text()).toContain("Battle Fragment");
 
-    await buttonByText(wrapper, "Configure Tracked").trigger("click");
-    expect(wrapper.text()).toContain("Configure Tracked");
+    await buttonByText(wrapper, "Configure Report").trigger("click");
+    expect(wrapper.text()).toContain("Configure Report");
 
     await buttonByText(wrapper, "Satanic").trigger("click");
 

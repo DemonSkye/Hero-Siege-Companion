@@ -7,12 +7,15 @@ import { ITEM_FILTER_SUGGESTION_LIMIT } from "../lib/item-filters";
 import { shoppingAutocompleteNames } from "../lib/item-options";
 import { aggregatePastRuns, pastRunDropKey, runResourceTotal, runResourceTypeCount, runTrackedItems, type PastRunAggregate } from "../lib/past-runs";
 import {
+  createReportItemGroup,
   defaultPostRunReportConfig,
   isDefaultPostRunReportConfig,
   REPORT_METRIC_OPTIONS,
   REPORT_RESOURCE_DRAWER_OPTIONS,
   REPORT_TOP_DROP_LIMIT_OPTIONS,
+  reportConfigTrackedItems,
   type PostRunReportConfig,
+  type ReportItemGroup,
   type ReportMetricId,
   type ReportResourceDrawerId,
 } from "../lib/report-config";
@@ -30,9 +33,14 @@ const emit = defineEmits<{
 
 const showReportConfig = ref(false);
 const reportDraftItem = ref("");
+const reportDraftGroupName = ref("");
+const selectedReportGroupId = ref("");
 
-const allRunAggregate = computed(() => aggregatePastRuns(props.pastRuns, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, props.reportConfig.trackedItems));
-const recentRunAggregate = computed(() => aggregatePastRuns(props.pastRuns.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, props.reportConfig.trackedItems));
+const activeReportItems = computed(() => reportConfigTrackedItems(props.reportConfig));
+const reportItemGroups = computed(() => props.reportConfig.itemGroups);
+const selectedReportGroup = computed(() => reportItemGroups.value.find((group) => group.id === selectedReportGroupId.value) ?? reportItemGroups.value[0] ?? null);
+const allRunAggregate = computed(() => aggregatePastRuns(props.pastRuns, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, activeReportItems.value));
+const recentRunAggregate = computed(() => aggregatePastRuns(props.pastRuns.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, activeReportItems.value));
 const aggregatePanels = computed(() => [
   { key: "all", title: "All Runs", subtitle: `${allRunAggregate.value.runCount} saved`, aggregate: allRunAggregate.value },
   { key: "recent", title: "Last 10 Runs", subtitle: `${recentRunAggregate.value.runCount} included`, aggregate: recentRunAggregate.value },
@@ -40,14 +48,17 @@ const aggregatePanels = computed(() => [
 const reportMetricOptions = REPORT_METRIC_OPTIONS;
 const reportResourceDrawerOptions = REPORT_RESOURCE_DRAWER_OPTIONS;
 const reportTopDropLimitOptions = REPORT_TOP_DROP_LIMIT_OPTIONS;
-const reportTrackingLabel = computed(() => (isDefaultPostRunReportConfig(props.reportConfig) ? "Default tracking" : "Custom tracking"));
-const reportTrackingDetail = computed(() => {
-  if (props.reportConfig.trackedItems.length > 0) return `${props.reportConfig.trackedItems.length} tracked recap items`;
-  return "All saved drops in selected rarities";
+const isDefaultReportConfig = computed(() => isDefaultPostRunReportConfig(props.reportConfig));
+const reportModeLabel = computed(() => (isDefaultReportConfig.value ? "Default report" : "Custom report"));
+const reportGroupHelp = computed(() => {
+  if (activeReportItems.value.length > 0) {
+    return `${activeReportItems.value.length} exact items included from enabled recap groups.`;
+  }
+  return "No enabled group has items, so drop recaps include every saved drop from the selected rarities.";
 });
 const reportItemSuggestions = computed(() => {
   const query = reportDraftItem.value.trim().toLowerCase();
-  const existing = new Set(props.reportConfig.trackedItems.map((item) => item.toLowerCase()));
+  const existing = new Set((selectedReportGroup.value?.items ?? []).map((item) => item.toLowerCase()));
   if (!query) return shoppingAutocompleteNames.filter((name) => !existing.has(name.toLowerCase())).slice(0, ITEM_FILTER_SUGGESTION_LIMIT);
   return shoppingAutocompleteNames
     .filter((name) => !existing.has(name.toLowerCase()) && name.toLowerCase().includes(query))
@@ -87,23 +98,56 @@ function updateTopDropLimit(event: Event) {
 function resetReportConfig() {
   emit("update:reportConfig", defaultPostRunReportConfig);
   reportDraftItem.value = "";
+  reportDraftGroupName.value = "";
+  selectedReportGroupId.value = "";
 }
 
-function addTrackedReportItem(value = reportDraftItem.value) {
+function addReportItemGroup() {
+  const group = createReportItemGroup(reportDraftGroupName.value, reportItemGroups.value.length);
+  emit("update:reportConfig", { ...props.reportConfig, trackedItems: [], itemGroups: [...reportItemGroups.value, group] });
+  selectedReportGroupId.value = group.id;
+  reportDraftGroupName.value = "";
+  reportDraftItem.value = "";
+}
+
+function selectReportItemGroup(group: ReportItemGroup) {
+  selectedReportGroupId.value = group.id;
+  reportDraftItem.value = "";
+}
+
+function removeReportItemGroup(group: ReportItemGroup) {
+  const groups = reportItemGroups.value.filter((candidate) => candidate.id !== group.id);
+  emit("update:reportConfig", { ...props.reportConfig, trackedItems: [], itemGroups: groups });
+  if (selectedReportGroupId.value === group.id) selectedReportGroupId.value = groups[0]?.id ?? "";
+  reportDraftItem.value = "";
+}
+
+function updateReportItemGroup(group: ReportItemGroup, patch: Partial<ReportItemGroup>) {
+  const groups = reportItemGroups.value.map((candidate) =>
+    candidate.id === group.id
+      ? {
+          ...candidate,
+          ...patch,
+        }
+      : candidate,
+  );
+  emit("update:reportConfig", { ...props.reportConfig, trackedItems: [], itemGroups: groups });
+}
+
+function addTrackedReportItem(group: ReportItemGroup, value = reportDraftItem.value) {
   const trimmed = value.trim();
   if (!trimmed) return;
   const canonical = shoppingAutocompleteNames.find((name) => name.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
-  const exists = props.reportConfig.trackedItems.some((item) => item.toLowerCase() === canonical.toLowerCase());
+  const exists = group.items.some((item) => item.toLowerCase() === canonical.toLowerCase());
   if (!exists) {
-    emit("update:reportConfig", { ...props.reportConfig, trackedItems: [...props.reportConfig.trackedItems, canonical] });
+    updateReportItemGroup(group, { items: [...group.items, canonical] });
   }
   reportDraftItem.value = "";
 }
 
-function removeTrackedReportItem(item: string) {
-  emit("update:reportConfig", {
-    ...props.reportConfig,
-    trackedItems: props.reportConfig.trackedItems.filter((candidate) => candidate.toLowerCase() !== item.toLowerCase()),
+function removeTrackedReportItem(group: ReportItemGroup, item: string) {
+  updateReportItemGroup(group, {
+    items: group.items.filter((candidate) => candidate.toLowerCase() !== item.toLowerCase()),
   });
 }
 
@@ -141,7 +185,7 @@ function resourceDrawers(run: PastRunSummary) {
 }
 
 function runDrops(run: PastRunSummary) {
-  return runTrackedItems(run, props.reportConfig.dropRarities, props.reportConfig.trackedItems);
+  return runTrackedItems(run, props.reportConfig.dropRarities, activeReportItems.value);
 }
 
 function runMfDropTotal(run: PastRunSummary): number {
@@ -182,8 +226,8 @@ function eventChecked(event: Event): boolean {
           <h2>Past Runs</h2>
         </div>
         <div class="past-runs-heading-actions">
-          <button class="icon-button ghost" type="button" @click="showReportConfig = true">Configure Tracked</button>
-          <span class="info-bubble" data-tip="Everything is tracked by default. Use Configure Tracked when you only want specific recap items or report sections.">i</span>
+          <button class="icon-button ghost" type="button" @click="showReportConfig = true">Configure Report</button>
+          <span class="info-bubble" data-tip="The default report shows all saved drops from the selected rarities. Configure Report changes the view only, not saved run data.">i</span>
           <span class="past-run-count">{{ pastRuns.length }}/100 saved</span>
         </div>
       </div>
@@ -193,9 +237,9 @@ function eventChecked(event: Event): boolean {
           <section class="settings-panel report-config-modal" role="dialog" aria-modal="true" aria-labelledby="report-config-title">
           <div class="settings-heading">
             <div>
-              <p class="eyebrow">Recap</p>
-              <h2 id="report-config-title">Configure Tracked</h2>
-              <p class="settings-note">{{ reportTrackingLabel }} controls what appears in Past Runs without changing saved run data.</p>
+              <p class="eyebrow">Past Runs</p>
+              <h2 id="report-config-title">Configure Report</h2>
+              <p class="settings-note">{{ reportModeLabel }} settings change what appears here without changing saved run data.</p>
             </div>
             <button class="settings-close" type="button" title="Close tracked report settings" aria-label="Close tracked report settings" @click="showReportConfig = false">x</button>
           </div>
@@ -203,29 +247,68 @@ function eventChecked(event: Event): boolean {
           <div class="report-config-modal-body">
             <section class="item-filter-rule-section">
               <div class="item-filter-rule-heading">
-                <strong>Tracked recap items</strong>
-                <span>Empty means every saved drop in selected rarities.</span>
+                <strong>Recap item groups</strong>
+                <span>Enabled groups include exact items in drop recaps.</span>
               </div>
-              <div class="item-filter-search-wrap">
-                <form class="item-filter-add-item" @submit.prevent="addTrackedReportItem()">
-                  <input v-model="reportDraftItem" type="search" placeholder="Search item name" autocomplete="off" spellcheck="false" />
-                  <button class="icon-button primary" type="submit">Add</button>
-                </form>
-                <div v-if="reportDraftItem.trim().length >= 3 && reportItemSuggestions.length" class="item-filter-suggestions">
-                  <button v-for="name in reportItemSuggestions" :key="name" type="button" @click="addTrackedReportItem(name)">
-                    {{ name }}
-                  </button>
+
+              <div class="report-item-group-layout">
+                <aside class="item-filter-group-sidebar" aria-label="Recap item groups">
+                  <form class="item-filter-add-group" @submit.prevent="addReportItemGroup">
+                    <input v-model="reportDraftGroupName" type="text" placeholder="New group name" />
+                    <button class="icon-button primary" type="submit">Add Group</button>
+                  </form>
+                  <div v-if="reportItemGroups.length" class="item-filter-group-list report-item-group-list">
+                    <button
+                      v-for="group in reportItemGroups"
+                      :key="group.id"
+                      type="button"
+                      :class="['item-filter-group-button', { active: selectedReportGroup?.id === group.id, disabled: !group.enabled }]"
+                      @click="selectReportItemGroup(group)"
+                    >
+                      <strong>{{ group.name }}</strong>
+                      <span>{{ group.enabled ? "Included" : "Disabled" }} &middot; {{ group.items.length }} items</span>
+                    </button>
+                  </div>
+                  <p v-else class="empty-copy">Create a group when you want the report to focus on exact drops.</p>
+                </aside>
+
+                <div v-if="selectedReportGroup" class="report-item-group-editor">
+                  <div class="item-filter-editor-head">
+                    <div>
+                      <h3>{{ selectedReportGroup.name }}</h3>
+                      <span>{{ selectedReportGroup.enabled ? "Included in report" : "Disabled" }}</span>
+                    </div>
+                    <label class="settings-inline-check">
+                      <input :checked="selectedReportGroup.enabled" type="checkbox" @change="updateReportItemGroup(selectedReportGroup, { enabled: eventChecked($event) })" />
+                      <span class="settings-label">Include group</span>
+                    </label>
+                    <button class="icon-button ghost" type="button" @click="removeReportItemGroup(selectedReportGroup)">Remove</button>
+                  </div>
+
+                  <div class="item-filter-search-wrap">
+                    <form class="item-filter-add-item" @submit.prevent="addTrackedReportItem(selectedReportGroup)">
+                      <input v-model="reportDraftItem" type="search" placeholder="Search item name" autocomplete="off" spellcheck="false" />
+                      <button class="icon-button primary" type="submit">Add Item</button>
+                    </form>
+                    <div v-if="reportDraftItem.trim().length >= 3 && reportItemSuggestions.length" class="item-filter-suggestions">
+                      <button v-for="name in reportItemSuggestions" :key="name" type="button" @click="addTrackedReportItem(selectedReportGroup, name)">
+                        {{ name }}
+                      </button>
+                    </div>
+                    <p v-else-if="reportDraftItem.trim().length > 0 && reportDraftItem.trim().length < 3" class="item-filter-search-hint">Type at least 3 characters for suggestions.</p>
+                    <p v-else-if="reportDraftItem.trim().length >= 3" class="item-filter-search-hint">No matching known items.</p>
+                  </div>
+
+                  <div v-if="selectedReportGroup.items.length" class="tracked-report-item-list">
+                    <div v-for="item in selectedReportGroup.items" :key="item" class="item-filter-specific-row tracked-report-item-row">
+                      <span>{{ item }}</span>
+                      <button class="shopping-remove" type="button" @click="removeTrackedReportItem(selectedReportGroup, item)" :aria-label="`Remove ${item}`">x</button>
+                    </div>
+                  </div>
+                  <p v-else class="empty-copy">This group has no items yet.</p>
                 </div>
-                <p v-else-if="reportDraftItem.trim().length > 0 && reportDraftItem.trim().length < 3" class="item-filter-search-hint">Type at least 3 characters for suggestions.</p>
-                <p v-else-if="reportDraftItem.trim().length >= 3" class="item-filter-search-hint">No matching known items.</p>
               </div>
-              <div v-if="reportConfig.trackedItems.length" class="tracked-report-item-list">
-                <div v-for="item in reportConfig.trackedItems" :key="item" class="item-filter-specific-row tracked-report-item-row">
-                  <span>{{ item }}</span>
-                  <button class="shopping-remove" type="button" @click="removeTrackedReportItem(item)" :aria-label="`Remove ${item}`">x</button>
-                </div>
-              </div>
-              <p v-else class="empty-copy">Default tracking is active.</p>
+              <p class="empty-copy">{{ reportGroupHelp }}</p>
             </section>
 
             <section class="report-config-modal-grid">
@@ -278,7 +361,7 @@ function eventChecked(event: Event): boolean {
           </div>
 
           <div class="settings-actions">
-            <button class="icon-button ghost" type="button" @click="resetReportConfig">Reset Tracking</button>
+            <button class="icon-button ghost" type="button" :disabled="isDefaultReportConfig" @click="resetReportConfig">Restore Default Report</button>
             <button class="icon-button primary" type="button" @click="showReportConfig = false">Done</button>
           </div>
           </section>
