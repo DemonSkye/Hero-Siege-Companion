@@ -425,10 +425,8 @@ export class CaptureService {
 
     this.parsedEvents += events.length;
     this.lastEventAt = Date.now();
-    const sample = summarizeEvent(events[0]);
-    const debugLogs = this.createDebugMode
-      ? events.filter((event) => shouldLogEvent(event, this.createDebugMode)).map((event) => ({ level: "debug" as const, message: summarizeEvent(event) }))
-      : undefined;
+    const loggableEvents = events.filter((event) => shouldLogEvent(event));
+    const eventLogs = loggableEvents.map((event) => ({ level: "debug" as const, message: summarizeEvent(event) }));
     this.emit({
       events,
       health: {
@@ -440,8 +438,8 @@ export class CaptureService {
         parserRestarts: this.parserRestarts,
         lastParserError: null,
       },
-      log: !this.createDebugMode && shouldLogEvent(events[0], this.createDebugMode) ? { level: "debug", message: sample } : undefined,
-      logs: debugLogs?.length ? debugLogs : undefined,
+      log: eventLogs.length === 1 ? eventLogs[0] : undefined,
+      logs: eventLogs.length > 1 ? eventLogs : undefined,
     });
   }
 
@@ -1134,9 +1132,8 @@ function printableRatio(text: string): number {
   return printable / sample.length;
 }
 
-function shouldLogEvent(event: ParsedEvent, createDebugMode = false): boolean {
+function shouldLogEvent(event: ParsedEvent): boolean {
   if (event.name === EVENT_NAMES.accountMode) return false;
-  if ((event.name === EVENT_NAMES.item || event.name === EVENT_NAMES.itemDrop) && !createDebugMode) return false;
   return true;
 }
 

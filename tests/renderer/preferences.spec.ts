@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, test } from "vitest";
 
 import {
+  createItemResearchExportPayload,
+  isItemResearchCandidate,
+  itemResearchSignature,
+  normalizeResearchItemName,
+  upsertItemResearchEntry,
+  type ItemResearchEntry,
+} from "../../src/renderer/src/lib/item-research";
+import {
   LOG_LIMIT_OPTIONS,
   createConfigurationExportPayload,
   defaultPreferences,
@@ -11,6 +19,7 @@ import {
   savePreferences,
 } from "../../src/renderer/src/lib/preferences";
 import { defaultPostRunReportConfig } from "../../src/renderer/src/lib/report-config";
+import { itemTimelineEntry } from "./fixtures";
 
 describe("renderer preferences persistence", () => {
   beforeEach(() => {
@@ -112,6 +121,50 @@ describe("renderer preferences persistence", () => {
     expect(normalizeShoppingList(["Ruby", "Ruby", "", "Jade"])).toEqual(["Ruby", "Jade"]);
     expect(normalizeRunDurationMinutes(-5)).toBe(0);
     expect(normalizeRunDurationMinutes(1445.8)).toBe(1440);
+  });
+
+  test("treats generic item labels as research candidates and exports shareable research JSON", () => {
+    const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
+    const knownCollectible = itemTimelineEntry({ label: "Ruby", rarity: "Superior", type: 13, id: 19, localizationId: "ruby" });
+
+    expect(isItemResearchCandidate(genericCollectible)).toBe(true);
+    expect(isItemResearchCandidate(knownCollectible)).toBe(false);
+
+    const signature = itemResearchSignature(genericCollectible);
+    const entries = upsertItemResearchEntry([], genericCollectible).map((entry): ItemResearchEntry =>
+      entry.signature === signature ? { ...entry, resolvedName: "Damien's Eye", notes: "Confirmed from in-game drop." } : entry,
+    );
+    const payload = createItemResearchExportPayload(entries);
+
+    expect(payload.kind).toBe("item-research");
+    expect(payload.summary).toMatchObject({ total: 1, resolved: 1, unresolved: 0 });
+    expect(payload.entries[0]).toMatchObject({
+      signature,
+      label: "Collectible #24",
+      resolvedName: "Damien's Eye",
+      resolvedNameKey: "damiens eye",
+      type: 13,
+      id: 24,
+    });
+    expect(payload.shareHint).toContain("gist");
+  });
+
+  test("normalizes item research names for uncertain casing before export", () => {
+    const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
+    const signature = itemResearchSignature(genericCollectible);
+
+    expect(normalizeResearchItemName("THE WHEEL OF FORTUNE")).toBe("The Wheel of Fortune");
+    expect(normalizeResearchItemName("KING'S GARDEN IV")).toBe("King's Garden IV");
+
+    const entries = upsertItemResearchEntry([], genericCollectible).map((entry): ItemResearchEntry =>
+      entry.signature === signature ? { ...entry, resolvedName: "THE WHEEL OF FORTUNE" } : entry,
+    );
+    const payload = createItemResearchExportPayload(entries);
+
+    expect(payload.entries[0]).toMatchObject({
+      resolvedName: "The Wheel of Fortune",
+      resolvedNameKey: "the wheel of fortune",
+    });
   });
 
   test("exports and imports configuration sections according to checkbox scope", () => {

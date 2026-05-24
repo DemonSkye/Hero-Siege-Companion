@@ -9,6 +9,10 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
     captureRunning: true,
     captureStatus: "running",
     captureError: null,
+    runStatus: "recording",
+    runPausedReason: null,
+    runPausedAt: null,
+    runPausedDurationMs: 0,
     connections: [],
     health: {
       npcapService: "Running",
@@ -35,6 +39,9 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
       totalXp: 200_000,
       totalXpEarned: 5_000,
       xpPerHour: 30_000,
+      totalKills: 150_000,
+      totalKillsEarned: 25,
+      killsPerHour: 150,
       hasMail: true,
       lastEventAt: baseTime - 30_000,
       items: {
@@ -133,6 +140,7 @@ export function pastRun(overrides: Partial<PastRunSummary> = {}): PastRunSummary
     accountName: "TestHero",
     totalGoldGained: 100_000,
     totalXpGained: 50_000,
+    totalKillsGained: 25,
     setDrops: 1,
     satanicDrops: 2,
     heroicDrops: 1,

@@ -1,5 +1,6 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import type { CapturePreferences, RunArchivePreferences } from "../../../shared/app-state";
+import { defaultCompactRunTiles, normalizeCompactRunTiles, type CompactRunTileConfig } from "./compact-tiles";
 import { DEFAULT_ITEM_FILTER_GROUPS, normalizeItemFilterGroups, type ItemFilterGroup } from "./item-filters";
 import { DEFAULT_SHOPPING_LIST } from "./item-options";
 import { normalizeItemResearchEntries, type ItemResearchEntry } from "./item-research";
@@ -21,6 +22,7 @@ export interface UiPreferences {
   itemFilterGroups: ItemFilterGroup[];
   itemFilterMuted: boolean;
   postRunReport: PostRunReportConfig;
+  compactRunTiles: CompactRunTileConfig[];
   developerItemResearchEnabled: boolean;
   unknownItemAudioPrompt: boolean;
   itemResearchEntries: ItemResearchEntry[];
@@ -76,6 +78,7 @@ export const defaultPreferences: UiPreferences = {
   itemFilterGroups: DEFAULT_ITEM_FILTER_GROUPS,
   itemFilterMuted: false,
   postRunReport: defaultPostRunReportConfig,
+  compactRunTiles: defaultCompactRunTiles,
   developerItemResearchEnabled: false,
   unknownItemAudioPrompt: false,
   itemResearchEntries: [],
@@ -94,6 +97,7 @@ const APP_SETTING_KEYS: Array<keyof UiPreferences> = [
   "shoppingListItems",
   "gameExecutablePath",
   "launchThroughSteam",
+  "compactRunTiles",
   "developerItemResearchEnabled",
   "unknownItemAudioPrompt",
 ];
@@ -214,6 +218,7 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     itemFilterGroups: normalizeItemFilterGroups(value.itemFilterGroups),
     itemFilterMuted: Boolean(value.itemFilterMuted),
     postRunReport: normalizePostRunReportConfig(value.postRunReport),
+    compactRunTiles: normalizeCompactRunTiles(value.compactRunTiles),
     developerItemResearchEnabled: Boolean(value.developerItemResearchEnabled),
     unknownItemAudioPrompt: Boolean(value.unknownItemAudioPrompt),
     itemResearchEntries: normalizeItemResearchEntries(value.itemResearchEntries),

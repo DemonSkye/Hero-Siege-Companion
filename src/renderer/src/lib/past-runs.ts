@@ -8,10 +8,13 @@ export interface PastRunAggregate {
   averageDurationMs: number;
   totalGold: number;
   totalXp: number;
+  totalKills: number;
   goldPerHour: number;
   xpPerHour: number;
+  killsPerHour: number;
   bestGoldPerHour: number;
   bestXpPerHour: number;
+  bestKillsPerHour: number;
   totalKeys: number;
   totalOres: number;
   totalMaterials: number;
@@ -76,6 +79,7 @@ export function aggregatePastRuns(runs: PastRunSummary[], rarities = TRACKED_RAR
   const totalDurationMs = runs.reduce((total, run) => total + Math.max(run.durationMs, 0), 0);
   const totalGold = runs.reduce((total, run) => total + run.totalGoldGained, 0);
   const totalXp = runs.reduce((total, run) => total + run.totalXpGained, 0);
+  const totalKills = runs.reduce((total, run) => total + (run.totalKillsGained ?? 0), 0);
 
   return {
     runCount: runs.length,
@@ -83,10 +87,13 @@ export function aggregatePastRuns(runs: PastRunSummary[], rarities = TRACKED_RAR
     averageDurationMs: runs.length ? totalDurationMs / runs.length : 0,
     totalGold,
     totalXp,
+    totalKills,
     goldPerHour: ratePerHour(totalGold, totalDurationMs),
     xpPerHour: ratePerHour(totalXp, totalDurationMs),
+    killsPerHour: ratePerHour(totalKills, totalDurationMs),
     bestGoldPerHour: Math.max(0, ...runs.map((run) => ratePerHour(run.totalGoldGained, run.durationMs))),
     bestXpPerHour: Math.max(0, ...runs.map((run) => ratePerHour(run.totalXpGained, run.durationMs))),
+    bestKillsPerHour: Math.max(0, ...runs.map((run) => ratePerHour(run.totalKillsGained ?? 0, run.durationMs))),
     totalKeys: runs.reduce((total, run) => total + runResourceTotal(run.keys), 0),
     totalOres: runs.reduce((total, run) => total + runResourceTotal(run.ores), 0),
     totalMaterials: runs.reduce((total, run) => total + runResourceTotal(run.materials ?? []), 0),

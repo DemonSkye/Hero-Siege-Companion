@@ -4,8 +4,10 @@ import type { CompanionState, LogEntry } from "../../../shared/app-state";
 import type { ItemDropCounter, ItemTimelineEntry } from "../../../shared/stats";
 import { formatNumber, formatTime } from "../lib/format";
 import { itemIconUrl } from "../lib/item-assets";
+import type { CompactRunTileDisplay } from "../lib/compact-tiles";
 import type { ItemFilterGroup, ItemFilterMatch } from "../lib/item-filters";
 import { soundName } from "../lib/item-filters";
+import { isItemResearchCandidate } from "../lib/item-research";
 import { logClass, logEventLabel, logEventTone, logItemIconUrl, logSummary } from "../lib/log-display";
 
 interface ItemTypeOption {
@@ -24,8 +26,7 @@ interface TrackedItem {
 const props = defineProps<{
   state: CompanionState;
   captureStatusLabel: string;
-  sessionDuration: string;
-  currentGoldLabel: string;
+  runTileDisplays: CompactRunTileDisplay[];
   zoneCountdown: string;
   zoneResetLabel: string;
   trackedItems: TrackedItem[];
@@ -42,6 +43,7 @@ const props = defineProps<{
   itemFilterGroupCount: number;
   watchedItemCount: number;
   lastItemFilterMatch: ItemFilterMatch | null;
+  developerItemResearchEnabled: boolean;
   recentLogs: LogEntry[];
   expandedLogIds: Set<string>;
 }>();
@@ -52,6 +54,7 @@ const emit = defineEmits<{
   removeShoppingItem: [item: string];
   testItemFilterSound: [];
   configureFilter: [];
+  identifyTimelineItem: [item: ItemTimelineEntry];
   toggleLog: [log: LogEntry];
 }>();
 
@@ -74,6 +77,10 @@ function toggleDropBreakdown(rarity: string) {
 
 function isLogExpanded(log: LogEntry): boolean {
   return props.expandedLogIds.has(log.id);
+}
+
+function canIdentifyTimelineItem(item: ItemTimelineEntry): boolean {
+  return props.developerItemResearchEnabled && isItemResearchCandidate(item);
 }
 </script>
 
@@ -108,25 +115,14 @@ function isLogExpanded(log: LogEntry): boolean {
     <p v-if="state.captureError" class="error-banner">{{ state.captureError }}</p>
 
     <section class="metric-grid">
-      <article class="metric">
-        <span class="metric-label">Session <span class="info-bubble" data-tip="How long this capture session has been running.">i</span></span>
-        <strong>{{ sessionDuration }}</strong>
-        <small>{{ state.stats.accountName || "No character packet yet" }}</small>
-      </article>
-      <article class="metric">
-        <span class="metric-label">Gold Earned <span class="info-bubble" data-tip="Gold starts from the current server total and tracks positive differences. Sometimes you may need to force a server sync twice, such as vote reset or starting a new game, before gold fully syncs.">i</span></span>
-        <strong>{{ formatNumber(state.stats.totalGoldEarned) }}</strong>
-        <small>{{ formatNumber(state.stats.goldPerHour) }}/h &middot; Current {{ currentGoldLabel }}</small>
-      </article>
-      <article class="metric">
-        <span class="metric-label">XP Earned</span>
-        <strong>{{ formatNumber(state.stats.totalXpEarned) }}</strong>
-        <small>{{ formatNumber(state.stats.xpPerHour) }}/h</small>
-      </article>
-      <article class="metric">
-        <span class="metric-label">Mailbox <span class="info-bubble" data-tip="Mailbox state updates when the game sends mailbox data, commonly when you go to town.">i</span></span>
-        <strong>{{ state.stats.hasMail ? "Mail" : "Clear" }}</strong>
-        <small>Last event {{ formatTime(state.stats.lastEventAt) }}</small>
+      <article v-for="tile in runTileDisplays" :key="`desktop-${tile.id}`" class="metric" :title="tile.title">
+        <span class="metric-label">
+          {{ tile.kind === "duration" ? "This Run" : tile.label }}
+          <span v-if="tile.kind === 'kills'" class="info-bubble" data-tip="Tracks positive changes from the character's lifetime kill statistic while this run is recording.">i</span>
+          <span v-else-if="tile.kind === 'gold'" class="info-bubble" data-tip="Gold starts from the current server total and tracks positive differences. Sometimes you may need to force a server sync twice, such as vote reset or starting a new game, before gold fully syncs.">i</span>
+        </span>
+        <strong>{{ tile.value }}</strong>
+        <small>{{ tile.detail || "Current run" }}</small>
       </article>
     </section>
 
@@ -255,11 +251,14 @@ function isLogExpanded(log: LogEntry): boolean {
             <span v-else class="timeline-icon timeline-icon-empty" aria-hidden="true"></span>
             <span :class="['rarity-pill', item.rarity.toLowerCase()]">{{ item.rarity }}</span>
             <strong>{{ item.label || (item.id ? `#${item.id}` : "Unknown item") }}</strong>
-            <small>
-              {{ item.mfDrop ? "Magic find" : "Normal" }}
-              <template v-if="item.amount > 1">&middot; x{{ item.amount }}</template>
-              &middot; {{ formatTime(item.createdAt) }}
-            </small>
+            <div class="timeline-meta-actions">
+              <button v-if="canIdentifyTimelineItem(item)" class="sound-test-button timeline-identify-button" type="button" @click="$emit('identifyTimelineItem', item)">Identify</button>
+              <small>
+                {{ item.mfDrop ? "Magic find" : "Normal" }}
+                <template v-if="item.amount > 1">&middot; x{{ item.amount }}</template>
+                &middot; {{ formatTime(item.createdAt) }}
+              </small>
+            </div>
           </div>
         </div>
         <p v-else-if="itemTimelineCount" class="empty-copy">All recent items are hidden by the current filters.</p>

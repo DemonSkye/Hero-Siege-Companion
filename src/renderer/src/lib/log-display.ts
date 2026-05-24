@@ -31,17 +31,22 @@ export function logSummary(log: LogEntry): string {
   const item = firstLogItem(payload);
   if (item) {
     const label = stringField(item, "label") || stringField(item, "localizationId") || "Unknown item";
-    const details = [stringField(item, "mfDrop") === "1" ? "Magic find" : "", itemTypeName(item), item.fingerprint ? String(item.fingerprint) : ""].filter(Boolean);
-    return details.length ? `${label} · ${details.join(" · ")}` : label;
+    const details = [mfDropDetail(item), itemTypeName(item), item.fingerprint ? String(item.fingerprint) : ""].filter(Boolean);
+    return details.length ? `${label} - ${details.join(" - ")}` : label;
   }
 
   const rawPayload = parsedLogText(log);
   const extractedLabel = extractJsonString(rawPayload, "label") || extractJsonString(rawPayload, "localizationId");
   if (extractedLabel) {
     const extractedType = extractJsonNumber(rawPayload, "type");
+    const extractedMfDrop = extractJsonNumber(rawPayload, "mfDrop");
     const extractedFingerprint = extractJsonString(rawPayload, "fingerprint");
-    const details = [extractedType !== null ? (ITEM_TYPE_NAMES[extractedType] ?? "") : "", extractedFingerprint].filter(Boolean);
-    return details.length ? `${extractedLabel} · ${details.join(" · ")}` : extractedLabel;
+    const details = [
+      extractedMfDrop !== null ? `mfDrop=${extractedMfDrop}` : "",
+      extractedType !== null ? (ITEM_TYPE_NAMES[extractedType] ?? "") : "",
+      extractedFingerprint,
+    ].filter(Boolean);
+    return details.length ? `${extractedLabel} - ${details.join(" - ")}` : extractedLabel;
   }
 
   if (isRecord(payload)) {
@@ -90,4 +95,9 @@ function itemTypeName(item: Record<string, unknown>): string {
   const weaponType = Number(item.weaponType);
   if (type === 3 && Number.isFinite(weaponType) && weaponType > 0) return "Weapon";
   return Number.isFinite(type) ? (ITEM_TYPE_NAMES[type] ?? "") : "";
+}
+
+function mfDropDetail(item: Record<string, unknown>): string {
+  const value = Number(item.mfDrop);
+  return Number.isFinite(value) ? `mfDrop=${value}` : "";
 }

@@ -40,6 +40,7 @@ const emit = defineEmits<{
   addItemToGroup: [group: ItemFilterGroup, value?: string];
   removeItemFromGroup: [group: ItemFilterGroup, item: ItemFilterSpecificItem];
   testSound: [soundId?: string, volume?: number];
+  exportItemResearch: [];
   saveItemResearchEntry: [signature: string, value: { resolvedName: string; notes: string }];
   ignoreItemResearchEntry: [signature: string];
   resetItemResearchEntry: [signature: string];
@@ -93,10 +94,18 @@ function formatSeen(timestamp: number): string {
       </div>
 
       <section v-if="developerItemResearchEnabled" class="item-research-panel">
-        <div class="item-filter-rule-heading">
-          <strong>Item Research</strong>
-          <span>{{ unresolvedItemResearchCount }} unresolved &middot; local developer notebook</span>
+        <div class="item-filter-rule-heading item-research-heading">
+          <div>
+            <strong>Item Research</strong>
+            <span>{{ unresolvedItemResearchCount }} unresolved &middot; local developer notebook</span>
+          </div>
+          <button class="icon-button ghost" type="button" @click="$emit('exportItemResearch')">Export Research JSON</button>
         </div>
+        <p class="item-research-share">
+          Names are case-normalized on save and export. Share exported research as a
+          <a href="https://gist.github.com/" target="_blank" rel="noreferrer">GitHub Gist</a>
+          with sarevok9 on Reddit or Snyne on the Hero Siege Discord.
+        </p>
         <div v-if="itemResearchEntries.length" class="item-research-list">
           <article v-for="entry in itemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName, ignored: entry.ignored }]">
             <div class="item-research-meta">

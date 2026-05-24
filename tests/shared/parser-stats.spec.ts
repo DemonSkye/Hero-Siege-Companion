@@ -82,6 +82,18 @@ test("gold snapshots track current gold and earned positive deltas", () => {
   assert.equal(snapshot.totalGoldEarned, 55);
 });
 
+test("account snapshots track character kill deltas", () => {
+  const stats = new StatsEngine();
+
+  stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0, statisticTotalMonsterKills: 147000 }]));
+  const snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0, statisticTotalMonsterKills: 147031 }]));
+  const summary = stats.runSummary(Date.now() + 60_000);
+
+  assert.equal(snapshot.totalKills, 147031);
+  assert.equal(snapshot.totalKillsEarned, 31);
+  assert.equal(summary.totalKillsGained, 31);
+});
+
 test("blood pact route packets set GBP mode before gold snapshots arrive", () => {
   const stats = new StatsEngine();
   const modeEvents = messageToEvents([
@@ -1003,6 +1015,9 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
           "10-3909410-collectible-39-13": {
             pickup_add_data: { a: 5, b: 39, d: 1 },
           },
+          "10-3909410-collectible-24-13": {
+            pickup_add_data: { a: 10, b: 24, d: 1 },
+          },
           "10-3909410-material-0-14": {
             pickup_add_data: { a: 6, b: 0, d: 1 },
           },
@@ -1022,7 +1037,7 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
 
   assert.deepEqual(
     events.map((event) => event.value.label),
-    ["Crystal Key", "Devil's Key", "Chaos Key", "Battle Fragment", "The Hanged Man", "Bloodstone", "Tarethium Ore", "Blacksmith's Mallet", "Gold Ore"],
+    ["Crystal Key", "Devil's Key", "Chaos Key", "Battle Fragment", "The Hanged Man", "The Wheel of Fortune", "Bloodstone", "Tarethium Ore", "Blacksmith's Mallet", "Gold Ore"],
   );
 });
 

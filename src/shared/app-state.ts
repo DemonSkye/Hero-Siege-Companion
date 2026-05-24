@@ -48,10 +48,17 @@ export interface ReleaseUpdateInfo {
   publishedAt: string;
 }
 
+export type RunStatus = "recording" | "paused";
+export type RunPausedReason = "manual" | "captureStopped" | null;
+
 export interface CompanionState {
   captureRunning: boolean;
   captureStatus: "idle" | "waiting" | "running" | "error";
   captureError: string | null;
+  runStatus: RunStatus;
+  runPausedReason: RunPausedReason;
+  runPausedAt: number | null;
+  runPausedDurationMs: number;
   connections: CaptureConnection[];
   health: CaptureHealth;
   stats: CompanionStats;

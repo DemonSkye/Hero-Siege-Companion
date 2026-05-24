@@ -1,5 +1,19 @@
 # Patch Notes Changelist
 
+## v0.1.6 Report Customization, Item Research, And Compact Run Controls
+
+- Added configurable Past Runs reports with summary card toggles, rarity inclusion, tracked item groups, resource drawers, and top-drop limits.
+- Added materials, non-basic keys, and ore drawers to run recaps, with denser per-run resource chips.
+- Added configuration import/export with checkbox scopes for app settings, past run settings, report tracking, loot filters, and item research.
+- Added optional developer item research for unknown/generic item signatures, including Identify actions, case-normalized resolved names, notes, local storage, and standalone research JSON export.
+- Added GitHub Gist guidance for sharing item research with `sarevok9` on Reddit or `Snyne` on the Hero Siege Discord.
+- Added `The Wheel of Fortune` to stack item lookups for collectible `type 13 / id 24`.
+- Restored item drop visibility in the live log and exposed item event details, including magic-find drop flags.
+- Added shared run pause/resume state for full and compact UI. Capture stop now pauses the current run, and run duration/rates exclude paused time.
+- Reworked compact mode around `This Run`, gold, XP per hour, and `SZ`, with compact run details and Satanic Zone trays.
+- Reduced compact overlay clutter by moving secondary stats out of the default bottom row and into compact detail views.
+- Updated version metadata and packaging target to `0.1.6`.
+
 ## v0.0.9 Diagnostic Logging Follow-Up
 
 - Added low-frequency app heartbeats with capture status, renderer state, memory usage, pending event backlog, and recent stats.

@@ -7,6 +7,7 @@ import LiveView from "../../src/renderer/src/components/LiveView.vue";
 import PastRunsView from "../../src/renderer/src/components/PastRunsView.vue";
 import SettingsModal from "../../src/renderer/src/components/SettingsModal.vue";
 import UpdateBanner from "../../src/renderer/src/components/UpdateBanner.vue";
+import { defaultCompactRunTiles } from "../../src/renderer/src/lib/compact-tiles";
 import { defaultPostRunReportConfig } from "../../src/renderer/src/lib/report-config";
 import { companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
 
@@ -39,32 +40,36 @@ describe("Vue component contracts", () => {
     const wrapper = mount(CompactView, {
       props: {
         state,
-        captureStatusLabel: "Capturing",
-        compactClock: "12:00 PM",
-        sessionDuration: "10m",
-        zoneCountdown: "20m",
-        compactTrackedItems: [
-          { rarity: "Set", total: 1 },
-          { rarity: "Satanic", total: 2 },
+        compactRunTileDisplays: [
+          { id: "duration", kind: "duration", label: "This Run", value: "10m", title: "Recording" },
+          { id: "gold", kind: "gold", label: "Gold", value: "10,000", title: "Current 1,010,000 - 60,000/h" },
+          { id: "xp", kind: "xp", label: "XP", value: "10.04m/h", title: "10,000 earned - 10,040,000/h" },
+          { id: "kills", kind: "kills", label: "Kills", value: "25", title: "25 kills - 150/h" },
+          { id: "sz", kind: "sz", label: "SZ", value: "20m", title: "Satanic zone details" },
+          { id: "set", kind: "set", label: "Set", value: "1", title: "Set drops" },
+          { id: "satanic", kind: "satanic", label: "Satanic", value: "2", title: "Satanic drops" },
+          { id: "heroic", kind: "heroic", label: "Heroic", value: "3", title: "Heroic drops" },
         ],
-        oreDropTotal: 5,
-        showShopping: true,
-        activeShoppingItem: "Copper Ore",
-        shoppingListItems: ["Copper Ore", "Ruby"],
+        runPausedLabel: "Paused",
+        canToggleRunPaused: true,
+        showZone: true,
       },
     });
 
-    expect(wrapper.text()).toContain("Connected");
-    expect(wrapper.text()).toContain("42 parsed");
+    expect(wrapper.text()).toContain("This Run");
+    expect(wrapper.text()).toContain("Recording");
     expect(wrapper.text()).toContain("10,000");
-    expect(wrapper.text()).toContain("Copper Ore");
+    expect(wrapper.text()).toContain("Kills");
+    expect(wrapper.text()).toContain("Siege Fields");
 
-    await buttonByText(wrapper, "Ruby").trigger("click");
-    await wrapper.get(".compact-shopping-toggle").trigger("click");
-    await wrapper.get(".compact-shopping-close").trigger("click");
+    await wrapper.get(".compact-zone-tray .compact-shopping-close").trigger("click");
+    await buttonByText(wrapper, "Stop").trigger("click");
+    await buttonByText(wrapper, "End Run").trigger("click");
+    await buttonByText(wrapper, "SZ Details").trigger("click");
 
-    expect(wrapper.emitted("copyShoppingItem")).toEqual([["Ruby"]]);
-    expect(wrapper.emitted("update:showShopping")).toEqual([[false], [false]]);
+    expect(wrapper.emitted("toggleRunPaused")).toHaveLength(1);
+    expect(wrapper.emitted("endRun")).toHaveLength(1);
+    expect(wrapper.emitted("update:showZone")).toEqual([[false], [true]]);
   });
 
   test("ItemFilterView exercises group editing, mute state, suggestions, and rule toggles", async () => {
@@ -110,11 +115,13 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "Sash of the Magi").trigger("click");
     await checkboxByLabel(wrapper, "Satanic").setValue(false);
     await checkboxByLabel(wrapper, "Belt").setValue(false);
+    await buttonByText(wrapper, "Export Research JSON").trigger("click");
     await buttonByText(wrapper, "Save").trigger("click");
 
     expect(wrapper.emitted("update:itemFilterMuted")).toEqual([[true]]);
     expect(wrapper.emitted("addGroup")).toHaveLength(1);
     expect(wrapper.emitted("addItemToGroup")?.[0]).toEqual([group, "Sash of the Magi"]);
+    expect(wrapper.emitted("exportItemResearch")).toHaveLength(1);
     expect(wrapper.emitted("saveItemResearchEntry")?.[0]?.[0]).toBe("4:55:0:gloves #55");
     expect(group.rarities).toEqual([]);
     expect(group.types).toEqual([]);
@@ -125,6 +132,8 @@ describe("Vue component contracts", () => {
       props: {
         logLimitOptions: [10, 20, 50],
         itemTypeOptions: [{ value: "6", label: "Belt" }],
+        itemFilterGroups: [itemFilterGroup()],
+        itemSuggestions: ["Sash of the Magi"],
         logLimit: 20,
         timelineLimit: 10,
         timelineType: "all",
@@ -146,6 +155,7 @@ describe("Vue component contracts", () => {
         configIncludeReportTracking: true,
         configIncludeLootFilters: true,
         configIncludeItemResearch: false,
+        compactRunTiles: defaultCompactRunTiles,
       },
     });
 
@@ -155,18 +165,22 @@ describe("Vue component contracts", () => {
 
     await wrapper.get('select[title="Visible log history"]').setValue("50");
     await checkboxByLabel(wrapper, "Research data").setValue(true);
+    await buttonByText(wrapper, "Add Custom").trigger("click");
     await buttonByText(wrapper, "Browse").trigger("click");
     await buttonByText(wrapper, "Import JSON").trigger("click");
     await buttonByText(wrapper, "Export JSON").trigger("click");
     await buttonByText(wrapper, "Reset Preferences").trigger("click");
+    await wrapper.get(".modal-backdrop").trigger("click");
     await buttonByText(wrapper, "Done").trigger("click");
 
     expect(wrapper.emitted("update:logLimit")).toEqual([[50]]);
     expect(wrapper.emitted("update:configIncludeItemResearch")).toEqual([[true]]);
+    expect(wrapper.emitted("update:compactRunTiles")?.[0]?.[0]).toHaveLength(defaultCompactRunTiles.length + 1);
     expect(wrapper.emitted("chooseGameExecutable")).toHaveLength(1);
     expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("reset")).toHaveLength(1);
+    expect(wrapper.emitted("close")).toBeUndefined();
     expect(wrapper.emitted("apply")).toHaveLength(1);
   });
 
@@ -201,8 +215,12 @@ describe("Vue component contracts", () => {
       props: {
         state,
         captureStatusLabel: "Capturing",
-        sessionDuration: "10m",
-        currentGoldLabel: "1,010,000",
+        runTileDisplays: [
+          { id: "duration", kind: "duration", label: "This Run", value: "10m", detail: "TestHero" },
+          { id: "gold", kind: "gold", label: "Gold", value: "10k", detail: "60,000/h - Current 1,010,000" },
+          { id: "xp", kind: "xp", label: "XP", value: "30k/h", detail: "5,000 earned" },
+          { id: "kills", kind: "kills", label: "Kills", value: "25", detail: "150/h" },
+        ],
         zoneCountdown: "20m",
         zoneResetLabel: "12:30 PM",
         trackedItems: [
@@ -211,8 +229,11 @@ describe("Vue component contracts", () => {
         ],
         keyDropTotal: 2,
         oreDropTotal: 5,
-        visibleItemTimeline: [itemTimelineEntry({ label: "Sash of the Magi", rarity: "Satanic" })],
-        itemTimelineCount: 1,
+        visibleItemTimeline: [
+          itemTimelineEntry({ label: "Sash of the Magi", rarity: "Satanic" }),
+          itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" }),
+        ],
+        itemTimelineCount: 2,
         logLimitOptions: [10, 20, 50],
         itemTypeOptions: [{ value: "6", label: "Belt" }],
         shoppingListItems: ["Copper Ore"],
@@ -222,6 +243,7 @@ describe("Vue component contracts", () => {
         itemFilterGroupCount: 1,
         watchedItemCount: 1,
         lastItemFilterMatch: { itemLabel: "Sash of the Magi", groupName: "Loot Alerts", soundName: "Deep Gong", createdAt: state.stats.lastEventAt ?? 0 },
+        developerItemResearchEnabled: true,
         recentLogs: state.logs,
         expandedLogIds: new Set<string>(),
         showCaptureDetails: false,
@@ -237,20 +259,25 @@ describe("Vue component contracts", () => {
       },
     });
 
-    expect(wrapper.text()).toContain("Gold Earned");
+    expect(wrapper.text()).toContain("This Run");
+    expect(wrapper.text()).toContain("Gold");
+    expect(wrapper.text()).toContain("Kills");
     expect(wrapper.text()).toContain("Sash of the Magi");
+    expect(wrapper.text()).toContain("Collectible #24");
     expect(wrapper.text()).toContain("Loot Alerts");
 
     await buttonByText(wrapper, "Details").trigger("click");
     await buttonByText(wrapper, "Satanic").trigger("click");
     await wrapper.get(".shopping-form").trigger("submit");
     await buttonByText(wrapper, "Configure Filter").trigger("click");
+    await buttonByText(wrapper, "Identify").trigger("click");
     await wrapper.get(".logs button").trigger("click");
 
     expect(wrapper.emitted("update:showCaptureDetails")).toEqual([[true]]);
     expect(wrapper.emitted("update:expandedDropRarity")).toEqual([["Satanic"]]);
     expect(wrapper.emitted("addShoppingItem")).toHaveLength(1);
     expect(wrapper.emitted("configureFilter")).toHaveLength(1);
+    expect(wrapper.emitted("identifyTimelineItem")?.[0]?.[0]).toMatchObject({ label: "Collectible #24", type: 13, id: 24 });
     expect(wrapper.emitted("toggleLog")?.[0]).toEqual([state.logs[0]]);
   });
 });

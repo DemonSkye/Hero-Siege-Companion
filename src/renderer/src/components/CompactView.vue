@@ -1,104 +1,85 @@
 <script setup lang="ts">
 import type { CompanionState } from "../../../shared/app-state";
-import { formatNumber } from "../lib/format";
+import {
+  type CompactRunTileDisplay,
+} from "../lib/compact-tiles";
 
-interface CompactTrackedItem {
-  rarity: string;
-  total: number;
-}
-
-defineProps<{
+const props = defineProps<{
   state: CompanionState;
-  captureStatusLabel: string;
-  compactClock: string;
-  sessionDuration: string;
-  zoneCountdown: string;
-  compactTrackedItems: CompactTrackedItem[];
-  oreDropTotal: number;
-  showShopping: boolean;
-  activeShoppingItem: string;
-  shoppingListItems: string[];
+  compactRunTileDisplays: CompactRunTileDisplay[];
+  runPausedLabel: string;
+  canToggleRunPaused: boolean;
+  showZone: boolean;
 }>();
 
-defineEmits<{
-  "update:showShopping": [value: boolean];
-  copyShoppingItem: [item: string];
+const emit = defineEmits<{
+  "update:showZone": [value: boolean];
+  toggleRunPaused: [];
+  endRun: [];
 }>();
 </script>
 
 <template>
   <section class="compact-view">
-    <div class="compact-status">
-      <span :class="['status-dot', state.captureStatus]"></span>
-      <strong>{{ state.captureStatus === "running" ? "Connected" : captureStatusLabel }}</strong>
-      <span class="compact-parsed">{{ formatNumber(state.health.parsedEvents) }} parsed</span>
-      <button
-        class="compact-shopping-toggle"
-        type="button"
-        title="Shopping list"
-        aria-label="Shopping list"
-        @click="$emit('update:showShopping', !showShopping)"
-      >
-        List
-      </button>
-      <span class="compact-clock">{{ compactClock }}</span>
-    </div>
-    <div class="compact-primary">
-      <div>
-        <span>Session</span>
-        <strong>{{ sessionDuration }}</strong>
-      </div>
-      <div>
-        <span>Gold</span>
-        <strong>{{ formatNumber(state.stats.totalGoldEarned) }}</strong>
-      </div>
-      <div>
-        <span>XP</span>
-        <strong>{{ formatNumber(state.stats.totalXpEarned) }}</strong>
-      </div>
-      <div>
-        <span>Zone</span>
-        <strong>{{ zoneCountdown }}</strong>
-      </div>
-    </div>
-    <div class="compact-drops">
-      <div v-for="item in compactTrackedItems" :key="item.rarity" :class="['compact-drop', item.rarity.toLowerCase()]">
-        <span>{{ item.rarity }}</span>
-        <strong>{{ formatNumber(item.total) }}</strong>
-      </div>
-      <div class="compact-drop compact-resource ore">
-        <span>Ore</span>
-        <strong>{{ formatNumber(oreDropTotal) }}</strong>
-      </div>
-    </div>
-    <section v-if="showShopping" class="compact-shopping-tray" aria-label="Shopping list">
+    <section v-if="showZone" class="compact-shopping-tray compact-zone-tray" aria-label="Satanic zone details">
       <div class="compact-shopping-head">
         <div>
-          <span>Shopping List</span>
-          <strong>{{ activeShoppingItem || "Empty" }}</strong>
+          <span>Satanic Zone</span>
+          <strong>{{ state.stats.satanicZone?.zone || "Waiting for zone packet" }}</strong>
         </div>
         <button
           class="compact-shopping-close"
           type="button"
-          title="Dismiss shopping list"
-          aria-label="Dismiss shopping list"
-          @click="$emit('update:showShopping', false)"
+          title="Dismiss zone details"
+          aria-label="Dismiss zone details"
+          @click="$emit('update:showZone', false)"
         >
-          ×
+          x
         </button>
       </div>
-      <div v-if="shoppingListItems.length" class="compact-shopping-list">
-        <button
-          v-for="item in shoppingListItems"
-          :key="item"
-          type="button"
-          :class="['shopping-item', { active: item === activeShoppingItem }]"
-          @click="$emit('copyShoppingItem', item)"
-        >
-          {{ item }}
-        </button>
+      <div v-if="state.stats.satanicZone" class="compact-zone-effects">
+        <div>
+          <span>Pros</span>
+          <p v-if="!state.stats.satanicZone.pros.length">None found</p>
+          <p v-for="effect in state.stats.satanicZone.pros" :key="`pro-${effect.id}`"><strong>{{ effect.name }}</strong></p>
+        </div>
+        <div>
+          <span>Cons</span>
+          <p v-if="!state.stats.satanicZone.cons.length">None found</p>
+          <p v-for="effect in state.stats.satanicZone.cons" :key="`con-${effect.id}`"><strong>{{ effect.name }}</strong></p>
+        </div>
       </div>
-      <p v-else class="compact-shopping-empty">Add item names in full view.</p>
+      <p v-else class="compact-shopping-empty">Zone details appear after the game sends a Satanic Zone packet.</p>
+    </section>
+    <section class="compact-cover compact-run-cover compact-run-home" aria-label="This run details">
+      <div class="compact-cover-head compact-run-cover-head">
+        <div class="compact-run-cover-title">
+          <div>
+            <span>This Run</span>
+            <strong>{{ state.runStatus === "paused" ? runPausedLabel : "Recording" }}</strong>
+          </div>
+          <div class="compact-run-cover-controls">
+            <button
+              type="button"
+              :disabled="!canToggleRunPaused"
+              :title="!canToggleRunPaused ? 'Run resumes when capture starts' : state.runStatus === 'paused' ? 'Resume run' : 'Stop run timer'"
+              @click="$emit('toggleRunPaused')"
+            >
+              {{ state.runStatus === "paused" ? "Resume" : "Stop" }}
+            </button>
+            <button type="button" title="End run" @click="$emit('endRun')">End Run</button>
+          </div>
+        </div>
+        <div class="compact-cover-actions">
+          <button class="compact-cover-button" type="button" title="Open Satanic zone details" @click="$emit('update:showZone', true)">SZ Details</button>
+        </div>
+      </div>
+      <div class="compact-cover-grid">
+        <div v-for="tile in compactRunTileDisplays" :key="`cover-${tile.id}`" :title="tile.title">
+          <span>{{ tile.kind === "duration" ? "Duration" : tile.label }}</span>
+          <strong>{{ tile.value }}</strong>
+        </div>
+      </div>
     </section>
   </section>
 </template>

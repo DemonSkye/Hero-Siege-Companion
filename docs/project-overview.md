@@ -1,6 +1,6 @@
 # Hero Siege Companion Project Overview
 
-Last updated: 2026-05-23 for `0.1.4`.
+Last updated: 2026-05-24 for `0.1.6`.
 
 This document describes the app as it stands today. It is intended for maintainers, not end users.
 
@@ -13,7 +13,7 @@ The app is intentionally local-first:
 - No account login.
 - No cloud service.
 - No packet capture files are written during normal use.
-- Persistent app data is limited to preferences, window bounds, run summaries, and optional debug logs.
+- Persistent app data is limited to preferences, window bounds, run summaries, optional item research notes, and optional debug logs.
 
 ## Runtime Shape
 
@@ -69,8 +69,8 @@ flowchart LR
 Important IPC areas:
 
 - Capture: `capture:start`, `game:launch-or-capture`, `capture:stop`.
-- Stats: `stats:reset`.
-- Preferences: `preferences:set-run-archive`, `preferences:set-capture`.
+- Stats/run: `stats:reset`, `run:pause`, `run:resume`.
+- Preferences: `preferences:set-run-archive`, `preferences:set-capture`, configuration import/export helpers, item research export.
 - Window controls: minimize, maximize, close, always-on-top, compact mode.
 - Utility: clipboard write, game executable chooser.
 - Updates: check latest GitHub release and open release URL.
@@ -81,6 +81,8 @@ Run summaries are created when the user ends a run or when the app closes. Savin
 - `minDurationMinutes`
 
 The main process also stores and restores window bounds separately for full and compact modes.
+
+Runs can be recording or paused. Manual pause/resume is exposed in both full and compact UI. Stopping capture automatically pauses the current run with a `captureStopped` reason; if capture starts again while that pause reason is active, the run resumes automatically. Run duration and per-hour rates exclude paused time.
 
 ## Capture Flow
 
@@ -187,6 +189,8 @@ Tracked drop counters focus on:
 
 Material-like and key/socketable items can appear in the item timeline but do not increment rare-drop cards.
 
+Unknown/generic item labels such as `Collectible #24` can be recorded in the optional developer item research notebook. Resolved names are normalized against known item options where possible, title-cased otherwise, and exported with both a display name and normalized lookup key for community lookup updates.
+
 ## Stats Engine
 
 `StatsEngine` applies parsed events to a session snapshot.
@@ -205,6 +209,7 @@ Tracked session data:
 - Non-basic keys.
 - Ore/material counters.
 - Item timeline.
+- Paused run duration.
 
 Important guardrails:
 
@@ -212,6 +217,7 @@ Important guardrails:
 - Item fingerprints dedupe repeated item events.
 - Only selected rare item types contribute to rare-drop counters.
 - The timeline is capped to avoid unbounded renderer growth.
+- Per-hour rates use active run duration, excluding manual or capture-stopped pauses.
 
 ## Renderer Flow
 
@@ -222,13 +228,13 @@ Renderer views:
 - Live dashboard
   Displays capture state, metrics, zone data, tracked drops, item timeline, shopping list, item filter summary, and live log.
 - Past Runs
-  Displays saved run aggregates, top drops, run cards, per-rarity breakdowns, keys, and ores.
+  Displays saved run aggregates, configurable report cards, tracked item groups, top drops, run cards, per-rarity breakdowns, keys, materials, and ores.
 - Item Filter
-  Manages loot audio groups, rarity/type rules, exact watched items, per-item sounds, cooldowns, and mute state.
+  Manages loot audio groups, rarity/type rules, exact watched items, per-item sounds, cooldowns, mute state, and optional item research.
 - Settings
-  Manages log/timeline limits, game launch mode, capture details, verbose logging, window behavior, timeline filters, and run archive rules.
+  Manages log/timeline limits, game launch mode, capture details, verbose logging, window behavior, timeline filters, run archive rules, developer item research flags, and configuration import/export.
 - Compact View
-  Small overlay-style view for capture state, session time, gold, XP, zone timer, rare drop counts, ore count, and shopping list.
+  Small overlay-style view for capture state, this-run time, run pause/end controls, gold, XP rate, Satanic Zone timer/details, shopping list, and compact run details.
 - Update Banner
   Shows available GitHub release updates and lets the user open or ignore them.
 
@@ -244,6 +250,9 @@ Renderer preferences are stored in `window.localStorage`:
 - Shopping list.
 - Game executable path and Steam launch preference.
 - Item filter groups and mute state.
+- Post-run report configuration.
+- Optional item research entries.
+- Configuration import/export checkbox state.
 
 Main-process preferences are stored in the Electron user data `preferences.json`:
 
@@ -265,6 +274,31 @@ Exact watched items can override the group sound. Groups have cooldowns so repea
 
 Sounds are generated in the renderer with Web Audio oscillators/noise buffers. There are no bundled sound files.
 
+## Post-Run Reports
+
+Past Runs uses a local report configuration to decide what appears in aggregate and per-run recaps:
+
+- Summary cards such as gold, XP, keys, ore, materials, and magic-find drops.
+- Rarity groups included in item recaps.
+- Custom item groups with enabled/disabled state, rarity filters, and exact watched items.
+- Resource drawers for materials, non-basic keys, and mined ore.
+- Top-drop list size.
+
+Enabled custom item groups are combined for report tracking. If no enabled group has exact items, the report falls back to the selected rarity groups.
+
+## Item Research
+
+Developer item research is opt-in. When enabled, generic or unresolved item signatures can be added from the item timeline or captured automatically when the prompt setting is enabled.
+
+The research notebook stores:
+
+- Stable signature.
+- Generic label, rarity, type, id, and drop quality.
+- Seen count and timestamps.
+- Resolved item name and notes.
+
+Research export writes a standalone JSON payload intended for sharing through GitHub Gist. It is separate from general configuration export so users can share lookup data without sharing personal settings.
+
 ## Shopping List
 
 The shopping list is a local convenience feature for quickly copying item names. It is not market automation.
@@ -275,6 +309,8 @@ Known item names come from:
 - Stack item translations.
 - Item translations.
 - Item icon names.
+
+The stack lookup now includes `The Wheel of Fortune` for collectible `type 13 / id 24`.
 
 ## Updates
 

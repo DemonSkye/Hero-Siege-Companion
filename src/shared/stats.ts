@@ -44,6 +44,9 @@ export interface CompanionStats {
   totalXp: number;
   totalXpEarned: number;
   xpPerHour: number;
+  totalKills: number;
+  totalKillsEarned: number;
+  killsPerHour: number;
   items: Record<string, ItemCounter>;
   itemsPerHour: Record<string, number>;
   itemBreakdown: Record<string, Record<string, ItemDropCounter>>;
@@ -63,6 +66,7 @@ export interface PastRunSummary {
   accountName: string;
   totalGoldGained: number;
   totalXpGained: number;
+  totalKillsGained: number;
   setDrops: number;
   satanicDrops: number;
   heroicDrops: number;
@@ -92,13 +96,28 @@ export class StatsEngine {
   private seenItemFingerprints = new Set<string>();
   private lastCurrencyData: CurrencyData | null = null;
   private goldMode: string | null = null;
+  private pausedAt: number | null = null;
+  private totalPausedMs = 0;
 
   reset(): CompanionStats {
     this.stats = createInitialStats();
     this.seenItemFingerprints.clear();
     this.lastCurrencyData = null;
     this.goldMode = null;
+    this.pausedAt = null;
+    this.totalPausedMs = 0;
     return this.snapshot();
+  }
+
+  pause(timestamp = Date.now()): void {
+    if (this.pausedAt !== null) return;
+    this.pausedAt = timestamp;
+  }
+
+  resume(timestamp = Date.now()): void {
+    if (this.pausedAt === null) return;
+    this.totalPausedMs += Math.max(timestamp - this.pausedAt, 0);
+    this.pausedAt = null;
   }
 
   applyEvents(events: ParsedEvent[]): CompanionStats {
@@ -113,7 +132,11 @@ export class StatsEngine {
 
   runSummary(sessionEndedAt = Date.now()): PastRunSummary {
     const snapshot = this.snapshot();
-    return createRunSummary(snapshot, sessionEndedAt);
+    return createRunSummary(snapshot, sessionEndedAt, this.pausedDurationMs(sessionEndedAt));
+  }
+
+  pausedDurationMs(timestamp = Date.now()): number {
+    return this.totalPausedMs + (this.pausedAt === null ? 0 : Math.max(timestamp - this.pausedAt, 0));
   }
 
   private applyEvent(event: ParsedEvent): void {
@@ -123,7 +146,10 @@ export class StatsEngine {
       const account = event.value as AccountInfo;
       this.stats.accountName = account.name || this.stats.accountName;
       this.stats.seasonMode = account.seasonMode;
-      if (event.name === EVENT_NAMES.account) this.updateXpTotal(account.experience);
+      if (event.name === EVENT_NAMES.account) {
+        this.updateXpTotal(account.experience);
+        this.updateKillTotal(account.totalMonsterKills);
+      }
       if (this.lastCurrencyData) this.updateGold(this.lastCurrencyData);
     } else if (event.name === EVENT_NAMES.gold) {
       this.updateGold(event.value as CurrencyData);
@@ -169,6 +195,15 @@ export class StatsEngine {
       if (diff > 0) this.stats.totalXpEarned += diff;
     }
     this.stats.totalXp = totalXp;
+  }
+
+  private updateKillTotal(totalKills: number): void {
+    if (totalKills <= 0) return;
+    if (this.stats.totalKills !== 0) {
+      const diff = totalKills - this.stats.totalKills;
+      if (diff > 0) this.stats.totalKillsEarned += diff;
+    }
+    this.stats.totalKills = totalKills;
   }
 
   private updateItem(item: AddedItemObject, createdAt: number): void {
@@ -230,9 +265,11 @@ export class StatsEngine {
   }
 
   private recalculateRates(): void {
-    const hours = Math.max((Date.now() - this.stats.sessionStartedAt) / 3_600_000, 1 / 3600);
+    const now = Date.now();
+    const hours = Math.max((now - this.stats.sessionStartedAt - this.pausedDurationMs(now)) / 3_600_000, 1 / 3600);
     this.stats.goldPerHour = Math.trunc(this.stats.totalGoldEarned / hours);
     this.stats.xpPerHour = Math.trunc(this.stats.totalXpEarned / hours);
+    this.stats.killsPerHour = Math.trunc(this.stats.totalKillsEarned / hours);
 
     for (const rarity of TRACKED_RARITIES) {
       this.stats.itemsPerHour[rarity] = Math.trunc(this.stats.items[rarity].total / hours);
@@ -284,6 +321,9 @@ export function createInitialStats(): CompanionStats {
     totalXp: 0,
     totalXpEarned: 0,
     xpPerHour: 0,
+    totalKills: 0,
+    totalKillsEarned: 0,
+    killsPerHour: 0,
     items,
     itemsPerHour,
     itemBreakdown,
@@ -296,15 +336,16 @@ export function createInitialStats(): CompanionStats {
   };
 }
 
-function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now()): PastRunSummary {
+function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now(), pausedDurationMs = 0): PastRunSummary {
   return {
     id: `${stats.sessionStartedAt}-${sessionEndedAt}`,
     sessionStartedAt: stats.sessionStartedAt,
     sessionEndedAt,
-    durationMs: Math.max(sessionEndedAt - stats.sessionStartedAt, 0),
+    durationMs: Math.max(sessionEndedAt - stats.sessionStartedAt - pausedDurationMs, 0),
     accountName: stats.accountName,
     totalGoldGained: stats.totalGoldEarned,
     totalXpGained: stats.totalXpEarned,
+    totalKillsGained: stats.totalKillsEarned,
     setDrops: stats.items.Set?.total ?? 0,
     satanicDrops: stats.items.Satanic?.total ?? 0,
     heroicDrops: stats.items.Heroic?.total ?? 0,
@@ -323,6 +364,7 @@ export function hasRunActivity(summary: PastRunSummary): boolean {
   return (
     summary.totalGoldGained > 0 ||
     summary.totalXpGained > 0 ||
+    (summary.totalKillsGained ?? 0) > 0 ||
     (summary.setDrops ?? 0) > 0 ||
     (summary.satanicDrops ?? 0) > 0 ||
     summary.heroicDrops > 0 ||

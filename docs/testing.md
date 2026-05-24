@@ -1,6 +1,6 @@
 # Testing Guide
 
-Last updated: 2026-05-23 for `0.1.4`.
+Last updated: 2026-05-24 for `0.1.6`.
 
 The test suite uses Vitest, Vue Test Utils, and jsdom. The goal is executable documentation: each test should describe a real packet, parser rule, stats rule, preference guard, or component contract that can regress.
 
@@ -54,6 +54,7 @@ These tests protect the moving contract between raw Hero Siege traffic and live 
 - Fingerprint-based item type inference.
 - Known item rarity overrides.
 - Stack item/material/key lookup.
+- Item research candidate detection, name normalization, and research JSON export.
 - Timeline filtering assumptions.
 - Run summaries and empty-run detection.
 
@@ -67,6 +68,8 @@ These tests protect renderer-side behavior that can break without TypeScript not
 - Item filter groups start with safe defaults.
 - Preferences loaded from storage are normalized before reaching UI state.
 - Shopping list helpers dedupe and bound stored values.
+- Configuration import/export respects the selected checkbox scope.
+- Post-run report configuration and item research entries are normalized before reaching UI state.
 
 ### Vue Components
 
@@ -78,6 +81,7 @@ Component tests mount real Vue components with Vue Test Utils and assert the con
 - High-churn dashboard controls do not silently stop wiring through.
 - Past Runs aggregate and per-run breakdown interactions keep working.
 - Compact overlay shopping actions remain reachable in the small UI.
+- Compact run controls, run details overlays, and zone trays remain wired through.
 
 ## Guidelines For New Tests
 
@@ -94,6 +98,6 @@ Component tests mount real Vue components with Vue Test Utils and assert the con
 As of this update:
 
 - 4 spec files.
-- 59 passing tests.
+- 63 passing tests.
 - Parser/stats coverage remains the largest block because networking payload shape is the riskiest part of the app.
 - Renderer tests now cover both pure helper logic and mounted Vue component contracts.

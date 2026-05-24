@@ -1,6 +1,7 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import type { ItemTimelineEntry } from "../../../shared/stats";
-import { isRecord, stringField } from "./text";
+import { itemNameOptionByNormalizedName } from "./item-options";
+import { isRecord, normalizeLookupText, stringField } from "./text";
 
 export interface ItemResearchEntry {
   signature: string;
@@ -18,13 +19,17 @@ export interface ItemResearchEntry {
 }
 
 export const ITEM_RESEARCH_ENTRY_LIMIT = 200;
+const GENERIC_UNKNOWN_LABEL_PATTERN =
+  /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|socketable|key)\s+#\d+/i;
+const RESOURCE_LIKE_TYPES = new Set([12, 13, 14, 15]);
 
 export function isItemResearchCandidate(item: ItemTimelineEntry): boolean {
-  if (item.localizationId) return false;
-  if ([12, 13, 14, 15].includes(item.type)) return false;
   const label = item.label.trim();
+  const hasGenericLabel = isGenericUnknownLabel(label);
+  if (item.localizationId && !hasGenericLabel) return false;
+  if (RESOURCE_LIKE_TYPES.has(item.type) && !hasGenericLabel) return false;
   if (!label) return true;
-  return /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial)\s+#\d+/i.test(label)
+  return hasGenericLabel
     || /\bseed\s+\d+/i.test(label)
     || /^unknown item$/i.test(label);
 }
@@ -75,7 +80,7 @@ export function updateItemResearchEntry(
       entry.signature === signature
         ? {
             ...entry,
-            resolvedName: patch.resolvedName === undefined ? entry.resolvedName : cleanText(patch.resolvedName, 120),
+            resolvedName: patch.resolvedName === undefined ? entry.resolvedName : normalizeResearchItemName(patch.resolvedName),
             notes: patch.notes === undefined ? entry.notes : cleanText(patch.notes, 500),
             ignored: patch.ignored === undefined ? entry.ignored : Boolean(patch.ignored),
           }
@@ -108,7 +113,7 @@ export function normalizeItemResearchEntries(value: unknown): ItemResearchEntry[
       count: Math.max(1, numberField(item, "count") || 1),
       firstSeenAt,
       lastSeenAt,
-      resolvedName: cleanText(stringField(item, "resolvedName"), 120),
+      resolvedName: normalizeResearchItemName(stringField(item, "resolvedName")),
       notes: cleanText(stringField(item, "notes"), 500),
       ignored: Boolean(item.ignored),
     });
@@ -122,8 +127,53 @@ export function activeItemResearchEntries(entries: ItemResearchEntry[]): ItemRes
   return entries.filter((entry) => !entry.ignored && !entry.resolvedName.trim());
 }
 
+export function createItemResearchExportPayload(entries: ItemResearchEntry[]) {
+  const exportedEntries = normalizeItemResearchEntries(entries)
+    .filter((entry) => !entry.ignored)
+    .map((entry) => ({
+      signature: entry.signature,
+      label: entry.label,
+      resolvedName: entry.resolvedName,
+      resolvedNameKey: entry.resolvedName ? normalizeItemResearchNameKey(entry.resolvedName) : "",
+      rarity: entry.rarity,
+      type: entry.type,
+      id: entry.id,
+      dropQuality: entry.dropQuality,
+      count: entry.count,
+      firstSeenAt: new Date(entry.firstSeenAt).toISOString(),
+      lastSeenAt: new Date(entry.lastSeenAt).toISOString(),
+      notes: entry.notes,
+    }));
+
+  return {
+    app: "hero-siege-companion",
+    kind: "item-research",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    shareHint: "Share this JSON as a gist and contact sarevok9 on Reddit or Snyne on the Hero Siege Discord so item lookups can improve.",
+    summary: {
+      total: exportedEntries.length,
+      resolved: exportedEntries.filter((entry) => entry.resolvedName.trim()).length,
+      unresolved: exportedEntries.filter((entry) => !entry.resolvedName.trim()).length,
+    },
+    entries: exportedEntries,
+  };
+}
+
+export function normalizeResearchItemName(value: string): string {
+  const cleaned = cleanText(value, 120);
+  if (!cleaned) return "";
+  const known = itemNameOptionByNormalizedName.get(normalizeLookupText(cleaned));
+  if (known) return known.name;
+  return titleCaseItemName(cleaned);
+}
+
 export function itemResearchSignature(item: ItemTimelineEntry): string {
   return `${item.type}:${item.id}:${item.dropQuality}:${genericLabelKey(item.label)}`;
+}
+
+function isGenericUnknownLabel(label: string): boolean {
+  return GENERIC_UNKNOWN_LABEL_PATTERN.test(label);
 }
 
 function genericLabelKey(label: string): string {
@@ -146,4 +196,30 @@ function positiveNumberField(record: Record<string, unknown>, field: string): nu
 
 function cleanText(value: string, limit: number): string {
   return value.trim().replace(/\s+/g, " ").slice(0, limit);
+}
+
+function normalizeItemResearchNameKey(value: string): string {
+  return normalizeLookupText(value.replace(/['’]/g, ""));
+}
+
+function titleCaseItemName(value: string): string {
+  const smallWords = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "nor", "of", "on", "or", "the", "to", "with"]);
+  const words = value.split(" ");
+  return words
+    .map((word, index) => {
+      const segments = word.split(/([-'])/);
+      return segments
+        .map((segment, segmentIndex) => {
+          if (segment === "-" || segment === "'") return segment;
+          if (!segment) return segment;
+          const lower = segment.toLowerCase();
+          if (segments[segmentIndex - 1] === "'" && lower.length <= 2) return lower;
+          const isSmall = smallWords.has(lower) && index > 0 && index < words.length - 1 && segmentIndex === 0;
+          if (isSmall) return lower;
+          if (/^[ivxlcdm]+$/i.test(segment) && segment.length <= 6) return segment.toUpperCase();
+          return lower.replace(/^\p{L}/u, (char) => char.toUpperCase());
+        })
+        .join("");
+    })
+    .join(" ");
 }

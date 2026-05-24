@@ -45,6 +45,7 @@ const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "stack_death", name: "Death", gameId: 19, type: 13, weaponType: 0 },
   { localizationId: "stack_the_fool", name: "The Fool", gameId: 21, type: 13, weaponType: 0 },
   { localizationId: "stack_the_world", name: "The World", gameId: 23, type: 13, weaponType: 0 },
+  { localizationId: "stack_the_wheel_of_fortune", name: "The Wheel of Fortune", gameId: 24, type: 13, weaponType: 0 },
   { localizationId: "stack_the_high_priestess", name: "The High Priestess", gameId: 25, type: 13, weaponType: 0 },
   { localizationId: "stack_the_empress", name: "The Empress", gameId: 26, type: 13, weaponType: 0 },
   { localizationId: "stack_the_emperor", name: "The Emperor", gameId: 27, type: 13, weaponType: 0 },

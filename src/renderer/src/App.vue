@@ -9,6 +9,13 @@ import LiveView from "./components/LiveView.vue";
 import PastRunsView from "./components/PastRunsView.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import UpdateBanner from "./components/UpdateBanner.vue";
+import {
+  COMPACT_RUN_TILE_LIMIT,
+  STANDARD_COMPACT_RUN_TILE_OPTIONS,
+  compactCustomTileTotal,
+  type CompactRunTileConfig,
+  type CompactRunTileDisplay,
+} from "./lib/compact-tiles";
 import { formatDuration, formatNumber } from "./lib/format";
 import { playItemFilterSound } from "./lib/item-filter-sounds";
 import {
@@ -30,7 +37,9 @@ import {
 import { ITEM_TYPE_OPTIONS, SHOPPING_SUGGESTION_LIMIT, shoppingAutocompleteNames } from "./lib/item-options";
 import {
   activeItemResearchEntries,
+  createItemResearchExportPayload,
   isItemResearchCandidate,
+  itemResearchSignature,
   normalizeItemResearchEntries,
   updateItemResearchEntry,
   upsertItemResearchEntry,
@@ -59,6 +68,10 @@ const state = ref<CompanionState>({
   captureRunning: false,
   captureStatus: "idle",
   captureError: null,
+  runStatus: "recording",
+  runPausedReason: null,
+  runPausedAt: null,
+  runPausedDurationMs: 0,
   connections: [],
   health: {
     npcapService: "Unknown",
@@ -94,7 +107,7 @@ const logLimitOptions = LOG_LIMIT_OPTIONS;
 const timelineLimit = ref(10);
 const showCaptureDetails = ref(false);
 const showSettings = ref(false);
-const showCompactShopping = ref(false);
+const showCompactZone = ref(false);
 const alwaysOnTop = ref(false);
 const compactMode = ref(false);
 const lockCompactLocation = ref(false);
@@ -105,7 +118,7 @@ const timelineType = ref("all");
 const gameExecutablePath = ref("");
 const launchThroughSteam = ref(true);
 const activeTab = ref<"live" | "past" | "filter">("live");
-const appVersion = "0.1.5";
+const appVersion = "0.1.6";
 const expandedLogIds = ref<Set<string>>(new Set());
 const draftLogLimit = ref(20);
 const draftTimelineLimit = ref(10);
@@ -133,6 +146,7 @@ const shoppingDraftItem = ref("");
 const itemFilterGroups = ref<ItemFilterGroup[]>([]);
 const itemFilterMuted = ref(false);
 const postRunReport = ref<PostRunReportConfig>(defaultPreferences.postRunReport);
+const compactRunTiles = ref<CompactRunTileConfig[]>(defaultPreferences.compactRunTiles);
 const developerItemResearchEnabled = ref(false);
 const unknownItemAudioPrompt = ref(false);
 const itemResearchEntries = ref<ItemResearchEntry[]>([]);
@@ -160,8 +174,18 @@ const captureStatusLabel = computed(() => {
   return "Idle";
 });
 
-const sessionDuration = computed(() => formatDuration(now.value - state.value.stats.sessionStartedAt));
+const runElapsedMs = computed(() => {
+  const pausedNowMs = state.value.runStatus === "paused" && state.value.runPausedAt ? Math.max(now.value - state.value.runPausedAt, 0) : 0;
+  return Math.max(now.value - state.value.stats.sessionStartedAt - state.value.runPausedDurationMs - pausedNowMs, 0);
+});
+const sessionDuration = computed(() => formatDuration(runElapsedMs.value));
 const currentGoldLabel = computed(() => (state.value.stats.seasonMode ? formatNumber(state.value.stats.totalGold) : "pending"));
+const compactGoldTitle = computed(() => `Current ${currentGoldLabel.value} - ${formatNumber(state.value.stats.goldPerHour)}/h`);
+const compactXpTitle = computed(() => `${formatNumber(state.value.stats.totalXpEarned)} earned - ${formatNumber(state.value.stats.xpPerHour)}/h`);
+const compactXpRateLabel = computed(() => `${formatCompactNumber(state.value.stats.xpPerHour)}/h`);
+const compactRunTileDisplays = computed(() => compactRunTiles.value.map(compactRunTileDisplay).slice(0, COMPACT_RUN_TILE_LIMIT));
+const runPausedLabel = computed(() => (state.value.runPausedReason === "captureStopped" ? "Paused: capture stopped" : "Paused"));
+const canToggleRunPaused = computed(() => !(state.value.runStatus === "paused" && state.value.runPausedReason === "captureStopped" && !state.value.captureRunning));
 const nextZoneAt = computed(() => {
   const date = new Date(now.value);
   const minutes = date.getMinutes();
@@ -237,15 +261,11 @@ onMounted(async () => {
   }, 1000);
 });
 
-watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, itemFilterGroups, itemFilterMuted, postRunReport, developerItemResearchEnabled, unknownItemAudioPrompt, itemResearchEntries], () => {
+watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, itemFilterGroups, itemFilterMuted, postRunReport, compactRunTiles, developerItemResearchEnabled, unknownItemAudioPrompt, itemResearchEntries], () => {
   savePreferences(currentPreferences());
   clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
 }, { deep: true });
-
-watch(compactMode, (enabled) => {
-  if (!enabled) showCompactShopping.value = false;
-});
 
 onUnmounted(() => {
   unsubscribe?.();
@@ -266,6 +286,17 @@ async function resetStats() {
   const previousRunCount = pastRuns.value.length;
   state.value = await window.heroSiegeCompanion.resetStats();
   if ((state.value.pastRuns?.length ?? 0) > previousRunCount) activeTab.value = "past";
+}
+
+async function toggleRunPaused() {
+  if (!canToggleRunPaused.value) return;
+  state.value = state.value.runStatus === "paused" ? await window.heroSiegeCompanion.resumeRun() : await window.heroSiegeCompanion.pauseRun();
+}
+
+async function openCompactSettings() {
+  compactMode.value = false;
+  await syncWindowMode();
+  openSettings();
 }
 
 async function minimizeWindow() {
@@ -342,6 +373,16 @@ async function importConfiguration() {
   }
 }
 
+async function exportItemResearch() {
+  try {
+    const payload = createItemResearchExportPayload(itemResearchEntries.value);
+    const exported = await window.heroSiegeCompanion.exportItemResearch(JSON.stringify(payload, null, 2));
+    if (exported) showToast("Research JSON exported. Share a gist with sarevok9 on Reddit or Snyne on Discord.");
+  } catch {
+    showToast("Research export failed");
+  }
+}
+
 function currentConfigurationTransferOptions() {
   return {
     includeAppSettings: configIncludeAppSettings.value,
@@ -375,6 +416,7 @@ function currentPreferences(): UiPreferences {
     itemFilterGroups: itemFilterGroups.value,
     itemFilterMuted: itemFilterMuted.value,
     postRunReport: postRunReport.value,
+    compactRunTiles: compactRunTiles.value,
     developerItemResearchEnabled: developerItemResearchEnabled.value,
     unknownItemAudioPrompt: unknownItemAudioPrompt.value,
     itemResearchEntries: itemResearchEntries.value,
@@ -397,6 +439,7 @@ function applyPreferences(preferences: UiPreferences) {
   itemFilterGroups.value = preferences.itemFilterGroups;
   itemFilterMuted.value = preferences.itemFilterMuted;
   postRunReport.value = preferences.postRunReport;
+  compactRunTiles.value = preferences.compactRunTiles;
   developerItemResearchEnabled.value = preferences.developerItemResearchEnabled;
   unknownItemAudioPrompt.value = preferences.unknownItemAudioPrompt;
   itemResearchEntries.value = preferences.itemResearchEntries;
@@ -421,6 +464,7 @@ function currentDraftPreferences(): UiPreferences {
     itemFilterGroups: itemFilterGroups.value,
     itemFilterMuted: itemFilterMuted.value,
     postRunReport: postRunReport.value,
+    compactRunTiles: compactRunTiles.value,
     developerItemResearchEnabled: draftDeveloperItemResearchEnabled.value,
     unknownItemAudioPrompt: draftDeveloperItemResearchEnabled.value && draftUnknownItemAudioPrompt.value,
     itemResearchEntries: itemResearchEntries.value,
@@ -649,6 +693,16 @@ function clearResolvedItemResearchEntries() {
   itemResearchEntries.value = normalizeItemResearchEntries(itemResearchEntries.value.filter((entry) => !entry.resolvedName.trim() && !entry.ignored));
 }
 
+function identifyTimelineItem(item: ItemTimelineEntry) {
+  if (!developerItemResearchEnabled.value || !isItemResearchCandidate(item)) return;
+  const signature = itemResearchSignature(item);
+  if (!itemResearchEntries.value.some((entry) => entry.signature === signature)) {
+    itemResearchEntries.value = upsertItemResearchEntry(itemResearchEntries.value, item);
+  }
+  activeTab.value = "filter";
+  showToast(`${item.label || "Unknown item"} added to Item Research`);
+}
+
 function handleItemFilterMatch(match: ItemFilterRuleMatch) {
   const nowMs = Date.now();
   lastItemFilterMatch.value = {
@@ -680,11 +734,94 @@ function itemDropBreakdown(rarity: string): ItemDropCounter[] {
   return sortedDropBreakdown(breakdown);
 }
 
+function compactRunTileDisplay(tile: CompactRunTileConfig): CompactRunTileDisplay {
+  const stats = state.value.stats;
+  const standardLabels = new Map(STANDARD_COMPACT_RUN_TILE_OPTIONS.map((option) => [option.kind, option.label]));
+  switch (tile.kind) {
+    case "duration":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "This Run",
+        value: sessionDuration.value,
+        detail: state.value.stats.accountName || "No character packet yet",
+        title: state.value.runStatus === "paused" ? runPausedLabel.value : "Recording",
+      };
+    case "gold":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "Gold",
+        value: formatCompactNumber(stats.totalGoldEarned),
+        detail: `${formatNumber(stats.goldPerHour)}/h - Current ${currentGoldLabel.value}`,
+        title: compactGoldTitle.value,
+      };
+    case "xp":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "XP",
+        value: compactXpRateLabel.value,
+        detail: `${formatNumber(stats.totalXpEarned)} earned`,
+        title: compactXpTitle.value,
+      };
+    case "kills":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "Kills",
+        value: formatCompactNumber(stats.totalKillsEarned),
+        detail: `${formatNumber(stats.killsPerHour)}/h`,
+        title: `${formatNumber(stats.totalKillsEarned)} kills - ${formatNumber(stats.killsPerHour)}/h`,
+      };
+    case "sz":
+      return { id: tile.id, kind: tile.kind, label: "SZ", value: zoneCountdown.value, detail: state.value.stats.satanicZone?.zone ?? `Resets ${zoneResetLabel.value}`, title: "Satanic zone details" };
+    case "set":
+    case "satanic":
+    case "heroic":
+    case "angelic": {
+      const label = standardLabels.get(tile.kind) ?? tile.kind;
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label,
+        value: formatCompactNumber(stats.items[label]?.total ?? 0),
+        detail: `${formatNumber(stats.items[label]?.mf ?? 0)} MF - ${formatNumber(stats.itemsPerHour[label] ?? 0)}/h`,
+        title: `${label} drops`,
+      };
+    }
+    case "custom": {
+      const group = itemFilterGroups.value.find((candidate) => candidate.id === tile.groupId);
+      const label = tile.label?.trim() || (tile.source === "item" ? tile.itemName : group?.name) || "Custom";
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label,
+        value: formatCompactNumber(compactCustomTileTotal(tile, stats, itemFilterGroups.value)),
+        detail: tile.source === "item" ? "Exact item" : "Item filter group",
+        title: tile.source === "item" ? tile.itemName || label : group?.name ?? label,
+      };
+    }
+  }
+}
+
 function toggleLog(log: LogEntry) {
   const next = new Set(expandedLogIds.value);
   if (next.has(log.id)) next.delete(log.id);
   else next.add(log.id);
   expandedLogIds.value = next;
+}
+
+function formatCompactNumber(value: number): string {
+  const abs = Math.abs(value || 0);
+  if (abs >= 1_000_000_000) return `${trimCompact(value / 1_000_000_000)}b`;
+  if (abs >= 1_000_000) return `${trimCompact(value / 1_000_000)}m`;
+  if (abs >= 1_000) return `${trimCompact(value / 1_000)}k`;
+  return String(Math.trunc(value || 0));
+}
+
+function trimCompact(value: number): string {
+  return value.toFixed(2).replace(/\.?0+$/, "");
 }
 </script>
 
@@ -699,6 +836,7 @@ function toggleLog(log: LogEntry) {
         <button class="compact-window-button" type="button" @click="toggleCompactMode" :title="compactMode ? 'Exit compact mode' : 'Compact mode'" :aria-label="compactMode ? 'Exit compact mode' : 'Compact mode'">
           <span class="compact-arrows" aria-hidden="true">{{ compactMode ? "↗↙" : "↙↗" }}</span>
         </button>
+        <button v-if="compactMode" type="button" @click="openCompactSettings" title="Settings" aria-label="Settings">⚙</button>
         <button type="button" @click="minimizeWindow" title="Minimize" aria-label="Minimize">−</button>
         <button v-if="!compactMode" type="button" @click="toggleMaximizeWindow" title="Maximize or restore" aria-label="Maximize or restore">□</button>
         <button class="close" type="button" @click="closeWindow" title="Close" aria-label="Close">×</button>
@@ -709,17 +847,13 @@ function toggleLog(log: LogEntry) {
 
     <CompactView
       v-if="compactMode"
-      v-model:show-shopping="showCompactShopping"
+      v-model:show-zone="showCompactZone"
       :state="state"
-      :capture-status-label="captureStatusLabel"
-      :compact-clock="compactClock"
-      :session-duration="sessionDuration"
-      :zone-countdown="zoneCountdown"
-      :compact-tracked-items="compactTrackedItems"
-      :ore-drop-total="oreDropTotal"
-      :active-shopping-item="activeShoppingItem"
-      :shopping-list-items="shoppingListItems"
-      @copy-shopping-item="copyShoppingItem($event, true)"
+      :compact-run-tile-displays="compactRunTileDisplays"
+      :run-paused-label="runPausedLabel"
+      :can-toggle-run-paused="canToggleRunPaused"
+      @toggle-run-paused="toggleRunPaused"
+      @end-run="resetStats"
     />
 
     <section v-if="!compactMode" class="topbar">
@@ -729,6 +863,9 @@ function toggleLog(log: LogEntry) {
       </div>
       <div class="actions">
         <button class="icon-button ghost" type="button" @click="openSettings" title="Settings" aria-label="Settings">⚙</button>
+        <button class="icon-button ghost" type="button" @click="toggleRunPaused" :disabled="!canToggleRunPaused" :title="!canToggleRunPaused ? 'Run will resume when capture starts' : state.runStatus === 'paused' ? 'Resume this run' : 'Pause this run'">
+          {{ state.runStatus === "paused" ? "Resume Run" : "Pause Run" }}
+        </button>
         <button class="icon-button ghost" type="button" @click="resetStats" title="Save this run to Past Runs and reset session stats">End Run</button>
         <button class="icon-button primary" type="button" @click="toggleCapture">
           {{ state.captureRunning ? "Stop Capture" : "Launch Game" }}
@@ -759,8 +896,7 @@ function toggleLog(log: LogEntry) {
         v-model:log-limit="logLimit"
         :state="state"
         :capture-status-label="captureStatusLabel"
-        :session-duration="sessionDuration"
-        :current-gold-label="currentGoldLabel"
+        :run-tile-displays="compactRunTileDisplays"
         :zone-countdown="zoneCountdown"
         :zone-reset-label="zoneResetLabel"
         :tracked-items="trackedItems"
@@ -777,6 +913,7 @@ function toggleLog(log: LogEntry) {
         :item-filter-group-count="itemFilterGroups.length"
         :watched-item-count="watchedItemCount"
         :last-item-filter-match="lastItemFilterMatch"
+        :developer-item-research-enabled="developerItemResearchEnabled"
         :recent-logs="recentLogs"
         :expanded-log-ids="expandedLogIds"
         @copy-shopping-item="copyShoppingItem($event, false)"
@@ -784,6 +921,7 @@ function toggleLog(log: LogEntry) {
         @remove-shopping-item="removeShoppingItem"
         @test-item-filter-sound="testItemFilterSound"
         @configure-filter="activeTab = 'filter'"
+        @identify-timeline-item="identifyTimelineItem"
         @toggle-log="toggleLog"
       />
 
@@ -806,6 +944,7 @@ function toggleLog(log: LogEntry) {
         @add-item-to-group="addItemToFilterGroup"
         @remove-item-from-group="removeItemFromFilterGroup"
         @test-sound="testItemFilterSound"
+        @export-item-research="exportItemResearch"
         @save-item-research-entry="saveItemResearchEntry"
         @ignore-item-research-entry="ignoreItemResearchEntry"
         @reset-item-research-entry="resetItemResearchEntry"
@@ -844,8 +983,11 @@ function toggleLog(log: LogEntry) {
       v-model:config-include-report-tracking="configIncludeReportTracking"
       v-model:config-include-loot-filters="configIncludeLootFilters"
       v-model:config-include-item-research="configIncludeItemResearch"
+      v-model:compact-run-tiles="compactRunTiles"
       :log-limit-options="logLimitOptions"
       :item-type-options="itemTypeOptions"
+      :item-filter-groups="itemFilterGroups"
+      :item-suggestions="shoppingAutocompleteNames"
       @close="closeSettings"
       @choose-game-executable="chooseGameExecutable"
       @export-configuration="exportConfiguration"

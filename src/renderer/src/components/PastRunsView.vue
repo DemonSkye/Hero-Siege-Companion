@@ -160,6 +160,7 @@ function aggregateMetricCards(aggregate: PastRunAggregate) {
   const cards: Record<ReportMetricId, { label: string; value: number; detail: string }> = {
     gold: { label: "Gold/h", value: aggregate.goldPerHour, detail: `Best ${formatNumber(aggregate.bestGoldPerHour)}` },
     xp: { label: "XP/h", value: aggregate.xpPerHour, detail: `Best ${formatNumber(aggregate.bestXpPerHour)}` },
+    kills: { label: "Kills/h", value: aggregate.killsPerHour, detail: `Best ${formatNumber(aggregate.bestKillsPerHour)}` },
     keys: { label: "Keys", value: aggregate.totalKeys, detail: `${formatNumber(averagePerRun(aggregate.totalKeys, aggregate.runCount))}/run` },
     ores: { label: "Ore", value: aggregate.totalOres, detail: `${formatNumber(averagePerRun(aggregate.totalOres, aggregate.runCount))}/run` },
     materials: { label: "Materials", value: aggregate.totalMaterials, detail: `${formatNumber(averagePerRun(aggregate.totalMaterials, aggregate.runCount))}/run` },
@@ -172,6 +173,7 @@ function runMetricCards(run: PastRunSummary) {
   const cards: Record<ReportMetricId, { label: string; value: number; detail: string }> = {
     gold: { label: "Gold", value: run.totalGoldGained, detail: `${formatNumber(ratePerHour(run.totalGoldGained, run.durationMs))}/h` },
     xp: { label: "XP", value: run.totalXpGained, detail: `${formatNumber(ratePerHour(run.totalXpGained, run.durationMs))}/h` },
+    kills: { label: "Kills", value: run.totalKillsGained ?? 0, detail: `${formatNumber(ratePerHour(run.totalKillsGained ?? 0, run.durationMs))}/h` },
     keys: { label: "Keys", value: runResourceTotal(run.keys), detail: `${runResourceTypeCount(run.keys)} types` },
     ores: { label: "Ore", value: runResourceTotal(run.ores), detail: `${runResourceTypeCount(run.ores)} types` },
     materials: { label: "Materials", value: runResourceTotal(run.materials ?? []), detail: `${runResourceTypeCount(run.materials)} types` },

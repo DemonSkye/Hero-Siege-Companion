@@ -92,6 +92,7 @@ export interface SatanicZoneInfo {
 export interface AccountInfo {
   name: string;
   experience: number;
+  totalMonsterKills: number;
   season: number;
   hardcore: number;
   bloodPact: number;
@@ -276,6 +277,7 @@ function parseAccount(msg: MessageObject): AccountInfo {
   return {
     name: String(getMessageField(msg, ["name"], "")),
     experience: intMessageField(msg, ["experience"]),
+    totalMonsterKills: intMessageField(msg, ["statisticTotalMonsterKills", "statistic_total_monster_kills", "totalMonsterKills", "total_monster_kills"]),
     season,
     hardcore,
     bloodPact,

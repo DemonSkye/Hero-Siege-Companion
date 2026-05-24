@@ -250,7 +250,7 @@ h2 {
 }
 
 .app-shell.compact .window-controls {
-  grid-template-columns: repeat(3, 34px);
+  grid-template-columns: repeat(4, 34px);
 }
 
 .window-controls button,
@@ -295,8 +295,7 @@ h2 {
 }
 
 .compact-status,
-.compact-primary,
-.compact-drops {
+.compact-primary {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   background: rgba(18, 21, 27, 0.9);
@@ -355,10 +354,86 @@ h2 {
   overflow: hidden;
 }
 
-.compact-primary div {
+.compact-primary div,
+.compact-run-cell {
   min-width: 0;
   padding: 8px;
   background: rgba(255, 255, 255, 0.025);
+}
+
+.compact-primary > div:not(.compact-run-cell),
+.compact-zone-toggle {
+  justify-items: center;
+  text-align: center;
+}
+
+.compact-run-cell.paused strong {
+  color: #ffb45c;
+}
+
+.compact-run-summary {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.compact-run-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.compact-run-controls {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  background: transparent;
+}
+
+.compact-run-controls button {
+  min-height: 20px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #dce2eb;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.compact-run-controls button:disabled,
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.compact-primary-cell {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  padding: 8px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.025);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.compact-zone-toggle:hover {
+  background: rgba(137, 216, 199, 0.08);
 }
 
 .compact-primary span,
@@ -366,6 +441,16 @@ h2 {
 .compact-drop span,
 .compact-drop strong {
   display: block;
+}
+
+.compact-run-summary .compact-run-label {
+  display: inline-flex;
+}
+
+.compact-run-summary .info-bubble {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-left: 3px;
 }
 
 .compact-primary strong {
@@ -378,11 +463,17 @@ h2 {
   white-space: nowrap;
 }
 
-.compact-drops {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
+.compact-run-summary .info-bubble::after {
+  top: calc(100% + 8px);
+  bottom: auto;
+  left: 0;
+  width: max-content;
+  max-width: 180px;
+  transform: translate(0, 2px);
+}
+
+.compact-run-summary .info-bubble:hover::after {
+  transform: translate(0, 0);
 }
 
 .compact-drop {
@@ -480,6 +571,263 @@ h2 {
   margin: 0;
   color: #aab3c2;
   font-size: 12px;
+}
+
+.compact-zone-tray {
+  max-height: min(220px, calc(100vh - 48px));
+  border-color: rgba(137, 216, 199, 0.24);
+}
+
+.compact-zone-effects {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  overflow: auto;
+  padding-right: 6px;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.compact-zone-effects > div {
+  display: grid;
+  gap: 5px;
+}
+
+.compact-zone-effects span {
+  color: #89d8c7;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.compact-zone-effects p {
+  margin: 0;
+  color: #cdd5e1;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.compact-zone-effects strong {
+  color: #ffffff;
+}
+
+.compact-cover {
+  position: fixed;
+  inset: 34px 0 0;
+  z-index: 18;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(17, 20, 26, 0.98);
+  box-shadow: 0 -16px 42px rgba(0, 0, 0, 0.42);
+  -webkit-app-region: no-drag;
+}
+
+.compact-cover-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.compact-cover-head div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.compact-cover-head span,
+.compact-cover-grid span {
+  color: #89d8c7;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.compact-cover-head strong {
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.compact-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compact-cover-grid div {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.compact-cover-grid strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-run-cover {
+  gap: 8px;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.compact-run-cover .compact-cover-head {
+  align-items: center;
+}
+
+.compact-run-cover .compact-cover-head > div {
+  gap: 1px;
+}
+
+.compact-run-cover-head {
+  min-width: 0;
+}
+
+.compact-cover-head .compact-run-cover-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.compact-cover-head .compact-run-cover-title > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.compact-cover-head .compact-run-cover-controls,
+.compact-cover-head .compact-cover-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.compact-run-cover-controls button,
+.compact-cover-button {
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #dce2eb;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.compact-run-cover-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.compact-run-cover .compact-cover-head span,
+.compact-run-cover .compact-cover-grid span {
+  font-size: 10px;
+}
+
+.compact-run-cover .compact-cover-head strong {
+  font-size: 14px;
+}
+
+.compact-run-cover .compact-cover-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.compact-run-cover .compact-cover-grid div {
+  min-height: 50px;
+  padding: 7px;
+}
+
+.compact-run-cover .compact-cover-grid strong {
+  margin-top: 3px;
+  font-size: 15px;
+}
+
+.compact-settings-section {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.compact-settings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compact-settings-heading strong {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.compact-settings-heading span {
+  color: #9fa8b8;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.compact-settings-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.settings-compact-run-section {
+  align-content: start;
+}
+
+.compact-settings-chip-grid-wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.compact-custom-tile-list {
+  display: grid;
+  gap: 7px;
+}
+
+.compact-custom-tile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, 0.7fr) minmax(0, 1fr) 26px;
+  gap: 6px;
+  align-items: center;
+}
+
+.compact-custom-tile-row input,
+.compact-custom-tile-row select {
+  min-width: 0;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(12, 15, 20, 0.82);
+  color: #e8edf5;
+  font: inherit;
+  font-size: 11px;
+}
+
+.settings-custom-tile-row {
+  grid-template-columns: minmax(140px, 1fr) minmax(110px, 0.7fr) minmax(180px, 1.2fr) 26px;
 }
 
 .status-strip {
@@ -952,6 +1300,22 @@ h2 {
   border: 1px solid rgba(255, 211, 138, 0.18);
   border-radius: 8px;
   background: rgba(255, 211, 138, 0.055);
+}
+
+.item-research-heading {
+  align-items: center;
+}
+
+.item-research-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.item-research-share {
+  margin: -2px 0 0;
+  color: #aab3c2;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .item-research-list {
@@ -1709,6 +2073,19 @@ h2 {
   color: #aab3c2;
 }
 
+.timeline-meta-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.timeline-identify-button {
+  min-height: 28px;
+  padding: 0 9px;
+}
+
 .rarity-pill {
   min-width: 70px;
   padding: 4px 7px;
@@ -2379,7 +2756,9 @@ h2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  overflow: auto;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   margin: 18px 0;
   padding-right: 6px;
   scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
@@ -2415,6 +2794,7 @@ h2 {
 .settings-launch-row,
 .settings-config-row {
   display: flex;
+  min-width: 0;
   min-height: 38px;
   align-items: center;
   justify-content: space-between;

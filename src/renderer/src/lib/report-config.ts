@@ -1,6 +1,6 @@
 import { TRACKED_RARITY_ORDER } from "./past-runs";
 
-export type ReportMetricId = "gold" | "xp" | "keys" | "ores" | "materials" | "mfDrops";
+export type ReportMetricId = "gold" | "xp" | "kills" | "keys" | "ores" | "materials" | "mfDrops";
 export type ReportResourceDrawerId = "materials" | "keys" | "ores";
 
 export interface ReportItemGroup {
@@ -23,6 +23,7 @@ export interface PostRunReportConfig {
 export const REPORT_METRIC_OPTIONS: Array<{ id: ReportMetricId; label: string }> = [
   { id: "gold", label: "Gold" },
   { id: "xp", label: "XP" },
+  { id: "kills", label: "Kills" },
   { id: "keys", label: "Keys" },
   { id: "ores", label: "Ore" },
   { id: "materials", label: "Materials" },
@@ -38,7 +39,7 @@ export const REPORT_RESOURCE_DRAWER_OPTIONS: Array<{ id: ReportResourceDrawerId;
 export const REPORT_TOP_DROP_LIMIT_OPTIONS = [3, 5, 8, 10, 15];
 
 export const defaultPostRunReportConfig: PostRunReportConfig = {
-  summaryMetrics: ["gold", "xp", "keys", "ores", "materials", "mfDrops"],
+  summaryMetrics: ["gold", "xp", "kills", "keys", "ores", "materials", "mfDrops"],
   dropRarities: TRACKED_RARITY_ORDER,
   resourceDrawers: ["materials", "keys", "ores"],
   topDropLimit: 8,

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
 import { CaptureService, type CaptureUpdate } from "./capture";
-import type { CapturePreferences, CompanionState, LogEntry, ReleaseUpdateInfo, RunArchivePreferences } from "../shared/app-state";
+import type { CapturePreferences, CompanionState, LogEntry, ReleaseUpdateInfo, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
 import { createInitialStats, hasRunActivity, StatsEngine, type PastRunSummary } from "../shared/stats";
 
 const statsEngine = new StatsEngine();
@@ -37,6 +37,10 @@ const state: CompanionState = {
   captureRunning: false,
   captureStatus: "idle",
   captureError: null,
+  runStatus: "recording",
+  runPausedReason: null,
+  runPausedAt: null,
+  runPausedDurationMs: 0,
   connections: [],
   health: {
     npcapService: "Unknown",
@@ -242,6 +246,7 @@ function resolveIconPath(): string {
 
 function applyCaptureUpdate(update: CaptureUpdate): void {
   const previousCaptureStatus = state.captureStatus;
+  const previousCaptureRunning = state.captureRunning;
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
   if (update.error !== undefined) state.captureError = update.error;
@@ -260,6 +265,13 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.events?.length) {
     pendingCaptureEvents.push(...update.events);
     maybeLogPendingCaptureBacklog(update.events.length);
+  }
+
+  if (previousCaptureRunning && !state.captureRunning) {
+    applyPendingCaptureEvents();
+    pauseRun("captureStopped");
+  } else if (!previousCaptureRunning && state.captureRunning && state.runStatus === "paused" && state.runPausedReason === "captureStopped") {
+    resumeRun();
   }
 
   if (update.logs?.length) {
@@ -312,6 +324,7 @@ function publishStateNow(): void {
 function applyPendingCaptureEvents(): void {
   if (pendingCaptureEvents.length === 0) return;
   const events = pendingCaptureEvents.splice(0);
+  if (state.runStatus !== "recording") return;
 
   try {
     state.stats = statsEngine.applyEvents(events);
@@ -322,6 +335,28 @@ function applyPendingCaptureEvents(): void {
     });
     addLog("error", `Parsed events were dropped after stats update failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function pauseRun(reason: Exclude<RunPausedReason, null>): void {
+  if (state.runStatus === "paused") return;
+  const now = Date.now();
+  statsEngine.pause(now);
+  state.runStatus = "paused";
+  state.runPausedReason = reason;
+  state.runPausedAt = now;
+  state.runPausedDurationMs = statsEngine.pausedDurationMs(now);
+  addLog("info", reason === "captureStopped" ? "Run paused because capture stopped." : "Run paused.");
+}
+
+function resumeRun(): void {
+  if (state.runStatus !== "paused") return;
+  const now = Date.now();
+  statsEngine.resume(now);
+  state.runStatus = "recording";
+  state.runPausedReason = null;
+  state.runPausedAt = null;
+  state.runPausedDurationMs = statsEngine.pausedDurationMs(now);
+  addLog("info", "Run resumed.");
 }
 
 ipcMain.handle("state:get", () => {
@@ -377,6 +412,8 @@ ipcMain.handle("game:launch-or-capture", async (_event, options: { executablePat
 });
 ipcMain.handle("capture:stop", () => {
   clearLaunchCaptureTimer();
+  applyPendingCaptureEvents();
+  pauseRun("captureStopped");
   captureService?.stop();
   return state;
 });
@@ -384,7 +421,22 @@ ipcMain.handle("stats:reset", () => {
   applyPendingCaptureEvents();
   const archived = archiveCurrentRun("reset");
   state.stats = statsEngine.reset();
+  state.runStatus = "recording";
+  state.runPausedReason = null;
+  state.runPausedAt = null;
+  state.runPausedDurationMs = 0;
   addLog("info", archived ? "Run saved and session stats reset." : "Session stats reset. Run did not match save settings.");
+  publishState();
+  return state;
+});
+ipcMain.handle("run:pause", () => {
+  applyPendingCaptureEvents();
+  pauseRun("manual");
+  publishState();
+  return state;
+});
+ipcMain.handle("run:resume", () => {
+  resumeRun();
   publishState();
   return state;
 });
@@ -444,6 +496,25 @@ ipcMain.handle("configuration:import", async () => {
 
   addLog("info", "Configuration selected for import.");
   return fs.readFileSync(filePath, "utf8");
+});
+ipcMain.handle("item-research:export", async (_event, json: string) => {
+  const contents = String(json ?? "").trim();
+  if (!contents) return false;
+
+  const options = {
+    title: "Export Hero Siege item research JSON",
+    defaultPath: "hero-siege-item-research.json",
+    filters: [
+      { name: "JSON", extensions: ["json"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  } satisfies Electron.SaveDialogOptions;
+  const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
+  if (result.canceled || !result.filePath) return false;
+
+  fs.writeFileSync(result.filePath, `${contents}\n`, "utf8");
+  addLog("success", "Item research JSON exported.");
+  return true;
 });
 ipcMain.handle("window:minimize", () => {
   mainWindow?.minimize();
@@ -906,7 +977,7 @@ function archiveCurrentRun(reason: string): boolean {
   state.pastRuns = [summary, ...state.pastRuns.filter((run) => run.sessionStartedAt !== summary.sessionStartedAt)].slice(0, MAX_PAST_RUNS);
   savePastRuns(state.pastRuns);
   writeAppLog("run-archived", { reason, id: summary.id });
-  addLog("success", `Archived run summary: ${summary.totalGoldGained.toLocaleString()} gold, ${summary.totalXpGained.toLocaleString()} XP.`);
+  addLog("success", `Archived run summary: ${summary.totalGoldGained.toLocaleString()} gold, ${summary.totalXpGained.toLocaleString()} XP, ${(summary.totalKillsGained ?? 0).toLocaleString()} kills.`);
   return true;
 }
 
