@@ -574,6 +574,7 @@ h2 {
 }
 
 .compact-zone-tray {
+  z-index: 24;
   max-height: min(220px, calc(100vh - 48px));
   border-color: rgba(137, 216, 199, 0.24);
 }
