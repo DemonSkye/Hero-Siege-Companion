@@ -1297,6 +1297,98 @@ test("manual stack lookup resolves known socketables", () => {
   );
 });
 
+test("submitted research resolves infernal stacks runes and codices", () => {
+  const stackEntries: Record<string, unknown> = {};
+  for (const [type, id] of [
+    [13, 45],
+    [13, 48],
+    [13, 49],
+    [13, 50],
+    [13, 51],
+    [13, 61],
+    [13, 64],
+    [14, 8],
+    [15, 45],
+    [15, 51],
+    [15, 57],
+    [15, 112],
+    [15, 113],
+    [15, 114],
+    [15, 115],
+    [15, 116],
+    [15, 117],
+    [15, 119],
+    [15, 120],
+    [15, 121],
+    [15, 122],
+    [15, 124],
+    [15, 127],
+    [15, 128],
+    [15, 129],
+  ]) {
+    stackEntries[`10-3909410-community-${id}-${type}`] = {
+      pickup_add_data: { a: id, b: id, d: 1 },
+    };
+  }
+
+  const events = messageToEvents([
+    {
+      operations: {
+        stack: stackEntries,
+      },
+    },
+    {
+      operations: {
+        add: {
+          "10-3909410-codex-18-11": {
+            a: 18,
+            b: 18,
+            d: 4,
+          },
+          "10-3909410-codex-23-11": {
+            a: 23,
+            b: 23,
+            d: 4,
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(
+    events.map((event) => event.value.label),
+    [
+      "Damien's Infernal Eye",
+      "Satan's Infernal Horn",
+      "Soul of Infernal Anguish",
+      "Soul of Infernal Despair",
+      "Soul of Infernal Corruption",
+      "Fragment of Nightmare",
+      "Fragment of Time",
+      "Twilight Citrine",
+      "Pristine Emerald",
+      "Pristine Ruby",
+      "Pristine Sapphire",
+      "Goblin",
+      "Runeforge",
+      "Kobold",
+      "Heroism",
+      "Angel",
+      "Swiftness",
+      "Magister",
+      "Brute",
+      "Wisdom",
+      "Relic",
+      "Midas",
+      "Doom",
+      "Fatality",
+      "Ancient",
+      "Eternity Codex",
+      "Infernal Codex",
+    ],
+  );
+});
+
 test("unknown fingerprint ids use item type names instead of bare ids", () => {
   const events = messageToEvents([
     {

@@ -53,6 +53,7 @@
 :root[data-theme="light"] .item-filter-status-grid div,
 :root[data-theme="light"] .item-filter-last,
 :root[data-theme="light"] .item-filter-card-group,
+:root[data-theme="light"] .item-filter-match-total-row,
 :root[data-theme="light"] .item-filter-suggestions button,
 :root[data-theme="light"] .shopping-item,
 :root[data-theme="light"] .past-run-toolbar,

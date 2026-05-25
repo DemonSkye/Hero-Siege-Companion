@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import type { CompanionState } from "../../../shared/app-state";
-import {
-  type CompactRunTileDisplay,
-} from "../lib/compact-tiles";
+import type { CompactRunTileDisplay } from "../lib/compact-tiles";
 
-const props = defineProps<{
+defineProps<{
   state: CompanionState;
   compactRunTileDisplays: CompactRunTileDisplay[];
   runPausedLabel: string;
@@ -12,7 +10,7 @@ const props = defineProps<{
   showZone: boolean;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   "update:showZone": [value: boolean];
   toggleRunPaused: [];
   endRun: [];

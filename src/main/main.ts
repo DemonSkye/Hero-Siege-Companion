@@ -1,118 +1,45 @@
-import { app, BrowserWindow, clipboard, crashReporter, dialog, ipcMain, nativeImage, shell, type Rectangle } from "electron";
+import { app, clipboard, crashReporter, ipcMain, shell } from "electron";
 import fs from "node:fs";
-import https from "node:https";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import zlib from "node:zlib";
+import { createAppDiagnostics, type AppDiagnostics } from "./app-diagnostics";
 import { CaptureService, type CaptureUpdate } from "./capture";
-import type { CapturePreferences, CompanionState, LogEntry, ReleaseUpdateInfo, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
-import { createInitialStats, hasRunActivity, normalizePastRunTags, StatsEngine, type PastRunSummary } from "../shared/stats";
-import type { SupportDiagnosticLogFileInfo, SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
+import { showOpenDialogWithParent } from "./electron-dialogs";
+import { GameCaptureCoordinator } from "./game-capture-coordinator";
+import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
+import {
+  MAX_PAST_RUNS,
+  loadCapturePreferences,
+  loadPastRuns,
+  loadRunArchivePreferences,
+  loadWindowBounds,
+  normalizeCapturePreferences,
+  normalizeRunArchivePreferences,
+  saveCapturePreferences,
+  savePastRuns,
+  saveRunArchivePreferences,
+  type WindowBoundsPreferences,
+} from "./persistence";
+import { checkForReleaseUpdate } from "./release-updates";
+import { importLootSounds, removeImportedLootSound } from "./sound-import";
+import { getSupportDiagnosticsInfo, saveSupportDiagnosticsBundle } from "./support-diagnostics";
+import { MainWindowManager } from "./window-manager";
+import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
+import { IPC_CHANNELS } from "../shared/ipc";
+import { createInitialCompanionState } from "../shared/initial-state";
+import { hasRunActivity, normalizePastRunTags, StatsEngine, type PastRunSummary } from "../shared/stats";
+import type { SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
 
 const statsEngine = new StatsEngine();
 const logs: LogEntry[] = [];
-const MAX_APP_LOG_BYTES = 5 * 1024 * 1024;
-const MAX_PAST_RUNS = 100;
-const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
-  skipEmptyRuns: false,
-  minDurationMinutes: 0,
-};
-const DEFAULT_CAPTURE_PREFERENCES: CapturePreferences = {
-  createDebugMode: false,
-};
-const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeight: 620 };
-const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
-const STEAM_HERO_SIEGE_URL = "steam://rungameid/269210";
-const LAUNCH_CAPTURE_DELAY_MS = 45_000;
-const GAME_PROCESS_MONITOR_MS = 12_000;
-const RENDERER_RECOVERY_DELAY_MS = 500;
-const MAX_RENDERER_RECOVERIES = 3;
-const RENDERER_RECOVERY_WINDOW_MS = 60_000;
-const APP_SESSION_HEARTBEAT_MS = 15_000;
-const APP_DIAGNOSTIC_HEARTBEAT_MS = 30_000;
 const STATE_PUBLISH_INTERVAL_MS = 1000;
 const GITHUB_RELEASES_URL = "https://github.com/DemonSkye/Hero-Siege-Companion/releases";
-const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/DemonSkye/Hero-Siege-Companion/releases/latest";
 const GITHUB_NPCAP_GUIDE_URL = "https://github.com/DemonSkye/Hero-Siege-Companion#required-install-npcap";
-const RELEASE_CHECK_TIMEOUT_MS = 6000;
 const MAX_CONFIGURATION_IMPORT_BYTES = 1024 * 1024;
-const MAX_CUSTOM_SOUND_IMPORT_BYTES = 4 * 1024 * 1024;
-const MAX_SOUND_PACK_IMPORT_BYTES = 64 * 1024 * 1024;
-const MAX_SOUND_IMPORT_COUNT = 24;
-const SUPPORT_DIAGNOSTIC_GENERATED_FILES = [
-  {
-    name: "diagnostics-summary.txt",
-    description: "Current capture status, adapter, filter, packet counters, parser health, and app version.",
-  },
-];
-const SUPPORT_DIAGNOSTIC_LOG_FILES = [
-  {
-    name: "app-debug.log",
-    description: "App startup, window, crash, update, and session heartbeat diagnostics.",
-  },
-  {
-    name: "app-debug.log.old",
-    description: "Previous rotated app diagnostics log, when one exists.",
-  },
-  {
-    name: "capture-debug.log",
-    description: "Npcap setup, adapter selection, capture-open, connection, and parser diagnostics.",
-  },
-  {
-    name: "capture-debug.log.old",
-    description: "Previous rotated capture diagnostics log, when one exists.",
-  },
-  {
-    name: "capture-wide-debug.log",
-    description: "Optional verbose packet and assembled-payload diagnostics when verbose live logging is enabled.",
-  },
-  {
-    name: "capture-wide-debug.log.old",
-    description: "Previous rotated verbose capture diagnostics log, when one exists.",
-  },
-];
-const CUSTOM_SOUND_MIME_TYPES: Record<string, string> = {
-  ".aac": "audio/aac",
-  ".flac": "audio/flac",
-  ".m4a": "audio/mp4",
-  ".mp3": "audio/mpeg",
-  ".ogg": "audio/ogg",
-  ".wav": "audio/wav",
-  ".webm": "audio/webm",
-};
 
-const state: CompanionState = {
-  captureRunning: false,
-  captureStatus: "idle",
-  captureError: null,
-  runStatus: "recording",
-  runPausedReason: null,
-  runPausedAt: null,
-  runPausedDurationMs: 0,
-  connections: [],
-  health: {
-    npcapService: "Unknown",
-    winPcapCompatible: false,
-    adminOnly: false,
-    device: null,
-    filter: "",
-    packetsSeen: 0,
-    payloadsAssembled: 0,
-    messagesDecoded: 0,
-    parsedEvents: 0,
-    parserErrors: 0,
-    parserRestarts: 0,
-    lastParserError: null,
-  },
-  stats: createInitialStats(),
-  pastRuns: [],
-  runArchivePreferences: DEFAULT_RUN_ARCHIVE_PREFERENCES,
-  capturePreferences: DEFAULT_CAPTURE_PREFERENCES,
-  logs,
-};
+const state: CompanionState = createInitialCompanionState(logs);
 
 const pendingCaptureEvents: NonNullable<CaptureUpdate["events"]> = [];
-let mainWindow: BrowserWindow | null = null;
+let windowManager: MainWindowManager | null = null;
 let captureService: CaptureService | null = null;
 let appLogPath = "";
 let pastRunsPath = "";
@@ -120,28 +47,18 @@ let preferencesPath = "";
 let windowBoundsPath = "";
 let appSessionPath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
-let launchCaptureTimer: NodeJS.Timeout | null = null;
-let gameProcessMonitorTimer: NodeJS.Timeout | null = null;
-let compactWindowMode = false;
 let windowBounds: WindowBoundsPreferences = {};
-let saveWindowBoundsTimer: NodeJS.Timeout | null = null;
-let rendererRecoveryTimer: NodeJS.Timeout | null = null;
-let appSessionHeartbeatTimer: NodeJS.Timeout | null = null;
-let appDiagnosticHeartbeatTimer: NodeJS.Timeout | null = null;
 let statePublishTimer: NodeJS.Timeout | null = null;
 let lastPendingCaptureEventsLogAt = 0;
-let lastGameProcessAutoStartLogAt = 0;
-let gameProcessMonitorActive = false;
-let rendererRecoveryWindowStartedAt = 0;
-let rendererRecoveriesInWindow = 0;
-const appSessionId = `${Date.now()}-${process.pid}`;
-const appSessionStartedAt = new Date().toISOString();
+let appDiagnostics: AppDiagnostics | null = null;
 const archivedSessionStarts = new Set<number>();
-
-interface WindowBoundsPreferences {
-  normal?: Rectangle;
-  compact?: Rectangle;
-}
+const gameCaptureCoordinator = new GameCaptureCoordinator({
+  state,
+  getCaptureService: () => captureService,
+  addLog,
+  publishState,
+  writeAppLog,
+});
 
 if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
 
@@ -155,9 +72,7 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
 app.on("second-instance", () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
+  windowManager?.focusExistingWindow();
 });
 
 process.on("uncaughtException", (error) => {
@@ -189,115 +104,22 @@ process.on("exit", (code) => {
 });
 
 function createWindow(): void {
-  const iconPath = resolveIconPath();
-  mainWindow = new BrowserWindow({
-    width: NORMAL_WINDOW_BOUNDS.width,
-    height: NORMAL_WINDOW_BOUNDS.height,
-    minWidth: NORMAL_WINDOW_BOUNDS.minWidth,
-    minHeight: NORMAL_WINDOW_BOUNDS.minHeight,
-    autoHideMenuBar: true,
-    backgroundColor: "#101217",
-    frame: false,
-    icon: nativeImage.createFromPath(iconPath),
-    title: "Hero Siege Companion",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+  windowManager = new MainWindowManager({
+    preloadPath: path.join(__dirname, "preload.js"),
+    rendererIndexPath: path.join(__dirname, "..", "..", "renderer", "index.html"),
+    iconPath: resolveIconPath(),
+    windowBoundsPath,
+    windowBounds,
+    writeAppLog,
+    addLog,
+    publishStateNow,
+    getCaptureSnapshot: () => ({ captureStatus: state.captureStatus, captureRunning: state.captureRunning }),
   });
-
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalWebUrl(url)) void shell.openExternal(url);
-    return { action: "deny" };
-  });
-
-  loadRenderer(mainWindow);
-  writeAppLog("window-created", { id: mainWindow.id, bounds: mainWindow.getBounds() });
-  mainWindow.on("close", () => {
-    writeAppLog("window-close", { id: mainWindow?.id, captureStatus: state.captureStatus, captureRunning: state.captureRunning });
-  });
-  mainWindow.on("closed", () => {
-    writeAppLog("window-closed", {});
-    mainWindow = null;
-  });
-  mainWindow.on("moved", scheduleWindowBoundsSave);
-  mainWindow.on("resized", scheduleWindowBoundsSave);
-  mainWindow.webContents.on("unresponsive", () => {
-    writeAppLog("renderer-unresponsive", {
-      windowId: mainWindow?.id,
-      webContentsId: mainWindow?.webContents.id,
-      url: mainWindow?.webContents.getURL(),
-    });
-    addLog("warning", "Renderer became unresponsive.");
-  });
-  mainWindow.webContents.on("responsive", () => {
-    writeAppLog("renderer-responsive", {
-      windowId: mainWindow?.id,
-      webContentsId: mainWindow?.webContents.id,
-      url: mainWindow?.webContents.getURL(),
-    });
-    addLog("info", "Renderer became responsive again.");
-  });
-  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-    writeAppLog("renderer-did-fail-load", { errorCode, errorDescription, validatedURL, isMainFrame });
-  });
-  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
-    writeAppLog("renderer-preload-error", { preloadPath, message: error.message, stack: error.stack });
-    addLog("error", `Renderer preload failed: ${error.message}`);
-  });
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
-    writeAppLog("render-process-gone", {
-      windowId: mainWindow?.id,
-      webContentsId: mainWindow?.webContents.id,
-      url: mainWindow?.webContents.getURL(),
-      reason: details.reason,
-      exitCode: details.exitCode,
-    });
-    addLog("error", `Renderer stopped unexpectedly: ${details.reason}.`);
-    scheduleRendererRecovery(details.reason);
-  });
+  windowManager.create();
 }
 
-function loadRenderer(window: BrowserWindow): void {
-  window.loadFile(path.join(__dirname, "..", "..", "renderer", "index.html"));
-}
-
-function isExternalWebUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
-function scheduleRendererRecovery(reason: string): void {
-  if (!mainWindow || mainWindow.isDestroyed() || rendererRecoveryTimer) return;
-  if (reason === "clean-exit" || reason === "killed") return;
-
-  const now = Date.now();
-  if (now - rendererRecoveryWindowStartedAt > RENDERER_RECOVERY_WINDOW_MS) {
-    rendererRecoveryWindowStartedAt = now;
-    rendererRecoveriesInWindow = 0;
-  }
-
-  rendererRecoveriesInWindow += 1;
-  if (rendererRecoveriesInWindow > MAX_RENDERER_RECOVERIES) {
-    writeAppLog("renderer-recovery-skipped", { reason, rendererRecoveriesInWindow });
-    addLog("error", "Renderer crashed repeatedly; automatic recovery paused.");
-    return;
-  }
-
-  writeAppLog("renderer-recovery-scheduled", { reason, rendererRecoveriesInWindow });
-  rendererRecoveryTimer = setTimeout(() => {
-    rendererRecoveryTimer = null;
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    loadRenderer(mainWindow);
-    publishStateNow();
-    addLog("warning", "Recovered the app window after a renderer crash.");
-  }, RENDERER_RECOVERY_DELAY_MS);
-  rendererRecoveryTimer.unref();
+function currentWindow() {
+  return windowManager?.window ?? null;
 }
 
 function resolveIconPath(): string {
@@ -379,8 +201,9 @@ function publishState(): void {
 
 function publishStateNow(): void {
   applyPendingCaptureEvents();
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send("state:updated", state);
+  const window = currentWindow();
+  if (!window || window.isDestroyed()) return;
+  window.webContents.send(IPC_CHANNELS.stateUpdated, state);
 }
 
 function applyPendingCaptureEvents(): void {
@@ -421,65 +244,24 @@ function resumeRun(): void {
   addLog("info", "Run resumed.");
 }
 
-ipcMain.handle("state:get", () => {
+ipcMain.handle(IPC_CHANNELS.stateGet, () => {
   applyPendingCaptureEvents();
   return state;
 });
-ipcMain.handle("capture:start", async () => {
-  clearLaunchCaptureTimer();
+ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
+  gameCaptureCoordinator.clearLaunchCaptureTimer();
   await captureService?.start();
   return state;
 });
-ipcMain.handle("game:launch-or-capture", async (_event, options: { executablePath?: string; launchThroughSteam?: boolean }) => {
-  const service = captureService;
-  if (service && (await service.hasHeroSiegeProcess())) {
-    clearLaunchCaptureTimer();
-    await service.start();
-    return state;
-  }
-
-  const launchThroughSteam = Boolean(options?.launchThroughSteam);
-  if (launchThroughSteam) {
-    try {
-      await shell.openExternal(STEAM_HERO_SIEGE_URL);
-      addLog("info", "Launched Hero Siege through Steam. Capture will try to start automatically in about 45 seconds.");
-      scheduleLaunchCaptureAttempt();
-    } catch (error) {
-      addLog("error", `Failed to launch Hero Siege through Steam: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  } else {
-    const normalizedPath = String(options?.executablePath ?? "").trim();
-    if (!normalizedPath) {
-      addLog("warning", "Hero Siege is not running. Choose a non-Steam Hero Siege executable in Settings, then click Launch Game.");
-      publishState();
-      return state;
-    }
-
-    if (!fs.existsSync(normalizedPath)) {
-      addLog("error", `Hero Siege executable was not found: ${normalizedPath}`);
-      publishState();
-      return state;
-    }
-
-    const launchError = await shell.openPath(normalizedPath);
-    if (launchError) {
-      addLog("error", `Failed to launch Hero Siege: ${launchError}`);
-    } else {
-      addLog("info", "Launched Hero Siege. Capture will try to start automatically in about 45 seconds.");
-      scheduleLaunchCaptureAttempt();
-    }
-  }
-  publishState();
-  return state;
-});
-ipcMain.handle("capture:stop", () => {
-  clearLaunchCaptureTimer();
+ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
+ipcMain.handle(IPC_CHANNELS.captureStop, () => {
+  gameCaptureCoordinator.clearLaunchCaptureTimer();
   applyPendingCaptureEvents();
   pauseRun("captureStopped");
   captureService?.stop();
   return state;
 });
-ipcMain.handle("stats:reset", () => {
+ipcMain.handle(IPC_CHANNELS.statsReset, () => {
   applyPendingCaptureEvents();
   const archived = archiveCurrentRun("reset");
   state.stats = statsEngine.reset();
@@ -491,104 +273,71 @@ ipcMain.handle("stats:reset", () => {
   publishState();
   return state;
 });
-ipcMain.handle("run:pause", () => {
+ipcMain.handle(IPC_CHANNELS.runPause, () => {
   applyPendingCaptureEvents();
   pauseRun("manual");
   publishState();
   return state;
 });
-ipcMain.handle("run:resume", () => {
+ipcMain.handle(IPC_CHANNELS.runResume, () => {
   resumeRun();
   publishState();
   return state;
 });
-ipcMain.handle("past-runs:set-tags", (_event, runId: string, tags: unknown) => {
+ipcMain.handle(IPC_CHANNELS.pastRunsSetTags, (_event, runId: string, tags: unknown) => {
   const normalizedRunId = String(runId ?? "");
   const nextTags = normalizePastRunTags(tags);
   if (!normalizedRunId || !state.pastRuns.some((run) => run.id === normalizedRunId)) return state;
 
   state.pastRuns = state.pastRuns.map((run) => (run.id === normalizedRunId ? { ...run, tags: nextTags } : run));
-  savePastRuns(state.pastRuns);
+  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
   publishState();
   return state;
 });
-ipcMain.handle("preferences:set-run-archive", (_event, preferences: Partial<RunArchivePreferences>) => {
+ipcMain.handle(IPC_CHANNELS.preferencesSetRunArchive, (_event, preferences: Partial<RunArchivePreferences>) => {
   state.runArchivePreferences = normalizeRunArchivePreferences(preferences);
-  saveRunArchivePreferences(state.runArchivePreferences);
+  saveRunArchivePreferences(preferencesPath, state.runArchivePreferences, writeAppLog);
   publishState();
   return state;
 });
-ipcMain.handle("preferences:set-capture", (_event, preferences: Partial<CapturePreferences>) => {
+ipcMain.handle(IPC_CHANNELS.preferencesSetCapture, (_event, preferences: Partial<CapturePreferences>) => {
   const nextPreferences = normalizeCapturePreferences(preferences);
   const changed = state.capturePreferences.createDebugMode !== nextPreferences.createDebugMode;
   state.capturePreferences = nextPreferences;
   captureService?.setCreateDebugMode(nextPreferences.createDebugMode);
-  saveCapturePreferences(state.capturePreferences);
+  saveCapturePreferences(preferencesPath, state.capturePreferences, writeAppLog);
   if (changed) addLog("info", `Verbose live logging ${nextPreferences.createDebugMode ? "enabled" : "disabled"}.`);
   publishState();
   return state;
 });
-ipcMain.handle("configuration:export", async (_event, json: string) => {
-  const contents = String(json ?? "").trim();
-  if (!contents) return false;
-
-  const options = {
+ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string) => {
+  const exported = await saveJsonFileWithDialog(currentWindow(), {
     title: "Export Hero Siege Companion configuration",
     defaultPath: "hero-siege-companion-config.json",
-    filters: [
-      { name: "JSON", extensions: ["json"] },
-      { name: "All files", extensions: ["*"] },
-    ],
-  } satisfies Electron.SaveDialogOptions;
-  const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
-  if (result.canceled || !result.filePath) return false;
-
-  fs.writeFileSync(result.filePath, `${contents}\n`, "utf8");
-  addLog("success", "Configuration exported.");
-  return true;
+    contents: json,
+  });
+  if (exported) addLog("success", "Configuration exported.");
+  return exported;
 });
-ipcMain.handle("configuration:import", async () => {
-  const options = {
+ipcMain.handle(IPC_CHANNELS.configurationImport, async () => {
+  const contents = await readJsonFileWithDialog(currentWindow(), {
     title: "Import Hero Siege Companion configuration",
-    properties: ["openFile"],
-    filters: [
-      { name: "JSON", extensions: ["json"] },
-      { name: "All files", extensions: ["*"] },
-    ],
-  } satisfies Electron.OpenDialogOptions;
-  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
-  if (result.canceled) return null;
-
-  const filePath = result.filePaths[0];
-  if (!filePath) return null;
-  const stats = fs.statSync(filePath);
-  if (stats.size > MAX_CONFIGURATION_IMPORT_BYTES) {
-    throw new Error("Configuration file is too large.");
-  }
-
-  addLog("info", "Configuration selected for import.");
-  return fs.readFileSync(filePath, "utf8");
+    maxBytes: MAX_CONFIGURATION_IMPORT_BYTES,
+    tooLargeMessage: "Configuration file is too large.",
+  });
+  if (contents) addLog("info", "Configuration selected for import.");
+  return contents;
 });
-ipcMain.handle("item-research:export", async (_event, json: string) => {
-  const contents = String(json ?? "").trim();
-  if (!contents) return false;
-
-  const options = {
+ipcMain.handle(IPC_CHANNELS.itemResearchExport, async (_event, json: string) => {
+  const exported = await saveJsonFileWithDialog(currentWindow(), {
     title: "Export Hero Siege item research JSON",
     defaultPath: "hero-siege-item-research.json",
-    filters: [
-      { name: "JSON", extensions: ["json"] },
-      { name: "All files", extensions: ["*"] },
-    ],
-  } satisfies Electron.SaveDialogOptions;
-  const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
-  if (result.canceled || !result.filePath) return false;
-
-  fs.writeFileSync(result.filePath, `${contents}\n`, "utf8");
-  addLog("success", "Item research JSON exported.");
-  return true;
+    contents: json,
+  });
+  if (exported) addLog("success", "Item research JSON exported.");
+  return exported;
 });
-ipcMain.handle("sounds:import", async () => {
+ipcMain.handle(IPC_CHANNELS.soundsImport, async () => {
   const options = {
     title: "Import loot alert sounds",
     properties: ["openFile", "multiSelections"],
@@ -598,48 +347,17 @@ ipcMain.handle("sounds:import", async () => {
       { name: "All files", extensions: ["*"] },
     ],
   } satisfies Electron.OpenDialogOptions;
-  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  const result = await showOpenDialogWithParent(currentWindow(), options);
   if (result.canceled) return [];
 
-  const soundsDir = path.join(app.getPath("userData"), "sounds");
-  fs.mkdirSync(soundsDir, { recursive: true });
-  const imported: Array<{ fileName: string; mimeType: string; src: string }> = [];
-  for (const filePath of result.filePaths) {
-    if (imported.length >= MAX_SOUND_IMPORT_COUNT) break;
-    const stats = fs.statSync(filePath);
-    const extension = path.extname(filePath).toLowerCase();
-    if (extension === ".zip") {
-      if (stats.size <= 0 || stats.size > MAX_SOUND_PACK_IMPORT_BYTES) continue;
-      for (const entry of readSoundPackEntries(filePath)) {
-        if (imported.length >= MAX_SOUND_IMPORT_COUNT) break;
-        const target = writeImportedSound(soundsDir, entry.fileName, entry.contents, imported.length);
-        if (target) imported.push(target);
-      }
-      continue;
-    }
-    if (stats.size <= 0 || stats.size > MAX_CUSTOM_SOUND_IMPORT_BYTES) continue;
-    const mimeType = CUSTOM_SOUND_MIME_TYPES[extension];
-    if (!mimeType) continue;
-    const target = writeImportedSound(soundsDir, path.basename(filePath), fs.readFileSync(filePath), imported.length);
-    if (target) imported.push(target);
-  }
+  const imported = importLootSounds(result.filePaths, app.getPath("userData"));
   if (imported.length) addLog("success", `${imported.length} custom loot sound${imported.length === 1 ? "" : "s"} imported.`);
   return imported;
 });
 
-ipcMain.handle("sounds:remove", async (_event, src?: string) => {
-  if (typeof src !== "string" || !src.startsWith("file://")) return false;
-  const soundsDir = path.resolve(app.getPath("userData"), "sounds");
-  let targetPath = "";
+ipcMain.handle(IPC_CHANNELS.soundsRemove, async (_event, src?: string) => {
   try {
-    targetPath = path.resolve(fileURLToPath(src));
-  } catch {
-    return false;
-  }
-  const isInsideSoundsDir = targetPath === soundsDir || targetPath.startsWith(`${soundsDir}${path.sep}`);
-  if (!isInsideSoundsDir) return false;
-  try {
-    if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+    if (typeof src !== "string" || !removeImportedLootSound(src, app.getPath("userData"))) return false;
     addLog("info", "Custom loot sound removed.");
     return true;
   } catch (error) {
@@ -648,124 +366,41 @@ ipcMain.handle("sounds:remove", async (_event, src?: string) => {
   }
 });
 
-interface SoundPackEntry {
-  fileName: string;
-  contents: Buffer;
-}
-
-function readSoundPackEntries(filePath: string): SoundPackEntry[] {
-  const archive = fs.readFileSync(filePath);
-  const eocdOffset = findZipEndOfCentralDirectory(archive);
-  if (eocdOffset < 0) return [];
-
-  const entryCount = archive.readUInt16LE(eocdOffset + 10);
-  const centralDirectoryOffset = archive.readUInt32LE(eocdOffset + 16);
-  const entries: SoundPackEntry[] = [];
-  let offset = centralDirectoryOffset;
-
-  for (let index = 0; index < entryCount && offset + 46 <= archive.length && entries.length < MAX_SOUND_IMPORT_COUNT; index += 1) {
-    if (archive.readUInt32LE(offset) !== 0x02014b50) break;
-
-    const flags = archive.readUInt16LE(offset + 8);
-    const compressionMethod = archive.readUInt16LE(offset + 10);
-    const compressedSize = archive.readUInt32LE(offset + 20);
-    const uncompressedSize = archive.readUInt32LE(offset + 24);
-    const fileNameLength = archive.readUInt16LE(offset + 28);
-    const extraLength = archive.readUInt16LE(offset + 30);
-    const commentLength = archive.readUInt16LE(offset + 32);
-    const localHeaderOffset = archive.readUInt32LE(offset + 42);
-    const fileNameStart = offset + 46;
-    const fileNameEnd = fileNameStart + fileNameLength;
-    const rawName = archive.slice(fileNameStart, fileNameEnd).toString(flags & 0x800 ? "utf8" : "latin1");
-    offset = fileNameEnd + extraLength + commentLength;
-
-    if (!rawName || rawName.endsWith("/") || rawName.endsWith("\\")) continue;
-    if (uncompressedSize <= 0 || uncompressedSize > MAX_CUSTOM_SOUND_IMPORT_BYTES) continue;
-    if (compressionMethod !== 0 && compressionMethod !== 8) continue;
-
-    const fileName = rawName.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "";
-    if (!CUSTOM_SOUND_MIME_TYPES[path.extname(fileName).toLowerCase()]) continue;
-    if (localHeaderOffset + 30 > archive.length || archive.readUInt32LE(localHeaderOffset) !== 0x04034b50) continue;
-
-    const localFileNameLength = archive.readUInt16LE(localHeaderOffset + 26);
-    const localExtraLength = archive.readUInt16LE(localHeaderOffset + 28);
-    const dataStart = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
-    const dataEnd = dataStart + compressedSize;
-    if (dataStart < 0 || dataEnd > archive.length) continue;
-
-    const compressed = archive.slice(dataStart, dataEnd);
-    const contents = compressionMethod === 0 ? compressed : zlib.inflateRawSync(compressed);
-    if (contents.length <= 0 || contents.length > MAX_CUSTOM_SOUND_IMPORT_BYTES) continue;
-    entries.push({ fileName, contents });
-  }
-
-  return entries;
-}
-
-function findZipEndOfCentralDirectory(buffer: Buffer): number {
-  const minOffset = Math.max(0, buffer.length - 65_557);
-  for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
-    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
-  }
-  return -1;
-}
-
-function writeImportedSound(soundsDir: string, fileName: string, contents: Buffer, index: number): { fileName: string; mimeType: string; src: string } | null {
-  const extension = path.extname(fileName).toLowerCase();
-  const mimeType = CUSTOM_SOUND_MIME_TYPES[extension];
-  if (!mimeType || contents.length <= 0 || contents.length > MAX_CUSTOM_SOUND_IMPORT_BYTES) return null;
-
-  const parsedName = path.parse(fileName);
-  const safeBaseName = parsedName.name.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "sound";
-  const targetPath = path.join(soundsDir, `${Date.now()}-${index}-${safeBaseName}${extension}`);
-  fs.writeFileSync(targetPath, contents);
-  return {
-    fileName: path.basename(fileName),
-    mimeType,
-    src: pathToFileURL(targetPath).toString(),
-  };
-}
-
-ipcMain.handle("window:minimize", () => {
-  mainWindow?.minimize();
+ipcMain.handle(IPC_CHANNELS.windowMinimize, () => {
+  windowManager?.minimize();
 });
-ipcMain.handle("window:toggle-maximize", () => {
-  if (!mainWindow) return;
-  if (compactWindowMode) {
-    setCompactWindowMode(false);
-    return;
-  }
-  if (mainWindow.isMaximized()) mainWindow.unmaximize();
-  else mainWindow.maximize();
+ipcMain.handle(IPC_CHANNELS.windowToggleMaximize, () => {
+  windowManager?.toggleMaximize();
 });
-ipcMain.handle("window:close", () => {
-  mainWindow?.close();
+ipcMain.handle(IPC_CHANNELS.windowClose, () => {
+  windowManager?.close();
 });
-ipcMain.handle("window:set-always-on-top", (_event, enabled: boolean) => {
-  setWindowAlwaysOnTop(Boolean(enabled));
+ipcMain.handle(IPC_CHANNELS.windowSetAlwaysOnTop, (_event, enabled: boolean) => {
+  windowManager?.setAlwaysOnTop(Boolean(enabled));
 });
-ipcMain.handle("window:set-compact-mode", (_event, enabled: boolean, lockPositions = false) => {
-  if (!mainWindow) return;
-  setCompactWindowMode(Boolean(enabled), Boolean(lockPositions));
+ipcMain.handle(IPC_CHANNELS.windowSetCompactMode, (_event, enabled: boolean, lockPositions = false) => {
+  windowManager?.setCompactMode(Boolean(enabled), Boolean(lockPositions));
 });
-ipcMain.handle("clipboard:write-text", (_event, value: string) => {
+ipcMain.handle(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
   clipboard.writeText(String(value));
 });
-ipcMain.handle("support:get-diagnostics-info", () => getSupportDiagnosticsInfo());
-ipcMain.handle("support:save-diagnostics", async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
-  saveSupportDiagnosticsBundle(String(diagnosticsSummary ?? "")),
+ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData")));
+ipcMain.handle(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
+  saveSupportDiagnostics(String(diagnosticsSummary ?? "")),
 );
-ipcMain.handle("updates:check", async () => checkForReleaseUpdate());
-ipcMain.handle("updates:open-release", async (_event, url?: string) => {
+ipcMain.handle(IPC_CHANNELS.updatesCheck, async () =>
+  checkForReleaseUpdate(app.getVersion(), (error) => writeAppLog("release-check-error", { error: error.message })),
+);
+ipcMain.handle(IPC_CHANNELS.updatesOpenRelease, async (_event, url?: string) => {
   const target = typeof url === "string" && /^https:\/\/github\.com\/DemonSkye\/Hero-Siege-Companion\/releases(?:\/|$)/i.test(url)
     ? url
     : GITHUB_RELEASES_URL;
   await shell.openExternal(target);
 });
-ipcMain.handle("docs:open-npcap-guide", async () => {
+ipcMain.handle(IPC_CHANNELS.docsOpenNpcapGuide, async () => {
   await shell.openExternal(GITHUB_NPCAP_GUIDE_URL);
 });
-ipcMain.handle("game:choose-executable", async () => {
+ipcMain.handle(IPC_CHANNELS.gameChooseExecutable, async () => {
   const options = {
     title: "Choose Hero Siege executable",
     properties: ["openFile"],
@@ -774,431 +409,25 @@ ipcMain.handle("game:choose-executable", async () => {
       { name: "All files", extensions: ["*"] },
     ],
   } satisfies Electron.OpenDialogOptions;
-  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  const result = await showOpenDialogWithParent(currentWindow(), options);
   return result.canceled ? null : result.filePaths[0] ?? null;
 });
 
-function getSupportDiagnosticsInfo(): SupportDiagnosticsInfo {
-  const userDataPath = app.getPath("userData");
-  return {
-    userDataPath,
-    generatedFiles: SUPPORT_DIAGNOSTIC_GENERATED_FILES,
-    logFiles: SUPPORT_DIAGNOSTIC_LOG_FILES.map((file) => getSupportLogFileInfo(userDataPath, file)),
-  };
-}
+async function saveSupportDiagnostics(diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> {
+  const result = await saveSupportDiagnosticsBundle({
+    diagnosticsSummary,
+    ownerWindow: currentWindow(),
+    userDataPath: app.getPath("userData"),
+    onLogReadFailed: (file) => writeAppLog("support-diagnostics-log-read-failed", file),
+  });
+  if (!result.saved) return result;
 
-function getSupportLogFileInfo(userDataPath: string, file: { name: string; description: string }): SupportDiagnosticLogFileInfo {
-  const filePath = path.join(userDataPath, file.name);
-  try {
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) throw new Error("Support diagnostics path is not a file.");
-    return {
-      name: file.name,
-      path: filePath,
-      description: file.description,
-      exists: true,
-      sizeBytes: stat.size,
-      updatedAt: stat.mtime.toISOString(),
-    };
-  } catch {
-    return {
-      name: file.name,
-      path: filePath,
-      description: file.description,
-      exists: false,
-      sizeBytes: 0,
-      updatedAt: null,
-    };
-  }
-}
-
-async function saveSupportDiagnosticsBundle(diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> {
-  const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z").replace("T", "-");
-  const options = {
-    title: "Save Hero Siege Companion diagnostics",
-    defaultPath: `hero-siege-companion-diagnostics-${timestamp}.zip`,
-    filters: [
-      { name: "ZIP archive", extensions: ["zip"] },
-      { name: "All files", extensions: ["*"] },
-    ],
-  } satisfies Electron.SaveDialogOptions;
-  const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
-  if (result.canceled || !result.filePath) {
-    return { saved: false, canceled: true, filePath: null, includedFiles: [] };
-  }
-
-  const info = getSupportDiagnosticsInfo();
-  const entries: ZipEntryInput[] = [
-    {
-      name: "diagnostics-summary.txt",
-      data: Buffer.from(createSupportDiagnosticsSummary(diagnosticsSummary, info), "utf8"),
-      modifiedAt: new Date(),
-    },
-  ];
-
-  for (const file of info.logFiles) {
-    if (!file.exists) continue;
-    try {
-      entries.push({
-        name: file.name,
-        data: fs.readFileSync(file.path),
-        modifiedAt: file.updatedAt ? new Date(file.updatedAt) : new Date(),
-      });
-    } catch {
-      writeAppLog("support-diagnostics-log-read-failed", { file: file.name, path: file.path });
-    }
-  }
-
-  fs.writeFileSync(result.filePath, createZipArchive(entries));
-  const includedFiles = entries.map((entry) => entry.name);
-  addLog("success", `Diagnostics ZIP saved with ${includedFiles.length} file${includedFiles.length === 1 ? "" : "s"}.`);
+  addLog("success", `Diagnostics ZIP saved with ${result.includedFiles.length} file${result.includedFiles.length === 1 ? "" : "s"}.`);
   writeAppLog("support-diagnostics-saved", {
     path: result.filePath,
-    includedFiles,
+    includedFiles: result.includedFiles,
   });
-  return { saved: true, canceled: false, filePath: result.filePath, includedFiles };
-}
-
-function createSupportDiagnosticsSummary(diagnosticsSummary: string, info: SupportDiagnosticsInfo): string {
-  const normalizedSummary = diagnosticsSummary.trim() || "Hero Siege Companion capture diagnostics";
-  const logFileLines = info.logFiles.map((file) => {
-    const status = file.exists
-      ? `${file.sizeBytes} bytes${file.updatedAt ? `, modified ${file.updatedAt}` : ""}`
-      : "not found";
-    return `- ${file.name}: ${status}`;
-  });
-
-  return [
-    normalizedSummary,
-    "",
-    "Diagnostic log folder:",
-    info.userDataPath,
-    "",
-    "Files selected for this bundle:",
-    "- diagnostics-summary.txt: generated from the current Support tab preview",
-    ...logFileLines,
-    "",
-  ].join("\n");
-}
-
-interface ZipEntryInput {
-  name: string;
-  data: Buffer;
-  modifiedAt: Date;
-}
-
-interface ZipCentralDirectoryInput {
-  nameBuffer: Buffer;
-  crc: number;
-  compressedSize: number;
-  uncompressedSize: number;
-  compressionMethod: number;
-  dosTime: number;
-  dosDate: number;
-  localHeaderOffset: number;
-}
-
-function createZipArchive(entries: ZipEntryInput[]): Buffer {
-  const localParts: Buffer[] = [];
-  const centralInputs: ZipCentralDirectoryInput[] = [];
-  let offset = 0;
-
-  for (const entry of entries) {
-    const name = entry.name.replace(/\\/g, "/").replace(/^\/+/, "");
-    const nameBuffer = Buffer.from(name, "utf8");
-    const compressed = zlib.deflateRawSync(entry.data, { level: 9 });
-    const crc = crc32(entry.data);
-    const { dosTime, dosDate } = dateToDos(entry.modifiedAt);
-    const localHeader = Buffer.alloc(30);
-    localHeader.writeUInt32LE(0x04034b50, 0);
-    localHeader.writeUInt16LE(20, 4);
-    localHeader.writeUInt16LE(0x0800, 6);
-    localHeader.writeUInt16LE(8, 8);
-    localHeader.writeUInt16LE(dosTime, 10);
-    localHeader.writeUInt16LE(dosDate, 12);
-    localHeader.writeUInt32LE(crc, 14);
-    localHeader.writeUInt32LE(compressed.length, 18);
-    localHeader.writeUInt32LE(entry.data.length, 22);
-    localHeader.writeUInt16LE(nameBuffer.length, 26);
-    localHeader.writeUInt16LE(0, 28);
-
-    localParts.push(localHeader, nameBuffer, compressed);
-    centralInputs.push({
-      nameBuffer,
-      crc,
-      compressedSize: compressed.length,
-      uncompressedSize: entry.data.length,
-      compressionMethod: 8,
-      dosTime,
-      dosDate,
-      localHeaderOffset: offset,
-    });
-    offset += localHeader.length + nameBuffer.length + compressed.length;
-  }
-
-  const centralDirectoryOffset = offset;
-  const centralParts = centralInputs.map((input) => {
-    const header = Buffer.alloc(46);
-    header.writeUInt32LE(0x02014b50, 0);
-    header.writeUInt16LE(20, 4);
-    header.writeUInt16LE(20, 6);
-    header.writeUInt16LE(0x0800, 8);
-    header.writeUInt16LE(input.compressionMethod, 10);
-    header.writeUInt16LE(input.dosTime, 12);
-    header.writeUInt16LE(input.dosDate, 14);
-    header.writeUInt32LE(input.crc, 16);
-    header.writeUInt32LE(input.compressedSize, 20);
-    header.writeUInt32LE(input.uncompressedSize, 24);
-    header.writeUInt16LE(input.nameBuffer.length, 28);
-    header.writeUInt16LE(0, 30);
-    header.writeUInt16LE(0, 32);
-    header.writeUInt16LE(0, 34);
-    header.writeUInt16LE(0, 36);
-    header.writeUInt32LE(0, 38);
-    header.writeUInt32LE(input.localHeaderOffset, 42);
-    offset += header.length + input.nameBuffer.length;
-    return Buffer.concat([header, input.nameBuffer]);
-  });
-
-  const centralDirectorySize = offset - centralDirectoryOffset;
-  const endOfCentralDirectory = Buffer.alloc(22);
-  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
-  endOfCentralDirectory.writeUInt16LE(0, 4);
-  endOfCentralDirectory.writeUInt16LE(0, 6);
-  endOfCentralDirectory.writeUInt16LE(centralInputs.length, 8);
-  endOfCentralDirectory.writeUInt16LE(centralInputs.length, 10);
-  endOfCentralDirectory.writeUInt32LE(centralDirectorySize, 12);
-  endOfCentralDirectory.writeUInt32LE(centralDirectoryOffset, 16);
-  endOfCentralDirectory.writeUInt16LE(0, 20);
-
-  return Buffer.concat([...localParts, ...centralParts, endOfCentralDirectory]);
-}
-
-function dateToDos(date: Date): { dosTime: number; dosDate: number } {
-  const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
-  const year = Math.max(1980, Math.min(2107, safeDate.getFullYear()));
-  const dosTime = (safeDate.getHours() << 11) | (safeDate.getMinutes() << 5) | Math.floor(safeDate.getSeconds() / 2);
-  const dosDate = ((year - 1980) << 9) | ((safeDate.getMonth() + 1) << 5) | safeDate.getDate();
-  return { dosTime, dosDate };
-}
-
-function crc32(buffer: Buffer): number {
-  let crc = 0xffffffff;
-  for (const byte of buffer) {
-    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-const CRC32_TABLE = createCrc32Table();
-
-function createCrc32Table(): Uint32Array {
-  const table = new Uint32Array(256);
-  for (let index = 0; index < table.length; index += 1) {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-    table[index] = value >>> 0;
-  }
-  return table;
-}
-
-async function checkForReleaseUpdate(): Promise<ReleaseUpdateInfo | null> {
-  try {
-    const release = await fetchLatestRelease();
-    const version = normalizeReleaseVersion(release.tag_name || release.name || "");
-    const currentVersion = normalizeReleaseVersion(app.getVersion());
-    if (!version || !isNewerVersion(version, currentVersion)) return null;
-
-    return {
-      version,
-      currentVersion,
-      name: release.name || `Release ${version}`,
-      url: release.html_url || `${GITHUB_RELEASES_URL}/tag/v${version}`,
-      publishedAt: release.published_at || "",
-    };
-  } catch (error) {
-    writeAppLog("release-check-error", { error: error instanceof Error ? error.message : String(error) });
-    return null;
-  }
-}
-
-function fetchLatestRelease(): Promise<GitHubReleasePayload> {
-  return new Promise((resolve, reject) => {
-    const request = https.get(
-      GITHUB_LATEST_RELEASE_API_URL,
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          "User-Agent": `Hero-Siege-Companion/${app.getVersion()}`,
-        },
-        timeout: RELEASE_CHECK_TIMEOUT_MS,
-      },
-      (response) => {
-        let body = "";
-        response.setEncoding("utf8");
-        response.on("data", (chunk) => {
-          body += chunk;
-        });
-        response.on("end", () => {
-          if ((response.statusCode ?? 0) < 200 || (response.statusCode ?? 0) >= 300) {
-            reject(new Error(`GitHub release check returned HTTP ${response.statusCode ?? "unknown"}.`));
-            return;
-          }
-
-          try {
-            resolve(JSON.parse(body) as GitHubReleasePayload);
-          } catch (error) {
-            reject(error);
-          }
-        });
-      },
-    );
-
-    request.on("timeout", () => {
-      request.destroy(new Error("GitHub release check timed out."));
-    });
-    request.on("error", reject);
-  });
-}
-
-interface GitHubReleasePayload {
-  tag_name?: string;
-  name?: string;
-  html_url?: string;
-  published_at?: string;
-}
-
-function normalizeReleaseVersion(value: string): string {
-  const match = value.trim().match(/^v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/);
-  return match?.[1] ?? "";
-}
-
-function isNewerVersion(candidate: string, current: string): boolean {
-  const candidateParts = parseVersionParts(candidate);
-  const currentParts = parseVersionParts(current);
-  for (let index = 0; index < 3; index += 1) {
-    if (candidateParts[index] > currentParts[index]) return true;
-    if (candidateParts[index] < currentParts[index]) return false;
-  }
-  return false;
-}
-
-function parseVersionParts(version: string): [number, number, number] {
-  const [major = "0", minor = "0", patch = "0"] = version.split(/[+-]/)[0].split(".");
-  return [major, minor, patch].map((part) => Number.parseInt(part, 10) || 0) as [number, number, number];
-}
-
-function setWindowAlwaysOnTop(enabled: boolean): void {
-  if (!mainWindow) return;
-  mainWindow.setAlwaysOnTop(enabled, "screen-saver");
-  if (enabled) {
-    mainWindow.show();
-    mainWindow.moveTop();
-    mainWindow.focus();
-  }
-}
-
-function scheduleLaunchCaptureAttempt(): void {
-  clearLaunchCaptureTimer();
-  launchCaptureTimer = setTimeout(() => {
-    launchCaptureTimer = null;
-    void attemptCaptureAfterLaunch();
-  }, LAUNCH_CAPTURE_DELAY_MS);
-  launchCaptureTimer.unref();
-}
-
-function clearLaunchCaptureTimer(): void {
-  if (!launchCaptureTimer) return;
-  clearTimeout(launchCaptureTimer);
-  launchCaptureTimer = null;
-}
-
-async function attemptCaptureAfterLaunch(): Promise<void> {
-  if (!captureService || state.captureRunning) return;
-  addLog("info", "Checking for Hero Siege after launch delay.");
-  await captureService.start();
-  publishState();
-}
-
-function startGameProcessMonitor(): void {
-  if (gameProcessMonitorTimer) return;
-  gameProcessMonitorTimer = setInterval(() => {
-    void syncCaptureToGameProcess("monitor");
-  }, GAME_PROCESS_MONITOR_MS);
-  gameProcessMonitorTimer.unref();
-  void syncCaptureToGameProcess("startup");
-}
-
-function stopGameProcessMonitor(): void {
-  if (!gameProcessMonitorTimer) return;
-  clearInterval(gameProcessMonitorTimer);
-  gameProcessMonitorTimer = null;
-}
-
-async function syncCaptureToGameProcess(source: string): Promise<void> {
-  if (!captureService || state.captureRunning || gameProcessMonitorActive) return;
-  gameProcessMonitorActive = true;
-  try {
-    if (!(await captureService.hasHeroSiegeProcess())) return;
-    writeAppLog("game-process-detected", { source, captureStatus: state.captureStatus });
-    const now = Date.now();
-    if (now - lastGameProcessAutoStartLogAt > 60_000) {
-      lastGameProcessAutoStartLogAt = now;
-      addLog("info", "Hero Siege is running; starting capture automatically.");
-    }
-    clearLaunchCaptureTimer();
-    await captureService.start();
-    publishState();
-  } finally {
-    gameProcessMonitorActive = false;
-  }
-}
-
-function setCompactWindowMode(enabled: boolean, lockPositions = false): void {
-  if (!mainWindow) return;
-  if (compactWindowMode === enabled) {
-    mainWindow.setMaximizable(!enabled);
-    if (lockPositions) restoreWindowBounds(enabled ? "compact" : "normal");
-    if (mainWindow.isAlwaysOnTop()) mainWindow.moveTop();
-    return;
-  }
-  saveCurrentWindowBounds();
-  compactWindowMode = enabled;
-  const bounds = enabled ? COMPACT_WINDOW_BOUNDS : NORMAL_WINDOW_BOUNDS;
-  if (mainWindow.isMaximized()) mainWindow.unmaximize();
-  mainWindow.setMaximizable(!enabled);
-  mainWindow.setMinimumSize(bounds.minWidth, bounds.minHeight);
-  if (lockPositions && restoreWindowBounds(enabled ? "compact" : "normal")) {
-    // Restored from the user's saved location.
-  } else {
-    mainWindow.setSize(bounds.width, bounds.height, true);
-  }
-  if (mainWindow.isAlwaysOnTop()) mainWindow.moveTop();
-}
-
-function restoreWindowBounds(mode: keyof WindowBoundsPreferences): boolean {
-  if (!mainWindow) return false;
-  const minimums = mode === "compact" ? COMPACT_WINDOW_BOUNDS : NORMAL_WINDOW_BOUNDS;
-  const bounds = withMinimumBounds(windowBounds[mode], minimums);
-  if (!bounds) return false;
-  mainWindow.setBounds(bounds, true);
-  return true;
-}
-
-function scheduleWindowBoundsSave(): void {
-  if (saveWindowBoundsTimer) clearTimeout(saveWindowBoundsTimer);
-  saveWindowBoundsTimer = setTimeout(() => {
-    saveWindowBoundsTimer = null;
-    saveCurrentWindowBounds();
-  }, 250);
-}
-
-function saveCurrentWindowBounds(): void {
-  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
-  windowBounds[compactWindowMode ? "compact" : "normal"] = mainWindow.getBounds();
-  saveWindowBounds();
+  return result;
 }
 
 app.whenReady().then(async () => {
@@ -1209,13 +438,24 @@ app.whenReady().then(async () => {
   appSessionPath = path.join(app.getPath("userData"), "app-session.json");
   const debugLogPath = path.join(app.getPath("userData"), "capture-debug.log");
   const wideDebugLogPath = path.join(app.getPath("userData"), "capture-wide-debug.log");
+  appDiagnostics = createAppDiagnostics({
+    appLogPath,
+    appSessionPath,
+    appVersion: app.getVersion(),
+    getSnapshot: () => ({
+      state,
+      logs,
+      pendingCaptureEvents: pendingCaptureEvents.length,
+      mainWindow: currentWindow(),
+    }),
+  });
   logPreviousAppSession();
   startAppSessionHeartbeat();
   startAppDiagnosticHeartbeat();
-  state.pastRuns = loadPastRuns();
-  state.runArchivePreferences = loadRunArchivePreferences();
-  state.capturePreferences = loadCapturePreferences();
-  windowBounds = loadWindowBounds();
+  state.pastRuns = loadPastRuns(pastRunsPath, writeAppLog);
+  state.runArchivePreferences = loadRunArchivePreferences(preferencesPath, writeAppLog);
+  state.capturePreferences = loadCapturePreferences(preferencesPath, writeAppLog);
+  windowBounds = loadWindowBounds(windowBoundsPath, writeAppLog);
   writeAppLog("app-ready", {
     appLogPath,
     debugLogPath,
@@ -1239,7 +479,7 @@ app.whenReady().then(async () => {
     addLog("info", "Hero Siege is not running yet. Launch the game, wait for the main menu, then click Launch Game.");
     publishState();
   }
-  startGameProcessMonitor();
+  gameCaptureCoordinator.startMonitor();
 });
 
 app.on("child-process-gone", (_event, details) => {
@@ -1274,8 +514,8 @@ app.on("window-all-closed", () => {
 
 function shutdownCapture(reason: string): void {
   writeAppLog("shutdown-capture", { reason, captureStatus: state.captureStatus, captureRunning: state.captureRunning });
-  clearLaunchCaptureTimer();
-  stopGameProcessMonitor();
+  gameCaptureCoordinator.clearLaunchCaptureTimer();
+  gameCaptureCoordinator.stopMonitor();
   archiveCurrentRun(reason);
   try {
     captureService?.stop();
@@ -1295,118 +535,31 @@ function scheduleForceExit(): void {
 }
 
 function logPreviousAppSession(): void {
-  try {
-    if (!fs.existsSync(appSessionPath)) return;
-    const previous = JSON.parse(fs.readFileSync(appSessionPath, "utf8")) as Record<string, unknown>;
-    if (previous.phase === "closed" || previous.closedAt) return;
-    writeAppLog("previous-non-graceful-exit", {
-      previousSessionId: previous.sessionId,
-      previousPid: previous.pid,
-      previousPhase: previous.phase,
-      previousStartedAt: previous.startedAt,
-      previousLastHeartbeatAt: previous.lastHeartbeatAt,
-      previousShutdownReason: previous.shutdownReason,
-    });
-  } catch (error) {
-    writeAppLog("previous-session-read-error", { error: error instanceof Error ? error.message : String(error) });
-  }
+  appDiagnostics?.logPreviousSession();
 }
 
 function startAppSessionHeartbeat(): void {
-  writeAppSession("started");
-  stopAppSessionHeartbeat();
-  appSessionHeartbeatTimer = setInterval(() => writeAppSession("heartbeat"), APP_SESSION_HEARTBEAT_MS);
-  appSessionHeartbeatTimer.unref();
+  appDiagnostics?.startSessionHeartbeat();
 }
 
 function stopAppSessionHeartbeat(): void {
-  if (!appSessionHeartbeatTimer) return;
-  clearInterval(appSessionHeartbeatTimer);
-  appSessionHeartbeatTimer = null;
+  appDiagnostics?.stopSessionHeartbeat();
 }
 
 function startAppDiagnosticHeartbeat(): void {
-  stopAppDiagnosticHeartbeat();
-  appDiagnosticHeartbeatTimer = setInterval(writeAppDiagnosticHeartbeat, APP_DIAGNOSTIC_HEARTBEAT_MS);
-  appDiagnosticHeartbeatTimer.unref();
-  writeAppDiagnosticHeartbeat();
+  appDiagnostics?.startDiagnosticHeartbeat();
 }
 
 function stopAppDiagnosticHeartbeat(): void {
-  if (!appDiagnosticHeartbeatTimer) return;
-  clearInterval(appDiagnosticHeartbeatTimer);
-  appDiagnosticHeartbeatTimer = null;
-}
-
-function writeAppDiagnosticHeartbeat(): void {
-  const memory = process.memoryUsage();
-  writeAppLog("app-heartbeat", {
-    uptimeSeconds: Math.round(process.uptime()),
-    pid: process.pid,
-    version: app.getVersion(),
-    captureRunning: state.captureRunning,
-    captureStatus: state.captureStatus,
-    captureError: state.captureError,
-    connectionCount: state.connections.length,
-    pendingCaptureEvents: pendingCaptureEvents.length,
-    logRows: logs.length,
-    health: state.health,
-    stats: {
-      lastEventAt: state.stats.lastEventAt,
-      itemTimeline: state.stats.itemTimeline.length,
-      totalGoldEarned: state.stats.totalGoldEarned,
-      totalXpEarned: state.stats.totalXpEarned,
-    },
-    renderer: mainWindow
-      ? {
-          id: mainWindow.id,
-          destroyed: mainWindow.isDestroyed(),
-          visible: !mainWindow.isDestroyed() ? mainWindow.isVisible() : false,
-          focused: !mainWindow.isDestroyed() ? mainWindow.isFocused() : false,
-          minimized: !mainWindow.isDestroyed() ? mainWindow.isMinimized() : false,
-          bounds: !mainWindow.isDestroyed() ? mainWindow.getBounds() : null,
-          url: !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : null,
-        }
-      : null,
-    memory: {
-      rss: memory.rss,
-      heapTotal: memory.heapTotal,
-      heapUsed: memory.heapUsed,
-      external: memory.external,
-      arrayBuffers: memory.arrayBuffers,
-    },
-  });
+  appDiagnostics?.stopDiagnosticHeartbeat();
 }
 
 function markAppSessionClosed(reason: string): void {
-  writeAppSession("closed", { closedAt: new Date().toISOString(), shutdownReason: reason });
+  appDiagnostics?.markSessionClosed(reason);
 }
 
 function writeAppSession(phase: string, extra: Record<string, unknown> = {}): void {
-  if (!appSessionPath) return;
-  try {
-    fs.writeFileSync(
-      appSessionPath,
-      `${JSON.stringify(
-        {
-          sessionId: appSessionId,
-          pid: process.pid,
-          startedAt: appSessionStartedAt,
-          lastHeartbeatAt: new Date().toISOString(),
-          phase,
-          version: app.getVersion(),
-          platform: process.platform,
-          arch: process.arch,
-          ...extra,
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
-  } catch (error) {
-    writeAppLog("app-session-write-error", { phase, error: error instanceof Error ? error.message : String(error) });
-  }
+  appDiagnostics?.writeSession(phase, extra);
 }
 
 function archiveCurrentRun(reason: string): boolean {
@@ -1418,7 +571,7 @@ function archiveCurrentRun(reason: string): boolean {
 
   archivedSessionStarts.add(summary.sessionStartedAt);
   state.pastRuns = [summary, ...state.pastRuns.filter((run) => run.sessionStartedAt !== summary.sessionStartedAt)].slice(0, MAX_PAST_RUNS);
-  savePastRuns(state.pastRuns);
+  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
   writeAppLog("run-archived", { reason, id: summary.id });
   addLog("success", `Archived run summary: ${summary.totalGoldGained.toLocaleString()} gold, ${summary.totalXpGained.toLocaleString()} XP, ${(summary.totalKillsGained ?? 0).toLocaleString()} kills.`);
   return true;
@@ -1430,175 +583,6 @@ function shouldArchiveRun(summary: PastRunSummary): boolean {
   return summary.durationMs >= preferences.minDurationMinutes * 60_000;
 }
 
-function loadPastRuns(): PastRunSummary[] {
-  try {
-    if (!fs.existsSync(pastRunsPath)) return [];
-    const raw = fs.readFileSync(pastRunsPath, "utf8");
-    const parsed = JSON.parse(raw) as PastRunSummary[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.slice(0, MAX_PAST_RUNS).filter(isPastRunSummary).map(normalizePastRunSummary);
-  } catch (error) {
-    writeAppLog("past-runs-load-error", { error: error instanceof Error ? error.message : String(error) });
-    return [];
-  }
-}
-
-function savePastRuns(runs: PastRunSummary[]): void {
-  try {
-    fs.writeFileSync(pastRunsPath, `${JSON.stringify(runs.slice(0, MAX_PAST_RUNS), null, 2)}\n`, "utf8");
-  } catch (error) {
-    writeAppLog("past-runs-save-error", { error: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-function loadWindowBounds(): WindowBoundsPreferences {
-  try {
-    if (!fs.existsSync(windowBoundsPath)) return {};
-    const parsed = JSON.parse(fs.readFileSync(windowBoundsPath, "utf8")) as WindowBoundsPreferences;
-    return {
-      normal: normalizeWindowBounds(parsed.normal),
-      compact: normalizeWindowBounds(parsed.compact),
-    };
-  } catch (error) {
-    writeAppLog("window-bounds-load-error", { error: error instanceof Error ? error.message : String(error) });
-    return {};
-  }
-}
-
-function saveWindowBounds(): void {
-  try {
-    fs.writeFileSync(windowBoundsPath, `${JSON.stringify(windowBounds, null, 2)}\n`, "utf8");
-  } catch (error) {
-    writeAppLog("window-bounds-save-error", { error: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-function normalizeWindowBounds(bounds: Rectangle | undefined): Rectangle | undefined {
-  if (!bounds) return undefined;
-  const x = Number(bounds.x);
-  const y = Number(bounds.y);
-  const width = Number(bounds.width);
-  const height = Number(bounds.height);
-  if (![x, y, width, height].every(Number.isFinite)) return undefined;
-  if (width < 120 || height < 100) return undefined;
-  return { x: Math.trunc(x), y: Math.trunc(y), width: Math.trunc(width), height: Math.trunc(height) };
-}
-
-function withMinimumBounds(
-  bounds: Rectangle | undefined,
-  minimums: { width: number; height: number; minWidth: number; minHeight: number },
-): Rectangle | undefined {
-  const normalized = normalizeWindowBounds(bounds);
-  if (!normalized) return undefined;
-  return {
-    x: normalized.x,
-    y: normalized.y,
-    width: Math.max(normalized.width, minimums.minWidth),
-    height: Math.max(normalized.height, minimums.minHeight),
-  };
-}
-
-function loadRunArchivePreferences(): RunArchivePreferences {
-  try {
-    if (!fs.existsSync(preferencesPath)) return DEFAULT_RUN_ARCHIVE_PREFERENCES;
-    const parsed = loadPreferencesFile() as { runArchive?: Partial<RunArchivePreferences> };
-    return normalizeRunArchivePreferences(parsed.runArchive ?? {});
-  } catch (error) {
-    writeAppLog("preferences-load-error", { error: error instanceof Error ? error.message : String(error) });
-    return DEFAULT_RUN_ARCHIVE_PREFERENCES;
-  }
-}
-
-function saveRunArchivePreferences(preferences: RunArchivePreferences): void {
-  try {
-    savePreferencesFile({ ...loadPreferencesFile(), runArchive: preferences });
-  } catch (error) {
-    writeAppLog("preferences-save-error", { error: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-function normalizeRunArchivePreferences(preferences: Partial<RunArchivePreferences>): RunArchivePreferences {
-  const minDuration = Number(preferences.minDurationMinutes);
-  return {
-    skipEmptyRuns: Boolean(preferences.skipEmptyRuns),
-    minDurationMinutes: Number.isFinite(minDuration) ? Math.max(0, Math.min(1440, Math.trunc(minDuration))) : 0,
-  };
-}
-
-function loadCapturePreferences(): CapturePreferences {
-  try {
-    if (!fs.existsSync(preferencesPath)) return DEFAULT_CAPTURE_PREFERENCES;
-    const parsed = loadPreferencesFile() as { capture?: Partial<CapturePreferences> };
-    return normalizeCapturePreferences(parsed.capture ?? {});
-  } catch (error) {
-    writeAppLog("preferences-load-error", { error: error instanceof Error ? error.message : String(error) });
-    return DEFAULT_CAPTURE_PREFERENCES;
-  }
-}
-
-function saveCapturePreferences(preferences: CapturePreferences): void {
-  try {
-    savePreferencesFile({ ...loadPreferencesFile(), capture: preferences });
-  } catch (error) {
-    writeAppLog("preferences-save-error", { error: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-function normalizeCapturePreferences(preferences: Partial<CapturePreferences>): CapturePreferences {
-  return {
-    createDebugMode: Boolean(preferences.createDebugMode),
-  };
-}
-
-function loadPreferencesFile(): Record<string, unknown> {
-  if (!preferencesPath || !fs.existsSync(preferencesPath)) return {};
-  const parsed = JSON.parse(fs.readFileSync(preferencesPath, "utf8")) as unknown;
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-}
-
-function savePreferencesFile(preferences: Record<string, unknown>): void {
-  fs.writeFileSync(preferencesPath, `${JSON.stringify(preferences, null, 2)}\n`, "utf8");
-}
-
-function isPastRunSummary(value: unknown): value is PastRunSummary {
-  const candidate = value as Partial<PastRunSummary>;
-  return (
-    Boolean(candidate) &&
-    typeof candidate.id === "string" &&
-    typeof candidate.sessionStartedAt === "number" &&
-    typeof candidate.sessionEndedAt === "number" &&
-    typeof candidate.durationMs === "number" &&
-    typeof candidate.totalGoldGained === "number" &&
-    typeof candidate.totalXpGained === "number" &&
-    Array.isArray(candidate.keys) &&
-    Array.isArray(candidate.ores)
-  );
-}
-
-function normalizePastRunSummary(run: PastRunSummary): PastRunSummary {
-  return {
-    ...run,
-    tags: normalizePastRunTags((run as { tags?: unknown }).tags),
-    materials: Array.isArray(run.materials) ? run.materials : [],
-  };
-}
-
 function writeAppLog(type: string, data: Record<string, unknown>): void {
-  if (!appLogPath) return;
-  try {
-    rotateLogIfLarge(appLogPath, MAX_APP_LOG_BYTES);
-    fs.appendFileSync(appLogPath, `${JSON.stringify({ at: new Date().toISOString(), ...data, type })}\n`, "utf8");
-  } catch {
-    // Crash diagnostics must never become the crash.
-  }
-}
-
-function rotateLogIfLarge(logPath: string, maxBytes: number): void {
-  if (!fs.existsSync(logPath)) return;
-  const stat = fs.statSync(logPath);
-  if (stat.size <= maxBytes) return;
-
-  const rotatedPath = `${logPath}.old`;
-  if (fs.existsSync(rotatedPath)) fs.unlinkSync(rotatedPath);
-  fs.renameSync(logPath, rotatedPath);
+  appDiagnostics?.writeLog(type, data);
 }

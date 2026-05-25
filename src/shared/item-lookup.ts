@@ -855,6 +855,8 @@ const ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "w_throwing_sawyers_javelin_of_devastation", name: "Sowyer's Javelin of Devastation", gameId: 11, type: 3, weaponType: 16 },
   { localizationId: "w_throwing_sidewinder", name: "Sidewinder", gameId: 12, type: 3, weaponType: 16 },
   { localizationId: "consumable_blood_of_spartan", name: "Blood of Spartan", gameId: 0, type: 11, weaponType: 0 },
+  { localizationId: "consumable_eternity_codex", name: "Eternity Codex", gameId: 18, type: 11, weaponType: 0 },
+  { localizationId: "consumable_infernal_codex", name: "Infernal Codex", gameId: 23, type: 11, weaponType: 0 },
   { localizationId: "consumable_bottle_of_radogate", name: "Bottle of Radogate", gameId: 1, type: 18, weaponType: 0 },
   { localizationId: "consumable_bottle_of_sake", name: "Bottle of Sake", gameId: 2, type: 18, weaponType: 0 },
   { localizationId: "consumable_caffeinated_coffee_container", name: "Caffeinated Coffee Container", gameId: 3, type: 18, weaponType: 0 },

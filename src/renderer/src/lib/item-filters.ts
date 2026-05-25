@@ -38,6 +38,14 @@ export interface ItemFilterMatch {
   createdAt: number;
 }
 
+export interface ItemFilterMatchTotal {
+  id: string;
+  itemLabel: string;
+  groupName: string;
+  count: number;
+  lastMatchedAt: number;
+}
+
 export interface ItemFilterRuleMatch {
   group: ItemFilterGroup;
   soundId: string;
@@ -46,6 +54,8 @@ export interface ItemFilterRuleMatch {
 
 export const ITEM_FILTER_SUGGESTION_LIMIT = 12;
 export const ITEM_FILTER_RARITIES = ["Set", "Satanic", "Heroic", "Angelic", "Unholy", "Runeword"];
+export const INVENTORY_SOURCE_ITEM_FILTER_TYPES = new Set([11, 12, 13, 14, 15, 18]);
+export const ITEM_FILTER_TIMELINE_VALUE_PREFIX = "item-filter:";
 export const ITEM_FILTER_SOUNDS: ItemFilterSoundOption[] = [
   { id: "crystal-tink", name: "Crystal Tink" },
   { id: "coin-ping", name: "Coin Ping" },
@@ -74,9 +84,17 @@ export const DEFAULT_ITEM_FILTER_GROUPS: ItemFilterGroup[] = [
 ];
 
 export function createItemFilterGroup(name: string, index: number): ItemFilterGroup {
+  return createBaseItemFilterGroup(`group-${Date.now()}-${Math.random().toString(16).slice(2)}`, name.trim() || `Group ${index + 1}`);
+}
+
+export function createRecoveredItemFilterGroup(id: string, name: string, index: number): ItemFilterGroup {
+  return createBaseItemFilterGroup(id.trim() || `group-${Date.now()}-${Math.random().toString(16).slice(2)}`, name.trim() || `Recovered Group ${index + 1}`);
+}
+
+function createBaseItemFilterGroup(id: string, name: string): ItemFilterGroup {
   return {
-    id: `group-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: name.trim() || `Group ${index + 1}`,
+    id,
+    name,
     enabled: true,
     soundId: ITEM_FILTER_SOUNDS[0].id,
     volume: 70,
@@ -228,6 +246,29 @@ export function toggleFilterType(group: ItemFilterGroup, type: number, enabled: 
   group.types = Array.from(next).sort((a, b) => a - b);
 }
 
+export function itemFilterTimelineValue(group: Pick<ItemFilterGroup, "id">): string {
+  return `${ITEM_FILTER_TIMELINE_VALUE_PREFIX}${group.id}`;
+}
+
+export function itemFilterIdFromTimelineValue(value: string): string | null {
+  return value.startsWith(ITEM_FILTER_TIMELINE_VALUE_PREFIX)
+    ? value.slice(ITEM_FILTER_TIMELINE_VALUE_PREFIX.length)
+    : null;
+}
+
+export function itemFilterHasTimelineCriteria(group: ItemFilterGroup): boolean {
+  return group.items.length > 0 || group.rarities.length > 0 || group.types.length > 0;
+}
+
+export function itemFilterTimelineOptions(groups: ItemFilterGroup[]): Array<{ value: string; label: string }> {
+  return groups
+    .filter(itemFilterHasTimelineCriteria)
+    .map((group) => ({
+      value: itemFilterTimelineValue(group),
+      label: `Filter: ${group.name}${group.enabled ? "" : " (disabled)"}`,
+    }));
+}
+
 export function matchItemFilter(item: ItemTimelineEntry, activeGroups: ItemFilterGroup[]): ItemFilterRuleMatch | null {
   const label = item.label || (item.id ? `#${item.id}` : "");
   const normalizedLookupLabel = normalizeLookupText(label);
@@ -239,12 +280,19 @@ export function matchItemFilter(item: ItemTimelineEntry, activeGroups: ItemFilte
   for (const group of activeGroups) {
     const hasGroupCriteria = group.rarities.length > 0 || group.types.length > 0;
     if (!hasGroupCriteria) continue;
-    const matchesRarity = group.rarities.length === 0 || group.rarities.some((rarity) => rarity.toLowerCase() === item.rarity.toLowerCase());
     const matchesType = group.types.length === 0 || group.types.includes(item.type);
+    const matchesRarity =
+      group.rarities.length === 0 ||
+      itemCanMatchSelectedTypeWithoutRarity(item, group, matchesType) ||
+      group.rarities.some((rarity) => rarity.toLowerCase() === item.rarity.toLowerCase());
     if (matchesRarity && matchesType) return { group, soundId: group.soundId, item };
   }
 
   return null;
+}
+
+function itemCanMatchSelectedTypeWithoutRarity(item: ItemTimelineEntry, group: ItemFilterGroup, matchesType: boolean): boolean {
+  return item.source === "inventory" && matchesType && group.types.length > 0 && INVENTORY_SOURCE_ITEM_FILTER_TYPES.has(item.type);
 }
 
 export function itemTimelineKey(item: ItemTimelineEntry): string {

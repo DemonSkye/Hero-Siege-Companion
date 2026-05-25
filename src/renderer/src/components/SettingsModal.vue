@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import {
-  COMPACT_RUN_TILE_LIMIT,
-  STANDARD_COMPACT_RUN_TILE_OPTIONS,
-  compactRunCustomTileCount,
-  createCustomCompactRunTile,
-  standardTile,
-  type CompactRunTileConfig,
-  type CompactRunTileKind,
-} from "../lib/compact-tiles";
+import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
+import type { CompactRunTileConfig } from "../lib/compact-tiles";
 import type { CustomItemFilterSound, ItemFilterGroup } from "../lib/item-filters";
 import type { ThemeAccentMap, ThemeId } from "../lib/themes";
 import type { WhatsNewRelease } from "../lib/whats-new";
-import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
+import SettingsAppearanceTab from "./SettingsAppearanceTab.vue";
+import SettingsCaptureTab from "./SettingsCaptureTab.vue";
+import SettingsConfigTab from "./SettingsConfigTab.vue";
+import SettingsDashboardTab from "./SettingsDashboardTab.vue";
+import SettingsGeneralTab from "./SettingsGeneralTab.vue";
+import SettingsSoundsTab from "./SettingsSoundsTab.vue";
+import SettingsSupportTab from "./SettingsSupportTab.vue";
+import SettingsWhatsNewTab from "./SettingsWhatsNewTab.vue";
 
 interface ItemTypeOption {
   value: string;
@@ -43,7 +43,7 @@ const props = defineProps<{
   initialTab?: SettingsTab;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   close: [];
   chooseGameExecutable: [];
   updateThemeAccent: [value: string, themeId?: ThemeId];
@@ -84,71 +84,14 @@ const configIncludeLootFilters = defineModel<boolean>("configIncludeLootFilters"
 const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearch", { required: true });
 const draftCompactRunTiles = defineModel<CompactRunTileConfig[]>("compactRunTiles", { required: true });
 
-const compactStandardOptions = STANDARD_COMPACT_RUN_TILE_OPTIONS;
 const activeSettingsTab = ref<SettingsTab>(props.initialTab ?? "general");
 
 watch(() => props.initialTab, (tab) => {
   if (tab) activeSettingsTab.value = tab;
 });
 
-function isCompactStandardEnabled(kind: Exclude<CompactRunTileKind, "custom">): boolean {
-  return draftCompactRunTiles.value.some((tile) => tile.kind === kind);
-}
-
-function toggleCompactStandardTile(kind: Exclude<CompactRunTileKind, "custom">, enabled: boolean) {
-  if (kind === "duration") return;
-  if (enabled) {
-    if (isCompactStandardEnabled(kind) || draftCompactRunTiles.value.length >= COMPACT_RUN_TILE_LIMIT) return;
-    draftCompactRunTiles.value = [...draftCompactRunTiles.value, standardTile(kind)];
-    return;
-  }
-  draftCompactRunTiles.value = draftCompactRunTiles.value.filter((tile) => tile.kind !== kind);
-}
-
-function addCompactCustomTile() {
-  const custom = createCustomCompactRunTile(compactRunCustomTileCount(draftCompactRunTiles.value));
-  const base = draftCompactRunTiles.value.length >= COMPACT_RUN_TILE_LIMIT
-    ? draftCompactRunTiles.value.slice(0, COMPACT_RUN_TILE_LIMIT - 1)
-    : draftCompactRunTiles.value;
-  draftCompactRunTiles.value = [...base, custom];
-}
-
-function removeCompactTile(tile: CompactRunTileConfig) {
-  if (tile.kind === "duration") return;
-  draftCompactRunTiles.value = draftCompactRunTiles.value.filter((candidate) => candidate.id !== tile.id);
-}
-
-function updateCompactCustomTile(tile: CompactRunTileConfig, patch: Partial<CompactRunTileConfig>) {
-  draftCompactRunTiles.value = draftCompactRunTiles.value.map((candidate) => (candidate.id === tile.id ? { ...candidate, ...patch } : candidate));
-}
-
-function compactCustomTileSource(tile: CompactRunTileConfig): "filterGroup" | "item" {
-  return tile.source === "item" ? "item" : "filterGroup";
-}
-
-function updateCompactCustomTileSource(tile: CompactRunTileConfig, value: string) {
-  updateCompactCustomTile(tile, { source: value === "item" ? "item" : "filterGroup" });
-}
-
-function eventChecked(event: Event): boolean {
-  return Boolean((event.target as HTMLInputElement | null)?.checked);
-}
-
-function eventValue(event: Event): string {
-  return (event.target as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatUpdatedAt(value: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  return date.toLocaleString();
+function updateThemeAccent(value: string, themeId?: ThemeId) {
+  emit("updateThemeAccent", value, themeId);
 }
 </script>
 
@@ -175,279 +118,84 @@ function formatUpdatedAt(value: string | null): string {
         <button :class="{ active: activeSettingsTab === 'config' }" type="button" @click="activeSettingsTab = 'config'">Import / Export</button>
       </nav>
 
-      <div v-if="activeSettingsTab === 'general'" class="settings-grid">
-        <label class="settings-row">
-          <span class="settings-label">Log history <span class="info-bubble" data-tip="Controls how many Live Log entries remain visible in the diagnostics panel.">i</span></span>
-          <select v-model.number="draftLogLimit" title="Visible log history">
-            <option v-for="option in logLimitOptions" :key="option" :value="option">{{ option }}</option>
-          </select>
-        </label>
-        <label class="settings-row">
-          <span class="settings-label">Item timeline history <span class="info-bubble" data-tip="Controls how many recent item drops remain visible in the item timeline.">i</span></span>
-          <select v-model.number="draftTimelineLimit" title="Visible item timeline history">
-            <option v-for="option in logLimitOptions" :key="option" :value="option">{{ option }}</option>
-          </select>
-        </label>
-        <label class="settings-row">
-          <span class="settings-label">Timeline type <span class="info-bubble" data-tip="Filters the recent item timeline to a single item type when you want to inspect one category.">i</span></span>
-          <select v-model="draftTimelineType" title="Filter item timeline by item type">
-            <option value="all">All</option>
-            <option v-for="option in itemTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
-        </label>
-        <div class="settings-launch-row settings-wide">
-          <label class="settings-inline-check">
-            <input v-model="draftLaunchThroughSteam" type="checkbox" />
-            <span class="settings-label">Launch through Steam <span class="info-bubble" data-tip="Uses Steam's Hero Siege launch URL when you click Launch Game. Uncheck this to choose a standalone Hero Siege executable instead.">i</span></span>
-          </label>
-          <div v-if="!draftLaunchThroughSteam" class="path-setting">
-            <input v-model="draftGameExecutablePath" type="text" spellcheck="false" title="Path to Hero Siege executable" />
-            <button class="icon-button ghost" type="button" @click="$emit('chooseGameExecutable')">Browse</button>
-          </div>
-        </div>
-        <label class="settings-check">
-          <input v-model="draftAlwaysOnTop" type="checkbox" />
-          <span class="settings-label">Always on top <span class="info-bubble" data-tip="Keeps the companion above other windows while you play.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftLockCompactLocation" type="checkbox" />
-          <span class="settings-label">Lock saved window positions <span class="info-bubble" data-tip="Restores the compact and full windows to their last saved positions when switching modes.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftHideSocketables" type="checkbox" />
-          <span class="settings-label">Hide socketable items <span class="info-bubble" data-tip="Removes socketables from the recent item timeline so rarer item drops are easier to scan.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftHideKeys" type="checkbox" />
-          <span class="settings-label">Hide key items <span class="info-bubble" data-tip="Removes keys from the recent item timeline; key totals are still tracked elsewhere.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftHideMaterials" type="checkbox" />
-          <span class="settings-label">Hide materials <span class="info-bubble" data-tip="Removes materials and collectibles from the recent item timeline while keeping resource counters intact.">i</span></span>
-        </label>
-      </div>
+      <SettingsGeneralTab
+        v-if="activeSettingsTab === 'general'"
+        v-model:log-limit="draftLogLimit"
+        v-model:timeline-limit="draftTimelineLimit"
+        v-model:timeline-type="draftTimelineType"
+        v-model:launch-through-steam="draftLaunchThroughSteam"
+        v-model:game-executable-path="draftGameExecutablePath"
+        v-model:always-on-top="draftAlwaysOnTop"
+        v-model:lock-compact-location="draftLockCompactLocation"
+        v-model:hide-socketables="draftHideSocketables"
+        v-model:hide-keys="draftHideKeys"
+        v-model:hide-materials="draftHideMaterials"
+        :log-limit-options="logLimitOptions"
+        :item-type-options="itemTypeOptions"
+        :item-filter-groups="itemFilterGroups"
+        @choose-game-executable="$emit('chooseGameExecutable')"
+      />
 
-      <div v-else-if="activeSettingsTab === 'capture'" class="settings-grid">
-        <label class="settings-check">
-          <input v-model="draftShowCaptureDetails" type="checkbox" />
-          <span class="settings-label">Show capture details <span class="info-bubble" data-tip="Shows adapter, filter, parser, and packet counters in the live status area.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftCreateDebugMode" type="checkbox" />
-          <span class="settings-label">Verbose live logging <span class="info-bubble" data-tip="Writes a wider packet trace to capture-wide-debug.log for loot correlation diagnostics. Parsed item events still appear in Live Log.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftDeveloperItemResearchEnabled" type="checkbox" />
-          <span class="settings-label">Developer item research <span class="info-bubble" data-tip="Adds an opt-in local research queue for unresolved item IDs so drops can help build better lookup data.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftUnknownItemAudioPrompt" :disabled="!draftDeveloperItemResearchEnabled" type="checkbox" />
-          <span class="settings-label">Prompt on unknown drops <span class="info-bubble" data-tip="Plays a quiet cue when a new unresolved item signature appears while developer item research is enabled.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftSkipEmptyRuns" type="checkbox" />
-          <span class="settings-label">Don't save empty runs <span class="info-bubble" data-tip="Prevents Past Runs entries when a session has no tracked activity.">i</span></span>
-        </label>
-        <label class="settings-row">
-          <span class="settings-label">Only save runs over <span class="info-bubble" data-tip="Requires runs to last this many minutes before they are saved to Past Runs.">i</span></span>
-          <div class="number-setting">
-            <input v-model.number="draftMinRunDurationMinutes" type="number" min="0" max="1440" step="1" title="Minimum run duration in minutes" />
-            <small>min</small>
-          </div>
-        </label>
-      </div>
+      <SettingsCaptureTab
+        v-else-if="activeSettingsTab === 'capture'"
+        v-model:show-capture-details="draftShowCaptureDetails"
+        v-model:create-debug-mode="draftCreateDebugMode"
+        v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
+        v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
+        v-model:skip-empty-runs="draftSkipEmptyRuns"
+        v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
+      />
 
-      <div v-else-if="activeSettingsTab === 'appearance'" class="settings-grid settings-grid-single">
-        <section class="settings-wide compact-settings-section">
-          <div class="compact-settings-heading">
-            <strong>Theme</strong>
-            <span>Rarity colors stay game-matched.</span>
-          </div>
-          <div class="settings-theme-grid">
-            <label class="settings-row">
-              <span class="settings-label">Full app theme <span class="info-bubble" data-tip="Changes app surfaces, borders, and background chrome. Drop rarity colors are intentionally unchanged.">i</span></span>
-              <select v-model="draftThemeId" title="Application theme">
-                <option v-for="theme in themeOptions" :key="theme.id" :value="theme.id">{{ theme.label }}</option>
-              </select>
-            </label>
-            <label class="settings-row settings-color-row">
-              <span class="settings-label">Full app accent <span class="info-bubble" data-tip="Tunes the selected full app theme's accent color for controls and highlights.">i</span></span>
-              <span class="settings-color-control">
-                <input :value="draftThemeAccents[draftThemeId]" type="color" title="Theme accent color" @input="$emit('updateThemeAccent', eventValue($event), draftThemeId)" />
-                <code>{{ draftThemeAccents[draftThemeId] }}</code>
-              </span>
-            </label>
-            <label class="settings-row">
-              <span class="settings-label">Compact theme <span class="info-bubble" data-tip="Used only while compact mode is active, so the overlay can differ from the full dashboard.">i</span></span>
-              <select v-model="draftCompactThemeId" title="Compact mode theme">
-                <option v-for="theme in themeOptions" :key="theme.id" :value="theme.id">{{ theme.label }}</option>
-              </select>
-            </label>
-            <label class="settings-row settings-color-row">
-              <span class="settings-label">Compact accent <span class="info-bubble" data-tip="Tunes the selected compact theme's accent color. Shared theme accents still export with app settings.">i</span></span>
-              <span class="settings-color-control">
-                <input :value="draftThemeAccents[draftCompactThemeId]" type="color" title="Compact theme accent color" @input="$emit('updateThemeAccent', eventValue($event), draftCompactThemeId)" />
-                <code>{{ draftThemeAccents[draftCompactThemeId] }}</code>
-              </span>
-            </label>
-          </div>
-          <div class="settings-theme-actions">
-            <button class="icon-button ghost" type="button" @click="$emit('importTheme')">Import Theme</button>
-            <button class="icon-button ghost" type="button" @click="$emit('exportTheme')">Export Theme</button>
-          </div>
-          <details class="settings-theme-help">
-            <summary>Theme help</summary>
-            <p>Themes change app chrome: backgrounds, panels, borders, controls, and accent highlights. Rarity colors are not themeable because they should match Hero Siege.</p>
-            <p>Theme JSON supports a base theme, accent color, and optional tokens for app surfaces. Useful tokens: appText, appHeading, appBg, appBgGradient, surface, surfaceStrong, surfaceCell, surfaceSelected, border, borderStrong, accentBorder, accentWarm, inputBg, buttonPrimary, buttonPrimaryText, danger, scrollbar, shadow.</p>
-            <code>{"kind":"theme","themeId":"cyberpunk","accent":"#00f0ff","tokens":{"surface":"rgba(8, 4, 6, 0.94)","border":"rgba(0, 240, 255, 0.48)","buttonPrimary":"#fff200"}}</code>
-          </details>
-        </section>
-      </div>
+      <SettingsAppearanceTab
+        v-else-if="activeSettingsTab === 'appearance'"
+        v-model:theme-id="draftThemeId"
+        v-model:compact-theme-id="draftCompactThemeId"
+        v-model:theme-accents="draftThemeAccents"
+        :theme-options="themeOptions"
+        @update-theme-accent="updateThemeAccent"
+        @import-theme="$emit('importTheme')"
+        @export-theme="$emit('exportTheme')"
+      />
 
-      <div v-else-if="activeSettingsTab === 'sounds'" class="settings-grid settings-grid-single">
-        <section class="settings-wide compact-settings-section">
-          <div class="compact-settings-heading">
-            <strong>Loot alert sounds</strong>
-            <span>{{ customItemFilterSounds.length }} imported</span>
-          </div>
-          <p class="settings-note settings-wide-note">Import .wav, .mp3, .ogg, or a .zip soundpack. Imported sounds appear in the Item Filter sound menus.</p>
-          <button class="icon-button ghost settings-import-sounds" type="button" @click="$emit('importSounds')">Import Sounds</button>
-          <div v-if="customItemFilterSounds.length" class="settings-sound-list" aria-label="Imported sounds">
-            <div v-for="sound in customItemFilterSounds" :key="sound.id" class="settings-sound-row">
-              <div>
-                <strong>{{ sound.name }}</strong>
-                <span>{{ sound.fileName }}</span>
-              </div>
-              <button class="shopping-remove" type="button" :aria-label="`Remove ${sound.name}`" @click="$emit('removeSound', sound)">x</button>
-            </div>
-          </div>
-          <p v-else class="empty-copy settings-sound-empty">No imported sounds yet.</p>
-        </section>
-      </div>
+      <SettingsSoundsTab
+        v-else-if="activeSettingsTab === 'sounds'"
+        :custom-item-filter-sounds="customItemFilterSounds"
+        @import-sounds="$emit('importSounds')"
+        @remove-sound="$emit('removeSound', $event)"
+      />
 
-      <div v-else-if="activeSettingsTab === 'dashboard'" class="settings-grid settings-grid-single">
-        <section class="settings-wide compact-settings-section settings-compact-run-section">
-          <div class="compact-settings-heading">
-            <strong>Run dashboard tiles</strong>
-            <span>{{ draftCompactRunTiles.length }}/{{ COMPACT_RUN_TILE_LIMIT }} shown</span>
-          </div>
-          <div class="compact-settings-chip-grid compact-settings-chip-grid-wide">
-            <label v-for="option in compactStandardOptions" :key="option.kind" class="filter-box">
-              <input
-                :checked="isCompactStandardEnabled(option.kind)"
-                :disabled="option.kind === 'duration' || (!isCompactStandardEnabled(option.kind) && draftCompactRunTiles.length >= COMPACT_RUN_TILE_LIMIT)"
-                type="checkbox"
-                @change="toggleCompactStandardTile(option.kind, eventChecked($event))"
-              />
-              <span>{{ option.label }}</span>
-            </label>
-          </div>
-          <div class="compact-settings-heading">
-            <strong>Custom tiles</strong>
-            <button class="icon-button ghost" type="button" title="Add a custom tile; if all eight slots are full, the last slot is replaced." @click="addCompactCustomTile">Add Custom</button>
-          </div>
-          <div v-if="draftCompactRunTiles.some((tile) => tile.kind === 'custom')" class="compact-custom-tile-list">
-            <div v-for="tile in draftCompactRunTiles.filter((candidate) => candidate.kind === 'custom')" :key="tile.id" class="compact-custom-tile-row settings-custom-tile-row">
-              <input :value="tile.label" type="text" placeholder="Tile label" @input="updateCompactCustomTile(tile, { label: eventValue($event) })" />
-              <select :value="compactCustomTileSource(tile)" @change="updateCompactCustomTileSource(tile, eventValue($event))">
-                <option value="filterGroup">Filter group</option>
-                <option value="item">Item</option>
-              </select>
-              <select v-if="compactCustomTileSource(tile) === 'filterGroup'" :value="tile.groupId" @change="updateCompactCustomTile(tile, { groupId: eventValue($event) })">
-                <option value="">Choose group</option>
-                <option v-for="group in itemFilterGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
-              </select>
-              <input v-else :value="tile.itemName" list="settings-compact-item-suggestions" type="text" placeholder="Exact item name" @input="updateCompactCustomTile(tile, { itemName: eventValue($event) })" />
-              <button class="shopping-remove" type="button" title="Remove custom tile" @click="removeCompactTile(tile)">x</button>
-            </div>
-          </div>
-          <datalist id="settings-compact-item-suggestions">
-            <option v-for="item in itemSuggestions" :key="item" :value="item" />
-          </datalist>
-        </section>
-      </div>
+      <SettingsDashboardTab
+        v-else-if="activeSettingsTab === 'dashboard'"
+        v-model:compact-run-tiles="draftCompactRunTiles"
+        :item-filter-groups="itemFilterGroups"
+        :item-suggestions="itemSuggestions"
+      />
 
-      <div v-else-if="activeSettingsTab === 'whatsNew'" class="settings-grid settings-grid-single">
-        <section class="settings-wide compact-settings-section whats-new-settings">
-          <div class="compact-settings-heading">
-            <strong>What's New in {{ whatsNew.version }}</strong>
-            <span>{{ whatsNew.title }}</span>
-          </div>
-          <ul class="whats-new-list">
-            <li v-for="item in whatsNew.items" :key="item">{{ item }}</li>
-          </ul>
-        </section>
-      </div>
+      <SettingsWhatsNewTab
+        v-else-if="activeSettingsTab === 'whatsNew'"
+        :whats-new="whatsNew"
+      />
 
-      <div v-else-if="activeSettingsTab === 'support'" class="settings-grid settings-grid-single">
-        <section class="settings-wide compact-settings-section">
-          <div class="compact-settings-heading">
-            <strong>Diagnostics bundle</strong>
-            <button class="icon-button ghost" type="button" :disabled="supportBundleBusy" @click="$emit('saveSupportDiagnostics')">
-              {{ supportBundleBusy ? "Preparing ZIP" : "Save ZIP" }}
-            </button>
-          </div>
-          <p class="settings-note settings-wide-note">Save this when asking for capture help. The ZIP includes the current capture summary and local diagnostics logs.</p>
-          <p class="settings-note settings-wide-note settings-support-path">Log folder: <code>{{ supportLogsPath }}</code></p>
-          <div class="settings-support-files" aria-label="Diagnostics files">
-            <div v-for="file in supportGeneratedFiles" :key="file.name" class="settings-support-file">
-              <div>
-                <strong>{{ file.name }}</strong>
-                <span>{{ file.description }}</span>
-              </div>
-              <small class="settings-support-file-status">Generated</small>
-            </div>
-            <div v-for="file in supportLogFiles" :key="file.name" class="settings-support-file" :class="{ missing: !file.exists }">
-              <div>
-                <strong>{{ file.name }}</strong>
-                <span>{{ file.description }}</span>
-                <code>{{ file.path }}</code>
-              </div>
-              <small class="settings-support-file-status">
-                {{ file.exists ? formatBytes(file.sizeBytes) : "Missing" }}
-                <span v-if="file.updatedAt">{{ formatUpdatedAt(file.updatedAt) }}</span>
-              </small>
-            </div>
-          </div>
-          <div class="compact-settings-heading settings-support-preview-heading">
-            <strong>Preview</strong>
-            <span>diagnostics-summary.txt</span>
-          </div>
-          <pre class="settings-support-bundle">{{ supportDiagnostics }}</pre>
-        </section>
-      </div>
+      <SettingsSupportTab
+        v-else-if="activeSettingsTab === 'support'"
+        :support-diagnostics="supportDiagnostics"
+        :support-generated-files="supportGeneratedFiles"
+        :support-log-files="supportLogFiles"
+        :support-logs-path="supportLogsPath"
+        :support-bundle-busy="supportBundleBusy"
+        @save-support-diagnostics="$emit('saveSupportDiagnostics')"
+      />
 
-      <div v-else class="settings-grid settings-grid-single">
-        <div class="settings-config-row settings-wide">
-          <span class="settings-label">Configuration JSON <span class="info-bubble" data-tip="These checkboxes control what gets exported and what gets applied when importing. Unchecked areas are left alone on import.">i</span></span>
-          <div class="settings-config-checks" aria-label="Configuration sections">
-            <label class="settings-inline-check">
-              <input v-model="configIncludeAppSettings" type="checkbox" />
-              <span class="settings-label">App settings</span>
-            </label>
-            <label class="settings-inline-check">
-              <input v-model="configIncludeRunSaving" type="checkbox" />
-              <span class="settings-label">Past run settings</span>
-            </label>
-            <label class="settings-inline-check">
-              <input v-model="configIncludeReportTracking" type="checkbox" />
-              <span class="settings-label">Report tracking</span>
-            </label>
-            <label class="settings-inline-check">
-              <input v-model="configIncludeLootFilters" type="checkbox" />
-              <span class="settings-label">Loot filters</span>
-            </label>
-            <label class="settings-inline-check">
-              <input v-model="configIncludeItemResearch" type="checkbox" />
-              <span class="settings-label">Research data</span>
-            </label>
-          </div>
-          <div class="settings-config-actions">
-            <button class="icon-button ghost" type="button" @click="$emit('importConfiguration')">Import JSON</button>
-            <button class="icon-button ghost" type="button" @click="$emit('exportConfiguration')">Export JSON</button>
-          </div>
-        </div>
-      </div>
+      <SettingsConfigTab
+        v-else
+        v-model:config-include-app-settings="configIncludeAppSettings"
+        v-model:config-include-run-saving="configIncludeRunSaving"
+        v-model:config-include-report-tracking="configIncludeReportTracking"
+        v-model:config-include-loot-filters="configIncludeLootFilters"
+        v-model:config-include-item-research="configIncludeItemResearch"
+        @import-configuration="$emit('importConfiguration')"
+        @export-configuration="$emit('exportConfiguration')"
+      />
 
       <div class="settings-actions">
         <button class="icon-button ghost" type="button" @click="$emit('reset')">Reset Preferences</button>

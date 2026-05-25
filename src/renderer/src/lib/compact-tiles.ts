@@ -1,4 +1,6 @@
+import type { RunStatus } from "../../../shared/app-state";
 import type { CompanionStats, ItemTimelineEntry } from "../../../shared/stats";
+import { formatNumber } from "./format";
 import { matchItemFilter, type ItemFilterGroup } from "./item-filters";
 import { normalizeLookupText } from "./text";
 
@@ -32,6 +34,23 @@ export interface CompactRunTileDisplay {
   value: string;
   detail?: string;
   title?: string;
+}
+
+export interface CompactRunTileDisplayContext {
+  stats: CompanionStats;
+  runStatus: RunStatus;
+  sessionDuration: string;
+  runPausedLabel: string;
+  currentGoldLabel: string;
+  zoneCountdown: string;
+  zoneResetLabel: string;
+  itemFilterGroups: ItemFilterGroup[];
+}
+
+export interface CompactFilterGroupRecoveryOption {
+  id: string;
+  name: string;
+  tileCount: number;
 }
 
 export const COMPACT_RUN_TILE_LIMIT = 8;
@@ -97,6 +116,25 @@ export function compactRunCustomTileCount(tiles: CompactRunTileConfig[]): number
   return tiles.filter((tile) => tile.kind === "custom").length;
 }
 
+export function compactFilterGroupRecoveryOptions(tiles: CompactRunTileConfig[], itemFilterGroups: ItemFilterGroup[]): CompactFilterGroupRecoveryOption[] {
+  const existingGroupIds = new Set(itemFilterGroups.map((group) => group.id));
+  const options = new Map<string, CompactFilterGroupRecoveryOption>();
+
+  for (const tile of tiles) {
+    if (tile.kind !== "custom" || tile.source === "item" || !tile.groupId || existingGroupIds.has(tile.groupId)) continue;
+    const name = cleanLabel(tile.label) || "Recovered Group";
+    const existing = options.get(tile.groupId);
+    if (existing) {
+      existing.tileCount += 1;
+      if (existing.name === "Recovered Group" && name !== "Recovered Group") existing.name = name;
+      continue;
+    }
+    options.set(tile.groupId, { id: tile.groupId, name, tileCount: 1 });
+  }
+
+  return Array.from(options.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function compactCustomTileTotal(tile: CompactRunTileConfig, stats: CompanionStats, itemFilterGroups: ItemFilterGroup[]): number {
   if (tile.kind !== "custom") return 0;
   if (tile.source === "item") {
@@ -108,6 +146,93 @@ export function compactCustomTileTotal(tile: CompactRunTileConfig, stats: Compan
   const group = itemFilterGroups.find((candidate) => candidate.id === tile.groupId);
   if (!group) return 0;
   return stats.itemTimeline.reduce((total, item) => total + (matchItemFilter(item, [{ ...group, enabled: true }]) ? itemAmount(item) : 0), 0);
+}
+
+export function compactRunTileDisplay(tile: CompactRunTileConfig, context: CompactRunTileDisplayContext): CompactRunTileDisplay {
+  const { stats } = context;
+  const standardLabels = new Map(STANDARD_COMPACT_RUN_TILE_OPTIONS.map((option) => [option.kind, option.label]));
+
+  switch (tile.kind) {
+    case "duration":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "This Run",
+        value: context.sessionDuration,
+        detail: stats.accountName || "No character packet yet",
+        title: context.runStatus === "paused" ? context.runPausedLabel : "Recording",
+      };
+    case "gold":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "Gold",
+        value: formatCompactNumber(stats.totalGoldEarned),
+        detail: `${formatNumber(stats.goldPerHour)}/h - Current ${context.currentGoldLabel}`,
+        title: `Current ${context.currentGoldLabel} - ${formatNumber(stats.goldPerHour)}/h`,
+      };
+    case "xp":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "XP",
+        value: `${formatCompactNumber(stats.xpPerHour)}/h`,
+        detail: `${formatNumber(stats.totalXpEarned)} earned`,
+        title: `${formatNumber(stats.totalXpEarned)} earned - ${formatNumber(stats.xpPerHour)}/h`,
+      };
+    case "kills":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "Kills",
+        value: formatCompactNumber(stats.totalKillsEarned),
+        detail: `${formatNumber(stats.killsPerHour)}/h`,
+        title: `${formatNumber(stats.totalKillsEarned)} kills - ${formatNumber(stats.killsPerHour)}/h`,
+      };
+    case "sz":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "SZ",
+        value: context.zoneCountdown,
+        detail: stats.satanicZone?.zone ?? `Resets ${context.zoneResetLabel}`,
+        title: "Satanic zone details",
+      };
+    case "set":
+    case "satanic":
+    case "heroic":
+    case "angelic": {
+      const label = standardLabels.get(tile.kind) ?? tile.kind;
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label,
+        value: formatCompactNumber(stats.items[label]?.total ?? 0),
+        detail: `${formatNumber(stats.items[label]?.mf ?? 0)} MF - ${formatNumber(stats.itemsPerHour[label] ?? 0)}/h`,
+        title: `${label} drops`,
+      };
+    }
+    case "custom": {
+      const group = context.itemFilterGroups.find((candidate) => candidate.id === tile.groupId);
+      const label = tile.label?.trim() || (tile.source === "item" ? tile.itemName : group?.name) || "Custom";
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label,
+        value: formatCompactNumber(compactCustomTileTotal(tile, stats, context.itemFilterGroups)),
+        detail: tile.source === "item" ? "Exact item" : "Item filter group",
+        title: tile.source === "item" ? tile.itemName || label : group?.name ?? label,
+      };
+    }
+  }
+}
+
+export function formatCompactNumber(value: number): string {
+  const abs = Math.abs(value || 0);
+  if (abs >= 1_000_000_000) return `${trimCompact(value / 1_000_000_000)}b`;
+  if (abs >= 1_000_000) return `${trimCompact(value / 1_000_000)}m`;
+  if (abs >= 1_000) return `${trimCompact(value / 1_000)}k`;
+  return String(Math.trunc(value || 0));
 }
 
 function normalizeCompactRunTile(value: unknown): CompactRunTileConfig | null {
@@ -135,6 +260,10 @@ function cleanLabel(value: unknown): string {
 
 function itemAmount(item: ItemTimelineEntry): number {
   return Math.max(item.amount || 1, 1);
+}
+
+function trimCompact(value: number): string {
+  return value.toFixed(2).replace(/\.?0+$/, "");
 }
 
 function structuredCloneCompat<T>(value: T): T {

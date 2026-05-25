@@ -1,38 +1,8 @@
-import type { CapturePreferences, CompanionState, ReleaseUpdateInfo, RunArchivePreferences } from "../../shared/app-state";
-import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "../../shared/support-diagnostics";
+import type { HeroSiegeCompanionApi } from "../../shared/ipc";
 
 declare global {
   interface Window {
-    heroSiegeCompanion: {
-      getState: () => Promise<CompanionState>;
-      startCapture: () => Promise<CompanionState>;
-      launchGameOrCapture: (options: { executablePath?: string; launchThroughSteam?: boolean }) => Promise<CompanionState>;
-      stopCapture: () => Promise<CompanionState>;
-      chooseGameExecutable: () => Promise<string | null>;
-      resetStats: () => Promise<CompanionState>;
-      pauseRun: () => Promise<CompanionState>;
-      resumeRun: () => Promise<CompanionState>;
-      setPastRunTags: (runId: string, tags: string[]) => Promise<CompanionState>;
-      setRunArchivePreferences: (preferences: RunArchivePreferences) => Promise<CompanionState>;
-      setCapturePreferences: (preferences: CapturePreferences) => Promise<CompanionState>;
-      exportConfiguration: (json: string) => Promise<boolean>;
-      importConfiguration: () => Promise<string | null>;
-      exportItemResearch: (json: string) => Promise<boolean>;
-      importSounds: () => Promise<Array<{ fileName: string; src: string }>>;
-      removeSound: (src: string) => Promise<boolean>;
-      minimizeWindow: () => Promise<void>;
-      toggleMaximizeWindow: () => Promise<void>;
-      closeWindow: () => Promise<void>;
-      setAlwaysOnTop: (enabled: boolean) => Promise<void>;
-      setCompactMode: (enabled: boolean, lockPositions: boolean) => Promise<void>;
-      writeClipboardText: (value: string) => Promise<void>;
-      getSupportDiagnosticsInfo: () => Promise<SupportDiagnosticsInfo>;
-      saveSupportDiagnostics: (diagnosticsSummary: string) => Promise<SupportDiagnosticsSaveResult>;
-      checkForUpdate: () => Promise<ReleaseUpdateInfo | null>;
-      openRelease: (url?: string) => Promise<void>;
-      openNpcapGuide: () => Promise<void>;
-      onStateUpdated: (callback: (state: CompanionState) => void) => () => void;
-    };
+    heroSiegeCompanion: HeroSiegeCompanionApi;
   }
 }
 

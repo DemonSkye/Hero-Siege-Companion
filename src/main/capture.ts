@@ -1,32 +1,41 @@
-import { execFile } from "node:child_process";
-import { createRequire } from "node:module";
-import fs from "node:fs";
+import { findNpcapDevice, listNpcapDevices, openPacketCapture, type PacketCaptureHandle } from "./capture-adapter";
+import { appendJsonLog, sanitizeDebugSnippet } from "./capture-debug";
+import {
+  isOnlyItemEvents,
+  messageKeySummary,
+  shouldDebugPayload,
+  shouldLogEvent,
+  summarizeEvent,
+} from "./capture-events";
+import { GeneratedDropCorrelator, RecentEventDeduplicator } from "./capture-event-state";
+import {
+  connectionSignature,
+  getHeroSiegeNetworkState,
+  getNpcapRegistry,
+  getNpcapServiceStatus,
+  selectGameServerConnections,
+  stableCaptureFilter,
+  summarizeConnections,
+  uniqueCaptureTargets,
+  type HeroSiegeNetworkState,
+} from "./capture-network";
+import { getPayload, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "./packet-decoder";
 import type { CaptureConnection, CaptureHealth } from "../shared/app-state";
 import { EVENT_NAMES } from "../shared/constants";
 import type { MessageValue } from "../shared/fields";
 import { captureMessages, messageToEvents, type ParsedEvent } from "../shared/parser";
 
-const capRequire = createRequire(__filename);
-const { Cap, decoders } = capRequire("cap") as any;
-
-const PROTOCOL = decoders.PROTOCOL;
 const MAX_LOG_SNIPPET = 180;
-const MAX_DEBUG_SNIPPET = 1200;
 const MAX_DEBUG_LOG_BYTES = 10 * 1024 * 1024;
 const MAX_WIDE_DEBUG_LOG_BYTES = 100 * 1024 * 1024;
 const POLL_INTERVAL_MS = 1000;
 const CAPTURE_DIAGNOSTIC_HEARTBEAT_MS = 15_000;
-const EVENT_DEDUP_WINDOW_MS = 2500;
-const PENDING_GENERATED_DROP_MS = 3000;
 const MAX_PARSE_PAYLOAD_CHARS = 1_000_000;
 const PARSER_FAILURE_RESTART_THRESHOLD = 3;
 const PARSER_RECOVERY_DELAY_MS = 750;
 const PARSER_ERROR_LOG_INTERVAL_MS = 5000;
 const ITEM_DEBUG_PAYLOAD_INTERVAL_MS = 10_000;
 const SUPPORTED_LINK_TYPES = new Set(["ETHERNET", "RAW", "NULL", "LINKTYPE_LINUX_SLL"]);
-// Hero Siege gameplay traffic does not currently use HTTP/HTTPS ports.
-// Exclude these transient launcher/CDN connections so they are not captured or logged.
-const WEB_REMOTE_PORTS = new Set([80, 443]);
 
 export interface CaptureUpdate {
   connections?: CaptureConnection[];
@@ -39,23 +48,8 @@ export interface CaptureUpdate {
   error?: string | null;
 }
 
-interface HeroSiegeNetworkState {
-  gameProcessIds: number[];
-  antiCheatProcessIds: number[];
-  connections: CaptureConnection[];
-}
-
-interface PowerShellConnectionEntry {
-  OwningProcess: unknown;
-  State: unknown;
-  LocalAddress: unknown;
-  LocalPort: unknown;
-  RemoteAddress: unknown;
-  RemotePort: unknown;
-}
-
 export class CaptureService {
-  private cap: any = null;
+  private cap: PacketCaptureHandle | null = null;
   private buffer = Buffer.alloc(65535);
   private activeLinkType = "";
   private pollTimer: NodeJS.Timeout | null = null;
@@ -83,8 +77,8 @@ export class CaptureService {
   private widePacketSequence = 0;
   private widePayloadSequence = 0;
   private captureRequested = false;
-  private readonly recentEventFingerprints = new Map<string, number>();
-  private readonly pendingGeneratedDropRequests = new Map<string, number>();
+  private readonly eventDeduplicator = new RecentEventDeduplicator();
+  private readonly generatedDropCorrelator = new GeneratedDropCorrelator();
 
   constructor(
     private readonly emit: (update: CaptureUpdate) => void,
@@ -155,26 +149,39 @@ export class CaptureService {
     this.emit({ running: true, status: "waiting", error: null, health: await this.diagnostics() });
     this.writeDebugLog("capture-start", { debugLogPath: this.debugLogPath, wideDebugLogPath: this.wideDebugLogPath });
     await this.refreshCapture(initialNetworkState);
+    if (!this.captureRequested) return;
     this.startDiagnosticHeartbeat();
     this.pollTimer = setInterval(() => void this.refreshCaptureSafely("poll"), POLL_INTERVAL_MS);
   }
 
   stop(): void {
     this.captureRequested = false;
+    this.stopTimers();
+    this.resetCaptureSession();
+    this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
+  }
+
+  private stopTimers(): void {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.parserRecoveryTimer) clearTimeout(this.parserRecoveryTimer);
     if (this.diagnosticHeartbeatTimer) clearInterval(this.diagnosticHeartbeatTimer);
     this.pollTimer = null;
     this.parserRecoveryTimer = null;
     this.diagnosticHeartbeatTimer = null;
-    this.closeCapture();
+  }
+
+  private resetCaptureSession(reason = "close"): void {
+    this.closeCapture(reason);
     this.activeSignature = "";
     this.activeLocalAddress = "";
     this.activeLinkType = "";
+    this.resetPacketState();
+  }
+
+  private resetPacketState(): void {
     this.packetBuffers.clear();
-    this.recentEventFingerprints.clear();
-    this.pendingGeneratedDropRequests.clear();
-    this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
+    this.eventDeduplicator.clear();
+    this.generatedDropCorrelator.clear();
   }
 
   private async refreshCaptureSafely(source: string): Promise<void> {
@@ -211,19 +218,8 @@ export class CaptureService {
 
     if (currentNetworkState.gameProcessIds.length === 0) {
       this.captureRequested = false;
-      if (this.pollTimer) clearInterval(this.pollTimer);
-      if (this.parserRecoveryTimer) clearTimeout(this.parserRecoveryTimer);
-      if (this.diagnosticHeartbeatTimer) clearInterval(this.diagnosticHeartbeatTimer);
-      this.pollTimer = null;
-      this.parserRecoveryTimer = null;
-      this.diagnosticHeartbeatTimer = null;
-      this.activeSignature = "";
-      this.activeLocalAddress = "";
-      this.activeLinkType = "";
-      this.closeCapture("game-exited");
-      this.packetBuffers.clear();
-      this.recentEventFingerprints.clear();
-      this.pendingGeneratedDropRequests.clear();
+      this.stopTimers();
+      this.resetCaptureSession("game-exited");
       this.writeDebugLog("capture-game-exited", {});
       this.emit({
         running: false,
@@ -237,10 +233,7 @@ export class CaptureService {
     }
 
     if (currentNetworkState.antiCheatProcessIds.length > 0 && connections.length === 0) {
-      this.closeCapture();
-      this.activeSignature = "";
-      this.activeLocalAddress = "";
-      this.activeLinkType = "";
+      this.resetCaptureSession("anti-cheat-waiting");
       const update: CaptureUpdate = {
         status: "waiting",
         health: { device: null, filter: "" },
@@ -258,10 +251,7 @@ export class CaptureService {
     const signature = connectionSignature(captureConnections);
     if (!signature) {
       if (this.activeSignature !== "") this.emit({ log: { level: "warning", message: "Hero Siege game-server connections disappeared." } });
-      this.activeSignature = "";
-      this.activeLocalAddress = "";
-      this.activeLinkType = "";
-      this.closeCapture("no-game-server-connections");
+      this.resetCaptureSession("no-game-server-connections");
       this.writeDebugLog("capture-waiting-for-game-connections", { connections: summarizeConnections(connections) });
       this.emit({ status: "waiting", health: { device: null, filter: "" } });
       return;
@@ -296,15 +286,10 @@ export class CaptureService {
       return;
     }
 
-    const device = Cap.findDevice(localAddress);
+    const device = findNpcapDevice(localAddress);
     if (!device) {
-      const devices = Cap.deviceList()
-        .map((deviceInfo: any) => {
-          const addresses = (deviceInfo.addresses ?? []).map((address: any) => address.addr).filter(Boolean).join(", ");
-          return `${deviceInfo.name}${addresses ? ` (${addresses})` : ""}`;
-        })
-        .join("; ");
-      this.closeCapture("adapter-missing");
+      const devices = listNpcapDevices();
+      this.resetCaptureSession("adapter-missing");
       this.writeDebugLog("capture-adapter-missing", {
         localAddress,
         targets,
@@ -323,17 +308,14 @@ export class CaptureService {
 
     try {
       this.closeCapture("reopen");
-      const nextCap = new Cap();
-      const linkType = nextCap.open(device, filter, 10 * 1024 * 1024, this.buffer);
-      nextCap.on("packet", (nbytes: number, truncated: boolean) => this.onPacket(nbytes, truncated));
-      this.cap = nextCap;
+      const openedCapture = openPacketCapture(device, filter, this.buffer, (nbytes, truncated) => this.onPacket(nbytes, truncated));
+      const linkType = openedCapture.linkType;
+      this.cap = openedCapture.cap;
       this.activeSignature = signature;
       this.activeLocalAddress = localAddress;
       this.activeLinkType = linkType;
       this.lastCaptureOpenAt = Date.now();
-      this.packetBuffers.clear();
-      this.recentEventFingerprints.clear();
-      this.pendingGeneratedDropRequests.clear();
+      this.resetPacketState();
       this.writeDebugLog("capture-open", {
         device,
         filter,
@@ -353,7 +335,7 @@ export class CaptureService {
         ],
       });
     } catch (error) {
-      this.closeCapture("open-error");
+      this.resetCaptureSession("open-error");
       this.writeDebugLog("capture-open-error", {
         error: error instanceof Error ? error.message : String(error),
         filter,
@@ -400,7 +382,9 @@ export class CaptureService {
       this.lastPayloadAt = Date.now();
       const messages = this.captureMessagesSafely(payloadText);
       if (!messages) continue;
-      this.trackGeneratedDropContext(parsedPacket, messages);
+      this.generatedDropCorrelator.markTrustedResponses(parsedPacket, messages, this.activeLocalAddress, (type, data) =>
+        this.writeDebugLog(type, data),
+      );
       this.messagesDecoded += messages.length;
       const nextEvents = this.messageToEventsSafely(messages, payloadText);
       if (!nextEvents) continue;
@@ -463,7 +447,7 @@ export class CaptureService {
 
   private filterEventsSafely(events: ParsedEvent[], payloadText: string): ParsedEvent[] | null {
     try {
-      return events.filter((event) => !this.isDuplicateEvent(event));
+      return events.filter((event) => !this.eventDeduplicator.isDuplicate(event));
     } catch (error) {
       this.recordParserFailure("eventFilter", error, payloadText);
       return null;
@@ -524,12 +508,7 @@ export class CaptureService {
 
     this.parserRestarts += 1;
     this.consecutiveParserFailures = 0;
-    this.packetBuffers.clear();
-    this.recentEventFingerprints.clear();
-    this.pendingGeneratedDropRequests.clear();
-    this.closeCapture("parser-recovery");
-    this.activeSignature = "";
-    this.activeLocalAddress = "";
+    this.resetCaptureSession("parser-recovery");
     this.writeDebugLog("parser-recovery", { reason, parserRestarts: this.parserRestarts });
     this.emit({
       status: "waiting",
@@ -567,68 +546,6 @@ export class CaptureService {
     this.activeLinkType = "";
   }
 
-  private trackGeneratedDropContext(packet: ParsedPayload, messages: MessageValue[]): void {
-    const now = Date.now();
-    this.prunePendingGeneratedDrops(now);
-
-    if (this.isOutboundPacket(packet) && messages.some((message) => messageHasRoute(message, /^inventory\/item_generate\/v1$/i))) {
-      this.pendingGeneratedDropRequests.set(endpointKey(packet.dst, packet.dstPort), now + PENDING_GENERATED_DROP_MS);
-      return;
-    }
-
-    if (!this.isInboundPacket(packet)) return;
-    const expiresAt = this.pendingGeneratedDropRequests.get(endpointKey(packet.src, packet.srcPort));
-    if (!expiresAt || expiresAt <= now) return;
-
-    let marked = 0;
-    for (const message of objectMessages(messages)) {
-      if (!isGeneratedItemDataResponse(message)) continue;
-      message.__hscTrustedGeneratedDrop = true;
-      marked += 1;
-    }
-
-    if (marked > 0) {
-      this.writeDebugLog("generated-drop-correlated", {
-        server: endpointKey(packet.src, packet.srcPort),
-        messages: marked,
-      });
-    }
-  }
-
-  private prunePendingGeneratedDrops(now: number): void {
-    for (const [key, expiresAt] of this.pendingGeneratedDropRequests.entries()) {
-      if (expiresAt <= now) this.pendingGeneratedDropRequests.delete(key);
-    }
-  }
-
-  private isOutboundPacket(packet: ParsedPayload): boolean {
-    return Boolean(this.activeLocalAddress) && packet.src === this.activeLocalAddress;
-  }
-
-  private isInboundPacket(packet: ParsedPayload): boolean {
-    return Boolean(this.activeLocalAddress) && packet.dst === this.activeLocalAddress;
-  }
-
-  private isDuplicateEvent(event: ParsedEvent): boolean {
-    const now = Date.now();
-    this.pruneRecentEventFingerprints(now);
-
-    const fingerprint = eventFingerprint(event);
-    const lastSeenAt = this.recentEventFingerprints.get(fingerprint);
-    if (lastSeenAt && now - lastSeenAt <= EVENT_DEDUP_WINDOW_MS) return true;
-
-    this.recentEventFingerprints.set(fingerprint, now);
-    return false;
-  }
-
-  private pruneRecentEventFingerprints(now: number): void {
-    if (this.recentEventFingerprints.size < 1000) return;
-
-    for (const [fingerprint, seenAt] of this.recentEventFingerprints.entries()) {
-      if (now - seenAt > EVENT_DEDUP_WINDOW_MS) this.recentEventFingerprints.delete(fingerprint);
-    }
-  }
-
   private probeGoldPayload(payloadText: string, events: ParsedEvent[]): void {
     if (events.some((event) => event.name === EVENT_NAMES.gold)) return;
     if (!/\b(?:gold|currency|gss|gsh|gns|gnh|gbp)\b/i.test(payloadText)) return;
@@ -653,14 +570,7 @@ export class CaptureService {
   }
 
   private writeDebugLog(type: string, data: Record<string, unknown>): void {
-    if (!this.debugLogPath) return;
-
-    try {
-      rotateLogIfLarge(this.debugLogPath, MAX_DEBUG_LOG_BYTES);
-      fs.appendFileSync(this.debugLogPath, `${JSON.stringify({ type, at: new Date().toISOString(), ...data })}\n`, "utf8");
-    } catch {
-      // Diagnostics must never interfere with packet capture.
-    }
+    appendJsonLog(this.debugLogPath, MAX_DEBUG_LOG_BYTES, type, data);
   }
 
   private writeWidePacketLog(packet: ParsedPayload, nbytes: number, truncated: boolean): void {
@@ -701,13 +611,7 @@ export class CaptureService {
 
   private writeWideDebugLog(type: string, data: Record<string, unknown>): void {
     if (!this.createDebugMode || !this.wideDebugLogPath) return;
-
-    try {
-      rotateLogIfLarge(this.wideDebugLogPath, MAX_WIDE_DEBUG_LOG_BYTES);
-      fs.appendFileSync(this.wideDebugLogPath, `${JSON.stringify({ type, at: new Date().toISOString(), ...data })}\n`, "utf8");
-    } catch {
-      // Diagnostics must never interfere with packet capture.
-    }
+    appendJsonLog(this.wideDebugLogPath, MAX_WIDE_DEBUG_LOG_BYTES, type, data);
   }
 
   private shouldWriteItemDebugPayload(): boolean {
@@ -744,405 +648,15 @@ export class CaptureService {
         parserRestarts: this.parserRestarts,
       },
       packetBuffers: this.packetBuffers.stats(),
-      recentEventFingerprints: this.recentEventFingerprints.size,
+      recentEventFingerprints: this.eventDeduplicator.size,
     });
   }
-}
-
-interface ParsedPayload {
-  src: string;
-  dst: string;
-  srcPort: number;
-  dstPort: number;
-  ack: number | undefined;
-  payloadLength: number;
-  payloadBase64: string;
-  text: string;
-}
-
-class PacketBuffers {
-  private lastAckBySource = new Map<string, string>();
-  private chunksByAck = new Map<string, string[]>();
-
-  push(packet: ParsedPayload): string[] {
-    const sourceKey = `${packet.src}:${packet.srcPort}->${packet.dst}:${packet.dstPort}`;
-    const ackKey = `${sourceKey}:${packet.ack ?? "noack"}`;
-    const previousAck = this.lastAckBySource.get(sourceKey);
-    const completed: string[] = [];
-
-    if (!this.chunksByAck.has(ackKey)) this.chunksByAck.set(ackKey, []);
-    this.chunksByAck.get(ackKey)?.push(packet.text);
-
-    if (previousAck && previousAck !== ackKey) {
-      const chunks = this.chunksByAck.get(previousAck);
-      if (chunks?.length) {
-        completed.push(chunks.join(""));
-        this.chunksByAck.delete(previousAck);
-      }
-    }
-
-    this.lastAckBySource.set(sourceKey, ackKey);
-
-    if (packet.text.includes("{") || packet.text.includes("[") || packet.text.includes("&") || looksLikeSpecialProtocol(packet.text)) {
-      completed.push(packet.text);
-    }
-
-    if (this.chunksByAck.size > 300) this.clear();
-    return completed;
-  }
-
-  clear(): void {
-    this.lastAckBySource.clear();
-    this.chunksByAck.clear();
-  }
-
-  stats(): { sources: number; ackBuffers: number; bufferedChunks: number } {
-    let bufferedChunks = 0;
-    for (const chunks of this.chunksByAck.values()) bufferedChunks += chunks.length;
-    return {
-      sources: this.lastAckBySource.size,
-      ackBuffers: this.chunksByAck.size,
-      bufferedChunks,
-    };
-  }
-}
-
-function getPayload(buffer: Buffer, nbytes: number, linkType: string): ParsedPayload | null {
-  const ipOffset = ipv4OffsetForLinkType(buffer, nbytes, linkType);
-  if (ipOffset === null) return null;
-
-  const ip = decoders.IPV4(buffer, ipOffset);
-  if (ip.info.protocol !== PROTOCOL.IP.TCP) return null;
-
-  const tcp = decoders.TCP(buffer, ip.offset);
-  if (tcp.offset >= nbytes) return null;
-
-  const payload = buffer.subarray(tcp.offset, nbytes);
-  if (payload.length === 0) return null;
-
-  return {
-    src: ip.info.srcaddr,
-    dst: ip.info.dstaddr,
-    srcPort: tcp.info.srcport,
-    dstPort: tcp.info.dstport,
-    ack: tcp.info.ackno,
-    payloadLength: payload.length,
-    payloadBase64: payload.toString("base64"),
-    text: payload.toString("utf8").replace(/\0/g, ""),
-  };
-}
-
-function ipv4OffsetForLinkType(buffer: Buffer, nbytes: number, linkType: string): number | null {
-  if (linkType === "ETHERNET") {
-    const cursor = decoders.Ethernet(buffer);
-    return cursor.info.type === PROTOCOL.ETHERNET.IPV4 ? cursor.offset : null;
-  }
-
-  if (linkType === "RAW") return isIpv4At(buffer, nbytes, 0) ? 0 : null;
-  if (linkType === "NULL") return isIpv4At(buffer, nbytes, 4) ? 4 : null;
-
-  if (linkType === "LINKTYPE_LINUX_SLL") {
-    const linuxSllHeaderLength = 16;
-    const protocolOffset = 14;
-    if (nbytes <= linuxSllHeaderLength || buffer.readUInt16BE(protocolOffset) !== 0x0800) return null;
-    return linuxSllHeaderLength;
-  }
-
-  return null;
-}
-
-function isIpv4At(buffer: Buffer, nbytes: number, offset: number): boolean {
-  return nbytes > offset && buffer[offset] >> 4 === 4;
-}
-
-async function getHeroSiegeNetworkState(): Promise<HeroSiegeNetworkState> {
-  const script = `
-    $processes = Get-Process |
-      Where-Object {
-        $normalizedName = ($_.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant();
-        $normalizedName.StartsWith('herosiege') -and
-        -not $normalizedName.Contains('companion')
-      };
-
-    $antiCheatProcesses = Get-Process |
-      Where-Object {
-        (($_.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant()).StartsWith('easyanticheat')
-      };
-
-    $processIds = @($processes | Select-Object -ExpandProperty Id);
-    $connections = @();
-
-    if ($processIds.Count -gt 0) {
-      $connections = @(
-        Get-NetTCPConnection -ErrorAction SilentlyContinue |
-          Where-Object {
-            $processIds -contains $_.OwningProcess -and
-            $_.RemoteAddress -and
-            $_.RemoteAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') -and
-            $_.RemoteAddress -notlike '*:*'
-          } |
-          Select-Object OwningProcess, State, LocalAddress, LocalPort, RemoteAddress, RemotePort
-      );
-    }
-
-    [PSCustomObject]@{
-      gameProcessIds = @($processIds);
-      antiCheatProcessIds = @($antiCheatProcesses | Select-Object -ExpandProperty Id);
-      connections = @($connections);
-    } | ConvertTo-Json -Compress
-  `;
-
-  const output = await runPowerShell(script);
-  if (!output) return { gameProcessIds: [], antiCheatProcessIds: [], connections: [] };
-
-  try {
-    const parsed = JSON.parse(output) as any;
-    const entries: PowerShellConnectionEntry[] = Array.isArray(parsed.connections)
-      ? parsed.connections
-      : parsed.connections
-        ? [parsed.connections]
-        : [];
-    return {
-      gameProcessIds: normalizeNumberArray(parsed.gameProcessIds),
-      antiCheatProcessIds: normalizeNumberArray(parsed.antiCheatProcessIds),
-      connections: entries.map((entry) => ({
-        owningProcess: Number(entry.OwningProcess),
-        state: String(entry.State),
-        localAddress: String(entry.LocalAddress),
-        localPort: Number(entry.LocalPort),
-        remoteAddress: String(entry.RemoteAddress),
-        remotePort: Number(entry.RemotePort),
-      })),
-    };
-  } catch {
-    return { gameProcessIds: [], antiCheatProcessIds: [], connections: [] };
-  }
-}
-
-function normalizeNumberArray(value: unknown): number[] {
-  const values = Array.isArray(value) ? value : value === null || value === undefined ? [] : [value];
-  return values.map(Number).filter(Number.isFinite);
-}
-
-async function getNpcapServiceStatus(): Promise<string> {
-  const output = await runPowerShell("Get-Service npcap -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status");
-  return output || "Unknown";
-}
-
-async function getNpcapRegistry(): Promise<{ adminOnly: boolean; winPcapCompatible: boolean }> {
-  const output = await runPowerShell(
-    "Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\WOW6432Node\\Npcap' -ErrorAction SilentlyContinue | Select-Object AdminOnly,WinPcapCompatible | ConvertTo-Json -Compress",
-  );
-  if (!output) return { adminOnly: false, winPcapCompatible: false };
-
-  try {
-    const parsed = JSON.parse(output) as any;
-    return {
-      adminOnly: Number(parsed.AdminOnly) === 1,
-      winPcapCompatible: Number(parsed.WinPcapCompatible) === 1,
-    };
-  } catch {
-    return { adminOnly: false, winPcapCompatible: false };
-  }
-}
-
-function runPowerShell(script: string): Promise<string> {
-  return new Promise((resolve) => {
-    execFile(
-      "powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-      { windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
-      (_error, stdout) => resolve(stdout.trim()),
-    );
-  });
 }
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-interface CaptureTarget {
-  remoteAddress: string;
-  remotePort: number;
-}
-
-function selectGameServerConnections(connections: CaptureConnection[]): CaptureConnection[] {
-  return connections.filter((connection) => !isLikelyWebConnection(connection));
-}
-
-function isLikelyWebConnection(connection: CaptureConnection): boolean {
-  return WEB_REMOTE_PORTS.has(Number(connection.remotePort));
-}
-
-function uniqueCaptureTargets(connections: CaptureConnection[]): CaptureTarget[] {
-  const seen = new Set<string>();
-  const targets: CaptureTarget[] = [];
-  for (const connection of connections) {
-    const key = `${connection.remoteAddress}:${connection.remotePort}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    targets.push({ remoteAddress: connection.remoteAddress, remotePort: Number(connection.remotePort) });
-  }
-  return targets;
-}
-
-function stableCaptureFilter(localAddress: string): string {
-  const webPortFilter = Array.from(WEB_REMOTE_PORTS)
-    .map((port) => `port ${port}`)
-    .join(" or ");
-  return `tcp and host ${localAddress} and not (${webPortFilter}) and len > 30`;
-}
-
 function toIsoOrNull(timestamp: number): string | null {
   return timestamp > 0 ? new Date(timestamp).toISOString() : null;
-}
-
-function summarizeConnections(connections: CaptureConnection[]): Array<Omit<CaptureConnection, "owningProcess">> {
-  return connections.map((connection) => ({
-    state: connection.state,
-    localAddress: connection.localAddress,
-    localPort: connection.localPort,
-    remoteAddress: connection.remoteAddress,
-    remotePort: connection.remotePort,
-  }));
-}
-
-function connectionSignature(connections: CaptureConnection[]): string {
-  return connections
-    .map((connection) => `${connection.localAddress}->${connection.remoteAddress}:${connection.remotePort}`)
-    .sort()
-    .filter((value, index, values) => index === 0 || values[index - 1] !== value)
-    .join("|");
-}
-
-function summarizeEvent(event: ParsedEvent): string {
-  const json = JSON.stringify(event.value);
-  return `Parsed ${event.name}: ${json}`;
-}
-
-function eventFingerprint(event: ParsedEvent): string {
-  try {
-    return `${event.name}:${JSON.stringify(event.value)}`;
-  } catch {
-    return `${event.name}:${String(event.value)}`;
-  }
-}
-
-function looksLikeSpecialProtocol(text: string): boolean {
-  const trimmed = text.trimStart();
-  return trimmed.startsWith("x") || trimmed.includes("[INV]");
-}
-
-function shouldDebugPayload(payloadText: string, messages: MessageValue[], events: ParsedEvent[]): boolean {
-  if (
-    events.some(
-      (event) =>
-        event.name === EVENT_NAMES.item ||
-        event.name === EVENT_NAMES.itemDrop ||
-        event.name === EVENT_NAMES.gold ||
-        event.name === EVENT_NAMES.mail ||
-        event.name === EVENT_NAMES.satanicZone,
-    )
-  ) {
-    return true;
-  }
-
-  return (
-    /\b(?:addeditem|rarity|gold|currency|gss|gsh|gns|gnh|gbp|mail)\b/i.test(payloadText) ||
-    messages.some((message) => messageHasRoute(message, /^(?:mailbox|satanic_zone)\//i))
-  );
-}
-
-function isOnlyItemEvents(events: ParsedEvent[]): boolean {
-  return events.length > 0 && events.every((event) => event.name === EVENT_NAMES.item || event.name === EVENT_NAMES.itemDrop);
-}
-
-function messageKeySummary(value: MessageValue): string {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
-  return Object.keys(value)
-    .filter((key) => /^[\w-]{1,48}$/.test(key))
-    .slice(0, 16)
-    .join(",");
-}
-
-function sanitizeDebugSnippet(text: string, maxLength = MAX_DEBUG_SNIPPET): string {
-  const normalized = text
-    .replace(/\0/g, "")
-    .replace(/[^\x09\x0a\x0d\x20-\x7e]+/g, " ")
-    .replace(/\s+/g, " ");
-
-  return redactSensitiveDebugText(normalized).slice(0, maxLength);
-}
-
-function redactSensitiveDebugText(text: string): string {
-  return text
-    .replace(
-      /\b(account_id|unique_account_id|crossregion_identifier|identifier|checksum|previous_ig_hash|previous_hash|game_state_hash)=([^&\s]+)/gi,
-      "$1=<redacted>",
-    )
-    .replace(
-      /"((?:account_id|unique_account_id|crossregion_identifier))"\s*:\s*\d+/gi,
-      '"$1":"<redacted>"',
-    )
-    .replace(
-      /"((?:identifier|checksum|previous_ig_hash|previous_hash|game_state_hash|newIdentifierHash|timestampPrevHash))"\s*:\s*"[^"]*"/gi,
-      '"$1":"<redacted>"',
-    );
-}
-
-function messageHasRoute(value: MessageValue, routePattern: RegExp): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const route = String((value as Record<string, unknown>).route ?? (value as Record<string, unknown>).__route ?? "");
-  return routePattern.test(route);
-}
-
-function objectMessages(values: MessageValue[]): Array<Record<string, MessageValue>> {
-  return values.filter((value): value is Record<string, MessageValue> => Boolean(value) && typeof value === "object" && !Array.isArray(value));
-}
-
-function isGeneratedItemDataResponse(value: Record<string, MessageValue>): boolean {
-  const itemData = value.itemData ?? value.item_data;
-  if (!itemData || typeof itemData !== "object" || Array.isArray(itemData)) return false;
-  return String(value.message ?? "").toLowerCase() === "ok" && Boolean(value.itemGenHash ?? value.item_gen_hash);
-}
-
-function endpointKey(address: string, port: number): string {
-  return `${address}:${port}`;
-}
-
-function isLikelyParseablePayload(text: string): boolean {
-  if (text.length === 0) return false;
-  if (hasGameTextSignal(text)) return true;
-  if (printableRatio(text) < 0.6) return false;
-  return /(?:[a-zA-Z0-9_]+\/[a-zA-Z0-9_]+|[a-zA-Z0-9_]+=|\{["\w]|\[[{\w"])/.test(text) || looksLikeSpecialProtocol(text);
-}
-
-function hasGameTextSignal(text: string): boolean {
-  return /\b(?:mailbox|satanic_zone|save|inventory|addedItem|currency|gold|rarity)\b/i.test(text);
-}
-
-function printableRatio(text: string): number {
-  const sample = text.slice(0, 2048);
-  if (!sample) return 0;
-  let printable = 0;
-  for (const char of sample) {
-    const code = char.charCodeAt(0);
-    if (code === 9 || code === 10 || code === 13 || (code >= 32 && code <= 126)) printable += 1;
-  }
-  return printable / sample.length;
-}
-
-function shouldLogEvent(event: ParsedEvent): boolean {
-  if (event.name === EVENT_NAMES.accountMode) return false;
-  return true;
-}
-
-function rotateLogIfLarge(logPath: string, maxBytes: number): void {
-  if (!fs.existsSync(logPath)) return;
-  const stat = fs.statSync(logPath);
-  if (stat.size <= maxBytes) return;
-
-  const rotatedPath = `${logPath}.old`;
-  if (fs.existsSync(rotatedPath)) fs.unlinkSync(rotatedPath);
-  fs.renameSync(logPath, rotatedPath);
 }

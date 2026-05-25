@@ -1,12 +1,16 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, test } from "vitest";
 
+import AppTitlebar from "../../src/renderer/src/components/AppTitlebar.vue";
 import CompactView from "../../src/renderer/src/components/CompactView.vue";
 import ItemFilterView from "../../src/renderer/src/components/ItemFilterView.vue";
+import LiveSessionHeader from "../../src/renderer/src/components/LiveSessionHeader.vue";
 import LiveView from "../../src/renderer/src/components/LiveView.vue";
 import PastRunsView from "../../src/renderer/src/components/PastRunsView.vue";
+import PastRunReportConfigModal from "../../src/renderer/src/components/PastRunReportConfigModal.vue";
 import SettingsModal from "../../src/renderer/src/components/SettingsModal.vue";
 import UpdateBanner from "../../src/renderer/src/components/UpdateBanner.vue";
+import WhatsNewPrompt from "../../src/renderer/src/components/WhatsNewPrompt.vue";
 import { defaultCompactRunTiles } from "../../src/renderer/src/lib/compact-tiles";
 import { defaultPostRunReportConfig } from "../../src/renderer/src/lib/report-config";
 import { DEFAULT_THEME_ACCENTS, THEME_OPTIONS } from "../../src/renderer/src/lib/themes";
@@ -14,6 +18,60 @@ import { WHATS_NEW_RELEASE } from "../../src/renderer/src/lib/whats-new";
 import { companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
 
 describe("Vue component contracts", () => {
+  test("AppTitlebar exposes window chrome actions", async () => {
+    const wrapper = mount(AppTitlebar, {
+      props: {
+        compactMode: true,
+      },
+    });
+
+    await wrapper.get('button[aria-label="Exit compact mode"]').trigger("click");
+    await wrapper.get('button[aria-label="Settings"]').trigger("click");
+    await wrapper.get('button[aria-label="Minimize"]').trigger("click");
+    await wrapper.get('button[aria-label="Close"]').trigger("click");
+
+    expect(wrapper.emitted("toggle-compact-mode")).toHaveLength(1);
+    expect(wrapper.emitted("open-compact-settings")).toHaveLength(1);
+    expect(wrapper.emitted("minimize-window")).toHaveLength(1);
+    expect(wrapper.emitted("close-window")).toHaveLength(1);
+  });
+
+  test("LiveSessionHeader exposes primary live-session actions", async () => {
+    const wrapper = mount(LiveSessionHeader, {
+      props: {
+        captureRunning: false,
+        runStatus: "paused",
+        canToggleRunPaused: true,
+      },
+    });
+
+    await wrapper.get('button[aria-label="Settings"]').trigger("click");
+    await buttonByText(wrapper, "Resume Run").trigger("click");
+    await buttonByText(wrapper, "End Run").trigger("click");
+    await buttonByText(wrapper, "Launch Game").trigger("click");
+
+    expect(wrapper.emitted("open-settings")).toHaveLength(1);
+    expect(wrapper.emitted("toggle-run-paused")).toHaveLength(1);
+    expect(wrapper.emitted("end-run")).toHaveLength(1);
+    expect(wrapper.emitted("toggle-capture")).toHaveLength(1);
+  });
+
+  test("WhatsNewPrompt emits release prompt decisions", async () => {
+    const wrapper = mount(WhatsNewPrompt, {
+      props: {
+        version: "0.2.0",
+      },
+    });
+
+    expect(wrapper.text()).toContain("Version 0.2.0");
+
+    await buttonByText(wrapper, "Show me").trigger("click");
+    await buttonByText(wrapper, "No Thanks").trigger("click");
+
+    expect(wrapper.emitted("open")).toHaveLength(1);
+    expect(wrapper.emitted("dismiss")).toHaveLength(1);
+  });
+
   test("UpdateBanner documents the release action contract", async () => {
     const wrapper = mount(UpdateBanner, {
       props: {
@@ -79,6 +137,7 @@ describe("Vue component contracts", () => {
     const wrapper = mount(ItemFilterView, {
       props: {
         itemFilterGroups: [group],
+        recoverableCompactFilterGroups: [{ id: "merc-items", name: "Merc Items", tileCount: 1 }],
         itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }, { id: "deep-gong", name: "Deep Gong" }],
         selectedItemFilterGroup: group,
         selectedItemFilterGroupedItems: [{ typeLabel: "Belt", items: group.items }],
@@ -109,20 +168,30 @@ describe("Vue component contracts", () => {
     });
 
     expect(wrapper.text()).toContain("Loot Alerts");
+    expect(wrapper.text()).toContain("Merc Items");
     expect(wrapper.text()).toContain("Sash of the Magi");
     expect(wrapper.text()).toContain("Item Research");
     expect(wrapper.text()).toContain("Gloves #55");
 
     await buttonByText(wrapper, "Mute All").trigger("click");
     await wrapper.get(".item-filter-add-group").trigger("submit");
+    await buttonByText(wrapper, "Restore Merc Items").trigger("click");
     await buttonByText(wrapper, "Sash of the Magi").trigger("click");
     await checkboxByLabel(wrapper, "Satanic").setValue(false);
     await checkboxByLabel(wrapper, "Belt").setValue(false);
     await buttonByText(wrapper, "Export Research JSON").trigger("click");
     await buttonByText(wrapper, "Save").trigger("click");
+    await buttonByText(wrapper, "Remove Group").trigger("click");
+
+    expect(wrapper.text()).toContain('Remove "Loot Alerts"?');
+    expect(wrapper.emitted("removeGroup")).toBeUndefined();
+
+    await wrapper.get(".item-filter-confirm-remove").trigger("click");
 
     expect(wrapper.emitted("update:itemFilterMuted")).toEqual([[true]]);
     expect(wrapper.emitted("addGroup")).toHaveLength(1);
+    expect(wrapper.emitted("restoreMissingGroup")?.[0]?.[0]).toEqual({ id: "merc-items", name: "Merc Items", tileCount: 1 });
+    expect(wrapper.emitted("removeGroup")?.[0]).toEqual([group]);
     expect(wrapper.emitted("addItemToGroup")?.[0]).toEqual([group, "Sash of the Magi"]);
     expect(wrapper.emitted("exportItemResearch")).toHaveLength(1);
     expect(wrapper.emitted("saveItemResearchEntry")?.[0]?.[0]).toBe("4:55:0:gloves #55");
@@ -304,6 +373,31 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("update-run-tags")).toEqual([[run.id, ["Dungeons", "Codex"]]]);
   });
 
+  test("PastRunReportConfigModal owns report editing events", async () => {
+    const wrapper = mount(PastRunReportConfigModal, {
+      props: {
+        reportConfig: defaultPostRunReportConfig,
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    });
+
+    await wrapper.get('input[placeholder="New group name"]').setValue("Bossing");
+    await buttonByText(wrapper, "Add Group").trigger("submit");
+    const createdConfig = wrapper.emitted("update:reportConfig")?.[0]?.[0];
+
+    expect(createdConfig).toMatchObject({
+      trackedItems: [],
+      itemGroups: [expect.objectContaining({ name: "Bossing", enabled: true })],
+    });
+
+    await buttonByText(wrapper, "Done").trigger("click");
+    expect(wrapper.emitted("close")).toHaveLength(1);
+  });
+
   test("LiveView binds the high-churn dashboard controls through explicit update events", async () => {
     const state = companionState();
     const wrapper = mount(LiveView, {
@@ -331,6 +425,7 @@ describe("Vue component contracts", () => {
         itemTimelineCount: 2,
         logLimitOptions: [10, 20, 50],
         itemTypeOptions: [{ value: "6", label: "Belt" }],
+        itemFilterGroups: [itemFilterGroup()],
         shoppingListItems: ["Copper Ore"],
         shoppingSuggestions: ["Ruby"],
         activeShoppingItem: "Copper Ore",
@@ -339,6 +434,9 @@ describe("Vue component contracts", () => {
         itemFilterGroupCount: 1,
         watchedItemCount: 1,
         lastItemFilterMatch: { itemLabel: "Sash of the Magi", groupName: "Loot Alerts", soundName: "Deep Gong", createdAt: state.stats.lastEventAt ?? 0 },
+        itemFilterMatchTotals: [
+          { id: "loot-alerts:sash-of-the-magi", itemLabel: "Sash of the Magi", groupName: "Loot Alerts", count: 2, lastMatchedAt: state.stats.lastEventAt ?? 0 },
+        ],
         developerItemResearchEnabled: true,
         recentLogs: state.logs,
         expandedLogIds: new Set<string>(),
@@ -361,10 +459,22 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Sash of the Magi");
     expect(wrapper.text()).toContain("Collectible #24");
     expect(wrapper.text()).toContain("Loot Alerts");
+    expect(wrapper.get('select[title="Filter item timeline by type or item filter"]').text()).toContain("Filter: Loot Alerts");
+
+    await wrapper.get('button[aria-label="Collapse Gold"]').trigger("click");
+    expect(wrapper.find(".collapsible-metric.collapsed").exists()).toBe(true);
+    expect(wrapper.get('button[aria-label="Expand Gold"]').exists()).toBe(true);
+
+    await wrapper.get('button[aria-label="Collapse Tracked Items"]').trigger("click");
+    expect(wrapper.get("#tracked-drops-card-body").attributes("style")).toContain("display: none");
+    await wrapper.get('button[aria-label="Expand Tracked Items"]').trigger("click");
+    expect(wrapper.get("#tracked-drops-card-body").attributes("style") ?? "").not.toContain("display: none");
 
     await buttonByText(wrapper, "Details").trigger("click");
     await buttonByText(wrapper, "Satanic").trigger("click");
     await wrapper.get(".shopping-form").trigger("submit");
+    await buttonByText(wrapper, "Totals").trigger("click");
+    expect(wrapper.text()).toContain("x2");
     await buttonByText(wrapper, "Configure Filter").trigger("click");
     await buttonByText(wrapper, "Identify").trigger("click");
     await wrapper.get(".logs button").trigger("click");
@@ -399,6 +509,7 @@ describe("Vue component contracts", () => {
         itemTimelineCount: 0,
         logLimitOptions: [10, 20, 50],
         itemTypeOptions: [],
+        itemFilterGroups: [],
         shoppingListItems: [],
         shoppingSuggestions: [],
         activeShoppingItem: "",
@@ -407,6 +518,7 @@ describe("Vue component contracts", () => {
         itemFilterGroupCount: 0,
         watchedItemCount: 0,
         lastItemFilterMatch: null,
+        itemFilterMatchTotals: [],
         developerItemResearchEnabled: false,
         recentLogs: [],
         expandedLogIds: new Set<string>(),

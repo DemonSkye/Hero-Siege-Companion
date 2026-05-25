@@ -1,0 +1,321 @@
+:root {
+  --user-accent: #89d8c7;
+  --app-text: #e9edf4;
+  --app-heading: #f7f8fb;
+  --app-muted: #aab3c2;
+  --app-muted-strong: #9fa8b8;
+  --app-bg: #101217;
+  --app-bg-gradient:
+    radial-gradient(circle at top left, rgba(137, 216, 199, 0.08), transparent 34rem),
+    linear-gradient(135deg, #11141a 0%, #15161c 48%, #1b1715 100%);
+  --surface: rgba(18, 21, 27, 0.86);
+  --surface-strong: #141820;
+  --surface-soft: rgba(255, 255, 255, 0.045);
+  --surface-cell: rgba(255, 255, 255, 0.025);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-selected: rgba(137, 216, 199, 0.12);
+  --surface-input-hover: rgba(137, 216, 199, 0.08);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --accent-border: rgba(137, 216, 199, 0.34);
+  --accent-warm: #ffd38a;
+  --accent-warm-bg: rgba(255, 211, 138, 0.1);
+  --danger-bg: rgba(255, 93, 93, 0.12);
+  --input-bg: #181b22;
+  --button-primary: #d8643f;
+  --button-primary-hover: #e3714d;
+  --button-primary-text: #ffffff;
+  --danger: #ff5d5d;
+  --warning: #ffd38a;
+  --scrollbar: #3f9487;
+  --shadow: rgba(0, 0, 0, 0.28);
+  color: var(--app-text);
+  background: var(--app-bg);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+  margin: 0;
+  min-width: 340px;
+  min-height: 160px;
+  background: var(--app-bg-gradient);
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  min-height: 100vh;
+  flex-direction: column;
+  padding: 0 24px 24px;
+  overflow: hidden;
+}
+
+.app-shell.compact {
+  padding: 0 10px 10px;
+}
+
+.app-version {
+  position: fixed;
+  right: 22px;
+  bottom: 7px;
+  z-index: 4;
+  color: rgba(220, 226, 235, 0.52);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.app-shell.compact .app-version {
+  display: none;
+}
+
+.app-titlebar {
+  flex: 0 0 auto;
+  display: flex;
+  height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  -webkit-app-region: drag;
+}
+
+.drag-strip {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  color: #aab3c2;
+  cursor: move;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.app-mark {
+  display: inline-flex;
+  width: 30px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(137, 216, 199, 0.32);
+  border-radius: 5px;
+  color: #89d8c7;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.app-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 8px 22px 0;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.app-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.app-scroll::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(18, 21, 27, 0.92);
+  border-radius: 999px;
+  background: #3f9487;
+}
+
+.app-scroll::-webkit-scrollbar-thumb:hover {
+  background: #5bb7a8;
+}
+
+.topbar,
+.status-strip,
+.panel,
+.metric {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 21, 27, 0.86);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 78px;
+  padding: 18px 20px;
+  border-radius: 8px;
+}
+
+.update-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(137, 216, 199, 0.26);
+  border-radius: 8px;
+  background: rgba(22, 35, 38, 0.92);
+}
+
+.update-banner div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.update-banner strong {
+  color: #f7f8fb;
+  font-size: 14px;
+}
+
+.update-banner span {
+  overflow: hidden;
+  color: #aab3c2;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.topbar-title {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 5px;
+  color: #89d8c7;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2 {
+  margin: 0;
+  line-height: 1.1;
+}
+
+h1 {
+  font-size: 30px;
+}
+
+h2 {
+  font-size: 18px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #f7f8fb;
+  cursor: pointer;
+}
+
+.icon-button.primary {
+  background: #d8643f;
+}
+
+.icon-button.ghost {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.icon-button.danger {
+  border-color: rgba(255, 93, 93, 0.32);
+  background: rgba(255, 93, 93, 0.12);
+  color: #ffb5b5;
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.window-controls {
+  display: inline-grid;
+  grid-template-columns: repeat(4, 34px);
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  -webkit-app-region: no-drag;
+}
+
+.app-shell.compact .window-controls {
+  grid-template-columns: repeat(4, 34px);
+}
+
+.window-controls button,
+.settings-close {
+  display: inline-flex;
+  min-width: 34px;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #dce2eb;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.compact-arrows {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.window-controls button:hover,
+.settings-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.window-controls .close:hover,
+.settings-close:hover {
+  background: rgba(255, 93, 93, 0.28);
+  color: #ffffff;
+}
+

@@ -132,9 +132,16 @@ describe("renderer preferences persistence", () => {
   });
 
   test("saves preferences without throwing and keeps shopping list helpers bounded", () => {
-    savePreferences({ ...defaultPreferences, logLimit: 50, shoppingListItems: ["Jade"], postRunReport: defaultPostRunReportConfig });
+    savePreferences({
+      ...defaultPreferences,
+      logLimit: 50,
+      timelineType: "item-filter:boss-drops",
+      shoppingListItems: ["Jade"],
+      postRunReport: defaultPostRunReportConfig,
+    });
 
     expect(loadPreferences().logLimit).toBe(50);
+    expect(loadPreferences().timelineType).toBe("item-filter:boss-drops");
     expect(loadPreferences().shoppingListItems).toEqual(["Jade"]);
     expect(normalizeShoppingList(["Ruby", "Ruby", "", "Jade"])).toEqual(["Ruby", "Jade"]);
     expect(normalizeRunDurationMinutes(-5)).toBe(0);

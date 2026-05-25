@@ -9,6 +9,7 @@ import {
   type ItemFilterSoundOption,
   type ItemFilterSpecificItem,
 } from "../lib/item-filters";
+import { eventChecked } from "../lib/dom-events";
 import type { ItemResearchEntry } from "../lib/item-research";
 
 interface ItemTypeOption {
@@ -16,8 +17,15 @@ interface ItemTypeOption {
   label: string;
 }
 
-const props = defineProps<{
+interface CompactFilterGroupRecoveryOption {
+  id: string;
+  name: string;
+  tileCount: number;
+}
+
+const props = withDefaults(defineProps<{
   itemFilterGroups: ItemFilterGroup[];
+  recoverableCompactFilterGroups?: CompactFilterGroupRecoveryOption[];
   itemFilterSounds: ItemFilterSoundOption[];
   selectedItemFilterGroup: ItemFilterGroup | null;
   selectedItemFilterGroupedItems: Array<{ typeLabel: string; items: ItemFilterSpecificItem[] }>;
@@ -29,7 +37,9 @@ const props = defineProps<{
   developerItemResearchEnabled: boolean;
   itemResearchEntries: ItemResearchEntry[];
   unresolvedItemResearchCount: number;
-}>();
+}>(), {
+  recoverableCompactFilterGroups: () => [],
+});
 
 const emit = defineEmits<{
   "update:itemFilterMuted": [value: boolean];
@@ -38,6 +48,7 @@ const emit = defineEmits<{
   addGroup: [];
   selectGroup: [group: ItemFilterGroup];
   removeGroup: [group: ItemFilterGroup];
+  restoreMissingGroup: [group: CompactFilterGroupRecoveryOption];
   addItemToGroup: [group: ItemFilterGroup, value?: string];
   removeItemFromGroup: [group: ItemFilterGroup, item: ItemFilterSpecificItem];
   testSound: [soundId?: string, volume?: number];
@@ -64,6 +75,17 @@ const itemDraftModel = computed({
 });
 
 const itemResearchOpen = ref(props.unresolvedItemResearchCount > 0);
+const groupPendingRemoval = ref<ItemFilterGroup | null>(null);
+const pendingRemovalSummary = computed(() => {
+  const group = groupPendingRemoval.value;
+  if (!group) return "";
+  const parts = [
+    group.items.length ? `${group.items.length} watched item${group.items.length === 1 ? "" : "s"}` : "",
+    group.rarities.length ? `${group.rarities.length} rarit${group.rarities.length === 1 ? "y" : "ies"}` : "",
+    group.types.length ? `${group.types.length} item type${group.types.length === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "No rules configured";
+});
 
 watch(
   () => props.unresolvedItemResearchCount,
@@ -72,8 +94,27 @@ watch(
   },
 );
 
-function eventChecked(event: Event): boolean {
-  return Boolean((event.target as HTMLInputElement | null)?.checked);
+watch(
+  () => props.itemFilterGroups.map((group) => group.id).join("\n"),
+  () => {
+    if (groupPendingRemoval.value && !props.itemFilterGroups.some((group) => group.id === groupPendingRemoval.value?.id)) {
+      groupPendingRemoval.value = null;
+    }
+  },
+);
+
+function requestRemoveGroup(group: ItemFilterGroup) {
+  groupPendingRemoval.value = group;
+}
+
+function cancelRemoveGroup() {
+  groupPendingRemoval.value = null;
+}
+
+function confirmRemoveGroup() {
+  if (!groupPendingRemoval.value) return;
+  emit("removeGroup", groupPendingRemoval.value);
+  groupPendingRemoval.value = null;
 }
 
 function saveResearchEntry(entry: ItemResearchEntry) {
@@ -146,6 +187,15 @@ function formatSeen(timestamp: number): string {
             <input v-model="groupNameModel" type="text" placeholder="New group" spellcheck="false" />
             <button class="icon-button primary" type="submit">Add</button>
           </form>
+          <div v-if="recoverableCompactFilterGroups.length" class="item-filter-recovery-panel">
+            <div class="item-filter-rule-heading">
+              <strong>Missing Compact Groups</strong>
+              <span>{{ recoverableCompactFilterGroups.length }}</span>
+            </div>
+            <button v-for="group in recoverableCompactFilterGroups" :key="group.id" class="icon-button ghost" type="button" @click="emit('restoreMissingGroup', group)">
+              Restore {{ group.name }}
+            </button>
+          </div>
           <div class="item-filter-group-list">
             <button
               v-for="group in itemFilterGroups"
@@ -166,7 +216,7 @@ function formatSeen(timestamp: number): string {
               <input v-model="selectedItemFilterGroup.enabled" type="checkbox" />
               <span>Enabled</span>
             </label>
-            <button class="icon-button ghost" type="button" @click="$emit('removeGroup', selectedItemFilterGroup)">Remove Group</button>
+            <button class="icon-button ghost" type="button" @click="requestRemoveGroup(selectedItemFilterGroup)">Remove Group</button>
           </div>
 
           <div class="item-filter-editor-grid">
@@ -262,5 +312,24 @@ function formatSeen(timestamp: number): string {
         <p v-else class="empty-copy">Add a group to start building an item filter.</p>
       </div>
     </article>
+    <div v-if="groupPendingRemoval" class="modal-backdrop" @click.self="cancelRemoveGroup">
+      <section class="settings-panel item-filter-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="remove-filter-group-title">
+        <div class="settings-heading">
+          <div>
+            <p class="eyebrow">Confirm Remove</p>
+            <h2 id="remove-filter-group-title">Remove "{{ groupPendingRemoval.name }}"?</h2>
+          </div>
+          <button class="settings-close" type="button" aria-label="Cancel remove group" @click="cancelRemoveGroup">x</button>
+        </div>
+        <div class="item-filter-confirm-body">
+          <strong>{{ pendingRemovalSummary }}</strong>
+          <p>This removes the group from loot alerts. Compact tiles tied to it will stop counting unless the group is restored or reassigned.</p>
+        </div>
+        <div class="settings-actions item-filter-confirm-actions">
+          <button class="icon-button ghost" type="button" @click="cancelRemoveGroup">Cancel</button>
+          <button class="icon-button danger item-filter-confirm-remove" type="button" @click="confirmRemoveGroup">Remove Group</button>
+        </div>
+      </section>
+    </div>
   </section>
 </template>

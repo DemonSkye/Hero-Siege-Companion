@@ -6,6 +6,10 @@ import {
   customSoundDisplayName,
   itemFilterSoundOptions,
   itemFilterGroupedItems,
+  itemFilterHasTimelineCriteria,
+  itemFilterIdFromTimelineValue,
+  itemFilterTimelineOptions,
+  itemFilterTimelineValue,
   itemTimelineKey,
   matchItemFilter,
   normalizeItemFilterGroups,
@@ -87,6 +91,23 @@ describe("renderer item filter rules", () => {
     expect(matchItemFilter(item, [typeGroup])).toMatchObject({ group: typeGroup, soundId: "bell-chime" });
   });
 
+  test("selected non-gear inventory types can match despite misleading packet rarity", () => {
+    const broadGroup = itemFilterGroup({
+      rarities: ["Set", "Satanic", "Heroic", "Angelic", "Unholy", "Runeword"],
+      types: [12, 13, 14, 15],
+      items: [],
+      soundId: "bell-chime",
+    });
+    const rarityOnlyGroup = itemFilterGroup({ rarities: ["Satanic"], types: [], items: [] });
+    const gearGroup = itemFilterGroup({ rarities: ["Satanic"], types: [3], items: [] });
+    const fragment = itemTimelineEntry({ source: "inventory", label: "Infernal Colosseum Fragment", rarity: "Mythic", type: 13, id: 53 });
+    const weapon = itemTimelineEntry({ source: "inventory", label: "Aurelion Fury", rarity: "Mythic", type: 3, id: 9 });
+
+    expect(matchItemFilter(fragment, [broadGroup])).toMatchObject({ group: broadGroup, soundId: "bell-chime" });
+    expect(matchItemFilter(fragment, [rarityOnlyGroup])).toBeNull();
+    expect(matchItemFilter(weapon, [gearGroup])).toBeNull();
+  });
+
   test("new groups have stable defaults without inheriting stale editor state", () => {
     vi.spyOn(Date, "now").mockReturnValue(1234);
     vi.spyOn(Math, "random").mockReturnValue(0.5);
@@ -126,5 +147,17 @@ describe("renderer item filter rules", () => {
     expect(itemTimelineKey(itemTimelineEntry({ createdAt: 10, fingerprint: "abc", type: 7, id: 40, label: "Scourge Loop" }))).toBe(
       "10:abc:7:40:Scourge Loop",
     );
+  });
+
+  test("item filter groups expose stable timeline dropdown options", () => {
+    const emptyGroup = itemFilterGroup({ id: "empty", items: [], rarities: [], types: [] });
+    const disabledGroup = itemFilterGroup({ id: "boss", name: "Boss Drops", enabled: false, items: [], rarities: ["Heroic"], types: [] });
+
+    expect(itemFilterHasTimelineCriteria(emptyGroup)).toBe(false);
+    expect(itemFilterTimelineValue(disabledGroup)).toBe("item-filter:boss");
+    expect(itemFilterIdFromTimelineValue("item-filter:boss")).toBe("boss");
+    expect(itemFilterTimelineOptions([emptyGroup, disabledGroup])).toEqual([
+      { value: "item-filter:boss", label: "Filter: Boss Drops (disabled)" },
+    ]);
   });
 });

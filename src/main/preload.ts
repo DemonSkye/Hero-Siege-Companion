@@ -1,43 +1,41 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CapturePreferences, CompanionState, ReleaseUpdateInfo, RunArchivePreferences } from "../shared/app-state";
-import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
+import type { CompanionState } from "../shared/app-state";
+import { IPC_CHANNELS, type HeroSiegeCompanionApi } from "../shared/ipc";
 
-contextBridge.exposeInMainWorld("heroSiegeCompanion", {
-  getState: (): Promise<CompanionState> => ipcRenderer.invoke("state:get"),
-  startCapture: (): Promise<CompanionState> => ipcRenderer.invoke("capture:start"),
-  launchGameOrCapture: (options: { executablePath?: string; launchThroughSteam?: boolean }): Promise<CompanionState> =>
-    ipcRenderer.invoke("game:launch-or-capture", options),
-  stopCapture: (): Promise<CompanionState> => ipcRenderer.invoke("capture:stop"),
-  chooseGameExecutable: (): Promise<string | null> => ipcRenderer.invoke("game:choose-executable"),
-  resetStats: (): Promise<CompanionState> => ipcRenderer.invoke("stats:reset"),
-  pauseRun: (): Promise<CompanionState> => ipcRenderer.invoke("run:pause"),
-  resumeRun: (): Promise<CompanionState> => ipcRenderer.invoke("run:resume"),
+const api: HeroSiegeCompanionApi = {
+  getState: () => ipcRenderer.invoke(IPC_CHANNELS.stateGet),
+  startCapture: () => ipcRenderer.invoke(IPC_CHANNELS.captureStart),
+  launchGameOrCapture: (options) => ipcRenderer.invoke(IPC_CHANNELS.gameLaunchOrCapture, options),
+  stopCapture: () => ipcRenderer.invoke(IPC_CHANNELS.captureStop),
+  chooseGameExecutable: () => ipcRenderer.invoke(IPC_CHANNELS.gameChooseExecutable),
+  resetStats: () => ipcRenderer.invoke(IPC_CHANNELS.statsReset),
+  pauseRun: () => ipcRenderer.invoke(IPC_CHANNELS.runPause),
+  resumeRun: () => ipcRenderer.invoke(IPC_CHANNELS.runResume),
   setPastRunTags: (runId: string, tags: string[]): Promise<CompanionState> =>
-    ipcRenderer.invoke("past-runs:set-tags", runId, tags),
-  setRunArchivePreferences: (preferences: RunArchivePreferences): Promise<CompanionState> =>
-    ipcRenderer.invoke("preferences:set-run-archive", preferences),
-  setCapturePreferences: (preferences: CapturePreferences): Promise<CompanionState> =>
-    ipcRenderer.invoke("preferences:set-capture", preferences),
-  exportConfiguration: (json: string): Promise<boolean> => ipcRenderer.invoke("configuration:export", json),
-  importConfiguration: (): Promise<string | null> => ipcRenderer.invoke("configuration:import"),
-  exportItemResearch: (json: string): Promise<boolean> => ipcRenderer.invoke("item-research:export", json),
-  importSounds: (): Promise<Array<{ fileName: string; src: string }>> => ipcRenderer.invoke("sounds:import"),
-  removeSound: (src: string): Promise<boolean> => ipcRenderer.invoke("sounds:remove", src),
-  minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
-  toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke("window:toggle-maximize"),
-  closeWindow: (): Promise<void> => ipcRenderer.invoke("window:close"),
-  setAlwaysOnTop: (enabled: boolean): Promise<void> => ipcRenderer.invoke("window:set-always-on-top", enabled),
-  setCompactMode: (enabled: boolean, lockPositions: boolean): Promise<void> => ipcRenderer.invoke("window:set-compact-mode", enabled, lockPositions),
-  writeClipboardText: (value: string): Promise<void> => ipcRenderer.invoke("clipboard:write-text", value),
-  getSupportDiagnosticsInfo: (): Promise<SupportDiagnosticsInfo> => ipcRenderer.invoke("support:get-diagnostics-info"),
-  saveSupportDiagnostics: (diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
-    ipcRenderer.invoke("support:save-diagnostics", diagnosticsSummary),
-  checkForUpdate: (): Promise<ReleaseUpdateInfo | null> => ipcRenderer.invoke("updates:check"),
-  openRelease: (url?: string): Promise<void> => ipcRenderer.invoke("updates:open-release", url),
-  openNpcapGuide: (): Promise<void> => ipcRenderer.invoke("docs:open-npcap-guide"),
+    ipcRenderer.invoke(IPC_CHANNELS.pastRunsSetTags, runId, tags),
+  setRunArchivePreferences: (preferences) => ipcRenderer.invoke(IPC_CHANNELS.preferencesSetRunArchive, preferences),
+  setCapturePreferences: (preferences) => ipcRenderer.invoke(IPC_CHANNELS.preferencesSetCapture, preferences),
+  exportConfiguration: (json) => ipcRenderer.invoke(IPC_CHANNELS.configurationExport, json),
+  importConfiguration: () => ipcRenderer.invoke(IPC_CHANNELS.configurationImport),
+  exportItemResearch: (json) => ipcRenderer.invoke(IPC_CHANNELS.itemResearchExport, json),
+  importSounds: () => ipcRenderer.invoke(IPC_CHANNELS.soundsImport),
+  removeSound: (src) => ipcRenderer.invoke(IPC_CHANNELS.soundsRemove, src),
+  minimizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.windowMinimize),
+  toggleMaximizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.windowToggleMaximize),
+  closeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.windowClose),
+  setAlwaysOnTop: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.windowSetAlwaysOnTop, enabled),
+  setCompactMode: (enabled, lockPositions) => ipcRenderer.invoke(IPC_CHANNELS.windowSetCompactMode, enabled, lockPositions),
+  writeClipboardText: (value) => ipcRenderer.invoke(IPC_CHANNELS.clipboardWriteText, value),
+  getSupportDiagnosticsInfo: () => ipcRenderer.invoke(IPC_CHANNELS.supportGetDiagnosticsInfo),
+  saveSupportDiagnostics: (diagnosticsSummary) => ipcRenderer.invoke(IPC_CHANNELS.supportSaveDiagnostics, diagnosticsSummary),
+  checkForUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.updatesCheck),
+  openRelease: (url) => ipcRenderer.invoke(IPC_CHANNELS.updatesOpenRelease, url),
+  openNpcapGuide: () => ipcRenderer.invoke(IPC_CHANNELS.docsOpenNpcapGuide),
   onStateUpdated: (callback: (state: CompanionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: CompanionState) => callback(state);
-    ipcRenderer.on("state:updated", listener);
-    return () => ipcRenderer.removeListener("state:updated", listener);
+    ipcRenderer.on(IPC_CHANNELS.stateUpdated, listener);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.stateUpdated, listener);
   },
-});
+};
+
+contextBridge.exposeInMainWorld("heroSiegeCompanion", api);

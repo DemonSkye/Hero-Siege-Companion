@@ -1,7 +1,14 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import type { CapturePreferences, RunArchivePreferences } from "../../../shared/app-state";
 import { defaultCompactRunTiles, normalizeCompactRunTiles, type CompactRunTileConfig } from "./compact-tiles";
-import { DEFAULT_ITEM_FILTER_GROUPS, normalizeCustomItemFilterSounds, normalizeItemFilterGroups, type CustomItemFilterSound, type ItemFilterGroup } from "./item-filters";
+import {
+  DEFAULT_ITEM_FILTER_GROUPS,
+  itemFilterIdFromTimelineValue,
+  normalizeCustomItemFilterSounds,
+  normalizeItemFilterGroups,
+  type CustomItemFilterSound,
+  type ItemFilterGroup,
+} from "./item-filters";
 import { DEFAULT_SHOPPING_LIST } from "./item-options";
 import { normalizeItemResearchEntries, type ItemResearchEntry } from "./item-research";
 import { defaultPostRunReportConfig, normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
@@ -215,7 +222,9 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     ? Number(value.timelineLimit)
     : defaultPreferences.timelineLimit;
   const validTimelineType =
-    value.timelineType === "all" || Object.prototype.hasOwnProperty.call(ITEM_TYPE_NAMES, Number(value.timelineType))
+    value.timelineType === "all" ||
+    Object.prototype.hasOwnProperty.call(ITEM_TYPE_NAMES, Number(value.timelineType)) ||
+    itemFilterIdFromTimelineValue(String(value.timelineType ?? ""))
       ? String(value.timelineType)
       : defaultPreferences.timelineType;
   const customItemFilterSounds = normalizeCustomItemFilterSounds(value.customItemFilterSounds);

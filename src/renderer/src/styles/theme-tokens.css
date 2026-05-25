@@ -1,0 +1,658 @@
+body,
+.app-shell {
+  color: var(--app-text);
+}
+
+.app-version,
+.drag-strip,
+.compact-status span,
+.compact-primary span,
+.compact-drop span,
+.settings-note,
+.number-setting small,
+.settings-tabs button {
+  color: var(--app-muted);
+}
+
+h1,
+h2,
+.update-banner strong,
+.compact-status strong,
+.compact-primary strong,
+.compact-drop strong,
+.settings-stack > span {
+  color: var(--app-heading);
+}
+
+.eyebrow,
+.app-mark,
+.compact-settings-heading strong,
+.item-research-share a {
+  color: var(--user-accent);
+}
+
+.app-mark {
+  border-color: color-mix(in srgb, var(--user-accent) 38%, transparent);
+}
+
+.topbar,
+.status-strip,
+.panel,
+.metric,
+.compact-status,
+.compact-primary,
+.settings-panel,
+.compact-zone-tray,
+.compact-cover,
+.compact-run-cover {
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: 0 14px 40px var(--shadow);
+}
+
+.settings-panel,
+.settings-panel.report-config-modal {
+  background: var(--surface-strong);
+}
+
+.settings-tabs,
+.window-controls {
+  border-color: var(--border-strong);
+  background: var(--surface-soft);
+}
+
+.settings-tabs button:hover,
+.settings-tabs button.active,
+.view-tabs button.active {
+  border-color: color-mix(in srgb, var(--user-accent) 24%, transparent);
+  background: color-mix(in srgb, var(--user-accent) 13%, transparent);
+  color: var(--app-heading);
+}
+
+.window-controls button,
+.settings-close,
+.compact-run-controls button,
+.compact-cover-button,
+.shopping-remove,
+.dashboard-card-toggle {
+  color: var(--app-text);
+}
+
+.window-controls button:hover,
+.settings-close:hover,
+.icon-button.ghost:hover,
+.compact-run-controls button:hover,
+.compact-zone-toggle:hover,
+.dashboard-card-toggle:hover {
+  background: var(--surface-hover);
+}
+
+.window-controls .close:hover,
+.settings-close:hover {
+  background: color-mix(in srgb, var(--danger) 28%, transparent);
+  color: #ffffff;
+}
+
+.icon-button {
+  color: var(--app-heading);
+}
+
+.icon-button.primary {
+  background: var(--button-primary);
+  color: var(--button-primary-text);
+}
+
+.icon-button.primary:hover {
+  background: var(--button-primary-hover);
+}
+
+.icon-button.danger {
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.icon-button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 28%, transparent);
+  color: #ffffff;
+}
+
+.icon-button.ghost,
+.details-button,
+.sound-test-button,
+.dashboard-card-toggle,
+.compact-cover-button,
+.compact-run-controls button {
+  border-color: var(--border-strong);
+  background: var(--surface-soft);
+}
+
+.settings-row,
+.settings-check,
+.settings-stack,
+.settings-launch-row,
+.settings-config-row,
+.filter-box,
+.item-filter-rule-section,
+.item-filter-group-button,
+.item-filter-recovery-panel,
+.item-research-panel,
+.item-research-row,
+.compact-settings-section {
+  border-color: var(--border);
+  background: var(--surface-soft);
+  color: var(--app-text);
+}
+
+.compact-primary div,
+.compact-run-cell,
+.compact-primary-cell,
+.compact-cover-grid div,
+.compact-run-cover .compact-cover-grid div {
+  background: var(--surface-cell);
+}
+
+input,
+select,
+textarea,
+.settings-row select,
+.settings-stack textarea,
+.number-setting input,
+.shopping-input-wrap input,
+.path-setting input,
+.item-filter-add-group input,
+.item-filter-add-item input,
+.item-filter-editor-grid input[type="text"],
+.item-filter-editor-grid input[type="number"],
+.item-filter-editor-grid select,
+.item-filter-specific-row select {
+  border-color: var(--border-strong);
+  background: var(--input-bg);
+  color: var(--app-text);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--user-accent);
+}
+
+.settings-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-color-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-color-control input {
+  width: 42px;
+  min-width: 42px;
+  height: 30px;
+  padding: 2px;
+  border-radius: 7px;
+}
+
+.settings-color-control code {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.settings-wide-note {
+  max-width: none;
+}
+
+.settings-import-sounds {
+  width: fit-content;
+  margin-top: 12px;
+}
+
+.settings-theme-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-theme-help {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-cell);
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.settings-theme-help summary {
+  color: var(--app-heading);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.settings-theme-help p {
+  margin: 8px 0 0;
+}
+
+.settings-theme-help code {
+  display: block;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--user-accent);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings-support-path {
+  max-width: none;
+}
+
+.settings-support-path code {
+  color: var(--app-heading);
+  overflow-wrap: anywhere;
+}
+
+.settings-support-files {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-support-file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, auto);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-cell);
+}
+
+.settings-support-file.missing {
+  opacity: 0.72;
+}
+
+.settings-support-file div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.settings-support-file strong {
+  color: var(--app-heading);
+  font-size: 12px;
+}
+
+.settings-support-file span,
+.settings-support-file code,
+.settings-support-file-status {
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.settings-support-file code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-support-file-status {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.settings-support-preview-heading {
+  margin-top: 14px;
+}
+
+.settings-support-bundle {
+  overflow: auto;
+  max-height: 260px;
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--app-text);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.settings-sound-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-sound-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-cell);
+}
+
+.settings-sound-row div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settings-sound-row strong,
+.settings-sound-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-sound-row strong {
+  color: var(--app-heading);
+  font-size: 13px;
+}
+
+.settings-sound-row span,
+.settings-sound-empty {
+  color: var(--app-muted);
+}
+
+.update-banner,
+.item-research-panel {
+  border-color: var(--accent-border);
+  background: var(--accent-warm-bg);
+}
+
+.status-strip,
+.view-tabs,
+.status-details,
+.item-filter-status-grid div,
+.item-filter-last,
+.item-filter-card-group,
+.item-filter-suggestions button,
+.shopping-item,
+.past-run-toolbar,
+.past-run-tag-filter,
+.run-tag-chip,
+.tag-selector-button,
+.run-tag-menu,
+.run-tag-option,
+.past-run-aggregate,
+.aggregate-metrics,
+.aggregate-drop-grid,
+.aggregate-top-list div,
+.past-run-card,
+.past-run-metrics,
+.resource-chip,
+.drop-breakdown,
+.drop-breakdown-row,
+.drop-resource-counter,
+.timeline-row,
+.log,
+.settings-sound-row {
+  background: var(--surface-cell);
+}
+
+.view-tabs,
+.item-filter-suggestions button,
+.shopping-item,
+.past-run-toolbar,
+.past-run-tag-filter,
+.run-tag-chip,
+.tag-selector-button,
+.run-tag-menu,
+.run-tag-option,
+.past-run-aggregate,
+.aggregate-metrics,
+.aggregate-drop-grid,
+.past-run-card,
+.past-run-metrics,
+.resource-chip,
+.drop-breakdown,
+.drop-resource-counter,
+.timeline-row,
+.log {
+  border-color: var(--border);
+}
+
+.view-tabs button,
+.status-item span,
+.status-details,
+.metric-label,
+.metric small,
+.empty-copy,
+.countdown small,
+.buff span,
+.item-filter-status-grid span,
+.item-filter-last span,
+.item-filter-card-group span,
+.item-filter-rule-heading span,
+.past-run-search span,
+.run-tag-search span,
+.tag-selector-button span,
+.item-filter-last small,
+.item-research-meta span,
+.item-filter-search-hint,
+.item-filter-group-button span,
+.timeline-type-filter,
+.timeline-row small,
+.log-limit,
+.timeline-limit,
+.log span,
+.drop-breakdown-head span,
+.drop-resource-counter span,
+.compact-settings-heading span,
+.aggregate-duration-total span {
+  color: var(--app-muted);
+}
+
+.past-run-count,
+.past-run-header span,
+.past-run-time,
+.aggregate-heading span,
+.aggregate-heading strong,
+.aggregate-top-drops > span,
+.aggregate-top-drops > small,
+.aggregate-metrics span,
+.aggregate-drop span,
+.aggregate-metrics small,
+.aggregate-drop small,
+.past-run-metrics span,
+.past-run-metrics small,
+.resource-column h4 {
+  color: var(--app-muted);
+}
+
+.metric strong,
+.status-item strong,
+.item-filter-status-grid strong,
+.item-filter-last strong,
+.item-filter-card-group strong,
+.item-research-meta strong,
+.item-filter-rule-heading strong,
+.tag-selector-button strong,
+.run-tag-menu-head strong,
+.item-filter-specific-row > span,
+.drop-breakdown-head strong,
+.drop-breakdown-row strong,
+.drop-resource-counter strong,
+.log p,
+.aggregate-duration-total strong {
+  color: var(--app-heading);
+}
+
+.aggregate-heading h3,
+.past-run-header h3,
+.aggregate-metrics strong,
+.aggregate-drop strong,
+.aggregate-top-list strong,
+.past-run-metrics strong,
+.resource-chip strong {
+  color: var(--app-heading);
+}
+
+.aggregate-top-list span,
+.resource-chip span {
+  color: var(--app-text);
+}
+
+.aggregate-heading strong,
+.aggregate-duration-total strong,
+.resource-column-toggle span {
+  color: var(--user-accent);
+}
+
+.countdown span,
+.compact-shopping-toggle,
+.shopping-item.active,
+.shopping-item-row.active .shopping-item {
+  color: var(--accent-warm);
+}
+
+.compact-shopping-toggle,
+.shopping-item:hover,
+.shopping-item.active,
+.shopping-item-row.active .shopping-item {
+  border-color: color-mix(in srgb, var(--accent-warm) 45%, transparent);
+  background: var(--accent-warm-bg);
+}
+
+.shopping-item.active,
+.shopping-item-row.active .shopping-item {
+  box-shadow: inset 3px 0 var(--accent-warm);
+}
+
+.info-bubble,
+.item-filter-specific-type h4,
+.log-event,
+.aggregate-duration-total strong {
+  color: var(--user-accent);
+}
+
+.info-bubble,
+.info-bubble::after,
+.item-filter-specific-type h4,
+.item-filter-group-button.active,
+.sound-test-button,
+.buff-pro,
+.filter-box:has(input:checked) {
+  border-color: var(--accent-border);
+}
+
+.info-bubble::after {
+  background: var(--surface-strong);
+  color: var(--app-text);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+.view-tabs button.active,
+.item-filter-group-button.active,
+.item-filter-suggestions button:hover,
+.past-run-tag-filter:hover,
+.tag-selector-button:hover,
+.tag-selector-button[aria-expanded="true"],
+.run-tag-option:hover,
+.run-tag-option.create,
+.sound-test-button,
+.sound-test-button:hover,
+.buff,
+.buff-pro,
+.filter-box:has(input:checked) {
+  background: var(--surface-selected);
+}
+
+.item-filter-group-button.active {
+  color: var(--app-heading);
+  box-shadow: inset 3px 0 var(--user-accent);
+}
+
+.item-filter-specific-row {
+  border-left-color: color-mix(in srgb, var(--user-accent) 26%, transparent);
+}
+
+.item-filter-specific-type h4 {
+  color: var(--user-accent);
+}
+
+.sound-test-button {
+  color: var(--user-accent);
+}
+
+.buff-con,
+.error-banner,
+.shopping-remove:hover,
+.compact-shopping-close:hover {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
+}
+
+.shopping-remove:hover,
+.compact-shopping-close:hover {
+  color: var(--danger);
+}
+
+.timeline-type-filter select,
+.log-limit select,
+.timeline-limit select,
+.past-run-search input,
+.run-tag-search input,
+.compact-custom-tile-row input,
+.compact-custom-tile-row select,
+.item-research-row input {
+  border-color: var(--border-strong);
+  background: var(--input-bg);
+  color: var(--app-text);
+}
+
+.item-filter-card-groups,
+.item-filter-match-totals,
+.item-filter-suggestions,
+.item-research-list,
+.item-filter-group-list,
+.item-filter-type-grid,
+.item-filter-specific-list,
+.item-filter-editor,
+.shopping-list,
+.run-tag-options,
+.past-runs-list,
+.timeline,
+.logs,
+.drop-breakdown-list {
+  scrollbar-color: var(--scrollbar) color-mix(in srgb, var(--surface-strong) 76%, transparent);
+}
+
+.app-scroll,
+.settings-grid,
+.compact-shopping-list {
+  scrollbar-color: var(--scrollbar) color-mix(in srgb, var(--surface-strong) 76%, transparent);
+}
+
+.app-scroll::-webkit-scrollbar-thumb,
+.settings-grid::-webkit-scrollbar-thumb,
+.compact-shopping-list::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+}
+
+.resize-grip {
+  background:
+    linear-gradient(135deg, transparent 0 50%, color-mix(in srgb, var(--app-text) 20%, transparent) 50% 56%, transparent 56%),
+    linear-gradient(135deg, transparent 0 66%, color-mix(in srgb, var(--user-accent) 55%, transparent) 66% 72%, transparent 72%),
+    linear-gradient(135deg, transparent 0 82%, color-mix(in srgb, var(--user-accent) 80%, transparent) 82% 88%, transparent 88%);
+}
+
