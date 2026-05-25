@@ -1,0 +1,31 @@
+:root[data-theme="dark"] {
+  --app-text: #e9edf4;
+  --app-heading: #f7f8fb;
+  --app-muted: #aab3c2;
+  --app-muted-strong: #9fa8b8;
+  --app-bg: #101217;
+  --app-bg-gradient:
+    radial-gradient(circle at top left, rgba(137, 216, 199, 0.08), transparent 34rem),
+    linear-gradient(135deg, #11141a 0%, #15161c 48%, #1b1715 100%);
+  --surface: rgba(18, 21, 27, 0.86);
+  --surface-strong: #141820;
+  --surface-soft: rgba(255, 255, 255, 0.045);
+  --surface-cell: rgba(255, 255, 255, 0.025);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-selected: rgba(137, 216, 199, 0.12);
+  --surface-input-hover: rgba(137, 216, 199, 0.08);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --accent-border: rgba(137, 216, 199, 0.34);
+  --accent-warm: #ffd38a;
+  --accent-warm-bg: rgba(255, 211, 138, 0.1);
+  --danger-bg: rgba(255, 93, 93, 0.12);
+  --input-bg: #181b22;
+  --button-primary: #d8643f;
+  --button-primary-hover: #e3714d;
+  --button-primary-text: #ffffff;
+  --danger: #ff5d5d;
+  --warning: #ffd38a;
+  --scrollbar: #3f9487;
+  --shadow: rgba(0, 0, 0, 0.28);
+}

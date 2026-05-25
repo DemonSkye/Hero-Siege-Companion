@@ -60,6 +60,7 @@ describe("renderer preferences persistence", () => {
         gameExecutablePath: 42,
         launchThroughSteam: false,
         themeId: "lost",
+        compactThemeId: "cyberpunk",
         themeAccents: { dark: "#bad", cyberpunk: "#FF3151", light: "#ffffff" },
         themeTokenMaps: {
           cyberpunk: {
@@ -103,6 +104,7 @@ describe("renderer preferences persistence", () => {
     expect(preferences.gameExecutablePath).toBe("");
     expect(preferences.launchThroughSteam).toBe(false);
     expect(preferences.themeId).toBe(defaultPreferences.themeId);
+    expect(preferences.compactThemeId).toBe("cyberpunk");
     expect(preferences.themeAccents).toEqual({ ...DEFAULT_THEME_ACCENTS, cyberpunk: "#ff3151", light: "#ffffff" });
     expect(preferences.themeTokenMaps).toEqual({ cyberpunk: { border: "rgba(0, 240, 255, 0.48)", buttonPrimary: "#fff200" } });
     expect(preferences.customItemFilterSounds).toHaveLength(1);
@@ -225,6 +227,7 @@ describe("renderer preferences persistence", () => {
       ...defaultPreferences,
       logLimit: 100,
       themeId: "cyberpunk",
+      compactThemeId: "light",
       themeAccents: { ...DEFAULT_THEME_ACCENTS, cyberpunk: "#ff3151" },
       themeTokenMaps: { cyberpunk: { border: "rgba(0, 240, 255, 0.48)" } },
       itemFilterMuted: false,
@@ -270,6 +273,7 @@ describe("renderer preferences persistence", () => {
     expect(payload.uiPreferences.customItemFilterSounds).toBeUndefined();
     expect(payload.uiPreferences.itemResearchEntries).toBeUndefined();
     expect(payload.uiPreferences.themeId).toBe("cyberpunk");
+    expect(payload.uiPreferences.compactThemeId).toBe("light");
     expect(payload.uiPreferences.themeAccents?.cyberpunk).toBe("#ff3151");
     expect(payload.uiPreferences.themeTokenMaps?.cyberpunk).toEqual({ border: "rgba(0, 240, 255, 0.48)" });
     expect(payload.uiPreferences.postRunReport).toMatchObject({ topDropLimit: 5 });

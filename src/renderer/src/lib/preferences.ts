@@ -21,6 +21,7 @@ export interface UiPreferences {
   gameExecutablePath: string;
   launchThroughSteam: boolean;
   themeId: ThemeId;
+  compactThemeId: ThemeId;
   themeAccents: ThemeAccentMap;
   themeTokenMaps: ThemeTokenMaps;
   itemFilterGroups: ItemFilterGroup[];
@@ -81,6 +82,7 @@ export const defaultPreferences: UiPreferences = {
   gameExecutablePath: "",
   launchThroughSteam: true,
   themeId: DEFAULT_THEME_ID,
+  compactThemeId: DEFAULT_THEME_ID,
   themeAccents: DEFAULT_THEME_ACCENTS,
   themeTokenMaps: {},
   itemFilterGroups: DEFAULT_ITEM_FILTER_GROUPS,
@@ -107,6 +109,7 @@ const APP_SETTING_KEYS: Array<keyof UiPreferences> = [
   "gameExecutablePath",
   "launchThroughSteam",
   "themeId",
+  "compactThemeId",
   "themeAccents",
   "themeTokenMaps",
   "compactRunTiles",
@@ -231,6 +234,7 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
     themeId: normalizeThemeId(value.themeId),
+    compactThemeId: normalizeThemeId(value.compactThemeId ?? value.themeId),
     themeAccents: normalizeThemeAccents(value.themeAccents),
     themeTokenMaps: normalizeThemeTokenMaps(value.themeTokenMaps),
     itemFilterGroups: normalizeItemFilterGroups(value.itemFilterGroups, customItemFilterSounds),

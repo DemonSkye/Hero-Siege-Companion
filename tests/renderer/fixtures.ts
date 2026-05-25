@@ -138,6 +138,7 @@ export function pastRun(overrides: Partial<PastRunSummary> = {}): PastRunSummary
     sessionEndedAt: baseTime,
     durationMs: 600_000,
     accountName: "TestHero",
+    tags: [],
     totalGoldGained: 100_000,
     totalXpGained: 50_000,
     totalKillsGained: 25,

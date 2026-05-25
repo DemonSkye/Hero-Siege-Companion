@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import {
   COMPACT_RUN_TILE_LIMIT,
   STANDARD_COMPACT_RUN_TILE_OPTIONS,
@@ -11,6 +11,8 @@ import {
 } from "../lib/compact-tiles";
 import type { CustomItemFilterSound, ItemFilterGroup } from "../lib/item-filters";
 import type { ThemeAccentMap, ThemeId } from "../lib/themes";
+import type { WhatsNewRelease } from "../lib/whats-new";
+import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 
 interface ItemTypeOption {
   value: string;
@@ -23,7 +25,9 @@ interface ThemeOption {
   defaultAccent: string;
 }
 
-defineProps<{
+type SettingsTab = "general" | "capture" | "appearance" | "sounds" | "dashboard" | "whatsNew" | "support" | "config";
+
+const props = defineProps<{
   logLimitOptions: number[];
   itemTypeOptions: ItemTypeOption[];
   itemFilterGroups: ItemFilterGroup[];
@@ -31,17 +35,23 @@ defineProps<{
   themeOptions: ThemeOption[];
   customItemFilterSounds: CustomItemFilterSound[];
   supportDiagnostics: string;
+  supportGeneratedFiles: SupportDiagnosticGeneratedFileInfo[];
+  supportLogFiles: SupportDiagnosticLogFileInfo[];
+  supportLogsPath: string;
+  supportBundleBusy: boolean;
+  whatsNew: WhatsNewRelease;
+  initialTab?: SettingsTab;
 }>();
 
 defineEmits<{
   close: [];
   chooseGameExecutable: [];
-  updateThemeAccent: [value: string];
+  updateThemeAccent: [value: string, themeId?: ThemeId];
   importTheme: [];
   exportTheme: [];
   importSounds: [];
   removeSound: [sound: CustomItemFilterSound];
-  copySupportDiagnostics: [];
+  saveSupportDiagnostics: [];
   exportConfiguration: [];
   importConfiguration: [];
   reset: [];
@@ -65,6 +75,7 @@ const draftMinRunDurationMinutes = defineModel<number>("minRunDurationMinutes", 
 const draftDeveloperItemResearchEnabled = defineModel<boolean>("developerItemResearchEnabled", { required: true });
 const draftUnknownItemAudioPrompt = defineModel<boolean>("unknownItemAudioPrompt", { required: true });
 const draftThemeId = defineModel<ThemeId>("themeId", { required: true });
+const draftCompactThemeId = defineModel<ThemeId>("compactThemeId", { required: true });
 const draftThemeAccents = defineModel<ThemeAccentMap>("themeAccents", { required: true });
 const configIncludeAppSettings = defineModel<boolean>("configIncludeAppSettings", { required: true });
 const configIncludeRunSaving = defineModel<boolean>("configIncludeRunSaving", { required: true });
@@ -74,7 +85,11 @@ const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearc
 const draftCompactRunTiles = defineModel<CompactRunTileConfig[]>("compactRunTiles", { required: true });
 
 const compactStandardOptions = STANDARD_COMPACT_RUN_TILE_OPTIONS;
-const activeSettingsTab = ref<"general" | "capture" | "appearance" | "sounds" | "dashboard" | "support" | "config">("general");
+const activeSettingsTab = ref<SettingsTab>(props.initialTab ?? "general");
+
+watch(() => props.initialTab, (tab) => {
+  if (tab) activeSettingsTab.value = tab;
+});
 
 function isCompactStandardEnabled(kind: Exclude<CompactRunTileKind, "custom">): boolean {
   return draftCompactRunTiles.value.some((tile) => tile.kind === kind);
@@ -122,6 +137,19 @@ function eventChecked(event: Event): boolean {
 function eventValue(event: Event): string {
   return (event.target as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
 }
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatUpdatedAt(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleString();
+}
 </script>
 
 <template>
@@ -142,6 +170,7 @@ function eventValue(event: Event): string {
         <button :class="{ active: activeSettingsTab === 'appearance' }" type="button" @click="activeSettingsTab = 'appearance'">Appearance</button>
         <button :class="{ active: activeSettingsTab === 'sounds' }" type="button" @click="activeSettingsTab = 'sounds'">Sounds</button>
         <button :class="{ active: activeSettingsTab === 'dashboard' }" type="button" @click="activeSettingsTab = 'dashboard'">Dashboard</button>
+        <button :class="{ active: activeSettingsTab === 'whatsNew' }" type="button" @click="activeSettingsTab = 'whatsNew'">What's New</button>
         <button :class="{ active: activeSettingsTab === 'support' }" type="button" @click="activeSettingsTab = 'support'">Support</button>
         <button :class="{ active: activeSettingsTab === 'config' }" type="button" @click="activeSettingsTab = 'config'">Import / Export</button>
       </nav>
@@ -236,16 +265,29 @@ function eventValue(event: Event): string {
           </div>
           <div class="settings-theme-grid">
             <label class="settings-row">
-              <span class="settings-label">Theme <span class="info-bubble" data-tip="Changes app surfaces, borders, and background chrome. Drop rarity colors are intentionally unchanged.">i</span></span>
+              <span class="settings-label">Full app theme <span class="info-bubble" data-tip="Changes app surfaces, borders, and background chrome. Drop rarity colors are intentionally unchanged.">i</span></span>
               <select v-model="draftThemeId" title="Application theme">
                 <option v-for="theme in themeOptions" :key="theme.id" :value="theme.id">{{ theme.label }}</option>
               </select>
             </label>
             <label class="settings-row settings-color-row">
-              <span class="settings-label">Accent color <span class="info-bubble" data-tip="Tunes the selected theme's accent color for controls and highlights.">i</span></span>
+              <span class="settings-label">Full app accent <span class="info-bubble" data-tip="Tunes the selected full app theme's accent color for controls and highlights.">i</span></span>
               <span class="settings-color-control">
-                <input :value="draftThemeAccents[draftThemeId]" type="color" title="Theme accent color" @input="$emit('updateThemeAccent', eventValue($event))" />
+                <input :value="draftThemeAccents[draftThemeId]" type="color" title="Theme accent color" @input="$emit('updateThemeAccent', eventValue($event), draftThemeId)" />
                 <code>{{ draftThemeAccents[draftThemeId] }}</code>
+              </span>
+            </label>
+            <label class="settings-row">
+              <span class="settings-label">Compact theme <span class="info-bubble" data-tip="Used only while compact mode is active, so the overlay can differ from the full dashboard.">i</span></span>
+              <select v-model="draftCompactThemeId" title="Compact mode theme">
+                <option v-for="theme in themeOptions" :key="theme.id" :value="theme.id">{{ theme.label }}</option>
+              </select>
+            </label>
+            <label class="settings-row settings-color-row">
+              <span class="settings-label">Compact accent <span class="info-bubble" data-tip="Tunes the selected compact theme's accent color. Shared theme accents still export with app settings.">i</span></span>
+              <span class="settings-color-control">
+                <input :value="draftThemeAccents[draftCompactThemeId]" type="color" title="Compact theme accent color" @input="$emit('updateThemeAccent', eventValue($event), draftCompactThemeId)" />
+                <code>{{ draftThemeAccents[draftCompactThemeId] }}</code>
               </span>
             </label>
           </div>
@@ -325,13 +367,52 @@ function eventValue(event: Event): string {
         </section>
       </div>
 
+      <div v-else-if="activeSettingsTab === 'whatsNew'" class="settings-grid settings-grid-single">
+        <section class="settings-wide compact-settings-section whats-new-settings">
+          <div class="compact-settings-heading">
+            <strong>What's New in {{ whatsNew.version }}</strong>
+            <span>{{ whatsNew.title }}</span>
+          </div>
+          <ul class="whats-new-list">
+            <li v-for="item in whatsNew.items" :key="item">{{ item }}</li>
+          </ul>
+        </section>
+      </div>
+
       <div v-else-if="activeSettingsTab === 'support'" class="settings-grid settings-grid-single">
         <section class="settings-wide compact-settings-section">
           <div class="compact-settings-heading">
-            <strong>Capture diagnostics</strong>
-            <button class="icon-button ghost" type="button" @click="$emit('copySupportDiagnostics')">Copy Diagnostics</button>
+            <strong>Diagnostics bundle</strong>
+            <button class="icon-button ghost" type="button" :disabled="supportBundleBusy" @click="$emit('saveSupportDiagnostics')">
+              {{ supportBundleBusy ? "Preparing ZIP" : "Save ZIP" }}
+            </button>
           </div>
-          <p class="settings-note settings-wide-note">Copy this when asking for capture help. It includes Npcap setup, adapter, filter, packet counters, parser health, and app version.</p>
+          <p class="settings-note settings-wide-note">Save this when asking for capture help. The ZIP includes the current capture summary and local diagnostics logs.</p>
+          <p class="settings-note settings-wide-note settings-support-path">Log folder: <code>{{ supportLogsPath }}</code></p>
+          <div class="settings-support-files" aria-label="Diagnostics files">
+            <div v-for="file in supportGeneratedFiles" :key="file.name" class="settings-support-file">
+              <div>
+                <strong>{{ file.name }}</strong>
+                <span>{{ file.description }}</span>
+              </div>
+              <small class="settings-support-file-status">Generated</small>
+            </div>
+            <div v-for="file in supportLogFiles" :key="file.name" class="settings-support-file" :class="{ missing: !file.exists }">
+              <div>
+                <strong>{{ file.name }}</strong>
+                <span>{{ file.description }}</span>
+                <code>{{ file.path }}</code>
+              </div>
+              <small class="settings-support-file-status">
+                {{ file.exists ? formatBytes(file.sizeBytes) : "Missing" }}
+                <span v-if="file.updatedAt">{{ formatUpdatedAt(file.updatedAt) }}</span>
+              </small>
+            </div>
+          </div>
+          <div class="compact-settings-heading settings-support-preview-heading">
+            <strong>Preview</strong>
+            <span>diagnostics-summary.txt</span>
+          </div>
           <pre class="settings-support-bundle">{{ supportDiagnostics }}</pre>
         </section>
       </div>

@@ -1086,14 +1086,17 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
           "10-3909410-collectible-39-13": {
             pickup_add_data: { a: 5, b: 39, d: 1 },
           },
+          "10-3909410-collectible-20-13": {
+            pickup_add_data: { a: 10, b: 20, d: 1 },
+          },
           "10-3909410-collectible-24-13": {
-            pickup_add_data: { a: 10, b: 24, d: 1 },
+            pickup_add_data: { a: 11, b: 24, d: 1 },
           },
           "10-3909410-collectible-33-13": {
-            pickup_add_data: { a: 11, b: 33, d: 1 },
+            pickup_add_data: { a: 12, b: 33, d: 1 },
           },
           "10-3909410-collectible-34-13": {
-            pickup_add_data: { a: 12, b: 34, d: 1 },
+            pickup_add_data: { a: 13, b: 34, d: 1 },
           },
           "10-3909410-material-0-14": {
             pickup_add_data: { a: 6, b: 0, d: 1 },
@@ -1120,6 +1123,7 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
       "Chaos Key",
       "Battle Fragment",
       "The Hanged Man",
+      "The Tower",
       "The Wheel of Fortune",
       "The Devil",
       "The Moon",
@@ -1273,11 +1277,14 @@ test("manual stack lookup resolves known socketables", () => {
           "10-3909410-socketable-68-15": {
             pickup_add_data: { a: 4, b: 68, d: 1 },
           },
+          "10-3909410-socketable-111-15": {
+            pickup_add_data: { a: 5, b: 111, d: 1 },
+          },
           "10-3909410-socketable-118-15": {
-            pickup_add_data: { a: 5, b: 118, d: 1 },
+            pickup_add_data: { a: 6, b: 118, d: 1 },
           },
           "10-3909410-socketable-134-15": {
-            pickup_add_data: { a: 6, b: 134, d: 1 },
+            pickup_add_data: { a: 7, b: 134, d: 1 },
           },
         },
       },
@@ -1286,7 +1293,7 @@ test("manual stack lookup resolves known socketables", () => {
 
   assert.deepEqual(
     events.map((event) => event.value.label),
-    ["Ol Rune", "Ber Rune", "Flawed Amethyst", "Perfect Topaz", "Agility", "Perfect Diamond"],
+    ["Ol Rune", "Ber Rune", "Flawed Amethyst", "Perfect Topaz", "Uncut Jewel of Platoon", "Agility", "Perfect Diamond"],
   );
 });
 

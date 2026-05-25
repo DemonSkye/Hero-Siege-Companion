@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { CapturePreferences, CompanionState, ReleaseUpdateInfo, RunArchivePreferences } from "../shared/app-state";
+import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
 
 contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   getState: (): Promise<CompanionState> => ipcRenderer.invoke("state:get"),
@@ -11,6 +12,8 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   resetStats: (): Promise<CompanionState> => ipcRenderer.invoke("stats:reset"),
   pauseRun: (): Promise<CompanionState> => ipcRenderer.invoke("run:pause"),
   resumeRun: (): Promise<CompanionState> => ipcRenderer.invoke("run:resume"),
+  setPastRunTags: (runId: string, tags: string[]): Promise<CompanionState> =>
+    ipcRenderer.invoke("past-runs:set-tags", runId, tags),
   setRunArchivePreferences: (preferences: RunArchivePreferences): Promise<CompanionState> =>
     ipcRenderer.invoke("preferences:set-run-archive", preferences),
   setCapturePreferences: (preferences: CapturePreferences): Promise<CompanionState> =>
@@ -26,6 +29,9 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   setAlwaysOnTop: (enabled: boolean): Promise<void> => ipcRenderer.invoke("window:set-always-on-top", enabled),
   setCompactMode: (enabled: boolean, lockPositions: boolean): Promise<void> => ipcRenderer.invoke("window:set-compact-mode", enabled, lockPositions),
   writeClipboardText: (value: string): Promise<void> => ipcRenderer.invoke("clipboard:write-text", value),
+  getSupportDiagnosticsInfo: (): Promise<SupportDiagnosticsInfo> => ipcRenderer.invoke("support:get-diagnostics-info"),
+  saveSupportDiagnostics: (diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
+    ipcRenderer.invoke("support:save-diagnostics", diagnosticsSummary),
   checkForUpdate: (): Promise<ReleaseUpdateInfo | null> => ipcRenderer.invoke("updates:check"),
   openRelease: (url?: string): Promise<void> => ipcRenderer.invoke("updates:open-release", url),
   openNpcapGuide: (): Promise<void> => ipcRenderer.invoke("docs:open-npcap-guide"),

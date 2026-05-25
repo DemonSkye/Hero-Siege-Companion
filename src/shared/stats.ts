@@ -64,6 +64,7 @@ export interface PastRunSummary {
   sessionEndedAt: number;
   durationMs: number;
   accountName: string;
+  tags: string[];
   totalGoldGained: number;
   totalXpGained: number;
   totalKillsGained: number;
@@ -80,6 +81,8 @@ export interface PastRunSummary {
 const TRACKED_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
 const UNTRACKED_ITEM_TYPES = new Set([12, 13, 14, 15]);
 const MAX_ITEM_TIMELINE_ENTRIES = 500;
+export const MAX_PAST_RUN_TAGS = 12;
+export const MAX_PAST_RUN_TAG_LENGTH = 36;
 const BASIC_KEY_ID = 0;
 
 const ORE_MATERIALS: Record<number, string> = {
@@ -336,6 +339,21 @@ export function createInitialStats(): CompanionStats {
   };
 }
 
+export function normalizePastRunTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const normalizedTags: string[] = [];
+  const seen = new Set<string>();
+  for (const tag of tags) {
+    const normalized = String(tag ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_PAST_RUN_TAG_LENGTH);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    normalizedTags.push(normalized);
+    if (normalizedTags.length >= MAX_PAST_RUN_TAGS) break;
+  }
+  return normalizedTags;
+}
+
 function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now(), pausedDurationMs = 0): PastRunSummary {
   return {
     id: `${stats.sessionStartedAt}-${sessionEndedAt}`,
@@ -343,6 +361,7 @@ function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now(), pa
     sessionEndedAt,
     durationMs: Math.max(sessionEndedAt - stats.sessionStartedAt - pausedDurationMs, 0),
     accountName: stats.accountName,
+    tags: [],
     totalGoldGained: stats.totalGoldEarned,
     totalXpGained: stats.totalXpEarned,
     totalKillsGained: stats.totalKillsEarned,

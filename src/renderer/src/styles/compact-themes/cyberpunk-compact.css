@@ -1,0 +1,182 @@
+:root[data-theme="cyberpunk"] .app-shell.compact {
+  padding: 0 8px 8px;
+  background:
+    radial-gradient(circle at 0% 22%, rgba(255, 242, 0, 0.1), transparent 9rem),
+    radial-gradient(circle at 100% 0%, rgba(255, 0, 64, 0.14), transparent 11rem),
+    linear-gradient(135deg, #020406 0%, #06080d 52%, #130207 100%);
+}
+
+:root[data-theme="cyberpunk"] .app-shell.compact .app-titlebar {
+  height: 34px;
+  margin: 0 -8px;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.24);
+  background:
+    linear-gradient(90deg, rgba(0, 240, 255, 0.12), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent);
+  box-shadow:
+    0 0 18px rgba(0, 240, 255, 0.12),
+    inset 0 -1px 0 rgba(255, 242, 0, 0.08);
+}
+
+:root[data-theme="cyberpunk"] .app-shell.compact .drag-strip {
+  color: rgba(225, 243, 247, 0.76);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+:root[data-theme="cyberpunk"] .app-shell.compact .app-mark {
+  border-color: rgba(0, 240, 255, 0.58);
+  background: rgba(0, 240, 255, 0.08);
+  color: #00f0ff;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.18);
+}
+
+:root[data-theme="cyberpunk"] .app-shell.compact .window-controls {
+  grid-template-columns: repeat(4, 30px);
+  gap: 4px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-theme="cyberpunk"] .app-shell.compact .window-controls button {
+  min-width: 30px;
+  min-height: 26px;
+  border: 1px solid rgba(0, 240, 255, 0.24);
+  border-radius: 6px;
+  background: rgba(4, 7, 12, 0.72);
+  color: #dffaff;
+  font-size: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="cyberpunk"] .app-shell.compact .window-controls button:hover {
+  border-color: rgba(0, 240, 255, 0.48);
+  background: rgba(0, 240, 255, 0.12);
+}
+
+:root[data-theme="cyberpunk"] .app-shell.compact .window-controls .close:hover {
+  border-color: rgba(255, 0, 64, 0.58);
+  background: rgba(255, 0, 64, 0.24);
+}
+
+:root[data-theme="cyberpunk"] .compact-zone-tray,
+:root[data-theme="cyberpunk"] .compact-cover,
+:root[data-theme="cyberpunk"] .compact-run-cover {
+  box-shadow:
+    0 20px 54px rgba(0, 0, 0, 0.56),
+    0 0 0 1px rgba(0, 240, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="cyberpunk"] .compact-cover-button,
+:root[data-theme="cyberpunk"] .compact-run-controls button {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+:root[data-theme="cyberpunk"] .compact-shopping-toggle {
+  text-shadow: 0 0 10px rgba(255, 242, 0, 0.26);
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover {
+  inset: 34px 6px 6px;
+  border: 1px solid rgba(0, 240, 255, 0.34);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 242, 0, 0.09), transparent 10rem),
+    linear-gradient(135deg, rgba(0, 240, 255, 0.06), transparent 42%),
+    rgba(4, 6, 10, 0.97);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(0, 240, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(255, 242, 0, 0.85), transparent);
+  box-shadow:
+    0 0 16px rgba(255, 242, 0, 0.32),
+    10px 0 32px rgba(255, 242, 0, 0.1);
+  pointer-events: none;
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background:
+    linear-gradient(110deg, transparent 0 40%, rgba(255, 255, 255, 0.075) 48%, rgba(255, 242, 0, 0.04) 51%, transparent 59% 100%);
+  background-size: 260% 100%;
+  opacity: 0.2;
+  animation: cyberpunk-metal-sheen 29s linear infinite;
+  pointer-events: none;
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-head,
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-grid {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.18);
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-head span,
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-grid span {
+  color: #7df8ff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.22);
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-head strong,
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-grid strong {
+  color: #f7fbff;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.18);
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-grid div {
+  border-color: rgba(0, 240, 255, 0.26);
+  background:
+    linear-gradient(135deg, rgba(0, 240, 255, 0.055), transparent 50%),
+    rgba(10, 12, 18, 0.9);
+  box-shadow:
+    inset 2px 0 rgba(255, 242, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover-controls button,
+:root[data-theme="cyberpunk"] .compact-cover-button {
+  border-color: rgba(0, 240, 255, 0.34);
+  background: rgba(3, 6, 10, 0.78);
+  color: #e9fbff;
+}
+
+:root[data-theme="cyberpunk"] .compact-cover-button {
+  border-color: rgba(255, 242, 0, 0.34);
+  color: #fff6a8;
+  box-shadow:
+    0 0 14px rgba(255, 242, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="cyberpunk"] .compact-zone-tray {
+  border-color: rgba(0, 240, 255, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 242, 0, 0.08), transparent 10rem),
+    rgba(4, 6, 10, 0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="cyberpunk"] .compact-run-cover::after {
+    animation: none;
+  }
+}

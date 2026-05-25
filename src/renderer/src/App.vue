@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CapturePreferences, CompanionState, LogEntry, ReleaseUpdateInfo, RunArchivePreferences } from "../../shared/app-state";
 import { MATERIAL_LIKE_TIMELINE_TYPES } from "../../shared/constants";
 import { createInitialStats, type ItemDropCounter, type ItemTimelineEntry } from "../../shared/stats";
+import type { SupportDiagnosticsInfo } from "../../shared/support-diagnostics";
 import CompactView from "./components/CompactView.vue";
 import ItemFilterView from "./components/ItemFilterView.vue";
 import LiveView from "./components/LiveView.vue";
@@ -81,6 +82,19 @@ import {
   type ThemeTokenMaps,
 } from "./lib/themes";
 import { normalizeLookupText } from "./lib/text";
+import { WHATS_NEW_RELEASE } from "./lib/whats-new";
+
+type SettingsTab = "general" | "capture" | "appearance" | "sounds" | "dashboard" | "whatsNew" | "support" | "config";
+const DEFAULT_SUPPORT_DIAGNOSTICS_INFO: SupportDiagnosticsInfo = {
+  userDataPath: "%APPDATA%\\Hero Siege Companion",
+  generatedFiles: [
+    {
+      name: "diagnostics-summary.txt",
+      description: "Current capture status, adapter, filter, packet counters, parser health, and app version.",
+    },
+  ],
+  logFiles: [],
+};
 
 const state = ref<CompanionState>({
   captureRunning: false,
@@ -125,6 +139,10 @@ const logLimitOptions = LOG_LIMIT_OPTIONS;
 const timelineLimit = ref(10);
 const showCaptureDetails = ref(false);
 const showSettings = ref(false);
+const settingsInitialTab = ref<SettingsTab>("general");
+const supportDiagnosticsInfo = ref<SupportDiagnosticsInfo>(DEFAULT_SUPPORT_DIAGNOSTICS_INFO);
+const supportBundleBusy = ref(false);
+const showWhatsNewPrompt = ref(false);
 const showCompactZone = ref(false);
 const alwaysOnTop = ref(false);
 const compactMode = ref(false);
@@ -136,10 +154,11 @@ const timelineType = ref("all");
 const gameExecutablePath = ref("");
 const launchThroughSteam = ref(true);
 const themeId = ref<ThemeId>("dark");
+const compactThemeId = ref<ThemeId>("dark");
 const themeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
 const themeTokenMaps = ref<ThemeTokenMaps>({});
 const activeTab = ref<"live" | "past" | "filter">("live");
-const appVersion = "0.1.6";
+const appVersion = "0.2.0";
 const expandedLogIds = ref<Set<string>>(new Set());
 const draftLogLimit = ref(20);
 const draftTimelineLimit = ref(10);
@@ -155,6 +174,7 @@ const draftTimelineType = ref("all");
 const draftGameExecutablePath = ref("");
 const draftLaunchThroughSteam = ref(true);
 const draftThemeId = ref<ThemeId>("dark");
+const draftCompactThemeId = ref<ThemeId>("dark");
 const draftThemeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
 const draftThemeTokenMaps = ref<ThemeTokenMaps>({});
 const draftCreateDebugMode = ref(false);
@@ -186,6 +206,7 @@ const expandedPastRunDropKey = ref<string | null>(null);
 const availableUpdate = ref<ReleaseUpdateInfo | null>(null);
 let toastTimer: number | null = null;
 const IGNORED_UPDATE_STORAGE_KEY = "hero-siege-companion:ignored-update:v1";
+const WHATS_NEW_SEEN_STORAGE_KEY = "hero-siege-companion:whats-new-seen-version:v1";
 const itemFilterSeenTimelineKeys = new Set<string>();
 const itemResearchSeenTimelineKeys = new Set<string>();
 const appliedThemeTokenKeys = new Set<ThemeTokenKey>();
@@ -251,7 +272,8 @@ const activeShoppingItem = computed(() => shoppingListItems.value[activeShopping
 const activeItemFilterGroups = computed(() => itemFilterGroups.value.filter((group) => group.enabled));
 const watchedItemCount = computed(() => itemFilterGroups.value.reduce((total, group) => total + new Set(group.items.map((item) => normalizeLookupText(item.name))).size, 0));
 const itemFilterSoundOptionsList = computed(() => itemFilterSoundOptions(customItemFilterSounds.value));
-const activeThemeAccent = computed(() => themeAccents.value[themeId.value] ?? DEFAULT_THEME_ACCENTS[themeId.value]);
+const effectiveThemeId = computed(() => (compactMode.value ? compactThemeId.value : themeId.value));
+const activeThemeAccent = computed(() => themeAccents.value[effectiveThemeId.value] ?? DEFAULT_THEME_ACCENTS[effectiveThemeId.value]);
 const unresolvedItemResearchEntries = computed(() => activeItemResearchEntries(itemResearchEntries.value));
 const selectedItemFilterGroup = computed(() => itemFilterGroups.value.find((group) => group.id === activeItemFilterGroupId.value) ?? itemFilterGroups.value[0] ?? null);
 const selectedItemFilterGroupedItems = computed(() => itemFilterGroupedItems(selectedItemFilterGroup.value));
@@ -299,6 +321,8 @@ onMounted(async () => {
   state.value = await window.heroSiegeCompanion.getState();
   initializeItemFilterSeenItems(state.value.stats.itemTimeline);
   initializeItemResearchSeenItems(state.value.stats.itemTimeline);
+  maybeShowWhatsNewPrompt();
+  void refreshSupportDiagnosticsInfo();
   unsubscribe = window.heroSiegeCompanion.onStateUpdated((nextState) => {
     processItemFilterTimeline(nextState.stats.itemTimeline);
     processItemResearchTimeline(nextState.stats.itemTimeline);
@@ -310,13 +334,13 @@ onMounted(async () => {
   }, 1000);
 });
 
-watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, themeId, themeAccents, themeTokenMaps, itemFilterGroups, itemFilterMuted, customItemFilterSounds, postRunReport, compactRunTiles, developerItemResearchEnabled, unknownItemAudioPrompt, itemResearchEntries], () => {
+watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, themeId, compactThemeId, themeAccents, themeTokenMaps, itemFilterGroups, itemFilterMuted, customItemFilterSounds, postRunReport, compactRunTiles, developerItemResearchEnabled, unknownItemAudioPrompt, itemResearchEntries], () => {
   savePreferences(currentPreferences());
   clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
 }, { deep: true });
 
-watch([themeId, activeThemeAccent, themeTokenMaps], applyTheme, { immediate: true, deep: true });
+watch([effectiveThemeId, activeThemeAccent, themeTokenMaps], applyTheme, { immediate: true, deep: true });
 
 onUnmounted(() => {
   unsubscribe?.();
@@ -344,6 +368,10 @@ async function toggleRunPaused() {
   state.value = state.value.runStatus === "paused" ? await window.heroSiegeCompanion.resumeRun() : await window.heroSiegeCompanion.pauseRun();
 }
 
+async function updatePastRunTags(runId: string, tags: string[]) {
+  state.value = await window.heroSiegeCompanion.setPastRunTags(runId, tags);
+}
+
 async function openCompactSettings() {
   compactMode.value = false;
   await syncWindowMode();
@@ -362,9 +390,11 @@ async function closeWindow() {
   await window.heroSiegeCompanion.closeWindow();
 }
 
-function openSettings() {
+function openSettings(tab: SettingsTab = "general") {
   loadDraftPreferences(currentPreferences());
+  settingsInitialTab.value = tab;
   showSettings.value = true;
+  void refreshSupportDiagnosticsInfo();
 }
 
 function closeSettings() {
@@ -383,6 +413,34 @@ async function applyDraftPreferences() {
   state.value = await window.heroSiegeCompanion.setCapturePreferences(currentDraftCapturePreferences());
   showSettings.value = false;
   await syncWindowMode();
+}
+
+function maybeShowWhatsNewPrompt() {
+  try {
+    if (window.localStorage.getItem(WHATS_NEW_SEEN_STORAGE_KEY) === WHATS_NEW_RELEASE.version) return;
+  } catch {
+    // A failed localStorage read should not block the prompt for this session.
+  }
+  showWhatsNewPrompt.value = true;
+}
+
+function markWhatsNewSeen() {
+  try {
+    window.localStorage.setItem(WHATS_NEW_SEEN_STORAGE_KEY, WHATS_NEW_RELEASE.version);
+  } catch {
+    // This prompt is informational; failing to persist it is harmless.
+  }
+}
+
+function dismissWhatsNewPrompt() {
+  markWhatsNewSeen();
+  showWhatsNewPrompt.value = false;
+}
+
+function openWhatsNewFromPrompt() {
+  markWhatsNewSeen();
+  showWhatsNewPrompt.value = false;
+  openSettings("whatsNew");
 }
 
 async function exportConfiguration() {
@@ -489,6 +547,7 @@ function currentPreferences(): UiPreferences {
     gameExecutablePath: gameExecutablePath.value,
     launchThroughSteam: launchThroughSteam.value,
     themeId: themeId.value,
+    compactThemeId: compactThemeId.value,
     themeAccents: themeAccents.value,
     themeTokenMaps: themeTokenMaps.value,
     itemFilterGroups: itemFilterGroups.value,
@@ -516,6 +575,7 @@ function applyPreferences(preferences: UiPreferences) {
   gameExecutablePath.value = preferences.gameExecutablePath;
   launchThroughSteam.value = preferences.launchThroughSteam;
   themeId.value = preferences.themeId;
+  compactThemeId.value = preferences.compactThemeId;
   themeAccents.value = preferences.themeAccents;
   themeTokenMaps.value = preferences.themeTokenMaps;
   itemFilterGroups.value = preferences.itemFilterGroups;
@@ -545,6 +605,7 @@ function currentDraftPreferences(): UiPreferences {
     gameExecutablePath: draftGameExecutablePath.value.trim(),
     launchThroughSteam: draftLaunchThroughSteam.value,
     themeId: draftThemeId.value,
+    compactThemeId: draftCompactThemeId.value,
     themeAccents: draftThemeAccents.value,
     themeTokenMaps: draftThemeTokenMaps.value,
     itemFilterGroups: itemFilterGroups.value,
@@ -577,6 +638,7 @@ function loadDraftPreferences(preferences: UiPreferences) {
   draftGameExecutablePath.value = preferences.gameExecutablePath;
   draftLaunchThroughSteam.value = preferences.launchThroughSteam;
   draftThemeId.value = preferences.themeId;
+  draftCompactThemeId.value = preferences.compactThemeId;
   draftThemeAccents.value = { ...preferences.themeAccents };
   draftThemeTokenMaps.value = { ...preferences.themeTokenMaps };
   draftCreateDebugMode.value = state.value.capturePreferences.createDebugMode;
@@ -597,21 +659,21 @@ function currentDraftCapturePreferences(): CapturePreferences {
   };
 }
 
-function updateDraftThemeAccent(value: string) {
+function updateDraftThemeAccent(value: string, targetThemeId = draftThemeId.value) {
   const normalized = normalizeThemeAccent(value);
   if (!normalized) return;
-  draftThemeAccents.value = { ...draftThemeAccents.value, [draftThemeId.value]: normalized };
+  draftThemeAccents.value = { ...draftThemeAccents.value, [targetThemeId]: normalized };
 }
 
 function applyTheme() {
-  document.documentElement.dataset.theme = themeId.value;
+  document.documentElement.dataset.theme = effectiveThemeId.value;
   document.documentElement.style.setProperty("--user-accent", activeThemeAccent.value);
   for (const key of appliedThemeTokenKeys) {
     const cssVar = themeTokenCssVar(key);
     if (cssVar) document.documentElement.style.removeProperty(cssVar);
   }
   appliedThemeTokenKeys.clear();
-  const tokens = themeTokenMaps.value[themeId.value] ?? {};
+  const tokens = themeTokenMaps.value[effectiveThemeId.value] ?? {};
   for (const [key, value] of Object.entries(tokens) as Array<[ThemeTokenKey, string]>) {
     const cssVar = themeTokenCssVar(key);
     if (!cssVar || !value) continue;
@@ -959,9 +1021,28 @@ function toggleLog(log: LogEntry) {
   expandedLogIds.value = next;
 }
 
-async function copySupportDiagnostics() {
-  await window.heroSiegeCompanion.writeClipboardText(supportDiagnostics.value);
-  showToast("Capture diagnostics copied");
+async function refreshSupportDiagnosticsInfo() {
+  try {
+    supportDiagnosticsInfo.value = await window.heroSiegeCompanion.getSupportDiagnosticsInfo();
+  } catch {
+    supportDiagnosticsInfo.value = DEFAULT_SUPPORT_DIAGNOSTICS_INFO;
+  }
+}
+
+async function saveSupportDiagnostics() {
+  if (supportBundleBusy.value) return;
+  supportBundleBusy.value = true;
+  try {
+    const result = await window.heroSiegeCompanion.saveSupportDiagnostics(supportDiagnostics.value);
+    if (result.saved) {
+      showToast(`Diagnostics ZIP saved with ${result.includedFiles.length} file${result.includedFiles.length === 1 ? "" : "s"}`);
+      void refreshSupportDiagnosticsInfo();
+    }
+  } catch {
+    showToast("Diagnostics ZIP save failed");
+  } finally {
+    supportBundleBusy.value = false;
+  }
 }
 
 async function openNpcapGuide() {
@@ -1018,7 +1099,7 @@ function trimCompact(value: number): string {
         <h1>Live Session</h1>
       </div>
       <div class="actions">
-        <button class="icon-button ghost" type="button" @click="openSettings" title="Settings" aria-label="Settings">⚙</button>
+        <button class="icon-button ghost" type="button" @click="openSettings()" title="Settings" aria-label="Settings">⚙</button>
         <button class="icon-button ghost" type="button" @click="toggleRunPaused" :disabled="!canToggleRunPaused" :title="!canToggleRunPaused ? 'Run will resume when capture starts' : state.runStatus === 'paused' ? 'Resume this run' : 'Pause this run'">
           {{ state.runStatus === "paused" ? "Resume Run" : "Pause Run" }}
         </button>
@@ -1117,6 +1198,7 @@ function trimCompact(value: number): string {
         :past-runs="pastRuns"
         @update:expanded-drop-key="expandedPastRunDropKey = $event"
         @update:report-config="updatePostRunReportConfig"
+        @update-run-tags="updatePastRunTags"
       />
     </div>
     <SettingsModal
@@ -1136,6 +1218,7 @@ function trimCompact(value: number): string {
       v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
       v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
       v-model:theme-id="draftThemeId"
+      v-model:compact-theme-id="draftCompactThemeId"
       v-model:theme-accents="draftThemeAccents"
       v-model:skip-empty-runs="draftSkipEmptyRuns"
       v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
@@ -1152,6 +1235,12 @@ function trimCompact(value: number): string {
       :theme-options="THEME_OPTIONS"
       :custom-item-filter-sounds="customItemFilterSounds"
       :support-diagnostics="supportDiagnostics"
+      :support-generated-files="supportDiagnosticsInfo.generatedFiles"
+      :support-log-files="supportDiagnosticsInfo.logFiles"
+      :support-logs-path="supportDiagnosticsInfo.userDataPath"
+      :support-bundle-busy="supportBundleBusy"
+      :whats-new="WHATS_NEW_RELEASE"
+      :initial-tab="settingsInitialTab"
       @close="closeSettings"
       @choose-game-executable="chooseGameExecutable"
       @update-theme-accent="updateDraftThemeAccent"
@@ -1159,12 +1248,27 @@ function trimCompact(value: number): string {
       @export-theme="exportTheme"
       @import-sounds="importItemFilterSounds"
       @remove-sound="removeItemFilterSound"
-      @copy-support-diagnostics="copySupportDiagnostics"
+      @save-support-diagnostics="saveSupportDiagnostics"
       @export-configuration="exportConfiguration"
       @import-configuration="importConfiguration"
       @reset="resetDraftPreferences"
       @apply="applyDraftPreferences"
     />
+    <div v-if="showWhatsNewPrompt && !showSettings" class="modal-backdrop">
+      <section class="settings-panel whats-new-prompt" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
+        <div class="settings-heading">
+          <div>
+            <p class="eyebrow">Updated</p>
+            <h2 id="whats-new-title">See what's new?</h2>
+            <p class="settings-note">Version {{ WHATS_NEW_RELEASE.version }} includes new player-facing changes.</p>
+          </div>
+        </div>
+        <div class="settings-actions whats-new-prompt-actions">
+          <button class="icon-button primary" type="button" @click="openWhatsNewFromPrompt">Show me</button>
+          <button class="icon-button ghost" type="button" @click="dismissWhatsNewPrompt">No Thanks</button>
+        </div>
+      </section>
+    </div>
     <div v-if="toastMessage" class="toast-bubble" role="status">{{ toastMessage }}</div>
     <span class="app-version">v{{ appVersion }}</span>
     <div class="resize-grip" aria-hidden="true"></div>

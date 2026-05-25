@@ -10,6 +10,7 @@ import UpdateBanner from "../../src/renderer/src/components/UpdateBanner.vue";
 import { defaultCompactRunTiles } from "../../src/renderer/src/lib/compact-tiles";
 import { defaultPostRunReportConfig } from "../../src/renderer/src/lib/report-config";
 import { DEFAULT_THEME_ACCENTS, THEME_OPTIONS } from "../../src/renderer/src/lib/themes";
+import { WHATS_NEW_RELEASE } from "../../src/renderer/src/lib/whats-new";
 import { companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
 
 describe("Vue component contracts", () => {
@@ -145,6 +146,33 @@ describe("Vue component contracts", () => {
           "Adapter: \\Device\\NPF_Test",
           "Parser errors: 0",
         ].join("\n"),
+        supportGeneratedFiles: [
+          {
+            name: "diagnostics-summary.txt",
+            description: "Current capture status and app version.",
+          },
+        ],
+        supportLogFiles: [
+          {
+            name: "app-debug.log",
+            path: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\app-debug.log",
+            description: "App startup diagnostics.",
+            exists: true,
+            sizeBytes: 2048,
+            updatedAt: "2026-05-25T12:00:00.000Z",
+          },
+          {
+            name: "capture-debug.log.old",
+            path: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\capture-debug.log.old",
+            description: "Previous capture diagnostics.",
+            exists: false,
+            sizeBytes: 0,
+            updatedAt: null,
+          },
+        ],
+        supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion",
+        supportBundleBusy: false,
+        whatsNew: WHATS_NEW_RELEASE,
         logLimit: 20,
         timelineLimit: 10,
         timelineType: "all",
@@ -160,6 +188,7 @@ describe("Vue component contracts", () => {
         developerItemResearchEnabled: true,
         unknownItemAudioPrompt: false,
         themeId: "dark",
+        compactThemeId: "dark",
         themeAccents: { ...DEFAULT_THEME_ACCENTS },
         skipEmptyRuns: true,
         minRunDurationMinutes: 5,
@@ -184,6 +213,8 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Rarity colors stay game-matched.");
     await wrapper.get('select[title="Application theme"]').setValue("cyberpunk");
     await wrapper.get('input[title="Theme accent color"]').setValue("#00f0ff");
+    await wrapper.get('select[title="Compact mode theme"]').setValue("light");
+    await wrapper.get('input[title="Compact theme accent color"]').setValue("#ffffff");
     await buttonByText(wrapper, "Export Theme").trigger("click");
     await buttonByText(wrapper, "Import Theme").trigger("click");
 
@@ -201,10 +232,16 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "Dashboard").trigger("click");
     await buttonByText(wrapper, "Add Custom").trigger("click");
 
+    await buttonByText(wrapper, "What's New").trigger("click");
+    expect(wrapper.text()).toContain(`What's New in ${WHATS_NEW_RELEASE.version}`);
+    expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.items[0]);
+
     await buttonByText(wrapper, "Support").trigger("click");
-    expect(wrapper.text()).toContain("Capture diagnostics");
+    expect(wrapper.text()).toContain("Diagnostics bundle");
     expect(wrapper.text()).toContain("Npcap service: Running");
-    await buttonByText(wrapper, "Copy Diagnostics").trigger("click");
+    expect(wrapper.text()).toContain("app-debug.log");
+    expect(wrapper.text()).toContain("capture-debug.log.old");
+    await buttonByText(wrapper, "Save ZIP").trigger("click");
 
     await buttonByText(wrapper, "General").trigger("click");
     await buttonByText(wrapper, "Browse").trigger("click");
@@ -214,7 +251,8 @@ describe("Vue component contracts", () => {
 
     expect(wrapper.emitted("update:logLimit")).toEqual([[50]]);
     expect(wrapper.emitted("update:themeId")).toEqual([["cyberpunk"]]);
-    expect(wrapper.emitted("updateThemeAccent")).toEqual([["#00f0ff"]]);
+    expect(wrapper.emitted("update:compactThemeId")).toEqual([["light"]]);
+    expect(wrapper.emitted("updateThemeAccent")).toEqual([["#00f0ff", "cyberpunk"], ["#ffffff", "light"]]);
     expect(wrapper.emitted("exportTheme")).toHaveLength(1);
     expect(wrapper.emitted("importTheme")).toHaveLength(1);
     expect(wrapper.emitted("update:configIncludeItemResearch")).toEqual([[true]]);
@@ -222,7 +260,7 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("chooseGameExecutable")).toHaveLength(1);
     expect(wrapper.emitted("importSounds")).toHaveLength(1);
     expect(wrapper.emitted("removeSound")?.[0]?.[0]).toMatchObject({ id: "custom-sound:boss" });
-    expect(wrapper.emitted("copySupportDiagnostics")).toHaveLength(1);
+    expect(wrapper.emitted("saveSupportDiagnostics")).toHaveLength(1);
     expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("reset")).toHaveLength(1);
@@ -231,10 +269,10 @@ describe("Vue component contracts", () => {
   });
 
   test("PastRunsView aggregates saved runs and toggles per-rarity breakdowns", async () => {
-    const run = pastRun();
+    const run = pastRun({ tags: ["Dungeons"] });
     const wrapper = mount(PastRunsView, {
       props: {
-        pastRuns: [run, pastRun({ id: "run-2", totalGoldGained: 50_000, durationMs: 300_000 })],
+        pastRuns: [run, pastRun({ id: "run-2", accountName: "ForgeHero", tags: ["Codex"], totalGoldGained: 50_000, durationMs: 300_000 })],
         expandedDropKey: null,
         reportConfig: defaultPostRunReportConfig,
       },
@@ -247,12 +285,23 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Crystal Key");
     expect(wrapper.text()).toContain("Battle Fragment");
 
+    await wrapper.get(".past-run-search input").setValue("dungeons");
+    expect(wrapper.text()).toContain("1/2 shown");
+    expect(wrapper.findAll(".past-run-card")).toHaveLength(1);
+
+    await wrapper.get(".past-run-search input").setValue("");
+    await wrapper.get(".tag-selector-button").trigger("click");
+    const codexOption = wrapper.findAll(".run-tag-option").find((option) => option.text().includes("#Codex"));
+    if (!codexOption) throw new Error("Expected Codex tag option");
+    await codexOption.trigger("click");
+
     await buttonByText(wrapper, "Configure Report").trigger("click");
     expect(wrapper.text()).toContain("Configure Report");
 
     await buttonByText(wrapper, "Satanic").trigger("click");
 
     expect(wrapper.emitted("update:expandedDropKey")).toEqual([[`${run.id}:Satanic`]]);
+    expect(wrapper.emitted("update-run-tags")).toEqual([[run.id, ["Dungeons", "Codex"]]]);
   });
 
   test("LiveView binds the high-churn dashboard controls through explicit update events", async () => {

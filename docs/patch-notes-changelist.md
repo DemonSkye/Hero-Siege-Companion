@@ -1,5 +1,24 @@
 # Patch Notes Changelist
 
+## v0.2.0 Past Run Search, Audio, Themes, And Dashboard Polish
+
+- Npcap is still required for capture. Install it from https://npcap.com/#download with WinPcap API-compatible mode enabled.
+- Added Past Runs search across tags, drops, resources, characters, dates, duration, gold, XP, and kills.
+- Added per-run tags for Past Runs, with a tag picker that can reuse saved tags or create new ones.
+- Added imported loot alert sounds for rarity groups and exact watched items.
+- Added support for importing local sound files and zip soundpacks into Settings > Sounds.
+- Added Dark, Cyberpunk, and Light theme presets.
+- Added compact mode theming so the overlay can use a different theme and accent color from the full dashboard.
+- Added theme import/export for sharing a base theme, accent color, and optional app chrome tokens.
+- Added a one-time What's New prompt for updated versions, plus a permanent What's New panel in Settings.
+- Added separate full-app and compact theme controls under Settings > Appearance.
+- Added configurable Past Runs reports with summary cards, rarity filters, tracked item groups, resource drawers, and top-drop limits.
+- Added custom compact/full dashboard run tiles, including counters backed by item filter groups or exact item names.
+- Added Npcap setup checks near capture controls for common setup problems.
+- Improved Cyberpunk theme polish with a warmer left-side glow, smoother panel sheen, and more consistent Live Session page surfaces.
+- Fixed compact mode ignoring theme selection by applying compact-specific theme state while compact mode is active.
+- Fixed Live Session using a visibly different dashboard background from Item Filter and Past Runs.
+
 ## v0.1.6 Report Customization, Item Research, And Compact Run Controls
 
 - Added configurable Past Runs reports with summary card toggles, rarity inclusion, tracked item groups, resource drawers, and top-drop limits.

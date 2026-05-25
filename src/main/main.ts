@@ -6,7 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import zlib from "node:zlib";
 import { CaptureService, type CaptureUpdate } from "./capture";
 import type { CapturePreferences, CompanionState, LogEntry, ReleaseUpdateInfo, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
-import { createInitialStats, hasRunActivity, StatsEngine, type PastRunSummary } from "../shared/stats";
+import { createInitialStats, hasRunActivity, normalizePastRunTags, StatsEngine, type PastRunSummary } from "../shared/stats";
+import type { SupportDiagnosticLogFileInfo, SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
 
 const statsEngine = new StatsEngine();
 const logs: LogEntry[] = [];
@@ -38,6 +39,38 @@ const MAX_CONFIGURATION_IMPORT_BYTES = 1024 * 1024;
 const MAX_CUSTOM_SOUND_IMPORT_BYTES = 4 * 1024 * 1024;
 const MAX_SOUND_PACK_IMPORT_BYTES = 64 * 1024 * 1024;
 const MAX_SOUND_IMPORT_COUNT = 24;
+const SUPPORT_DIAGNOSTIC_GENERATED_FILES = [
+  {
+    name: "diagnostics-summary.txt",
+    description: "Current capture status, adapter, filter, packet counters, parser health, and app version.",
+  },
+];
+const SUPPORT_DIAGNOSTIC_LOG_FILES = [
+  {
+    name: "app-debug.log",
+    description: "App startup, window, crash, update, and session heartbeat diagnostics.",
+  },
+  {
+    name: "app-debug.log.old",
+    description: "Previous rotated app diagnostics log, when one exists.",
+  },
+  {
+    name: "capture-debug.log",
+    description: "Npcap setup, adapter selection, capture-open, connection, and parser diagnostics.",
+  },
+  {
+    name: "capture-debug.log.old",
+    description: "Previous rotated capture diagnostics log, when one exists.",
+  },
+  {
+    name: "capture-wide-debug.log",
+    description: "Optional verbose packet and assembled-payload diagnostics when verbose live logging is enabled.",
+  },
+  {
+    name: "capture-wide-debug.log.old",
+    description: "Previous rotated verbose capture diagnostics log, when one exists.",
+  },
+];
 const CUSTOM_SOUND_MIME_TYPES: Record<string, string> = {
   ".aac": "audio/aac",
   ".flac": "audio/flac",
@@ -174,6 +207,11 @@ function createWindow(): void {
     },
   });
 
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalWebUrl(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
   loadRenderer(mainWindow);
   writeAppLog("window-created", { id: mainWindow.id, bounds: mainWindow.getBounds() });
   mainWindow.on("close", () => {
@@ -223,6 +261,15 @@ function createWindow(): void {
 
 function loadRenderer(window: BrowserWindow): void {
   window.loadFile(path.join(__dirname, "..", "..", "renderer", "index.html"));
+}
+
+function isExternalWebUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function scheduleRendererRecovery(reason: string): void {
@@ -452,6 +499,16 @@ ipcMain.handle("run:pause", () => {
 });
 ipcMain.handle("run:resume", () => {
   resumeRun();
+  publishState();
+  return state;
+});
+ipcMain.handle("past-runs:set-tags", (_event, runId: string, tags: unknown) => {
+  const normalizedRunId = String(runId ?? "");
+  const nextTags = normalizePastRunTags(tags);
+  if (!normalizedRunId || !state.pastRuns.some((run) => run.id === normalizedRunId)) return state;
+
+  state.pastRuns = state.pastRuns.map((run) => (run.id === normalizedRunId ? { ...run, tags: nextTags } : run));
+  savePastRuns(state.pastRuns);
   publishState();
   return state;
 });
@@ -694,6 +751,10 @@ ipcMain.handle("window:set-compact-mode", (_event, enabled: boolean, lockPositio
 ipcMain.handle("clipboard:write-text", (_event, value: string) => {
   clipboard.writeText(String(value));
 });
+ipcMain.handle("support:get-diagnostics-info", () => getSupportDiagnosticsInfo());
+ipcMain.handle("support:save-diagnostics", async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
+  saveSupportDiagnosticsBundle(String(diagnosticsSummary ?? "")),
+);
 ipcMain.handle("updates:check", async () => checkForReleaseUpdate());
 ipcMain.handle("updates:open-release", async (_event, url?: string) => {
   const target = typeof url === "string" && /^https:\/\/github\.com\/DemonSkye\/Hero-Siege-Companion\/releases(?:\/|$)/i.test(url)
@@ -716,6 +777,232 @@ ipcMain.handle("game:choose-executable", async () => {
   const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : result.filePaths[0] ?? null;
 });
+
+function getSupportDiagnosticsInfo(): SupportDiagnosticsInfo {
+  const userDataPath = app.getPath("userData");
+  return {
+    userDataPath,
+    generatedFiles: SUPPORT_DIAGNOSTIC_GENERATED_FILES,
+    logFiles: SUPPORT_DIAGNOSTIC_LOG_FILES.map((file) => getSupportLogFileInfo(userDataPath, file)),
+  };
+}
+
+function getSupportLogFileInfo(userDataPath: string, file: { name: string; description: string }): SupportDiagnosticLogFileInfo {
+  const filePath = path.join(userDataPath, file.name);
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) throw new Error("Support diagnostics path is not a file.");
+    return {
+      name: file.name,
+      path: filePath,
+      description: file.description,
+      exists: true,
+      sizeBytes: stat.size,
+      updatedAt: stat.mtime.toISOString(),
+    };
+  } catch {
+    return {
+      name: file.name,
+      path: filePath,
+      description: file.description,
+      exists: false,
+      sizeBytes: 0,
+      updatedAt: null,
+    };
+  }
+}
+
+async function saveSupportDiagnosticsBundle(diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> {
+  const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z").replace("T", "-");
+  const options = {
+    title: "Save Hero Siege Companion diagnostics",
+    defaultPath: `hero-siege-companion-diagnostics-${timestamp}.zip`,
+    filters: [
+      { name: "ZIP archive", extensions: ["zip"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  } satisfies Electron.SaveDialogOptions;
+  const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
+  if (result.canceled || !result.filePath) {
+    return { saved: false, canceled: true, filePath: null, includedFiles: [] };
+  }
+
+  const info = getSupportDiagnosticsInfo();
+  const entries: ZipEntryInput[] = [
+    {
+      name: "diagnostics-summary.txt",
+      data: Buffer.from(createSupportDiagnosticsSummary(diagnosticsSummary, info), "utf8"),
+      modifiedAt: new Date(),
+    },
+  ];
+
+  for (const file of info.logFiles) {
+    if (!file.exists) continue;
+    try {
+      entries.push({
+        name: file.name,
+        data: fs.readFileSync(file.path),
+        modifiedAt: file.updatedAt ? new Date(file.updatedAt) : new Date(),
+      });
+    } catch {
+      writeAppLog("support-diagnostics-log-read-failed", { file: file.name, path: file.path });
+    }
+  }
+
+  fs.writeFileSync(result.filePath, createZipArchive(entries));
+  const includedFiles = entries.map((entry) => entry.name);
+  addLog("success", `Diagnostics ZIP saved with ${includedFiles.length} file${includedFiles.length === 1 ? "" : "s"}.`);
+  writeAppLog("support-diagnostics-saved", {
+    path: result.filePath,
+    includedFiles,
+  });
+  return { saved: true, canceled: false, filePath: result.filePath, includedFiles };
+}
+
+function createSupportDiagnosticsSummary(diagnosticsSummary: string, info: SupportDiagnosticsInfo): string {
+  const normalizedSummary = diagnosticsSummary.trim() || "Hero Siege Companion capture diagnostics";
+  const logFileLines = info.logFiles.map((file) => {
+    const status = file.exists
+      ? `${file.sizeBytes} bytes${file.updatedAt ? `, modified ${file.updatedAt}` : ""}`
+      : "not found";
+    return `- ${file.name}: ${status}`;
+  });
+
+  return [
+    normalizedSummary,
+    "",
+    "Diagnostic log folder:",
+    info.userDataPath,
+    "",
+    "Files selected for this bundle:",
+    "- diagnostics-summary.txt: generated from the current Support tab preview",
+    ...logFileLines,
+    "",
+  ].join("\n");
+}
+
+interface ZipEntryInput {
+  name: string;
+  data: Buffer;
+  modifiedAt: Date;
+}
+
+interface ZipCentralDirectoryInput {
+  nameBuffer: Buffer;
+  crc: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  compressionMethod: number;
+  dosTime: number;
+  dosDate: number;
+  localHeaderOffset: number;
+}
+
+function createZipArchive(entries: ZipEntryInput[]): Buffer {
+  const localParts: Buffer[] = [];
+  const centralInputs: ZipCentralDirectoryInput[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const name = entry.name.replace(/\\/g, "/").replace(/^\/+/, "");
+    const nameBuffer = Buffer.from(name, "utf8");
+    const compressed = zlib.deflateRawSync(entry.data, { level: 9 });
+    const crc = crc32(entry.data);
+    const { dosTime, dosDate } = dateToDos(entry.modifiedAt);
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0x0800, 6);
+    localHeader.writeUInt16LE(8, 8);
+    localHeader.writeUInt16LE(dosTime, 10);
+    localHeader.writeUInt16LE(dosDate, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(compressed.length, 18);
+    localHeader.writeUInt32LE(entry.data.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    localParts.push(localHeader, nameBuffer, compressed);
+    centralInputs.push({
+      nameBuffer,
+      crc,
+      compressedSize: compressed.length,
+      uncompressedSize: entry.data.length,
+      compressionMethod: 8,
+      dosTime,
+      dosDate,
+      localHeaderOffset: offset,
+    });
+    offset += localHeader.length + nameBuffer.length + compressed.length;
+  }
+
+  const centralDirectoryOffset = offset;
+  const centralParts = centralInputs.map((input) => {
+    const header = Buffer.alloc(46);
+    header.writeUInt32LE(0x02014b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(20, 6);
+    header.writeUInt16LE(0x0800, 8);
+    header.writeUInt16LE(input.compressionMethod, 10);
+    header.writeUInt16LE(input.dosTime, 12);
+    header.writeUInt16LE(input.dosDate, 14);
+    header.writeUInt32LE(input.crc, 16);
+    header.writeUInt32LE(input.compressedSize, 20);
+    header.writeUInt32LE(input.uncompressedSize, 24);
+    header.writeUInt16LE(input.nameBuffer.length, 28);
+    header.writeUInt16LE(0, 30);
+    header.writeUInt16LE(0, 32);
+    header.writeUInt16LE(0, 34);
+    header.writeUInt16LE(0, 36);
+    header.writeUInt32LE(0, 38);
+    header.writeUInt32LE(input.localHeaderOffset, 42);
+    offset += header.length + input.nameBuffer.length;
+    return Buffer.concat([header, input.nameBuffer]);
+  });
+
+  const centralDirectorySize = offset - centralDirectoryOffset;
+  const endOfCentralDirectory = Buffer.alloc(22);
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(0, 4);
+  endOfCentralDirectory.writeUInt16LE(0, 6);
+  endOfCentralDirectory.writeUInt16LE(centralInputs.length, 8);
+  endOfCentralDirectory.writeUInt16LE(centralInputs.length, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectorySize, 12);
+  endOfCentralDirectory.writeUInt32LE(centralDirectoryOffset, 16);
+  endOfCentralDirectory.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, ...centralParts, endOfCentralDirectory]);
+}
+
+function dateToDos(date: Date): { dosTime: number; dosDate: number } {
+  const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
+  const year = Math.max(1980, Math.min(2107, safeDate.getFullYear()));
+  const dosTime = (safeDate.getHours() << 11) | (safeDate.getMinutes() << 5) | Math.floor(safeDate.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((safeDate.getMonth() + 1) << 5) | safeDate.getDate();
+  return { dosTime, dosDate };
+}
+
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const CRC32_TABLE = createCrc32Table();
+
+function createCrc32Table(): Uint32Array {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < table.length; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+  return table;
+}
 
 async function checkForReleaseUpdate(): Promise<ReleaseUpdateInfo | null> {
   try {
@@ -1149,7 +1436,7 @@ function loadPastRuns(): PastRunSummary[] {
     const raw = fs.readFileSync(pastRunsPath, "utf8");
     const parsed = JSON.parse(raw) as PastRunSummary[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.slice(0, MAX_PAST_RUNS).filter(isPastRunSummary);
+    return parsed.slice(0, MAX_PAST_RUNS).filter(isPastRunSummary).map(normalizePastRunSummary);
   } catch (error) {
     writeAppLog("past-runs-load-error", { error: error instanceof Error ? error.message : String(error) });
     return [];
@@ -1286,6 +1573,14 @@ function isPastRunSummary(value: unknown): value is PastRunSummary {
     Array.isArray(candidate.keys) &&
     Array.isArray(candidate.ores)
   );
+}
+
+function normalizePastRunSummary(run: PastRunSummary): PastRunSummary {
+  return {
+    ...run,
+    tags: normalizePastRunTags((run as { tags?: unknown }).tags),
+    materials: Array.isArray(run.materials) ? run.materials : [],
+  };
 }
 
 function writeAppLog(type: string, data: Record<string, unknown>): void {

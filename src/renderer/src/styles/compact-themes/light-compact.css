@@ -1,0 +1,75 @@
+:root[data-theme="light"] .compact-zone-tray,
+:root[data-theme="light"] .compact-cover,
+:root[data-theme="light"] .compact-run-cover {
+  color: var(--app-text);
+  box-shadow:
+    0 18px 42px var(--shadow),
+    0 1px 2px rgba(28, 40, 55, 0.08);
+}
+
+:root[data-theme="light"] .app-shell.compact .drag-strip {
+  color: #2b3a46;
+}
+
+:root[data-theme="light"] .app-shell.compact .window-controls {
+  border-color: rgba(28, 40, 55, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+:root[data-theme="light"] .app-shell.compact .window-controls button,
+:root[data-theme="light"] .compact-run-cover-controls button,
+:root[data-theme="light"] .compact-cover-button {
+  color: var(--app-heading);
+}
+
+:root[data-theme="light"] .compact-run-cover-controls button,
+:root[data-theme="light"] .compact-cover-button {
+  border-color: rgba(28, 40, 55, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+:root[data-theme="light"] .compact-run-cover-controls button:disabled {
+  color: var(--app-muted);
+}
+
+:root[data-theme="light"] .compact-cover-head span,
+:root[data-theme="light"] .compact-cover-grid span,
+:root[data-theme="light"] .compact-primary span,
+:root[data-theme="light"] .compact-drop span {
+  color: #278f83;
+}
+
+:root[data-theme="light"] .compact-cover-head strong,
+:root[data-theme="light"] .compact-cover-grid strong,
+:root[data-theme="light"] .compact-primary strong,
+:root[data-theme="light"] .compact-drop strong,
+:root[data-theme="light"] .compact-settings-heading strong {
+  color: var(--app-heading);
+}
+
+:root[data-theme="light"] .compact-shopping-head strong,
+:root[data-theme="light"] .compact-zone-effects strong {
+  color: var(--app-heading);
+}
+
+:root[data-theme="light"] .compact-shopping-head span,
+:root[data-theme="light"] .shopping-count,
+:root[data-theme="light"] .compact-shopping-empty,
+:root[data-theme="light"] .compact-zone-effects p,
+:root[data-theme="light"] .compact-settings-heading span {
+  color: var(--app-muted);
+}
+
+:root[data-theme="light"] .compact-settings-section {
+  box-shadow:
+    0 8px 22px rgba(36, 52, 67, 0.12),
+    0 1px 1px rgba(36, 52, 67, 0.06);
+}
+
+:root[data-theme="light"] .compact-primary div,
+:root[data-theme="light"] .compact-run-cell,
+:root[data-theme="light"] .compact-primary-cell,
+:root[data-theme="light"] .compact-cover-grid div,
+:root[data-theme="light"] .compact-run-cover .compact-cover-grid div {
+  box-shadow: 0 5px 14px rgba(36, 52, 67, 0.08);
+}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { PastRunSummary } from "../../../shared/stats";
+import { MAX_PAST_RUN_TAGS, normalizePastRunTags, type PastRunSummary } from "../../../shared/stats";
 import { formatDateTime, formatDuration, formatNumber, formatTime } from "../lib/format";
 import { itemIconUrl, resourceImage } from "../lib/item-assets";
 import { ITEM_FILTER_SUGGESTION_LIMIT, itemTypeLabelForName } from "../lib/item-filters";
@@ -28,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:expandedDropKey": [value: string | null];
   "update:reportConfig": [value: PostRunReportConfig];
+  "update-run-tags": [runId: string, tags: string[]];
 }>();
 
 const showReportConfig = ref(false);
@@ -35,21 +36,38 @@ const reportDraftItem = ref("");
 const reportDraftGroupName = ref("");
 const selectedReportGroupId = ref("");
 const expandedResourceDrawers = ref<Set<string>>(new Set());
+const runSearchQuery = ref("");
+const activeTagRunId = ref<string | null>(null);
+const tagDraft = ref("");
 
 const reportItemGroups = computed(() => props.reportConfig.itemGroups);
 const selectedReportGroup = computed(() => reportItemGroups.value.find((group) => group.id === selectedReportGroupId.value) ?? reportItemGroups.value[0] ?? null);
 const activeReportGroups = computed(() => reportItemGroups.value.filter((group) => group.enabled));
-const allRunAggregate = computed(() => aggregatePastRuns(props.pastRuns, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
-const recentRunAggregate = computed(() => aggregatePastRuns(props.pastRuns.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
+const allRunTags = computed(() => uniqueSortedTags(props.pastRuns.flatMap((run) => runTags(run))));
+const searchTerms = computed(() => normalizeSearchValue(runSearchQuery.value).split(" ").filter(Boolean));
+const filteredPastRuns = computed(() => {
+  const terms = searchTerms.value;
+  if (!terms.length) return props.pastRuns;
+  return props.pastRuns.filter((run) => {
+    const haystack = runSearchText(run);
+    return terms.every((term) => haystack.includes(term));
+  });
+});
+const allRunAggregate = computed(() => aggregatePastRuns(filteredPastRuns.value, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
+const recentRunAggregate = computed(() => aggregatePastRuns(filteredPastRuns.value.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
 const aggregatePanels = computed(() => [
-  { key: "all", title: "All Runs", subtitle: `${allRunAggregate.value.runCount} saved`, aggregate: allRunAggregate.value },
-  { key: "recent", title: "Last 10 Runs", subtitle: `${recentRunAggregate.value.runCount} included`, aggregate: recentRunAggregate.value },
+  { key: "all", title: searchTerms.value.length ? "Matching Runs" : "All Runs", subtitle: `${allRunAggregate.value.runCount} saved`, aggregate: allRunAggregate.value },
+  { key: "recent", title: searchTerms.value.length ? "Recent Matches" : "Last 10 Runs", subtitle: `${recentRunAggregate.value.runCount} included`, aggregate: recentRunAggregate.value },
 ]);
 const reportMetricOptions = REPORT_METRIC_OPTIONS;
 const reportResourceDrawerOptions = REPORT_RESOURCE_DRAWER_OPTIONS;
 const reportTopDropLimitOptions = REPORT_TOP_DROP_LIMIT_OPTIONS;
 const isDefaultReportConfig = computed(() => isDefaultPostRunReportConfig(props.reportConfig));
 const reportModeLabel = computed(() => (isDefaultReportConfig.value ? "Default report" : "Custom report"));
+const pastRunCountLabel = computed(() => {
+  if (!searchTerms.value.length) return `${props.pastRuns.length}/100 saved`;
+  return `${filteredPastRuns.value.length}/${props.pastRuns.length} shown`;
+});
 const reportGroupHelp = computed(() => {
   if (activeReportGroups.value.length > 0) {
     return "Enabled groups are combined. Empty rarities mean any rarity; empty watched items mean any item in the selected rarities.";
@@ -77,6 +95,60 @@ function isPastRunDropExpanded(run: PastRunSummary, rarity: string): boolean {
 
 function runTitle(run: PastRunSummary): string {
   return run.accountName || "Hero Siege Run";
+}
+
+function runTags(run: PastRunSummary): string[] {
+  return normalizePastRunTags(run.tags);
+}
+
+function toggleTagMenu(run: PastRunSummary) {
+  activeTagRunId.value = activeTagRunId.value === run.id ? null : run.id;
+  tagDraft.value = "";
+}
+
+function closeTagMenu() {
+  activeTagRunId.value = null;
+  tagDraft.value = "";
+}
+
+function addSearchTag(tag: string) {
+  const normalizedTag = normalizePastRunTags([tag])[0];
+  if (!normalizedTag) return;
+  const current = runSearchQuery.value.trim();
+  if (normalizeSearchValue(current).split(" ").includes(normalizeSearchValue(normalizedTag))) return;
+  runSearchQuery.value = current ? `${current} ${normalizedTag}` : normalizedTag;
+}
+
+function availableTagOptions(run: PastRunSummary): string[] {
+  const query = normalizeSearchValue(tagDraft.value);
+  const selected = new Set(runTags(run).map(normalizeSearchValue));
+  return allRunTags.value
+    .filter((tag) => !selected.has(normalizeSearchValue(tag)))
+    .filter((tag) => !query || normalizeSearchValue(tag).includes(query))
+    .slice(0, 40);
+}
+
+function canCreateTag(run: PastRunSummary): boolean {
+  const normalizedTag = pendingTag();
+  if (!normalizedTag || runTags(run).length >= MAX_PAST_RUN_TAGS) return false;
+  return !runTags(run).some((tag) => normalizeSearchValue(tag) === normalizeSearchValue(normalizedTag));
+}
+
+function pendingTag(): string {
+  return normalizePastRunTags([tagDraft.value])[0] ?? "";
+}
+
+function addTagToRun(run: PastRunSummary, tag: string) {
+  const nextTags = normalizePastRunTags([...runTags(run), tag]);
+  if (sameTagList(nextTags, runTags(run))) return;
+  emit("update-run-tags", run.id, nextTags);
+  tagDraft.value = "";
+}
+
+function removeTagFromRun(run: PastRunSummary, tag: string) {
+  const removed = normalizeSearchValue(tag);
+  const nextTags = runTags(run).filter((candidate) => normalizeSearchValue(candidate) !== removed);
+  emit("update-run-tags", run.id, nextTags);
 }
 
 function toggleReportMetric(metric: ReportMetricId, enabled: boolean) {
@@ -255,6 +327,48 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
   }
   return Array.from(groups.entries()).map(([typeLabel, items]) => ({ typeLabel, items }));
 }
+
+function runSearchText(run: PastRunSummary): string {
+  const chunks = [
+    runTitle(run),
+    formatDateTime(run.sessionStartedAt),
+    formatTime(run.sessionEndedAt),
+    `${formatDuration(run.durationMs)} duration`,
+    `${run.totalGoldGained} gold`,
+    `${run.totalXpGained} xp`,
+    `${run.totalKillsGained ?? 0} kills`,
+    ...runTags(run).flatMap((tag) => [tag, `#${tag}`]),
+  ];
+
+  for (const [rarity, breakdown] of Object.entries(run.itemBreakdown ?? {})) {
+    chunks.push(rarity);
+    for (const drop of Object.values(breakdown)) {
+      chunks.push(drop.name, `${drop.total} ${drop.name}`, drop.mf > 0 ? `${drop.name} mf` : "");
+    }
+  }
+  for (const resource of [...run.keys, ...run.ores, ...(run.materials ?? [])]) {
+    chunks.push(resource.name, `${resource.total} ${resource.name}`);
+  }
+
+  return normalizeSearchValue(chunks.filter(Boolean).join(" "));
+}
+
+function uniqueSortedTags(tags: string[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const rawTag of tags) {
+    const tag = normalizePastRunTags([rawTag])[0];
+    if (tag) byKey.set(normalizeSearchValue(tag), tag);
+  }
+  return Array.from(byKey.values()).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+}
+
+function normalizeSearchValue(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function sameTagList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((tag, index) => tag === right[index]);
+}
 </script>
 
 <template>
@@ -268,7 +382,7 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
         <div class="past-runs-heading-actions">
           <button class="icon-button ghost" type="button" @click="showReportConfig = true">Configure Report</button>
           <span class="info-bubble" data-tip="The default report shows all saved drops from the selected rarities. Configure Report changes the view only, not saved run data.">i</span>
-          <span class="past-run-count">{{ pastRuns.length }}/100 saved</span>
+          <span class="past-run-count">{{ pastRunCountLabel }}</span>
         </div>
       </div>
 
@@ -440,7 +554,18 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
         </div>
       </Teleport>
 
-      <div v-if="pastRuns.length" class="past-run-aggregate-grid">
+      <div v-if="pastRuns.length" class="past-run-toolbar">
+        <label class="past-run-search">
+          <span>Search runs</span>
+          <input v-model="runSearchQuery" type="search" placeholder="Tags, drops, resources, character, stats" autocomplete="off" spellcheck="false" />
+        </label>
+        <div v-if="allRunTags.length" class="past-run-tag-filters" aria-label="Saved run tags">
+          <button v-for="tag in allRunTags" :key="tag" class="past-run-tag-filter" type="button" @click="addSearchTag(tag)">#{{ tag }}</button>
+        </div>
+        <button v-if="runSearchQuery.trim()" class="icon-button ghost past-run-clear-search" type="button" @click="runSearchQuery = ''">Clear</button>
+      </div>
+
+      <div v-if="filteredPastRuns.length" class="past-run-aggregate-grid">
         <section v-for="panel in aggregatePanels" :key="panel.key" class="past-run-aggregate">
           <div class="aggregate-heading">
             <div>
@@ -479,14 +604,48 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
         </section>
       </div>
 
-      <div v-if="pastRuns.length" class="past-runs-list">
-        <section v-for="run in pastRuns" :key="run.id" class="past-run-card">
+      <div v-if="filteredPastRuns.length" class="past-runs-list">
+        <section v-for="run in filteredPastRuns" :key="run.id" class="past-run-card">
           <div class="past-run-header">
-            <div>
+            <div class="past-run-header-main">
               <h3>{{ runTitle(run) }}</h3>
               <span>{{ formatDateTime(run.sessionStartedAt) }} &middot; {{ formatDuration(run.durationMs) }}</span>
+              <div v-if="runTags(run).length" class="past-run-tags" aria-label="Run tags">
+                <span v-for="tag in runTags(run)" :key="`${run.id}-${tag}`" class="run-tag-chip">
+                  #{{ tag }}
+                  <button type="button" :aria-label="`Remove ${tag} tag`" @click="removeTagFromRun(run, tag)">x</button>
+                </span>
+              </div>
             </div>
-            <div class="past-run-time">{{ formatTime(run.sessionEndedAt) }}</div>
+            <div class="past-run-header-actions">
+              <div class="past-run-time">{{ formatTime(run.sessionEndedAt) }}</div>
+              <button class="tag-selector-button" type="button" :aria-expanded="activeTagRunId === run.id" @click="toggleTagMenu(run)">
+                <span>Tag</span>
+                <strong>{{ runTags(run)[0] ?? "Select" }}</strong>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="activeTagRunId === run.id" class="run-tag-menu" @keydown.esc="closeTagMenu">
+            <div class="run-tag-menu-head">
+              <strong>Select tag</strong>
+              <button type="button" title="Close tag picker" aria-label="Close tag picker" @click="closeTagMenu">x</button>
+            </div>
+            <label class="run-tag-search">
+              <span>Search</span>
+              <input v-model="tagDraft" type="search" placeholder="Search or create a new tag" autocomplete="off" spellcheck="false" @keydown.enter.prevent="canCreateTag(run) ? addTagToRun(run, pendingTag()) : null" />
+            </label>
+            <div class="run-tag-options">
+              <button v-for="tag in availableTagOptions(run)" :key="`${run.id}-option-${tag}`" class="run-tag-option" type="button" @click="addTagToRun(run, tag)">
+                #{{ tag }}
+              </button>
+              <button v-if="canCreateTag(run)" class="run-tag-option create" type="button" @click="addTagToRun(run, pendingTag())">
+                Create #{{ pendingTag() }}
+              </button>
+              <p v-else-if="runTags(run).length >= MAX_PAST_RUN_TAGS" class="empty-copy">Tag limit reached for this run.</p>
+              <p v-else-if="tagDraft.trim() && !availableTagOptions(run).length" class="empty-copy">No available tag matches.</p>
+              <p v-else-if="!availableTagOptions(run).length" class="empty-copy">No saved tags yet. Type a new one to create it.</p>
+            </div>
           </div>
 
           <div class="past-run-metrics dynamic-metrics">
@@ -561,6 +720,7 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
           </div>
         </section>
       </div>
+      <p v-else-if="pastRuns.length" class="empty-copy past-run-filter-empty">No saved runs match this search.</p>
       <p v-else class="empty-copy">Click End Run to save the current session here. Closing the app also saves the run, and it will appear on the next launch.</p>
     </article>
   </section>

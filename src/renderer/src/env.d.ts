@@ -1,4 +1,5 @@
 import type { CapturePreferences, CompanionState, ReleaseUpdateInfo, RunArchivePreferences } from "../../shared/app-state";
+import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "../../shared/support-diagnostics";
 
 declare global {
   interface Window {
@@ -11,6 +12,7 @@ declare global {
       resetStats: () => Promise<CompanionState>;
       pauseRun: () => Promise<CompanionState>;
       resumeRun: () => Promise<CompanionState>;
+      setPastRunTags: (runId: string, tags: string[]) => Promise<CompanionState>;
       setRunArchivePreferences: (preferences: RunArchivePreferences) => Promise<CompanionState>;
       setCapturePreferences: (preferences: CapturePreferences) => Promise<CompanionState>;
       exportConfiguration: (json: string) => Promise<boolean>;
@@ -24,6 +26,8 @@ declare global {
       setAlwaysOnTop: (enabled: boolean) => Promise<void>;
       setCompactMode: (enabled: boolean, lockPositions: boolean) => Promise<void>;
       writeClipboardText: (value: string) => Promise<void>;
+      getSupportDiagnosticsInfo: () => Promise<SupportDiagnosticsInfo>;
+      saveSupportDiagnostics: (diagnosticsSummary: string) => Promise<SupportDiagnosticsSaveResult>;
       checkForUpdate: () => Promise<ReleaseUpdateInfo | null>;
       openRelease: (url?: string) => Promise<void>;
       openNpcapGuide: () => Promise<void>;
