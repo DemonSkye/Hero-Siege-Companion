@@ -279,7 +279,7 @@ const ITEM_RARITY_BY_NAME: Record<string, KnownItemRarity> = {
   "earth shaper's body": "Set",
   "earth shaper's boots": "Set",
   "earth shaper's talons": "Set",
-  "eden s harvester": "Heroic",
+  "eden's harvester": "Heroic",
   "einar's horned helmet": "Set",
   "einar's icy stride": "Set",
   "einar's padded gauntlets": "Set",

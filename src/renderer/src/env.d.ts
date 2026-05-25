@@ -16,6 +16,8 @@ declare global {
       exportConfiguration: (json: string) => Promise<boolean>;
       importConfiguration: () => Promise<string | null>;
       exportItemResearch: (json: string) => Promise<boolean>;
+      importSounds: () => Promise<Array<{ fileName: string; src: string }>>;
+      removeSound: (src: string) => Promise<boolean>;
       minimizeWindow: () => Promise<void>;
       toggleMaximizeWindow: () => Promise<void>;
       closeWindow: () => Promise<void>;

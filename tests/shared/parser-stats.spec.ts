@@ -229,6 +229,42 @@ test("item stats accept named rarity and magic find alias", () => {
   assert.equal(snapshot.items.Satanic.mf, 1);
 });
 
+test("heroic-looking inventory weapon packets do not count without server announcement", () => {
+  const events = messageToEvents([
+    {
+      addedItemObject: {
+        source: "inventory",
+        fingerprint: "10-3909410-65295343278200001-3",
+        label: "Chainsaw",
+        seed: 648071015,
+        id: 10,
+        tokenLevel: 10,
+        type: 3,
+        dropQuality: 0,
+        rarity: 2,
+        token: 0,
+        tier: 0,
+        amount: 1,
+        weaponType: 7,
+        marketId: 0,
+        mfDrop: 1,
+        sockets: 0,
+        account: "",
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events[0].name, "itemAdded");
+  assert.equal(events[0].value.label, "Chainsaw");
+  assert.equal(events[0].value.rarityName, "Superior");
+  assert.equal(events[0].value.mfDrop, 1);
+  assert.equal(snapshot.items.Heroic.total, 0);
+  assert.equal(snapshot.items.Heroic.mf, 0);
+  assert.equal(snapshot.itemTimeline[0].label, "Chainsaw");
+});
+
 test("item stats count only selected tracked rarities", () => {
   const events = messageToEvents([
     { added_item_object: { rarity: 4, item_id: 1, addedItemFingerprint: "set-1" } },
@@ -279,7 +315,7 @@ test("inventory update ext adds items from short fields", () => {
   assert.deepEqual(events.map((event) => event.name), ["itemAdded", "itemAdded"]);
   assert.equal(snapshot.items.Satanic.total, 1);
   assert.equal(snapshot.items.Satanic.mf, 1);
-  assert.equal(snapshot.items.Heroic.total, 1);
+  assert.equal(snapshot.items.Heroic.total, 0);
   assert.equal(snapshot.items.Heroic.mf, 0);
 });
 
@@ -377,7 +413,7 @@ test("generated ground itemData is ignored until an inventory pickup event", () 
   const snapshot = stats.applyEvents(events);
 
   assert.deepEqual(events.map((event) => event.name), ["itemAdded"]);
-  assert.equal(snapshot.items.Heroic.total, 1);
+  assert.equal(snapshot.items.Heroic.total, 0);
   assert.equal(snapshot.itemTimeline.length, 1);
 });
 
@@ -467,6 +503,41 @@ test("server just found messages can produce named drop events", () => {
   assert.equal(events[0].value.type, 2);
 });
 
+test("heroic and angelic item identities require server just found messages", () => {
+  const inventoryEvents = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "2-3768602-6529eca8745200001-3": {
+            sh: "4e341ae17885",
+            n: 3,
+            a: 478771514,
+            e: 10,
+            j: 4,
+            d: 1,
+            b: 9,
+            c: 0,
+          },
+        },
+      },
+      newHashes: {},
+    },
+  ]);
+  const serverEvents = messageToEvents([{ message: "SERVER: [Softcore] Dante just found [Aurelion Fury]" }]);
+  const stats = new StatsEngine();
+  stats.applyEvents(inventoryEvents);
+  const snapshot = stats.applyEvents(serverEvents);
+
+  assert.equal(inventoryEvents[0].value.label, "Axe #9");
+  assert.equal(inventoryEvents[0].value.rarityName, "Common");
+  assert.equal(serverEvents[0].value.label, "Aurelion Fury");
+  assert.equal(serverEvents[0].value.rarityName, "Angelic");
+  assert.equal(snapshot.items.Angelic.total, 1);
+  assert.equal(snapshot.itemBreakdown.Angelic["Aurelion Fury"].total, 1);
+});
+
 test("inventory item_data payloads are treated as picked up items", () => {
   const events = messageToEvents([
     {
@@ -509,8 +580,8 @@ test("inventory item_data pickup_add_data payloads are treated as picked up item
   const snapshot = stats.applyEvents(events);
 
   assert.equal(events[0].name, "itemAdded");
-  assert.equal(events[0].value.rarityName, "Heroic");
-  assert.equal(snapshot.items.Heroic.total, 1);
+  assert.equal(events[0].value.rarityName, "Unknown");
+  assert.equal(snapshot.items.Heroic.total, 0);
 });
 
 test("common inventory pickups still appear in timeline", () => {
@@ -620,7 +691,7 @@ test("inventory update ext treats fingerprint type zero as helmet", () => {
   assert.equal(events[0].value.label, "Gabriel's Brimmed Fedora");
 });
 
-test("known ring rarities override common packet rarity", () => {
+test("known heroic ring names do not override inventory packets without server announcement", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -654,14 +725,14 @@ test("known ring rarities override common packet rarity", () => {
   const stats = new StatsEngine();
   const snapshot = stats.applyEvents(events);
 
-  assert.equal(events[0].value.label, "Scourge Loop");
-  assert.equal(events[0].value.localizationId, "rings_scourge_loop");
-  assert.equal(events[0].value.rarityName, "Heroic");
-  assert.equal(events[1].value.label, "Stone of Premonition");
-  assert.equal(events[1].value.localizationId, "rings_stone_of_jordan");
-  assert.equal(events[1].value.rarityName, "Heroic");
+  assert.equal(events[0].value.label, "Ring #48");
+  assert.equal(events[0].value.localizationId, undefined);
+  assert.equal(events[0].value.rarityName, "Common");
+  assert.equal(events[1].value.label, "Ring #3");
+  assert.equal(events[1].value.localizationId, undefined);
+  assert.equal(events[1].value.rarityName, "Common");
   assert.equal(snapshot.items.Set.total, 0);
-  assert.equal(snapshot.items.Heroic.total, 2);
+  assert.equal(snapshot.items.Heroic.total, 0);
   assert.equal(snapshot.items.Satanic.total, 0);
 });
 
@@ -802,7 +873,7 @@ test("unknown numeric rarity codes still use known item rarity", () => {
   assert.equal(snapshot.items.Set.total, 1);
 });
 
-test("known item rarity map classifies known helmets", () => {
+test("known item rarity map classifies known helmets except server-announced rarities", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -838,10 +909,10 @@ test("known item rarity map classifies known helmets", () => {
     events.map((event) => [event.value.label, event.value.rarityName]),
     [
       ["Lunar Prophet's Tiara", "Set"],
-      ["Lava King's Lost Mask", "Heroic"],
+      ["Helmet #49", "Common"],
     ],
   );
-  assert.equal(snapshot.items.Heroic.total, 1);
+  assert.equal(snapshot.items.Heroic.total, 0);
   assert.equal(snapshot.items.Set.total, 1);
   assert.equal(snapshot.items.Satanic.total, 0);
 });
@@ -1018,6 +1089,12 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
           "10-3909410-collectible-24-13": {
             pickup_add_data: { a: 10, b: 24, d: 1 },
           },
+          "10-3909410-collectible-33-13": {
+            pickup_add_data: { a: 11, b: 33, d: 1 },
+          },
+          "10-3909410-collectible-34-13": {
+            pickup_add_data: { a: 12, b: 34, d: 1 },
+          },
           "10-3909410-material-0-14": {
             pickup_add_data: { a: 6, b: 0, d: 1 },
           },
@@ -1037,7 +1114,20 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
 
   assert.deepEqual(
     events.map((event) => event.value.label),
-    ["Crystal Key", "Devil's Key", "Chaos Key", "Battle Fragment", "The Hanged Man", "The Wheel of Fortune", "Bloodstone", "Tarethium Ore", "Blacksmith's Mallet", "Gold Ore"],
+    [
+      "Crystal Key",
+      "Devil's Key",
+      "Chaos Key",
+      "Battle Fragment",
+      "The Hanged Man",
+      "The Wheel of Fortune",
+      "The Devil",
+      "The Moon",
+      "Bloodstone",
+      "Tarethium Ore",
+      "Blacksmith's Mallet",
+      "Gold Ore",
+    ],
   );
 });
 
@@ -1067,8 +1157,8 @@ test("run summaries track non-basic keys ore and selected drops", () => {
         },
       },
     },
-    { added_item_object: { rarity: "Heroic", item_id: 101, type: 0 } },
-    { added_item_object: { rarity: "Angelic", item_id: 102, type: 0 } },
+    { message: "SERVER: [Softcore] Dante just found [Fumacinha's Favela Flipflop]" },
+    { message: "SERVER: [Softcore] Dante just found [Aurelion Fury]" },
     { added_item_object: { rarity: "Set", item_id: 103, type: 0 } },
     { added_item_object: { rarity: "Satanic", item_id: 104, type: 0 } },
   ]);

@@ -20,7 +20,7 @@ export interface ItemResearchEntry {
 
 export const ITEM_RESEARCH_ENTRY_LIMIT = 200;
 const GENERIC_UNKNOWN_LABEL_PATTERN =
-  /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|socketable|key)\s+#\d+/i;
+  /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|socketable|key|sword|dagger|mace|axe|claw|polearm|chainsaw|staff|cane|wand|book|spellblade|bow|gun|flask|throwing|novelty)\s+#\d+/i;
 const RESOURCE_LIKE_TYPES = new Set([12, 13, 14, 15]);
 
 export function isItemResearchCandidate(item: ItemTimelineEntry): boolean {

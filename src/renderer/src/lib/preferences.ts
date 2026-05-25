@@ -1,10 +1,11 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import type { CapturePreferences, RunArchivePreferences } from "../../../shared/app-state";
 import { defaultCompactRunTiles, normalizeCompactRunTiles, type CompactRunTileConfig } from "./compact-tiles";
-import { DEFAULT_ITEM_FILTER_GROUPS, normalizeItemFilterGroups, type ItemFilterGroup } from "./item-filters";
+import { DEFAULT_ITEM_FILTER_GROUPS, normalizeCustomItemFilterSounds, normalizeItemFilterGroups, type CustomItemFilterSound, type ItemFilterGroup } from "./item-filters";
 import { DEFAULT_SHOPPING_LIST } from "./item-options";
 import { normalizeItemResearchEntries, type ItemResearchEntry } from "./item-research";
 import { defaultPostRunReportConfig, normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
+import { DEFAULT_THEME_ACCENTS, DEFAULT_THEME_ID, normalizeThemeAccents, normalizeThemeId, normalizeThemeTokenMaps, type ThemeAccentMap, type ThemeId, type ThemeTokenMaps } from "./themes";
 
 export interface UiPreferences {
   logLimit: number;
@@ -19,8 +20,12 @@ export interface UiPreferences {
   shoppingListItems: string[];
   gameExecutablePath: string;
   launchThroughSteam: boolean;
+  themeId: ThemeId;
+  themeAccents: ThemeAccentMap;
+  themeTokenMaps: ThemeTokenMaps;
   itemFilterGroups: ItemFilterGroup[];
   itemFilterMuted: boolean;
+  customItemFilterSounds: CustomItemFilterSound[];
   postRunReport: PostRunReportConfig;
   compactRunTiles: CompactRunTileConfig[];
   developerItemResearchEnabled: boolean;
@@ -75,8 +80,12 @@ export const defaultPreferences: UiPreferences = {
   shoppingListItems: DEFAULT_SHOPPING_LIST,
   gameExecutablePath: "",
   launchThroughSteam: true,
+  themeId: DEFAULT_THEME_ID,
+  themeAccents: DEFAULT_THEME_ACCENTS,
+  themeTokenMaps: {},
   itemFilterGroups: DEFAULT_ITEM_FILTER_GROUPS,
   itemFilterMuted: false,
+  customItemFilterSounds: [],
   postRunReport: defaultPostRunReportConfig,
   compactRunTiles: defaultCompactRunTiles,
   developerItemResearchEnabled: false,
@@ -97,6 +106,9 @@ const APP_SETTING_KEYS: Array<keyof UiPreferences> = [
   "shoppingListItems",
   "gameExecutablePath",
   "launchThroughSteam",
+  "themeId",
+  "themeAccents",
+  "themeTokenMaps",
   "compactRunTiles",
   "developerItemResearchEnabled",
   "unknownItemAudioPrompt",
@@ -136,6 +148,7 @@ export function createConfigurationExportPayload(
   if (!options.includeLootFilters) {
     delete exportedUiPreferences.itemFilterGroups;
     delete exportedUiPreferences.itemFilterMuted;
+    delete exportedUiPreferences.customItemFilterSounds;
   }
   if (!options.includeItemResearch) {
     delete exportedUiPreferences.itemResearchEntries;
@@ -178,6 +191,7 @@ export function importConfigurationPayload(
   if (!options.includeLootFilters) {
     nextUiPreferences.itemFilterGroups = currentPreferences.itemFilterGroups;
     nextUiPreferences.itemFilterMuted = currentPreferences.itemFilterMuted;
+    nextUiPreferences.customItemFilterSounds = currentPreferences.customItemFilterSounds;
   }
   if (!options.includeItemResearch) {
     nextUiPreferences.itemResearchEntries = currentPreferences.itemResearchEntries;
@@ -201,6 +215,7 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     value.timelineType === "all" || Object.prototype.hasOwnProperty.call(ITEM_TYPE_NAMES, Number(value.timelineType))
       ? String(value.timelineType)
       : defaultPreferences.timelineType;
+  const customItemFilterSounds = normalizeCustomItemFilterSounds(value.customItemFilterSounds);
 
   return {
     logLimit: validLogLimit,
@@ -215,8 +230,12 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     shoppingListItems: normalizeShoppingList(value.shoppingListItems),
     gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
-    itemFilterGroups: normalizeItemFilterGroups(value.itemFilterGroups),
+    themeId: normalizeThemeId(value.themeId),
+    themeAccents: normalizeThemeAccents(value.themeAccents),
+    themeTokenMaps: normalizeThemeTokenMaps(value.themeTokenMaps),
+    itemFilterGroups: normalizeItemFilterGroups(value.itemFilterGroups, customItemFilterSounds),
     itemFilterMuted: Boolean(value.itemFilterMuted),
+    customItemFilterSounds,
     postRunReport: normalizePostRunReportConfig(value.postRunReport),
     compactRunTiles: normalizeCompactRunTiles(value.compactRunTiles),
     developerItemResearchEnabled: Boolean(value.developerItemResearchEnabled),

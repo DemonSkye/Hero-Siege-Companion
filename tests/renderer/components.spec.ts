@@ -9,6 +9,7 @@ import SettingsModal from "../../src/renderer/src/components/SettingsModal.vue";
 import UpdateBanner from "../../src/renderer/src/components/UpdateBanner.vue";
 import { defaultCompactRunTiles } from "../../src/renderer/src/lib/compact-tiles";
 import { defaultPostRunReportConfig } from "../../src/renderer/src/lib/report-config";
+import { DEFAULT_THEME_ACCENTS, THEME_OPTIONS } from "../../src/renderer/src/lib/themes";
 import { companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
 
 describe("Vue component contracts", () => {
@@ -77,6 +78,7 @@ describe("Vue component contracts", () => {
     const wrapper = mount(ItemFilterView, {
       props: {
         itemFilterGroups: [group],
+        itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }, { id: "deep-gong", name: "Deep Gong" }],
         selectedItemFilterGroup: group,
         selectedItemFilterGroupedItems: [{ typeLabel: "Belt", items: group.items }],
         itemFilterDraftGroupName: "",
@@ -134,6 +136,8 @@ describe("Vue component contracts", () => {
         itemTypeOptions: [{ value: "6", label: "Belt" }],
         itemFilterGroups: [itemFilterGroup()],
         itemSuggestions: ["Sash of the Magi"],
+        themeOptions: THEME_OPTIONS,
+        customItemFilterSounds: [{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }],
         logLimit: 20,
         timelineLimit: 10,
         timelineType: "all",
@@ -148,6 +152,8 @@ describe("Vue component contracts", () => {
         hideMaterials: false,
         developerItemResearchEnabled: true,
         unknownItemAudioPrompt: false,
+        themeId: "dark",
+        themeAccents: { ...DEFAULT_THEME_ACCENTS },
         skipEmptyRuns: true,
         minRunDurationMinutes: 5,
         configIncludeAppSettings: true,
@@ -160,23 +166,50 @@ describe("Vue component contracts", () => {
     });
 
     expect(wrapper.text()).toContain("Settings");
+    await buttonByText(wrapper, "Capture").trigger("click");
     expect(wrapper.text()).toContain("Verbose live logging");
-    expect((wrapper.get(".path-setting input").element as HTMLInputElement).value).toBe("C:\\Games\\Hero Siege\\Hero_Siege.exe");
 
+    await buttonByText(wrapper, "General").trigger("click");
+    expect((wrapper.get(".path-setting input").element as HTMLInputElement).value).toBe("C:\\Games\\Hero Siege\\Hero_Siege.exe");
     await wrapper.get('select[title="Visible log history"]').setValue("50");
+
+    await buttonByText(wrapper, "Appearance").trigger("click");
+    expect(wrapper.text()).toContain("Rarity colors stay game-matched.");
+    await wrapper.get('select[title="Application theme"]').setValue("cyberpunk");
+    await wrapper.get('input[title="Theme accent color"]').setValue("#00f0ff");
+    await buttonByText(wrapper, "Export Theme").trigger("click");
+    await buttonByText(wrapper, "Import Theme").trigger("click");
+
+    await buttonByText(wrapper, "Sounds").trigger("click");
+    expect(wrapper.text()).toContain("Loot alert sounds");
+    expect(wrapper.text()).toContain("Boss Drop");
+    await buttonByText(wrapper, "Import Sounds").trigger("click");
+    await wrapper.get('button[aria-label="Remove Boss Drop"]').trigger("click");
+
+    await buttonByText(wrapper, "Import / Export").trigger("click");
     await checkboxByLabel(wrapper, "Research data").setValue(true);
-    await buttonByText(wrapper, "Add Custom").trigger("click");
-    await buttonByText(wrapper, "Browse").trigger("click");
     await buttonByText(wrapper, "Import JSON").trigger("click");
     await buttonByText(wrapper, "Export JSON").trigger("click");
+
+    await buttonByText(wrapper, "Dashboard").trigger("click");
+    await buttonByText(wrapper, "Add Custom").trigger("click");
+
+    await buttonByText(wrapper, "General").trigger("click");
+    await buttonByText(wrapper, "Browse").trigger("click");
     await buttonByText(wrapper, "Reset Preferences").trigger("click");
     await wrapper.get(".modal-backdrop").trigger("click");
     await buttonByText(wrapper, "Done").trigger("click");
 
     expect(wrapper.emitted("update:logLimit")).toEqual([[50]]);
+    expect(wrapper.emitted("update:themeId")).toEqual([["cyberpunk"]]);
+    expect(wrapper.emitted("updateThemeAccent")).toEqual([["#00f0ff"]]);
+    expect(wrapper.emitted("exportTheme")).toHaveLength(1);
+    expect(wrapper.emitted("importTheme")).toHaveLength(1);
     expect(wrapper.emitted("update:configIncludeItemResearch")).toEqual([[true]]);
     expect(wrapper.emitted("update:compactRunTiles")?.[0]?.[0]).toHaveLength(defaultCompactRunTiles.length + 1);
     expect(wrapper.emitted("chooseGameExecutable")).toHaveLength(1);
+    expect(wrapper.emitted("importSounds")).toHaveLength(1);
+    expect(wrapper.emitted("removeSound")?.[0]?.[0]).toMatchObject({ id: "custom-sound:boss" });
     expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("reset")).toHaveLength(1);
@@ -240,6 +273,7 @@ describe("Vue component contracts", () => {
         shoppingSuggestions: ["Ruby"],
         activeShoppingItem: "Copper Ore",
         activeItemFilterGroups: [itemFilterGroup()],
+        itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }, { id: "deep-gong", name: "Deep Gong" }],
         itemFilterGroupCount: 1,
         watchedItemCount: 1,
         lastItemFilterMatch: { itemLabel: "Sash of the Magi", groupName: "Loot Alerts", soundName: "Deep Gong", createdAt: state.stats.lastEventAt ?? 0 },

@@ -307,12 +307,13 @@ interface ItemSource {
   item: MessageObject;
   source: AddedItemObject["source"];
   trustNamedIdentity: boolean;
+  trustServerAnnouncedRarity: boolean;
 }
 
 function parseAddedItems(msg: MessageObject, eventName: EventName): AddedItemObject[] {
   const itemSources = extractItemSources(msg, eventName);
-  return itemSources.map(({ fingerprint, item, source, trustNamedIdentity }) =>
-    parseAddedItemObject(item, fingerprint, { source, trustNamedIdentity }),
+  return itemSources.map(({ fingerprint, item, source, trustNamedIdentity, trustServerAnnouncedRarity }) =>
+    parseAddedItemObject(item, fingerprint, { source, trustNamedIdentity, trustServerAnnouncedRarity }),
   );
 }
 
@@ -320,7 +321,7 @@ function extractItemSources(msg: MessageObject, eventName: EventName): ItemSourc
   if (eventName === EVENT_NAMES.itemDrop) {
     const serverFoundItemName = extractServerFoundItemName(msg);
     if (serverFoundItemName) {
-      return [{ item: { name: serverFoundItemName }, source: "server", trustNamedIdentity: true }];
+      return [{ item: { name: serverFoundItemName }, source: "server", trustNamedIdentity: true, trustServerAnnouncedRarity: true }];
     }
 
     const itemData = asMessageObject(getMessageField(msg, ITEM_DATA_FIELDS, undefined));
@@ -329,22 +330,22 @@ function extractItemSources(msg: MessageObject, eventName: EventName): ItemSourc
 
   const operations = asMessageObject(getMessageField(msg, ["operations"], {}));
   const operationAdd = asMessageObject(getMessageField(operations, ["add"], undefined));
-  if (operationAdd) return objectValuesAsItems(operationAdd, "inventory", true);
+  if (operationAdd) return objectValuesAsItems(operationAdd, "inventory", true, false);
 
   const operationStack = asMessageObject(getMessageField(operations, ["stack"], undefined));
   if (operationStack) {
     return messageEntries(operationStack)
       .flatMap(([fingerprint, value]) => {
         const item = asMessageObject(getMessageField(asMessageObject(value as MessageValue), ["pickup_add_data", "pickupAddData"], undefined));
-        return item ? [{ fingerprint, item, source: "inventory" as const, trustNamedIdentity: true }] : [];
+        return item ? [{ fingerprint, item, source: "inventory" as const, trustNamedIdentity: true, trustServerAnnouncedRarity: false }] : [];
       });
   }
 
   const itemsAdded = asMessageObject(getMessageField(msg, ["itemsAdded", "items_added"], undefined));
-  if (itemsAdded) return objectValuesAsItems(itemsAdded, "inventory", true);
+  if (itemsAdded) return objectValuesAsItems(itemsAdded, "inventory", true, false);
 
   const itemData = asMessageObject(getMessageField(msg, ITEM_DATA_FIELDS, undefined));
-  if (itemData && isInventoryItemDataPayload(msg)) return itemDataSources(msg, itemData, "inventory", true);
+  if (itemData && isInventoryItemDataPayload(msg)) return itemDataSources(msg, itemData, "inventory", true, false);
 
   const wrapped = asMessageObject(getMessageField(msg, ITEM_WRAPPER_FIELDS, undefined));
   if (wrapped) {
@@ -354,11 +355,12 @@ function extractItemSources(msg: MessageObject, eventName: EventName): ItemSourc
         item: wrapped,
         source: "inventory",
         trustNamedIdentity: true,
+        trustServerAnnouncedRarity: false,
       },
     ];
   }
 
-  return [{ item: msg, source: "inventory", trustNamedIdentity: true }];
+  return [{ item: msg, source: "inventory", trustNamedIdentity: true, trustServerAnnouncedRarity: false }];
 }
 
 function isTrustedGeneratedItemDataPayload(msg: MessageObject): boolean {
@@ -384,6 +386,7 @@ function itemDataSources(
   itemData: MessageObject,
   source: AddedItemObject["source"],
   trustNamedIdentity: boolean,
+  trustServerAnnouncedRarity: boolean,
 ): ItemSource[] {
   const directPickup = asMessageObject(getMessageField(itemData, ["pickup_add_data", "pickupAddData"], undefined));
   if (directPickup) {
@@ -393,6 +396,7 @@ function itemDataSources(
         item: directPickup,
         source,
         trustNamedIdentity,
+        trustServerAnnouncedRarity,
       },
     ];
   }
@@ -403,6 +407,7 @@ function itemDataSources(
       item: asMessageObject(getMessageField(asMessageObject(value), ["pickup_add_data", "pickupAddData"], undefined)),
       source,
       trustNamedIdentity,
+      trustServerAnnouncedRarity,
     }))
     .filter((source): source is ItemSource & { fingerprint: string } => Boolean(source.item));
   if (nestedPickups.length > 0) return nestedPickups;
@@ -414,17 +419,18 @@ function itemDataSources(
         item: itemData,
         source,
         trustNamedIdentity,
+        trustServerAnnouncedRarity,
       },
     ];
   }
 
-  return objectValuesAsItems(itemData, source, trustNamedIdentity);
+  return objectValuesAsItems(itemData, source, trustNamedIdentity, trustServerAnnouncedRarity);
 }
 
 function trustedGeneratedItemDataSources(itemData: MessageObject, allowGeneratedC0 = false): ItemSource[] {
   const itemSources = isItemLikeObject(itemData)
-    ? [{ item: itemData, source: "server" as const, trustNamedIdentity: true }]
-    : objectValuesAsItems(itemData, "server", true);
+    ? [{ item: itemData, source: "server" as const, trustNamedIdentity: true, trustServerAnnouncedRarity: false }]
+    : objectValuesAsItems(itemData, "server", true, false);
 
   return itemSources.filter(({ item }) => isTrustedGeneratedItem(item, allowGeneratedC0));
 }
@@ -441,21 +447,25 @@ function objectValuesAsItems(
   items: MessageObject,
   source: AddedItemObject["source"] = "inventory",
   trustNamedIdentity = true,
+  trustServerAnnouncedRarity = false,
 ): ItemSource[] {
   return messageEntries(items)
     .filter(([, value]) => value && typeof value === "object" && !Array.isArray(value))
-    .map(([fingerprint, item]) => ({ fingerprint, item: item as MessageObject, source, trustNamedIdentity }));
+    .map(([fingerprint, item]) => ({ fingerprint, item: item as MessageObject, source, trustNamedIdentity, trustServerAnnouncedRarity }));
 }
 
 function parseAddedItemObject(
   item: MessageObject,
   fingerprint: string | undefined,
-  options: { source: AddedItemObject["source"]; trustNamedIdentity: boolean },
+  options: { source: AddedItemObject["source"]; trustNamedIdentity: boolean; trustServerAnnouncedRarity: boolean },
 ): AddedItemObject {
   const rarity = getMessageField(item, ["rarity", "itemRarity", "item_rarity", "d"], 0) as string | number;
+  const mappedRarity = ITEM_RARITY[String(rarity)];
   const sockets = [1, 2, 3, 4, 5, 6].filter((slot) => getMessageField(item, [`socket_${slot}`], undefined) !== undefined).length;
   const explicitName = String(getMessageField(item, ITEM_NAME_FIELDS, "")).trim();
-  const namedTranslation = explicitName ? lookupItemTranslationByName(explicitName) : null;
+  const namedTranslationCandidate = explicitName ? lookupItemTranslationByName(explicitName) : null;
+  const namedTranslation = trustTranslationForRarity(options, namedTranslationCandidate, mappedRarity) ? namedTranslationCandidate : null;
+  const trustedExplicitName = namedTranslation || trustExplicitNameForRarity(options, explicitName, mappedRarity) ? explicitName : "";
   const seed = intMessageField(item, ["seed", "a"]);
   const fingerprintType = parseFingerprintType(fingerprint);
   const hasFingerprintType = fingerprintType !== null;
@@ -467,13 +477,14 @@ function parseAddedItemObject(
   const id = namedTranslation?.gameId ?? resolvedItemId(options, type, shortGameId, hasFingerprintType, hasExplicitId, item);
   const weaponType = intMessageField(item, ["weapon_type", "weaponType"]) || (type === 3 ? intMessageField(item, ["j"]) : 0);
   const dropQuality = intMessageField(item, ["drop_quality", "dropQuality"]) || (type === 3 ? 0 : intMessageField(item, ["j"]));
-  const translation = namedTranslation ?? itemTranslationForSource(options, type, id, weaponType, hasExplicitId, hasFingerprintType);
-  const rarityName = inferItemRarityName(rarity, item, type, translation, options.trustNamedIdentity);
+  const translationCandidate = namedTranslation ?? itemTranslationForSource(options, type, id, weaponType, hasExplicitId, hasFingerprintType);
+  const translation = trustTranslationForRarity(options, translationCandidate, mappedRarity) ? translationCandidate : null;
+  const rarityName = inferItemRarityName(rarity, item, type, translation, options.trustNamedIdentity, options.trustServerAnnouncedRarity);
 
   return {
     source: options.source,
     fingerprint,
-    label: itemDisplayLabel({ id, type, weaponType, dropQuality, seed, fingerprint, translationName: explicitName || translation?.name }),
+    label: itemDisplayLabel({ id, type, weaponType, dropQuality, seed, fingerprint, translationName: translation?.name ?? trustedExplicitName }),
     localizationId: translation?.localizationId,
     seed,
     id,
@@ -530,11 +541,19 @@ function inferItemRarityName(
   type: number,
   translation: ItemTranslation | null,
   trustNamedIdentity = true,
+  trustServerAnnouncedRarity = false,
 ): string {
   const mappedRarity = ITEM_RARITY[String(rawRarity)];
+  const explicitRarity = typeof rawRarity === "string" ? rawRarity.replace(/^\w/, (char) => char.toUpperCase()) : undefined;
 
   const identity = `${translation?.localizationId ?? ""} ${translation?.name ?? ""}`.toLowerCase();
   const knownRarity = trustNamedIdentity ? lookupKnownItemRarity(type, translation?.name) : null;
+  if (
+    !trustServerAnnouncedRarity &&
+    (isServerAnnouncedRarity(mappedRarity) || isServerAnnouncedRarity(explicitRarity) || isServerAnnouncedRarity(knownRarity))
+  ) {
+    return "Unknown";
+  }
   if (knownRarity && shouldKnownRarityOverridePacket(mappedRarity)) return knownRarity;
   if (mappedRarity && mappedRarity !== "Common") return mappedRarity;
   if (knownRarity) return knownRarity;
@@ -549,8 +568,31 @@ function inferItemRarityName(
   if (isSpecialEquipment) return "Satanic";
   if (mappedRarity) return mappedRarity;
 
-  const fallback = String(rawRarity).replace(/^\w/, (char) => char.toUpperCase());
+  const fallback = explicitRarity ?? String(rawRarity).replace(/^\w/, (char) => char.toUpperCase());
   return fallback && !/^-?\d+$/.test(fallback) ? fallback : "Unknown";
+}
+
+function trustTranslationForRarity(
+  options: { trustServerAnnouncedRarity: boolean },
+  translation: ItemTranslation | null,
+  mappedRarity?: string,
+): boolean {
+  if (!translation) return true;
+  if (options.trustServerAnnouncedRarity) return true;
+  return !isServerAnnouncedRarity(mappedRarity) && !isServerAnnouncedRarity(lookupKnownItemRarity(translation.type, translation.name));
+}
+
+function trustExplicitNameForRarity(
+  options: { trustServerAnnouncedRarity: boolean },
+  explicitName: string,
+  mappedRarity?: string,
+): boolean {
+  if (!explicitName || options.trustServerAnnouncedRarity) return true;
+  return !isServerAnnouncedRarity(mappedRarity) && !isServerAnnouncedRarity(lookupKnownItemRarity(0, explicitName));
+}
+
+function isServerAnnouncedRarity(rarity: string | null | undefined): boolean {
+  return rarity === "Heroic" || rarity === "Angelic";
 }
 
 function extractServerFoundItemName(msg: MessageObject): string | null {

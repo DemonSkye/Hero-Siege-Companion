@@ -9,6 +9,16 @@ export interface ItemFilterSpecificItem {
   typeLabel: string;
 }
 
+export interface ItemFilterSoundOption {
+  id: string;
+  name: string;
+}
+
+export interface CustomItemFilterSound extends ItemFilterSoundOption {
+  src: string;
+  fileName: string;
+}
+
 export interface ItemFilterGroup {
   id: string;
   name: string;
@@ -36,7 +46,7 @@ export interface ItemFilterRuleMatch {
 
 export const ITEM_FILTER_SUGGESTION_LIMIT = 12;
 export const ITEM_FILTER_RARITIES = ["Set", "Satanic", "Heroic", "Angelic", "Unholy", "Runeword"];
-export const ITEM_FILTER_SOUNDS = [
+export const ITEM_FILTER_SOUNDS: ItemFilterSoundOption[] = [
   { id: "crystal-tink", name: "Crystal Tink" },
   { id: "coin-ping", name: "Coin Ping" },
   { id: "bell-chime", name: "Bell Chime" },
@@ -45,7 +55,9 @@ export const ITEM_FILTER_SOUNDS = [
   { id: "soft-pop", name: "Soft Pop" },
   { id: "bright-cascade", name: "Bright Cascade" },
   { id: "low-pulse", name: "Low Pulse" },
-] as const;
+];
+export const CUSTOM_SOUND_LIMIT = 24;
+export const CUSTOM_SOUND_ID_PREFIX = "custom-sound:";
 
 export const DEFAULT_ITEM_FILTER_GROUPS: ItemFilterGroup[] = [
   {
@@ -75,13 +87,13 @@ export function createItemFilterGroup(name: string, index: number): ItemFilterGr
   };
 }
 
-export function normalizeItemFilterGroups(value: unknown): ItemFilterGroup[] {
+export function normalizeItemFilterGroups(value: unknown, customSounds: CustomItemFilterSound[] = []): ItemFilterGroup[] {
   const groups = Array.isArray(value) ? value : DEFAULT_ITEM_FILTER_GROUPS;
-  const normalized = groups.map(normalizeItemFilterGroup).filter(Boolean) as ItemFilterGroup[];
+  const normalized = groups.map((group) => normalizeItemFilterGroup(group, customSounds)).filter(Boolean) as ItemFilterGroup[];
   return normalized.length ? normalized.slice(0, 40) : structuredCloneCompat(DEFAULT_ITEM_FILTER_GROUPS);
 }
 
-function normalizeItemFilterGroup(value: unknown): ItemFilterGroup | null {
+function normalizeItemFilterGroup(value: unknown, customSounds: CustomItemFilterSound[]): ItemFilterGroup | null {
   if (!isRecord(value)) return null;
   const id = stringField(value, "id") || `group-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const volume = Number(value.volume);
@@ -90,16 +102,16 @@ function normalizeItemFilterGroup(value: unknown): ItemFilterGroup | null {
     id,
     name: stringField(value, "name") || "Untitled Group",
     enabled: value.enabled === undefined ? true : Boolean(value.enabled),
-    soundId: validSoundId(stringField(value, "soundId")) ? stringField(value, "soundId") : ITEM_FILTER_SOUNDS[0].id,
+    soundId: validSoundId(stringField(value, "soundId"), customSounds) ? stringField(value, "soundId") : ITEM_FILTER_SOUNDS[0].id,
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(100, Math.trunc(volume))) : 70,
     cooldownMs: Number.isFinite(cooldownMs) ? Math.max(0, Math.min(30_000, Math.trunc(cooldownMs))) : 1000,
     rarities: normalizeStringList(value.rarities).filter((rarity) => ITEM_FILTER_RARITIES.includes(rarity)),
     types: normalizeNumberList(value.types).filter((type) => Object.prototype.hasOwnProperty.call(ITEM_TYPE_NAMES, type)),
-    items: normalizeSpecificItems(value.items),
+    items: normalizeSpecificItems(value.items, customSounds),
   };
 }
 
-export function normalizeSpecificItems(value: unknown): ItemFilterSpecificItem[] {
+export function normalizeSpecificItems(value: unknown, customSounds: CustomItemFilterSound[] = []): ItemFilterSpecificItem[] {
   const values = Array.isArray(value) ? value : [];
   const seen = new Set<string>();
   const items: ItemFilterSpecificItem[] = [];
@@ -110,18 +122,62 @@ export function normalizeSpecificItems(value: unknown): ItemFilterSpecificItem[]
     const normalizedName = normalizeLookupText(canonical);
     if (seen.has(normalizedName)) continue;
     seen.add(normalizedName);
-    const soundId = isRecord(item) && validSoundId(stringField(item, "soundId")) ? stringField(item, "soundId") : "";
+    const soundId = isRecord(item) && validSoundId(stringField(item, "soundId"), customSounds) ? stringField(item, "soundId") : "";
     items.push({ name: canonical, soundId, typeLabel: itemTypeLabelForName(canonical) });
   }
   return sortSpecificItems(items).slice(0, 150);
 }
 
-function validSoundId(soundId: string): boolean {
-  return ITEM_FILTER_SOUNDS.some((sound) => sound.id === soundId);
+export function normalizeCustomItemFilterSounds(value: unknown): CustomItemFilterSound[] {
+  const values = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const sounds: CustomItemFilterSound[] = [];
+  for (const item of values) {
+    if (!isRecord(item)) continue;
+    const id = stringField(item, "id");
+    const src = stringField(item, "src") || stringField(item, "dataUrl");
+    if (!id.startsWith(CUSTOM_SOUND_ID_PREFIX) || !isCustomSoundSource(src)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const fileName = stringField(item, "fileName").trim() || "Custom Sound.audio";
+    const name = stringField(item, "name").trim() || customSoundDisplayName(fileName);
+    sounds.push({
+      id,
+      name: name.slice(0, 60),
+      fileName: fileName.slice(0, 120),
+      src,
+    });
+  }
+  return sounds.slice(0, CUSTOM_SOUND_LIMIT);
 }
 
-export function soundName(soundId: string): string {
-  return ITEM_FILTER_SOUNDS.find((sound) => sound.id === soundId)?.name ?? ITEM_FILTER_SOUNDS[0].name;
+function isCustomSoundSource(value: string): boolean {
+  return value.startsWith("data:audio/") || value.startsWith("file://");
+}
+
+export function createCustomSoundId(fileName: string, index: number): string {
+  const normalized = normalizeLookupText(fileName).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "sound";
+  return `${CUSTOM_SOUND_ID_PREFIX}${Date.now()}-${index}-${normalized}`;
+}
+
+export function customSoundDisplayName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || "Custom Sound";
+}
+
+export function itemFilterSoundOptions(customSounds: CustomItemFilterSound[] = []): ItemFilterSoundOption[] {
+  return [...ITEM_FILTER_SOUNDS, ...normalizeCustomItemFilterSounds(customSounds).map(({ id, name }) => ({ id, name }))];
+}
+
+export function customSoundForId(soundId: string, customSounds: CustomItemFilterSound[] = []): CustomItemFilterSound | null {
+  return normalizeCustomItemFilterSounds(customSounds).find((sound) => sound.id === soundId) ?? null;
+}
+
+function validSoundId(soundId: string, customSounds: CustomItemFilterSound[] = []): boolean {
+  return itemFilterSoundOptions(customSounds).some((sound) => sound.id === soundId);
+}
+
+export function soundName(soundId: string, sounds: ItemFilterSoundOption[] = ITEM_FILTER_SOUNDS): string {
+  return sounds.find((sound) => sound.id === soundId)?.name ?? ITEM_FILTER_SOUNDS[0].name;
 }
 
 export function canonicalItemName(name: string): string {

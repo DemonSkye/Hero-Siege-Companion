@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import {
   COMPACT_RUN_TILE_LIMIT,
   STANDARD_COMPACT_RUN_TILE_OPTIONS,
@@ -8,11 +9,18 @@ import {
   type CompactRunTileConfig,
   type CompactRunTileKind,
 } from "../lib/compact-tiles";
-import type { ItemFilterGroup } from "../lib/item-filters";
+import type { CustomItemFilterSound, ItemFilterGroup } from "../lib/item-filters";
+import type { ThemeAccentMap, ThemeId } from "../lib/themes";
 
 interface ItemTypeOption {
   value: string;
   label: string;
+}
+
+interface ThemeOption {
+  id: ThemeId;
+  label: string;
+  defaultAccent: string;
 }
 
 defineProps<{
@@ -20,11 +28,18 @@ defineProps<{
   itemTypeOptions: ItemTypeOption[];
   itemFilterGroups: ItemFilterGroup[];
   itemSuggestions: string[];
+  themeOptions: ThemeOption[];
+  customItemFilterSounds: CustomItemFilterSound[];
 }>();
 
 defineEmits<{
   close: [];
   chooseGameExecutable: [];
+  updateThemeAccent: [value: string];
+  importTheme: [];
+  exportTheme: [];
+  importSounds: [];
+  removeSound: [sound: CustomItemFilterSound];
   exportConfiguration: [];
   importConfiguration: [];
   reset: [];
@@ -47,6 +62,8 @@ const draftSkipEmptyRuns = defineModel<boolean>("skipEmptyRuns", { required: tru
 const draftMinRunDurationMinutes = defineModel<number>("minRunDurationMinutes", { required: true });
 const draftDeveloperItemResearchEnabled = defineModel<boolean>("developerItemResearchEnabled", { required: true });
 const draftUnknownItemAudioPrompt = defineModel<boolean>("unknownItemAudioPrompt", { required: true });
+const draftThemeId = defineModel<ThemeId>("themeId", { required: true });
+const draftThemeAccents = defineModel<ThemeAccentMap>("themeAccents", { required: true });
 const configIncludeAppSettings = defineModel<boolean>("configIncludeAppSettings", { required: true });
 const configIncludeRunSaving = defineModel<boolean>("configIncludeRunSaving", { required: true });
 const configIncludeReportTracking = defineModel<boolean>("configIncludeReportTracking", { required: true });
@@ -55,6 +72,7 @@ const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearc
 const draftCompactRunTiles = defineModel<CompactRunTileConfig[]>("compactRunTiles", { required: true });
 
 const compactStandardOptions = STANDARD_COMPACT_RUN_TILE_OPTIONS;
+const activeSettingsTab = ref<"general" | "capture" | "appearance" | "sounds" | "dashboard" | "config">("general");
 
 function isCompactStandardEnabled(kind: Exclude<CompactRunTileKind, "custom">): boolean {
   return draftCompactRunTiles.value.some((tile) => tile.kind === kind);
@@ -116,7 +134,16 @@ function eventValue(event: Event): string {
         <button class="settings-close" type="button" title="Close settings" aria-label="Close settings" @click="$emit('close')">x</button>
       </div>
 
-      <div class="settings-grid">
+      <nav class="settings-tabs" aria-label="Settings sections">
+        <button :class="{ active: activeSettingsTab === 'general' }" type="button" @click="activeSettingsTab = 'general'">General</button>
+        <button :class="{ active: activeSettingsTab === 'capture' }" type="button" @click="activeSettingsTab = 'capture'">Capture</button>
+        <button :class="{ active: activeSettingsTab === 'appearance' }" type="button" @click="activeSettingsTab = 'appearance'">Appearance</button>
+        <button :class="{ active: activeSettingsTab === 'sounds' }" type="button" @click="activeSettingsTab = 'sounds'">Sounds</button>
+        <button :class="{ active: activeSettingsTab === 'dashboard' }" type="button" @click="activeSettingsTab = 'dashboard'">Dashboard</button>
+        <button :class="{ active: activeSettingsTab === 'config' }" type="button" @click="activeSettingsTab = 'config'">Import / Export</button>
+      </nav>
+
+      <div v-if="activeSettingsTab === 'general'" class="settings-grid">
         <label class="settings-row">
           <span class="settings-label">Log history <span class="info-bubble" data-tip="Controls how many Live Log entries remain visible in the diagnostics panel.">i</span></span>
           <select v-model.number="draftLogLimit" title="Visible log history">
@@ -147,14 +174,6 @@ function eventValue(event: Event): string {
           </div>
         </div>
         <label class="settings-check">
-          <input v-model="draftShowCaptureDetails" type="checkbox" />
-          <span class="settings-label">Show capture details <span class="info-bubble" data-tip="Shows adapter, filter, parser, and packet counters in the live status area.">i</span></span>
-        </label>
-        <label class="settings-check">
-          <input v-model="draftCreateDebugMode" type="checkbox" />
-          <span class="settings-label">Verbose live logging <span class="info-bubble" data-tip="Writes a wider packet trace to capture-wide-debug.log for loot correlation diagnostics. Parsed item events still appear in Live Log.">i</span></span>
-        </label>
-        <label class="settings-check">
           <input v-model="draftAlwaysOnTop" type="checkbox" />
           <span class="settings-label">Always on top <span class="info-bubble" data-tip="Keeps the companion above other windows while you play.">i</span></span>
         </label>
@@ -173,6 +192,17 @@ function eventValue(event: Event): string {
         <label class="settings-check">
           <input v-model="draftHideMaterials" type="checkbox" />
           <span class="settings-label">Hide materials <span class="info-bubble" data-tip="Removes materials and collectibles from the recent item timeline while keeping resource counters intact.">i</span></span>
+        </label>
+      </div>
+
+      <div v-else-if="activeSettingsTab === 'capture'" class="settings-grid">
+        <label class="settings-check">
+          <input v-model="draftShowCaptureDetails" type="checkbox" />
+          <span class="settings-label">Show capture details <span class="info-bubble" data-tip="Shows adapter, filter, parser, and packet counters in the live status area.">i</span></span>
+        </label>
+        <label class="settings-check">
+          <input v-model="draftCreateDebugMode" type="checkbox" />
+          <span class="settings-label">Verbose live logging <span class="info-bubble" data-tip="Writes a wider packet trace to capture-wide-debug.log for loot correlation diagnostics. Parsed item events still appear in Live Log.">i</span></span>
         </label>
         <label class="settings-check">
           <input v-model="draftDeveloperItemResearchEnabled" type="checkbox" />
@@ -193,6 +223,64 @@ function eventValue(event: Event): string {
             <small>min</small>
           </div>
         </label>
+      </div>
+
+      <div v-else-if="activeSettingsTab === 'appearance'" class="settings-grid settings-grid-single">
+        <section class="settings-wide compact-settings-section">
+          <div class="compact-settings-heading">
+            <strong>Theme</strong>
+            <span>Rarity colors stay game-matched.</span>
+          </div>
+          <div class="settings-theme-grid">
+            <label class="settings-row">
+              <span class="settings-label">Theme <span class="info-bubble" data-tip="Changes app surfaces, borders, and background chrome. Drop rarity colors are intentionally unchanged.">i</span></span>
+              <select v-model="draftThemeId" title="Application theme">
+                <option v-for="theme in themeOptions" :key="theme.id" :value="theme.id">{{ theme.label }}</option>
+              </select>
+            </label>
+            <label class="settings-row settings-color-row">
+              <span class="settings-label">Accent color <span class="info-bubble" data-tip="Tunes the selected theme's accent color for controls and highlights.">i</span></span>
+              <span class="settings-color-control">
+                <input :value="draftThemeAccents[draftThemeId]" type="color" title="Theme accent color" @input="$emit('updateThemeAccent', eventValue($event))" />
+                <code>{{ draftThemeAccents[draftThemeId] }}</code>
+              </span>
+            </label>
+          </div>
+          <div class="settings-theme-actions">
+            <button class="icon-button ghost" type="button" @click="$emit('importTheme')">Import Theme</button>
+            <button class="icon-button ghost" type="button" @click="$emit('exportTheme')">Export Theme</button>
+          </div>
+          <details class="settings-theme-help">
+            <summary>Theme help</summary>
+            <p>Themes change app chrome: backgrounds, panels, borders, controls, and accent highlights. Rarity colors are not themeable because they should match Hero Siege.</p>
+            <p>Theme JSON supports a base theme, accent color, and optional tokens for app surfaces. Useful tokens: appText, appHeading, appBg, appBgGradient, surface, surfaceStrong, surfaceCell, surfaceSelected, border, borderStrong, accentBorder, accentWarm, inputBg, buttonPrimary, buttonPrimaryText, danger, scrollbar, shadow.</p>
+            <code>{"kind":"theme","themeId":"cyberpunk","accent":"#00f0ff","tokens":{"surface":"rgba(8, 4, 6, 0.94)","border":"rgba(0, 240, 255, 0.48)","buttonPrimary":"#fff200"}}</code>
+          </details>
+        </section>
+      </div>
+
+      <div v-else-if="activeSettingsTab === 'sounds'" class="settings-grid settings-grid-single">
+        <section class="settings-wide compact-settings-section">
+          <div class="compact-settings-heading">
+            <strong>Loot alert sounds</strong>
+            <span>{{ customItemFilterSounds.length }} imported</span>
+          </div>
+          <p class="settings-note settings-wide-note">Import .wav, .mp3, .ogg, or a .zip soundpack. Imported sounds appear in the Item Filter sound menus.</p>
+          <button class="icon-button ghost settings-import-sounds" type="button" @click="$emit('importSounds')">Import Sounds</button>
+          <div v-if="customItemFilterSounds.length" class="settings-sound-list" aria-label="Imported sounds">
+            <div v-for="sound in customItemFilterSounds" :key="sound.id" class="settings-sound-row">
+              <div>
+                <strong>{{ sound.name }}</strong>
+                <span>{{ sound.fileName }}</span>
+              </div>
+              <button class="shopping-remove" type="button" :aria-label="`Remove ${sound.name}`" @click="$emit('removeSound', sound)">x</button>
+            </div>
+          </div>
+          <p v-else class="empty-copy settings-sound-empty">No imported sounds yet.</p>
+        </section>
+      </div>
+
+      <div v-else-if="activeSettingsTab === 'dashboard'" class="settings-grid settings-grid-single">
         <section class="settings-wide compact-settings-section settings-compact-run-section">
           <div class="compact-settings-heading">
             <strong>Run dashboard tiles</strong>
@@ -232,6 +320,9 @@ function eventValue(event: Event): string {
             <option v-for="item in itemSuggestions" :key="item" :value="item" />
           </datalist>
         </section>
+      </div>
+
+      <div v-else class="settings-grid settings-grid-single">
         <div class="settings-config-row settings-wide">
           <span class="settings-label">Configuration JSON <span class="info-bubble" data-tip="These checkboxes control what gets exported and what gets applied when importing. Unchecked areas are left alone on import.">i</span></span>
           <div class="settings-config-checks" aria-label="Configuration sections">

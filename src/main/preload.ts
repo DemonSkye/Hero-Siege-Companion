@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   exportConfiguration: (json: string): Promise<boolean> => ipcRenderer.invoke("configuration:export", json),
   importConfiguration: (): Promise<string | null> => ipcRenderer.invoke("configuration:import"),
   exportItemResearch: (json: string): Promise<boolean> => ipcRenderer.invoke("item-research:export", json),
+  importSounds: (): Promise<Array<{ fileName: string; src: string }>> => ipcRenderer.invoke("sounds:import"),
+  removeSound: (src: string): Promise<boolean> => ipcRenderer.invoke("sounds:remove", src),
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke("window:toggle-maximize"),
   closeWindow: (): Promise<void> => ipcRenderer.invoke("window:close"),

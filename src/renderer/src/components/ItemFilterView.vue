@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   ITEM_FILTER_RARITIES,
-  ITEM_FILTER_SOUNDS,
   soundName,
   toggleFilterRarity,
   toggleFilterType,
   type ItemFilterGroup,
+  type ItemFilterSoundOption,
   type ItemFilterSpecificItem,
 } from "../lib/item-filters";
 import type { ItemResearchEntry } from "../lib/item-research";
@@ -18,6 +18,7 @@ interface ItemTypeOption {
 
 const props = defineProps<{
   itemFilterGroups: ItemFilterGroup[];
+  itemFilterSounds: ItemFilterSoundOption[];
   selectedItemFilterGroup: ItemFilterGroup | null;
   selectedItemFilterGroupedItems: Array<{ typeLabel: string; items: ItemFilterSpecificItem[] }>;
   itemFilterDraftGroupName: string;
@@ -62,6 +63,15 @@ const itemDraftModel = computed({
   set: (value: string) => emit("update:itemFilterDraftItem", value),
 });
 
+const itemResearchOpen = ref(props.unresolvedItemResearchCount > 0);
+
+watch(
+  () => props.unresolvedItemResearchCount,
+  (count) => {
+    if (count > 0) itemResearchOpen.value = true;
+  },
+);
+
 function eventChecked(event: Event): boolean {
   return Boolean((event.target as HTMLInputElement | null)?.checked);
 }
@@ -99,30 +109,35 @@ function formatSeen(timestamp: number): string {
             <strong>Item Research</strong>
             <span>{{ unresolvedItemResearchCount }} unresolved &middot; local developer notebook</span>
           </div>
-          <button class="icon-button ghost" type="button" @click="$emit('exportItemResearch')">Export Research JSON</button>
+          <div class="item-research-heading-actions">
+            <button class="icon-button ghost" type="button" @click="itemResearchOpen = !itemResearchOpen">{{ itemResearchOpen ? "Hide Research" : "Show Research" }}</button>
+            <button class="icon-button ghost" type="button" @click="$emit('exportItemResearch')">Export Research JSON</button>
+          </div>
         </div>
-        <p class="item-research-share">
-          Names are case-normalized on save and export. Share exported research as a
-          <a href="https://gist.github.com/" target="_blank" rel="noreferrer">GitHub Gist</a>
-          with sarevok9 on Reddit or Snyne on the Hero Siege Discord.
-        </p>
-        <div v-if="itemResearchEntries.length" class="item-research-list">
-          <article v-for="entry in itemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName, ignored: entry.ignored }]">
-            <div class="item-research-meta">
-              <strong>{{ entry.resolvedName || entry.label }}</strong>
-              <span>{{ entry.rarity }} &middot; {{ entryTypeLabel(entry) }} #{{ entry.id }} &middot; Q{{ entry.dropQuality }} &middot; {{ entry.count }} seen &middot; {{ formatSeen(entry.lastSeenAt) }}</span>
-            </div>
-            <input v-model="entry.resolvedName" type="text" placeholder="Actual item name" spellcheck="false" />
-            <input v-model="entry.notes" type="text" placeholder="Notes" spellcheck="false" />
-            <div class="item-research-actions">
-              <button class="sound-test-button" type="button" @click="saveResearchEntry(entry)">Save</button>
-              <button v-if="entry.ignored || entry.resolvedName" class="sound-test-button" type="button" @click="$emit('resetItemResearchEntry', entry.signature)">Reset</button>
-              <button v-else class="shopping-remove" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)" :aria-label="`Ignore ${entry.label}`">x</button>
-            </div>
-          </article>
-        </div>
-        <p v-else class="empty-copy">Unresolved item signatures will appear here after developer item research is enabled.</p>
-        <button v-if="itemResearchEntries.some((entry) => entry.resolvedName || entry.ignored)" class="icon-button ghost item-research-clear" type="button" @click="$emit('clearResolvedItemResearchEntries')">Clear Resolved</button>
+        <template v-if="itemResearchOpen">
+          <p class="item-research-share">
+            Names are case-normalized on save and export. Share exported research as a
+            <a href="https://gist.github.com/" target="_blank" rel="noreferrer">GitHub Gist</a>
+            with sarevok9 on Reddit or Snyne on the Hero Siege Discord.
+          </p>
+          <div v-if="itemResearchEntries.length" class="item-research-list">
+            <article v-for="entry in itemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName, ignored: entry.ignored }]">
+              <div class="item-research-meta">
+                <strong>{{ entry.resolvedName || entry.label }}</strong>
+                <span>{{ entry.rarity }} &middot; {{ entryTypeLabel(entry) }} #{{ entry.id }} &middot; Q{{ entry.dropQuality }} &middot; {{ entry.count }} seen &middot; {{ formatSeen(entry.lastSeenAt) }}</span>
+              </div>
+              <input v-model="entry.resolvedName" type="text" placeholder="Actual item name" spellcheck="false" />
+              <input v-model="entry.notes" type="text" placeholder="Notes" spellcheck="false" />
+              <div class="item-research-actions">
+                <button class="sound-test-button" type="button" @click="saveResearchEntry(entry)">Save</button>
+                <button v-if="entry.ignored || entry.resolvedName" class="sound-test-button" type="button" @click="$emit('resetItemResearchEntry', entry.signature)">Reset</button>
+                <button v-else class="shopping-remove" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)" :aria-label="`Ignore ${entry.label}`">x</button>
+              </div>
+            </article>
+          </div>
+          <p v-else class="empty-copy">Item signatures will appear here after developer item research is enabled.</p>
+          <button v-if="itemResearchEntries.some((entry) => entry.ignored)" class="icon-button ghost item-research-clear" type="button" @click="$emit('clearResolvedItemResearchEntries')">Clear Ignored</button>
+        </template>
       </section>
 
       <div class="item-filter-layout">
@@ -140,7 +155,7 @@ function formatSeen(timestamp: number): string {
               @click="$emit('selectGroup', group)"
             >
               <strong>{{ group.name }}</strong>
-              <span>{{ group.enabled ? "Enabled" : "Disabled" }} &middot; {{ soundName(group.soundId) }}</span>
+              <span>{{ group.enabled ? "Enabled" : "Disabled" }} &middot; {{ soundName(group.soundId, itemFilterSounds) }}</span>
             </button>
           </div>
         </aside>
@@ -163,7 +178,7 @@ function formatSeen(timestamp: number): string {
               <span>Sound</span>
               <div class="sound-picker">
                 <select v-model="selectedItemFilterGroup.soundId">
-                  <option v-for="sound in ITEM_FILTER_SOUNDS" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
+                  <option v-for="sound in itemFilterSounds" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
                 </select>
                 <button class="sound-test-button" type="button" @click="$emit('testSound', selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" aria-label="Play selected group sound">Play</button>
               </div>
@@ -233,7 +248,7 @@ function formatSeen(timestamp: number): string {
                   <div class="sound-picker">
                     <select v-model="item.soundId">
                       <option value="">Group sound</option>
-                      <option v-for="sound in ITEM_FILTER_SOUNDS" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
+                      <option v-for="sound in itemFilterSounds" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
                     </select>
                     <button class="sound-test-button" type="button" @click="$emit('testSound', item.soundId || selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" :aria-label="`Play sound for ${item.name}`">Play</button>
                   </div>

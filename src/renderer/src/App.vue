@@ -22,13 +22,19 @@ import {
   ITEM_FILTER_SOUNDS,
   ITEM_FILTER_SUGGESTION_LIMIT,
   canonicalItemName,
+  customSoundDisplayName,
+  createCustomSoundId,
   createItemFilterGroup,
   itemFilterGroupedItems,
+  itemFilterSoundOptions,
   itemTimelineKey,
   itemTypeLabelForName,
   matchItemFilter,
+  normalizeCustomItemFilterSounds,
+  normalizeItemFilterGroups,
   normalizeSpecificItems,
   soundName,
+  type CustomItemFilterSound,
   type ItemFilterGroup,
   type ItemFilterMatch,
   type ItemFilterRuleMatch,
@@ -62,6 +68,18 @@ import {
   sortedDropBreakdown,
 } from "./lib/past-runs";
 import { normalizePostRunReportConfig, type PostRunReportConfig } from "./lib/report-config";
+import {
+  DEFAULT_THEME_ACCENTS,
+  THEME_OPTIONS,
+  createThemeExportPayload,
+  importThemePayload,
+  normalizeThemeAccent,
+  themeTokenCssVar,
+  type ThemeAccentMap,
+  type ThemeId,
+  type ThemeTokenKey,
+  type ThemeTokenMaps,
+} from "./lib/themes";
 import { normalizeLookupText } from "./lib/text";
 
 const state = ref<CompanionState>({
@@ -117,6 +135,9 @@ const hideMaterials = ref(false);
 const timelineType = ref("all");
 const gameExecutablePath = ref("");
 const launchThroughSteam = ref(true);
+const themeId = ref<ThemeId>("dark");
+const themeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
+const themeTokenMaps = ref<ThemeTokenMaps>({});
 const activeTab = ref<"live" | "past" | "filter">("live");
 const appVersion = "0.1.6";
 const expandedLogIds = ref<Set<string>>(new Set());
@@ -133,6 +154,9 @@ const draftUnknownItemAudioPrompt = ref(false);
 const draftTimelineType = ref("all");
 const draftGameExecutablePath = ref("");
 const draftLaunchThroughSteam = ref(true);
+const draftThemeId = ref<ThemeId>("dark");
+const draftThemeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
+const draftThemeTokenMaps = ref<ThemeTokenMaps>({});
 const draftCreateDebugMode = ref(false);
 const draftSkipEmptyRuns = ref(false);
 const draftMinRunDurationMinutes = ref(0);
@@ -145,6 +169,7 @@ const shoppingListItems = ref<string[]>([]);
 const shoppingDraftItem = ref("");
 const itemFilterGroups = ref<ItemFilterGroup[]>([]);
 const itemFilterMuted = ref(false);
+const customItemFilterSounds = ref<CustomItemFilterSound[]>([]);
 const postRunReport = ref<PostRunReportConfig>(defaultPreferences.postRunReport);
 const compactRunTiles = ref<CompactRunTileConfig[]>(defaultPreferences.compactRunTiles);
 const developerItemResearchEnabled = ref(false);
@@ -163,6 +188,7 @@ let toastTimer: number | null = null;
 const IGNORED_UPDATE_STORAGE_KEY = "hero-siege-companion:ignored-update:v1";
 const itemFilterSeenTimelineKeys = new Set<string>();
 const itemResearchSeenTimelineKeys = new Set<string>();
+const appliedThemeTokenKeys = new Set<ThemeTokenKey>();
 const itemFilterLastPlayedAt = new Map<string, number>();
 let lastUnknownItemPromptAt = 0;
 const itemTypeOptions = ITEM_TYPE_OPTIONS;
@@ -224,6 +250,8 @@ const pastRuns = computed(() => state.value.pastRuns ?? []);
 const activeShoppingItem = computed(() => shoppingListItems.value[activeShoppingIndex.value] ?? shoppingListItems.value[0] ?? "");
 const activeItemFilterGroups = computed(() => itemFilterGroups.value.filter((group) => group.enabled));
 const watchedItemCount = computed(() => itemFilterGroups.value.reduce((total, group) => total + new Set(group.items.map((item) => normalizeLookupText(item.name))).size, 0));
+const itemFilterSoundOptionsList = computed(() => itemFilterSoundOptions(customItemFilterSounds.value));
+const activeThemeAccent = computed(() => themeAccents.value[themeId.value] ?? DEFAULT_THEME_ACCENTS[themeId.value]);
 const unresolvedItemResearchEntries = computed(() => activeItemResearchEntries(itemResearchEntries.value));
 const selectedItemFilterGroup = computed(() => itemFilterGroups.value.find((group) => group.id === activeItemFilterGroupId.value) ?? itemFilterGroups.value[0] ?? null);
 const selectedItemFilterGroupedItems = computed(() => itemFilterGroupedItems(selectedItemFilterGroup.value));
@@ -261,11 +289,13 @@ onMounted(async () => {
   }, 1000);
 });
 
-watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, itemFilterGroups, itemFilterMuted, postRunReport, compactRunTiles, developerItemResearchEnabled, unknownItemAudioPrompt, itemResearchEntries], () => {
+watch([logLimit, timelineLimit, showCaptureDetails, hideSocketables, hideKeys, hideMaterials, timelineType, lockCompactLocation, shoppingListItems, themeId, themeAccents, themeTokenMaps, itemFilterGroups, itemFilterMuted, customItemFilterSounds, postRunReport, compactRunTiles, developerItemResearchEnabled, unknownItemAudioPrompt, itemResearchEntries], () => {
   savePreferences(currentPreferences());
   clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
 }, { deep: true });
+
+watch([themeId, activeThemeAccent, themeTokenMaps], applyTheme, { immediate: true, deep: true });
 
 onUnmounted(() => {
   unsubscribe?.();
@@ -373,6 +403,30 @@ async function importConfiguration() {
   }
 }
 
+async function exportTheme() {
+  try {
+    const payload = createThemeExportPayload(draftThemeId.value, draftThemeAccents.value, draftThemeTokenMaps.value);
+    const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2));
+    if (exported) showToast("Theme exported");
+  } catch {
+    showToast("Theme export failed");
+  }
+}
+
+async function importTheme() {
+  try {
+    const contents = await window.heroSiegeCompanion.importConfiguration();
+    if (!contents) return;
+    const imported = importThemePayload(contents, draftThemeId.value, draftThemeAccents.value, draftThemeTokenMaps.value);
+    draftThemeId.value = imported.themeId;
+    draftThemeAccents.value = imported.themeAccents;
+    draftThemeTokenMaps.value = imported.themeTokenMaps;
+    showToast("Theme imported");
+  } catch {
+    showToast("Theme import failed");
+  }
+}
+
 async function exportItemResearch() {
   try {
     const payload = createItemResearchExportPayload(itemResearchEntries.value);
@@ -413,8 +467,12 @@ function currentPreferences(): UiPreferences {
     shoppingListItems: shoppingListItems.value,
     gameExecutablePath: gameExecutablePath.value,
     launchThroughSteam: launchThroughSteam.value,
+    themeId: themeId.value,
+    themeAccents: themeAccents.value,
+    themeTokenMaps: themeTokenMaps.value,
     itemFilterGroups: itemFilterGroups.value,
     itemFilterMuted: itemFilterMuted.value,
+    customItemFilterSounds: customItemFilterSounds.value,
     postRunReport: postRunReport.value,
     compactRunTiles: compactRunTiles.value,
     developerItemResearchEnabled: developerItemResearchEnabled.value,
@@ -436,8 +494,12 @@ function applyPreferences(preferences: UiPreferences) {
   shoppingListItems.value = preferences.shoppingListItems;
   gameExecutablePath.value = preferences.gameExecutablePath;
   launchThroughSteam.value = preferences.launchThroughSteam;
+  themeId.value = preferences.themeId;
+  themeAccents.value = preferences.themeAccents;
+  themeTokenMaps.value = preferences.themeTokenMaps;
   itemFilterGroups.value = preferences.itemFilterGroups;
   itemFilterMuted.value = preferences.itemFilterMuted;
+  customItemFilterSounds.value = preferences.customItemFilterSounds;
   postRunReport.value = preferences.postRunReport;
   compactRunTiles.value = preferences.compactRunTiles;
   developerItemResearchEnabled.value = preferences.developerItemResearchEnabled;
@@ -461,8 +523,12 @@ function currentDraftPreferences(): UiPreferences {
     shoppingListItems: shoppingListItems.value,
     gameExecutablePath: draftGameExecutablePath.value.trim(),
     launchThroughSteam: draftLaunchThroughSteam.value,
+    themeId: draftThemeId.value,
+    themeAccents: draftThemeAccents.value,
+    themeTokenMaps: draftThemeTokenMaps.value,
     itemFilterGroups: itemFilterGroups.value,
     itemFilterMuted: itemFilterMuted.value,
+    customItemFilterSounds: customItemFilterSounds.value,
     postRunReport: postRunReport.value,
     compactRunTiles: compactRunTiles.value,
     developerItemResearchEnabled: draftDeveloperItemResearchEnabled.value,
@@ -489,6 +555,9 @@ function loadDraftPreferences(preferences: UiPreferences) {
   draftTimelineType.value = preferences.timelineType;
   draftGameExecutablePath.value = preferences.gameExecutablePath;
   draftLaunchThroughSteam.value = preferences.launchThroughSteam;
+  draftThemeId.value = preferences.themeId;
+  draftThemeAccents.value = { ...preferences.themeAccents };
+  draftThemeTokenMaps.value = { ...preferences.themeTokenMaps };
   draftCreateDebugMode.value = state.value.capturePreferences.createDebugMode;
   draftSkipEmptyRuns.value = state.value.runArchivePreferences.skipEmptyRuns;
   draftMinRunDurationMinutes.value = state.value.runArchivePreferences.minDurationMinutes;
@@ -505,6 +574,29 @@ function currentDraftCapturePreferences(): CapturePreferences {
   return {
     createDebugMode: draftCreateDebugMode.value,
   };
+}
+
+function updateDraftThemeAccent(value: string) {
+  const normalized = normalizeThemeAccent(value);
+  if (!normalized) return;
+  draftThemeAccents.value = { ...draftThemeAccents.value, [draftThemeId.value]: normalized };
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = themeId.value;
+  document.documentElement.style.setProperty("--user-accent", activeThemeAccent.value);
+  for (const key of appliedThemeTokenKeys) {
+    const cssVar = themeTokenCssVar(key);
+    if (cssVar) document.documentElement.style.removeProperty(cssVar);
+  }
+  appliedThemeTokenKeys.clear();
+  const tokens = themeTokenMaps.value[themeId.value] ?? {};
+  for (const [key, value] of Object.entries(tokens) as Array<[ThemeTokenKey, string]>) {
+    const cssVar = themeTokenCssVar(key);
+    if (!cssVar || !value) continue;
+    document.documentElement.style.setProperty(cssVar, value);
+    appliedThemeTokenKeys.add(key);
+  }
 }
 
 async function chooseGameExecutable() {
@@ -618,7 +710,7 @@ function addItemToFilterGroup(group: ItemFilterGroup, value = itemFilterDraftIte
   if (!canonical) return;
   const normalizedName = normalizeLookupText(canonical);
   if (group.items.some((item) => normalizeLookupText(item.name) === normalizedName)) return;
-  group.items = normalizeSpecificItems([...group.items, { name: canonical, soundId: "", typeLabel: itemTypeLabelForName(canonical) }]);
+  group.items = normalizeSpecificItems([...group.items, { name: canonical, soundId: "", typeLabel: itemTypeLabelForName(canonical) }], customItemFilterSounds.value);
   itemFilterDraftItem.value = "";
 }
 
@@ -690,7 +782,7 @@ function resetItemResearchEntry(signature: string) {
 }
 
 function clearResolvedItemResearchEntries() {
-  itemResearchEntries.value = normalizeItemResearchEntries(itemResearchEntries.value.filter((entry) => !entry.resolvedName.trim() && !entry.ignored));
+  itemResearchEntries.value = normalizeItemResearchEntries(itemResearchEntries.value.filter((entry) => !entry.ignored));
 }
 
 function identifyTimelineItem(item: ItemTimelineEntry) {
@@ -708,25 +800,59 @@ function handleItemFilterMatch(match: ItemFilterRuleMatch) {
   lastItemFilterMatch.value = {
     itemLabel: match.item.label || `Type ${match.item.type} #${match.item.id}`,
     groupName: match.group.name,
-    soundName: soundName(match.soundId),
+    soundName: soundName(match.soundId, itemFilterSoundOptionsList.value),
     createdAt: nowMs,
   };
   if (itemFilterMuted.value) return;
   const lastPlayedAt = itemFilterLastPlayedAt.get(match.group.id) ?? 0;
   if (nowMs - lastPlayedAt < match.group.cooldownMs) return;
   itemFilterLastPlayedAt.set(match.group.id, nowMs);
-  void playItemFilterSound(match.soundId, match.group.volume).catch(() => {
+  void playItemFilterSound(match.soundId, match.group.volume, customItemFilterSounds.value).catch(() => {
     // Audio feedback should never interfere with capture or rendering.
   });
 }
 
 async function testItemFilterSound(soundId = selectedItemFilterGroup.value?.soundId ?? ITEM_FILTER_SOUNDS[0].id, volume = selectedItemFilterGroup.value?.volume ?? 70) {
   try {
-    await playItemFilterSound(soundId, volume);
+    await playItemFilterSound(soundId, volume, customItemFilterSounds.value);
   } catch (error) {
     // Some systems block audio until the next direct user gesture.
     console.warn("Item filter sound did not play", error);
   }
+}
+
+async function importItemFilterSounds() {
+  try {
+    const selected = await window.heroSiegeCompanion.importSounds();
+    if (!selected.length) return;
+    const existingNames = new Set(customItemFilterSounds.value.map((sound) => sound.fileName.toLowerCase()));
+    const nextSounds: CustomItemFilterSound[] = [];
+    selected.forEach((sound, index) => {
+      if (!sound.fileName || !sound.src.startsWith("file://")) return;
+      if (existingNames.has(sound.fileName.toLowerCase())) return;
+      existingNames.add(sound.fileName.toLowerCase());
+      nextSounds.push({
+        id: createCustomSoundId(sound.fileName, index),
+        name: customSoundDisplayName(sound.fileName),
+        fileName: sound.fileName,
+        src: sound.src,
+      });
+    });
+    customItemFilterSounds.value = normalizeCustomItemFilterSounds([...customItemFilterSounds.value, ...nextSounds]);
+    showToast(nextSounds.length ? `${nextSounds.length} custom sound${nextSounds.length === 1 ? "" : "s"} imported` : "No new sounds imported");
+  } catch {
+    showToast("Sound import failed");
+  }
+}
+
+async function removeItemFilterSound(sound: CustomItemFilterSound) {
+  const nextSounds = customItemFilterSounds.value.filter((candidate) => candidate.id !== sound.id);
+  customItemFilterSounds.value = nextSounds;
+  itemFilterGroups.value = normalizeItemFilterGroups(itemFilterGroups.value, nextSounds);
+  if (sound.src.startsWith("file://")) {
+    void window.heroSiegeCompanion.removeSound(sound.src);
+  }
+  showToast(`${sound.name} removed`);
 }
 
 function itemDropBreakdown(rarity: string): ItemDropCounter[] {
@@ -910,6 +1036,7 @@ function trimCompact(value: number): string {
         :shopping-suggestions="shoppingSuggestions"
         :active-shopping-item="activeShoppingItem"
         :active-item-filter-groups="activeItemFilterGroups"
+        :item-filter-sounds="itemFilterSoundOptionsList"
         :item-filter-group-count="itemFilterGroups.length"
         :watched-item-count="watchedItemCount"
         :last-item-filter-match="lastItemFilterMatch"
@@ -931,6 +1058,7 @@ function trimCompact(value: number): string {
         v-model:item-filter-draft-group-name="itemFilterDraftGroupName"
         v-model:item-filter-draft-item="itemFilterDraftItem"
         :item-filter-groups="itemFilterGroups"
+        :item-filter-sounds="itemFilterSoundOptionsList"
         :selected-item-filter-group="selectedItemFilterGroup"
         :selected-item-filter-grouped-items="selectedItemFilterGroupedItems"
         :item-filter-suggestions="itemFilterSuggestions"
@@ -976,6 +1104,8 @@ function trimCompact(value: number): string {
       v-model:hide-materials="draftHideMaterials"
       v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
       v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
+      v-model:theme-id="draftThemeId"
+      v-model:theme-accents="draftThemeAccents"
       v-model:skip-empty-runs="draftSkipEmptyRuns"
       v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
       v-model:config-include-app-settings="configIncludeAppSettings"
@@ -988,8 +1118,15 @@ function trimCompact(value: number): string {
       :item-type-options="itemTypeOptions"
       :item-filter-groups="itemFilterGroups"
       :item-suggestions="shoppingAutocompleteNames"
+      :theme-options="THEME_OPTIONS"
+      :custom-item-filter-sounds="customItemFilterSounds"
       @close="closeSettings"
       @choose-game-executable="chooseGameExecutable"
+      @update-theme-accent="updateDraftThemeAccent"
+      @import-theme="importTheme"
+      @export-theme="exportTheme"
+      @import-sounds="importItemFilterSounds"
+      @remove-sound="removeItemFilterSound"
       @export-configuration="exportConfiguration"
       @import-configuration="importConfiguration"
       @reset="resetDraftPreferences"

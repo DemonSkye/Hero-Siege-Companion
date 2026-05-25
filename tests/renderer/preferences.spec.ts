@@ -19,6 +19,7 @@ import {
   savePreferences,
 } from "../../src/renderer/src/lib/preferences";
 import { defaultPostRunReportConfig } from "../../src/renderer/src/lib/report-config";
+import { DEFAULT_THEME_ACCENTS, createThemeExportPayload, importThemePayload } from "../../src/renderer/src/lib/themes";
 import { itemTimelineEntry } from "./fixtures";
 
 describe("renderer preferences persistence", () => {
@@ -58,6 +59,17 @@ describe("renderer preferences persistence", () => {
         shoppingListItems: ["Copper Ore", "Copper Ore", "", "Ruby"],
         gameExecutablePath: 42,
         launchThroughSteam: false,
+        themeId: "lost",
+        themeAccents: { dark: "#bad", cyberpunk: "#FF3151", light: "#ffffff" },
+        themeTokenMaps: {
+          cyberpunk: {
+            border: "rgba(0, 240, 255, 0.48)",
+            buttonPrimary: "#FFF200",
+            satanic: "#ffffff",
+            broken: "url(javascript:bad)",
+          },
+        },
+        customItemFilterSounds: [{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }],
         itemFilterGroups: [{ id: "x", name: "Drops", soundId: "missing", volume: 500 }],
         itemFilterMuted: 1,
         postRunReport: {
@@ -90,6 +102,10 @@ describe("renderer preferences persistence", () => {
     expect(preferences.shoppingListItems).toEqual(["Copper Ore", "Ruby"]);
     expect(preferences.gameExecutablePath).toBe("");
     expect(preferences.launchThroughSteam).toBe(false);
+    expect(preferences.themeId).toBe(defaultPreferences.themeId);
+    expect(preferences.themeAccents).toEqual({ ...DEFAULT_THEME_ACCENTS, cyberpunk: "#ff3151", light: "#ffffff" });
+    expect(preferences.themeTokenMaps).toEqual({ cyberpunk: { border: "rgba(0, 240, 255, 0.48)", buttonPrimary: "#fff200" } });
+    expect(preferences.customItemFilterSounds).toHaveLength(1);
     expect(preferences.itemFilterGroups[0]).toMatchObject({ id: "x", name: "Drops", soundId: "crystal-tink", volume: 100 });
     expect(preferences.itemFilterMuted).toBe(true);
     expect(preferences.postRunReport).toEqual({
@@ -125,9 +141,11 @@ describe("renderer preferences persistence", () => {
 
   test("treats generic item labels as research candidates and exports shareable research JSON", () => {
     const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
+    const genericWeapon = itemTimelineEntry({ label: "Chainsaw #10 - mfDrop=1 - Weapon - 10-3909410-65295343278200001-3", rarity: "Superior", type: 3, id: 10, fingerprint: "chainsaw-10" });
     const knownCollectible = itemTimelineEntry({ label: "Ruby", rarity: "Superior", type: 13, id: 19, localizationId: "ruby" });
 
     expect(isItemResearchCandidate(genericCollectible)).toBe(true);
+    expect(isItemResearchCandidate(genericWeapon)).toBe(true);
     expect(isItemResearchCandidate(knownCollectible)).toBe(false);
 
     const signature = itemResearchSignature(genericCollectible);
@@ -167,11 +185,24 @@ describe("renderer preferences persistence", () => {
     });
   });
 
+  test("exports and imports shareable theme JSON", () => {
+    const accents = { ...DEFAULT_THEME_ACCENTS, cyberpunk: "#00f0ff" };
+    const payload = createThemeExportPayload("cyberpunk", accents, { cyberpunk: { border: "rgba(0, 240, 255, 0.48)" } });
+    const imported = importThemePayload(JSON.stringify(payload), "dark", DEFAULT_THEME_ACCENTS);
+
+    expect(payload).toMatchObject({ kind: "theme", themeId: "cyberpunk", accent: "#00f0ff", tokens: { border: "rgba(0, 240, 255, 0.48)" } });
+    expect(imported.themeId).toBe("cyberpunk");
+    expect(imported.themeAccents.cyberpunk).toBe("#00f0ff");
+    expect(imported.themeTokenMaps.cyberpunk).toEqual({ border: "rgba(0, 240, 255, 0.48)" });
+  });
+
   test("exports and imports configuration sections according to checkbox scope", () => {
     const current = {
       ...defaultPreferences,
       logLimit: 50,
+      customItemFilterSounds: [{ id: "custom-sound:alert", name: "Alert", fileName: "alert.wav", src: "file:///sounds/alert.wav" }],
       itemFilterMuted: true,
+      itemFilterGroups: [{ id: "x", name: "Drops", enabled: true, soundId: "custom-sound:alert", volume: 70, cooldownMs: 1000, rarities: [], types: [], items: [] }],
       postRunReport: { ...defaultPostRunReportConfig, topDropLimit: 3 },
       itemResearchEntries: [
         {
@@ -193,7 +224,12 @@ describe("renderer preferences persistence", () => {
     const imported = {
       ...defaultPreferences,
       logLimit: 100,
+      themeId: "cyberpunk",
+      themeAccents: { ...DEFAULT_THEME_ACCENTS, cyberpunk: "#ff3151" },
+      themeTokenMaps: { cyberpunk: { border: "rgba(0, 240, 255, 0.48)" } },
       itemFilterMuted: false,
+      customItemFilterSounds: [{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }],
+      itemFilterGroups: [{ id: "boss", name: "Boss", enabled: true, soundId: "custom-sound:boss", volume: 70, cooldownMs: 1000, rarities: ["Heroic"], types: [], items: [] }],
       postRunReport: {
         ...defaultPostRunReportConfig,
         topDropLimit: 5,
@@ -231,7 +267,11 @@ describe("renderer preferences persistence", () => {
     );
 
     expect(payload.uiPreferences.itemFilterMuted).toBeUndefined();
+    expect(payload.uiPreferences.customItemFilterSounds).toBeUndefined();
     expect(payload.uiPreferences.itemResearchEntries).toBeUndefined();
+    expect(payload.uiPreferences.themeId).toBe("cyberpunk");
+    expect(payload.uiPreferences.themeAccents?.cyberpunk).toBe("#ff3151");
+    expect(payload.uiPreferences.themeTokenMaps?.cyberpunk).toEqual({ border: "rgba(0, 240, 255, 0.48)" });
     expect(payload.uiPreferences.postRunReport).toMatchObject({ topDropLimit: 5 });
     expect(payload.uiPreferences.postRunReport?.itemGroups).toEqual([
       {
@@ -274,6 +314,7 @@ describe("renderer preferences persistence", () => {
 
     expect(result.uiPreferences.logLimit).toBe(100);
     expect(result.uiPreferences.itemFilterMuted).toBe(true);
+    expect(result.uiPreferences.customItemFilterSounds[0].id).toBe("custom-sound:alert");
     expect(result.uiPreferences.postRunReport.topDropLimit).toBe(3);
     expect(result.uiPreferences.itemResearchEntries).toHaveLength(1);
     expect(result.runArchivePreferences).toEqual({ skipEmptyRuns: true, minDurationMinutes: 12 });

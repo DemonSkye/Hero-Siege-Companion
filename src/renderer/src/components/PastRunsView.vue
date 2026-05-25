@@ -158,13 +158,13 @@ function removeTrackedReportItem(group: ReportItemGroup, item: string) {
 
 function aggregateMetricCards(aggregate: PastRunAggregate) {
   const cards: Record<ReportMetricId, { label: string; value: number; detail: string }> = {
-    gold: { label: "Gold/h", value: aggregate.goldPerHour, detail: `Best ${formatNumber(aggregate.bestGoldPerHour)}` },
-    xp: { label: "XP/h", value: aggregate.xpPerHour, detail: `Best ${formatNumber(aggregate.bestXpPerHour)}` },
-    kills: { label: "Kills/h", value: aggregate.killsPerHour, detail: `Best ${formatNumber(aggregate.bestKillsPerHour)}` },
-    keys: { label: "Keys", value: aggregate.totalKeys, detail: `${formatNumber(averagePerRun(aggregate.totalKeys, aggregate.runCount))}/run` },
-    ores: { label: "Ore", value: aggregate.totalOres, detail: `${formatNumber(averagePerRun(aggregate.totalOres, aggregate.runCount))}/run` },
-    materials: { label: "Materials", value: aggregate.totalMaterials, detail: `${formatNumber(averagePerRun(aggregate.totalMaterials, aggregate.runCount))}/run` },
-    mfDrops: { label: "MF drops", value: aggregate.totalMfDrops, detail: `${formatNumber(aggregate.totalGold)} gold` },
+    gold: { label: "Gold/h", value: aggregate.goldPerHour, detail: `Best per hour ${formatNumber(aggregate.bestGoldPerHour)}` },
+    xp: { label: "XP/h", value: aggregate.xpPerHour, detail: `Best per hour ${formatNumber(aggregate.bestXpPerHour)}` },
+    kills: { label: "Kills/h", value: aggregate.killsPerHour, detail: `Best per hour ${formatNumber(aggregate.bestKillsPerHour)}` },
+    keys: { label: "Keys", value: aggregate.totalKeys, detail: `Average per run ${formatNumber(averagePerRun(aggregate.totalKeys, aggregate.runCount))}` },
+    ores: { label: "Ore", value: aggregate.totalOres, detail: `Average per run ${formatNumber(averagePerRun(aggregate.totalOres, aggregate.runCount))}` },
+    materials: { label: "Materials", value: aggregate.totalMaterials, detail: `Average per run ${formatNumber(averagePerRun(aggregate.totalMaterials, aggregate.runCount))}` },
+    mfDrops: { label: "MF drops", value: aggregate.totalMfDrops, detail: `Total gold ${formatNumber(aggregate.totalGold)}` },
   };
   return props.reportConfig.summaryMetrics.map((metric) => cards[metric]).filter(Boolean);
 }
@@ -445,9 +445,12 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
           <div class="aggregate-heading">
             <div>
               <h3>{{ panel.title }}</h3>
-              <span>{{ panel.subtitle }} &middot; Avg {{ formatDuration(panel.aggregate.averageDurationMs) }}</span>
+              <span>{{ panel.subtitle }} &middot; Average duration {{ formatDuration(panel.aggregate.averageDurationMs) }}</span>
             </div>
-            <strong>{{ formatDuration(panel.aggregate.totalDurationMs) }}</strong>
+            <div class="aggregate-duration-total">
+              <span>Total duration</span>
+              <strong>{{ formatDuration(panel.aggregate.totalDurationMs) }}</strong>
+            </div>
           </div>
           <div class="aggregate-metrics dynamic-metrics">
             <div v-for="metric in aggregateMetricCards(panel.aggregate)" :key="`${panel.key}-${metric.label}`">

@@ -1,6 +1,14 @@
+import { customSoundForId, type CustomItemFilterSound } from "./item-filters";
+
 let audioContext: AudioContext | null = null;
 
-export async function playItemFilterSound(soundId: string, volume: number) {
+export async function playItemFilterSound(soundId: string, volume: number, customSounds: CustomItemFilterSound[] = []) {
+  const customSound = customSoundForId(soundId, customSounds);
+  if (customSound) {
+    await playCustomAudio(customSound.src, volume);
+    return;
+  }
+
   const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) return;
   audioContext = audioContext ?? new AudioContextClass();
@@ -9,6 +17,18 @@ export async function playItemFilterSound(soundId: string, volume: number) {
   gain.gain.value = Math.max(0, Math.min(volume, 100)) / 100;
   gain.connect(audioContext.destination);
   playSoundPreset(audioContext, gain, soundId);
+}
+
+function playCustomAudio(src: string, volume: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(src);
+    audio.volume = Math.max(0, Math.min(volume, 100)) / 100;
+    audio.onended = () => resolve();
+    audio.onerror = () => reject(new Error("Custom audio failed to play."));
+    const playResult = audio.play();
+    if (playResult) playResult.catch(reject);
+    window.setTimeout(resolve, 5000);
+  });
 }
 
 function playSoundPreset(context: AudioContext, output: GainNode, soundId: string) {

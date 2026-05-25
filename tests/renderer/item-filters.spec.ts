@@ -2,10 +2,14 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   createItemFilterGroup,
+  createCustomSoundId,
+  customSoundDisplayName,
+  itemFilterSoundOptions,
   itemFilterGroupedItems,
   itemTimelineKey,
   matchItemFilter,
   normalizeItemFilterGroups,
+  normalizeCustomItemFilterSounds,
   normalizeSpecificItems,
   soundName,
 } from "../../src/renderer/src/lib/item-filters";
@@ -100,6 +104,22 @@ describe("renderer item filter rules", () => {
     });
     expect(createItemFilterGroup("", 2).name).toBe("Group 3");
     expect(soundName("missing")).toBe("Crystal Tink");
+  });
+
+  test("custom sounds are normalized and can be used by filter groups", () => {
+    vi.spyOn(Date, "now").mockReturnValue(999);
+    const customSounds = normalizeCustomItemFilterSounds([
+      { id: createCustomSoundId("Boss Drop.wav", 0), name: "Boss Drop", fileName: "Boss Drop.wav", src: "file:///sounds/boss.wav" },
+      { id: "bad", name: "Bad", fileName: "bad.txt", src: "data:text/plain;base64,AAAA" },
+    ]);
+    const [group] = normalizeItemFilterGroups([{ id: "custom", name: "Custom", soundId: customSounds[0].id, items: [{ name: "Copper Ore", soundId: customSounds[0].id }] }], customSounds);
+    const soundOptions = itemFilterSoundOptions(customSounds);
+
+    expect(customSounds).toHaveLength(1);
+    expect(group.soundId).toBe(customSounds[0].id);
+    expect(group.items[0].soundId).toBe(customSounds[0].id);
+    expect(soundName(customSounds[0].id, soundOptions)).toBe("Boss Drop");
+    expect(customSoundDisplayName("Ding_123.ogg")).toBe("Ding 123");
   });
 
   test("timeline keys include timestamp, fingerprint, type, id, and label to avoid UI collisions", () => {

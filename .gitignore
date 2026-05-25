@@ -29,6 +29,11 @@ capture-*.bin
 past-runs.json
 preferences.json
 
+# Local/custom loot alert sounds
+sounds/*
+!sounds/.gitignore
+!sounds/.placeholder
+
 # Local project notes
 AUCTION_HOUSE_FINDINGS.md
 auction_house_findings*

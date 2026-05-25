@@ -668,6 +668,7 @@ const ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "w_chainsaw_candy_shredder", name: "Candy Shredder", gameId: 7, type: 3, weaponType: 7 },
   { localizationId: "w_chainsaw_royal_decapitator", name: "Royal Decapitator", gameId: 8, type: 3, weaponType: 7 },
   { localizationId: "w_chainsaw_diablo", name: "Diablo", gameId: 9, type: 3, weaponType: 7 },
+  { localizationId: "w_chainsaw_edens_harvester", name: "Eden's Harvester", gameId: 10, type: 3, weaponType: 7 },
   { localizationId: "w_claw_storm_fury", name: "Storm Fury", gameId: 0, type: 3, weaponType: 5 },
   { localizationId: "w_claw_molten_paw", name: "Molten Paw", gameId: 1, type: 3, weaponType: 5 },
   { localizationId: "w_claw_hemorrhage", name: "Hemorrhage", gameId: 2, type: 3, weaponType: 5 },
@@ -878,6 +879,7 @@ const ITEM_TRANSLATIONS: ItemTranslation[] = [
 ];
 
 const ITEM_TRANSLATION_OVERRIDES: ItemTranslation[] = [
+  { localizationId: "armors_sharpshooters_cloak", name: "Sharpshooter's Cloak", gameId: 100, type: 1, weaponType: 0 },
   { localizationId: "rings_scourge_loop", name: "Scourge Loop", gameId: 48, type: 7, weaponType: 0 },
 ];
 

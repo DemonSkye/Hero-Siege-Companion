@@ -5,7 +5,7 @@ import type { ItemDropCounter, ItemTimelineEntry } from "../../../shared/stats";
 import { formatNumber, formatTime } from "../lib/format";
 import { itemIconUrl } from "../lib/item-assets";
 import type { CompactRunTileDisplay } from "../lib/compact-tiles";
-import type { ItemFilterGroup, ItemFilterMatch } from "../lib/item-filters";
+import type { ItemFilterGroup, ItemFilterMatch, ItemFilterSoundOption } from "../lib/item-filters";
 import { soundName } from "../lib/item-filters";
 import { isItemResearchCandidate } from "../lib/item-research";
 import { logClass, logEventLabel, logEventTone, logItemIconUrl, logSummary } from "../lib/log-display";
@@ -40,6 +40,7 @@ const props = defineProps<{
   shoppingSuggestions: string[];
   activeShoppingItem: string;
   activeItemFilterGroups: ItemFilterGroup[];
+  itemFilterSounds: ItemFilterSoundOption[];
   itemFilterGroupCount: number;
   watchedItemCount: number;
   lastItemFilterMatch: ItemFilterMatch | null;
@@ -335,7 +336,7 @@ function canIdentifyTimelineItem(item: ItemTimelineEntry): boolean {
         <div v-if="activeItemFilterGroups.length" class="item-filter-card-groups">
           <div v-for="group in activeItemFilterGroups" :key="group.id" class="item-filter-card-group">
             <strong>{{ group.name }}</strong>
-            <span>{{ soundName(group.soundId) }} &middot; {{ group.volume }}% &middot; {{ group.cooldownMs }}ms</span>
+            <span>{{ soundName(group.soundId, itemFilterSounds) }} &middot; {{ group.volume }}% &middot; {{ group.cooldownMs }}ms</span>
           </div>
         </div>
         <p v-else class="empty-copy">No enabled filter groups. Configure groups in the Item Filter tab.</p>

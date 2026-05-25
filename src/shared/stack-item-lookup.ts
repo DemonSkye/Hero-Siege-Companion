@@ -53,6 +53,8 @@ const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "stack_the_lovers", name: "The Lovers", gameId: 29, type: 13, weaponType: 0 },
   { localizationId: "stack_justice", name: "Justice", gameId: 30, type: 13, weaponType: 0 },
   { localizationId: "stack_the_hermit", name: "The Hermit", gameId: 31, type: 13, weaponType: 0 },
+  { localizationId: "stack_the_devil", name: "The Devil", gameId: 33, type: 13, weaponType: 0 },
+  { localizationId: "stack_the_moon", name: "The Moon", gameId: 34, type: 13, weaponType: 0 },
   { localizationId: "stack_the_sun", name: "The Sun", gameId: 35, type: 13, weaponType: 0 },
   { localizationId: "stack_the_star", name: "The Star", gameId: 36, type: 13, weaponType: 0 },
   { localizationId: "stack_judgement", name: "Judgement", gameId: 37, type: 13, weaponType: 0 },
