@@ -53,6 +53,7 @@ const emit = defineEmits<{
   copyShoppingItem: [item: string];
   addShoppingItem: [];
   removeShoppingItem: [item: string];
+  openNpcapGuide: [];
   testItemFilterSound: [];
   configureFilter: [];
   identifyTimelineItem: [item: ItemTimelineEntry];
@@ -71,6 +72,9 @@ const itemFilterMuted = defineModel<boolean>("itemFilterMuted", { required: true
 const logLimit = defineModel<number>("logLimit", { required: true });
 
 const expandedDrops = computed(() => props.trackedItems.find((item) => item.rarity === expandedDropRarity.value)?.drops ?? []);
+const npcapServiceStatus = computed(() => props.state.health.npcapService.trim().toLowerCase());
+const npcapServiceRunning = computed(() => npcapServiceStatus.value === "running");
+const showNpcapSetupChecklist = computed(() => !npcapServiceRunning.value || props.state.health.adminOnly || !props.state.health.winPcapCompatible);
 
 function toggleDropBreakdown(rarity: string) {
   expandedDropRarity.value = expandedDropRarity.value === rarity ? null : rarity;
@@ -114,6 +118,39 @@ function canIdentifyTimelineItem(item: ItemTimelineEntry): boolean {
     </section>
 
     <p v-if="state.captureError" class="error-banner">{{ state.captureError }}</p>
+
+    <section v-if="showNpcapSetupChecklist" class="npcap-setup-card" aria-label="Npcap setup checklist">
+      <div class="npcap-setup-heading">
+        <div>
+          <p class="eyebrow">First-run setup</p>
+          <h2>Npcap needs a quick check</h2>
+        </div>
+        <button class="icon-button ghost" type="button" @click="$emit('openNpcapGuide')">Open Npcap Guide</button>
+      </div>
+      <div class="npcap-checklist">
+        <div :class="['npcap-check', { ok: npcapServiceRunning }]">
+          <span aria-hidden="true">{{ npcapServiceRunning ? "OK" : "!" }}</span>
+          <div>
+            <strong>Npcap service is running</strong>
+            <small>Current status: {{ state.health.npcapService || "Unknown" }}</small>
+          </div>
+        </div>
+        <div :class="['npcap-check', { ok: !state.health.adminOnly }]">
+          <span aria-hidden="true">{{ state.health.adminOnly ? "!" : "OK" }}</span>
+          <div>
+            <strong>Administrator-only access is off</strong>
+            <small>{{ state.health.adminOnly ? "Reinstall Npcap with administrator-only access unchecked." : "Capture can run without launching the app as administrator." }}</small>
+          </div>
+        </div>
+        <div :class="['npcap-check', { ok: state.health.winPcapCompatible }]">
+          <span aria-hidden="true">{{ state.health.winPcapCompatible ? "OK" : "!" }}</span>
+          <div>
+            <strong>WinPcap compatibility is on</strong>
+            <small>{{ state.health.winPcapCompatible ? "The compatible API mode is enabled." : "Reinstall Npcap with WinPcap API-compatible mode checked." }}</small>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section class="metric-grid">
       <article v-for="tile in runTileDisplays" :key="`desktop-${tile.id}`" class="metric" :title="tile.title">

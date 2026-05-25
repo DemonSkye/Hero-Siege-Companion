@@ -30,6 +30,7 @@ defineProps<{
   itemSuggestions: string[];
   themeOptions: ThemeOption[];
   customItemFilterSounds: CustomItemFilterSound[];
+  supportDiagnostics: string;
 }>();
 
 defineEmits<{
@@ -40,6 +41,7 @@ defineEmits<{
   exportTheme: [];
   importSounds: [];
   removeSound: [sound: CustomItemFilterSound];
+  copySupportDiagnostics: [];
   exportConfiguration: [];
   importConfiguration: [];
   reset: [];
@@ -72,7 +74,7 @@ const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearc
 const draftCompactRunTiles = defineModel<CompactRunTileConfig[]>("compactRunTiles", { required: true });
 
 const compactStandardOptions = STANDARD_COMPACT_RUN_TILE_OPTIONS;
-const activeSettingsTab = ref<"general" | "capture" | "appearance" | "sounds" | "dashboard" | "config">("general");
+const activeSettingsTab = ref<"general" | "capture" | "appearance" | "sounds" | "dashboard" | "support" | "config">("general");
 
 function isCompactStandardEnabled(kind: Exclude<CompactRunTileKind, "custom">): boolean {
   return draftCompactRunTiles.value.some((tile) => tile.kind === kind);
@@ -140,6 +142,7 @@ function eventValue(event: Event): string {
         <button :class="{ active: activeSettingsTab === 'appearance' }" type="button" @click="activeSettingsTab = 'appearance'">Appearance</button>
         <button :class="{ active: activeSettingsTab === 'sounds' }" type="button" @click="activeSettingsTab = 'sounds'">Sounds</button>
         <button :class="{ active: activeSettingsTab === 'dashboard' }" type="button" @click="activeSettingsTab = 'dashboard'">Dashboard</button>
+        <button :class="{ active: activeSettingsTab === 'support' }" type="button" @click="activeSettingsTab = 'support'">Support</button>
         <button :class="{ active: activeSettingsTab === 'config' }" type="button" @click="activeSettingsTab = 'config'">Import / Export</button>
       </nav>
 
@@ -319,6 +322,17 @@ function eventValue(event: Event): string {
           <datalist id="settings-compact-item-suggestions">
             <option v-for="item in itemSuggestions" :key="item" :value="item" />
           </datalist>
+        </section>
+      </div>
+
+      <div v-else-if="activeSettingsTab === 'support'" class="settings-grid settings-grid-single">
+        <section class="settings-wide compact-settings-section">
+          <div class="compact-settings-heading">
+            <strong>Capture diagnostics</strong>
+            <button class="icon-button ghost" type="button" @click="$emit('copySupportDiagnostics')">Copy Diagnostics</button>
+          </div>
+          <p class="settings-note settings-wide-note">Copy this when asking for capture help. It includes Npcap setup, adapter, filter, packet counters, parser health, and app version.</p>
+          <pre class="settings-support-bundle">{{ supportDiagnostics }}</pre>
         </section>
       </div>
 

@@ -26,6 +26,7 @@ declare global {
       writeClipboardText: (value: string) => Promise<void>;
       checkForUpdate: () => Promise<ReleaseUpdateInfo | null>;
       openRelease: (url?: string) => Promise<void>;
+      openNpcapGuide: () => Promise<void>;
       onStateUpdated: (callback: (state: CompanionState) => void) => () => void;
     };
   }

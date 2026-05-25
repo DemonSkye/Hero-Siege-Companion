@@ -271,6 +271,27 @@ const itemFilterSuggestions = computed(() => {
     .filter((name) => !existing.has(normalizeLookupText(name)) && normalizeLookupText(name).includes(query))
     .slice(0, ITEM_FILTER_SUGGESTION_LIMIT);
 });
+const supportDiagnostics = computed(() => {
+  const health = state.value.health;
+  return [
+    "Hero Siege Companion capture diagnostics",
+    `App version: ${appVersion}`,
+    `Capture status: ${state.value.captureStatus}`,
+    `Capture running: ${state.value.captureRunning ? "yes" : "no"}`,
+    `Npcap service: ${health.npcapService || "Unknown"}`,
+    `WinPcap compatible: ${health.winPcapCompatible ? "yes" : "no"}`,
+    `Admin-only Npcap: ${health.adminOnly ? "yes" : "no"}`,
+    `Adapter: ${health.device || "none"}`,
+    `Filter: ${health.filter || "none"}`,
+    `Packets seen: ${health.packetsSeen}`,
+    `Payloads assembled: ${health.payloadsAssembled}`,
+    `Messages decoded: ${health.messagesDecoded}`,
+    `Parsed events: ${health.parsedEvents}`,
+    `Parser errors: ${health.parserErrors}`,
+    `Parser restarts: ${health.parserRestarts}`,
+    `Last parser error: ${health.lastParserError || "none"}`,
+  ].join("\n");
+});
 
 onMounted(async () => {
   applyPreferences(loadPreferences());
@@ -938,6 +959,15 @@ function toggleLog(log: LogEntry) {
   expandedLogIds.value = next;
 }
 
+async function copySupportDiagnostics() {
+  await window.heroSiegeCompanion.writeClipboardText(supportDiagnostics.value);
+  showToast("Capture diagnostics copied");
+}
+
+async function openNpcapGuide() {
+  await window.heroSiegeCompanion.openNpcapGuide();
+}
+
 function formatCompactNumber(value: number): string {
   const abs = Math.abs(value || 0);
   if (abs >= 1_000_000_000) return `${trimCompact(value / 1_000_000_000)}b`;
@@ -1046,6 +1076,7 @@ function trimCompact(value: number): string {
         @copy-shopping-item="copyShoppingItem($event, false)"
         @add-shopping-item="addShoppingItem"
         @remove-shopping-item="removeShoppingItem"
+        @open-npcap-guide="openNpcapGuide"
         @test-item-filter-sound="testItemFilterSound"
         @configure-filter="activeTab = 'filter'"
         @identify-timeline-item="identifyTimelineItem"
@@ -1120,6 +1151,7 @@ function trimCompact(value: number): string {
       :item-suggestions="shoppingAutocompleteNames"
       :theme-options="THEME_OPTIONS"
       :custom-item-filter-sounds="customItemFilterSounds"
+      :support-diagnostics="supportDiagnostics"
       @close="closeSettings"
       @choose-game-executable="chooseGameExecutable"
       @update-theme-accent="updateDraftThemeAccent"
@@ -1127,6 +1159,7 @@ function trimCompact(value: number): string {
       @export-theme="exportTheme"
       @import-sounds="importItemFilterSounds"
       @remove-sound="removeItemFilterSound"
+      @copy-support-diagnostics="copySupportDiagnostics"
       @export-configuration="exportConfiguration"
       @import-configuration="importConfiguration"
       @reset="resetDraftPreferences"

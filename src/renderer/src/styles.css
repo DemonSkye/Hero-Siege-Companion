@@ -1071,6 +1071,89 @@ h2 {
   color: #ffd0d0;
 }
 
+.npcap-setup-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, transparent);
+  border-radius: 8px;
+  background: var(--accent-warm-bg);
+}
+
+.npcap-setup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.npcap-setup-heading h2 {
+  margin: 2px 0 0;
+  color: var(--app-heading);
+  font-size: 17px;
+}
+
+.npcap-checklist {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.npcap-check {
+  display: flex;
+  min-width: 0;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+  border-radius: 7px;
+  background: var(--surface-cell);
+}
+
+.npcap-check > span {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.npcap-check.ok {
+  border-color: rgba(66, 211, 146, 0.28);
+}
+
+.npcap-check.ok > span {
+  background: rgba(66, 211, 146, 0.16);
+  color: #9ff0c5;
+}
+
+.npcap-check div {
+  min-width: 0;
+}
+
+.npcap-check strong,
+.npcap-check small {
+  display: block;
+}
+
+.npcap-check strong {
+  color: var(--app-heading);
+  font-size: 13px;
+}
+
+.npcap-check small {
+  margin-top: 3px;
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3413,6 +3496,21 @@ input[type="checkbox"] {
   overflow-wrap: anywhere;
 }
 
+.settings-support-bundle {
+  overflow: auto;
+  max-height: 260px;
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--app-text);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .settings-sound-list {
   display: grid;
   gap: 8px;
@@ -3972,6 +4070,10 @@ input[type="checkbox"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .npcap-checklist {
+    grid-template-columns: 1fr;
+  }
+
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
@@ -4063,6 +4165,11 @@ input[type="checkbox"] {
   .number-setting,
   .path-setting {
     width: 100%;
+  }
+
+  .npcap-setup-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .aggregate-metrics,

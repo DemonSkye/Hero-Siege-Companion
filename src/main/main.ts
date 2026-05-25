@@ -32,6 +32,7 @@ const APP_DIAGNOSTIC_HEARTBEAT_MS = 30_000;
 const STATE_PUBLISH_INTERVAL_MS = 1000;
 const GITHUB_RELEASES_URL = "https://github.com/DemonSkye/Hero-Siege-Companion/releases";
 const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/DemonSkye/Hero-Siege-Companion/releases/latest";
+const GITHUB_NPCAP_GUIDE_URL = "https://github.com/DemonSkye/Hero-Siege-Companion#required-install-npcap";
 const RELEASE_CHECK_TIMEOUT_MS = 6000;
 const MAX_CONFIGURATION_IMPORT_BYTES = 1024 * 1024;
 const MAX_CUSTOM_SOUND_IMPORT_BYTES = 4 * 1024 * 1024;
@@ -699,6 +700,9 @@ ipcMain.handle("updates:open-release", async (_event, url?: string) => {
     ? url
     : GITHUB_RELEASES_URL;
   await shell.openExternal(target);
+});
+ipcMain.handle("docs:open-npcap-guide", async () => {
+  await shell.openExternal(GITHUB_NPCAP_GUIDE_URL);
 });
 ipcMain.handle("game:choose-executable", async () => {
   const options = {

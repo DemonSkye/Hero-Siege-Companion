@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("heroSiegeCompanion", {
   writeClipboardText: (value: string): Promise<void> => ipcRenderer.invoke("clipboard:write-text", value),
   checkForUpdate: (): Promise<ReleaseUpdateInfo | null> => ipcRenderer.invoke("updates:check"),
   openRelease: (url?: string): Promise<void> => ipcRenderer.invoke("updates:open-release", url),
+  openNpcapGuide: (): Promise<void> => ipcRenderer.invoke("docs:open-npcap-guide"),
   onStateUpdated: (callback: (state: CompanionState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: CompanionState) => callback(state);
     ipcRenderer.on("state:updated", listener);

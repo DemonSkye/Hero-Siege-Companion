@@ -138,6 +138,13 @@ describe("Vue component contracts", () => {
         itemSuggestions: ["Sash of the Magi"],
         themeOptions: THEME_OPTIONS,
         customItemFilterSounds: [{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }],
+        supportDiagnostics: [
+          "Hero Siege Companion capture diagnostics",
+          "App version: 0.1.6",
+          "Npcap service: Running",
+          "Adapter: \\Device\\NPF_Test",
+          "Parser errors: 0",
+        ].join("\n"),
         logLimit: 20,
         timelineLimit: 10,
         timelineType: "all",
@@ -194,6 +201,11 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "Dashboard").trigger("click");
     await buttonByText(wrapper, "Add Custom").trigger("click");
 
+    await buttonByText(wrapper, "Support").trigger("click");
+    expect(wrapper.text()).toContain("Capture diagnostics");
+    expect(wrapper.text()).toContain("Npcap service: Running");
+    await buttonByText(wrapper, "Copy Diagnostics").trigger("click");
+
     await buttonByText(wrapper, "General").trigger("click");
     await buttonByText(wrapper, "Browse").trigger("click");
     await buttonByText(wrapper, "Reset Preferences").trigger("click");
@@ -210,6 +222,7 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("chooseGameExecutable")).toHaveLength(1);
     expect(wrapper.emitted("importSounds")).toHaveLength(1);
     expect(wrapper.emitted("removeSound")?.[0]?.[0]).toMatchObject({ id: "custom-sound:boss" });
+    expect(wrapper.emitted("copySupportDiagnostics")).toHaveLength(1);
     expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("reset")).toHaveLength(1);
@@ -313,6 +326,62 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("configureFilter")).toHaveLength(1);
     expect(wrapper.emitted("identifyTimelineItem")?.[0]?.[0]).toMatchObject({ label: "Collectible #24", type: 13, id: 24 });
     expect(wrapper.emitted("toggleLog")?.[0]).toEqual([state.logs[0]]);
+  });
+
+  test("LiveView surfaces the Npcap setup checklist when first-run prerequisites are wrong", async () => {
+    const state = companionState();
+    state.health = {
+      ...state.health,
+      npcapService: "Stopped",
+      adminOnly: true,
+      winPcapCompatible: false,
+    };
+    const wrapper = mount(LiveView, {
+      props: {
+        state,
+        captureStatusLabel: "Needs attention",
+        runTileDisplays: [],
+        zoneCountdown: "20m",
+        zoneResetLabel: "12:30 PM",
+        trackedItems: [],
+        keyDropTotal: 0,
+        oreDropTotal: 0,
+        visibleItemTimeline: [],
+        itemTimelineCount: 0,
+        logLimitOptions: [10, 20, 50],
+        itemTypeOptions: [],
+        shoppingListItems: [],
+        shoppingSuggestions: [],
+        activeShoppingItem: "",
+        activeItemFilterGroups: [],
+        itemFilterSounds: [],
+        itemFilterGroupCount: 0,
+        watchedItemCount: 0,
+        lastItemFilterMatch: null,
+        developerItemResearchEnabled: false,
+        recentLogs: [],
+        expandedLogIds: new Set<string>(),
+        showCaptureDetails: false,
+        expandedDropRarity: null,
+        timelineLimit: 10,
+        timelineType: "all",
+        hideSocketables: false,
+        hideKeys: false,
+        hideMaterials: false,
+        shoppingDraftItem: "",
+        itemFilterMuted: false,
+        logLimit: 20,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Npcap needs a quick check");
+    expect(wrapper.text()).toContain("Current status: Stopped");
+    expect(wrapper.text()).toContain("administrator-only access unchecked");
+    expect(wrapper.text()).toContain("WinPcap API-compatible mode checked");
+
+    await buttonByText(wrapper, "Open Npcap Guide").trigger("click");
+
+    expect(wrapper.emitted("openNpcapGuide")).toHaveLength(1);
   });
 });
 
