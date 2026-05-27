@@ -213,6 +213,19 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
     }
   }
 
+  async function exportItemFilterSoundPack(): Promise<void> {
+    try {
+      const result = await window.heroSiegeCompanion.exportSoundPack(options.customItemFilterSounds.value);
+      if (result.exported) {
+        options.showToast(`Soundpack exported with ${result.includedFiles.length} sound${result.includedFiles.length === 1 ? "" : "s"}`);
+      } else if (!result.canceled) {
+        options.showToast("No custom sounds to export");
+      }
+    } catch {
+      options.showToast("Soundpack export failed");
+    }
+  }
+
   async function removeItemFilterSound(sound: CustomItemFilterSound): Promise<void> {
     const nextSounds = options.customItemFilterSounds.value.filter((candidate) => candidate.id !== sound.id);
     options.customItemFilterSounds.value = nextSounds;
@@ -246,6 +259,7 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
     processItemFilterTimeline,
     testItemFilterSound,
     importItemFilterSounds,
+    exportItemFilterSoundPack,
     removeItemFilterSound,
   };
 }

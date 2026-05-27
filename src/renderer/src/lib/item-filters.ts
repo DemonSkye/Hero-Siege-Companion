@@ -52,6 +52,24 @@ export interface ItemFilterRuleMatch {
   item: ItemTimelineEntry;
 }
 
+export interface ItemFilterCriteriaItem {
+  name: string;
+  soundId?: string;
+}
+
+export interface ItemFilterCriteriaGroup {
+  rarities: string[];
+  types: number[];
+  items: Array<string | ItemFilterCriteriaItem>;
+}
+
+export interface ItemFilterMatchCandidate {
+  source?: ItemTimelineEntry["source"];
+  rarity: string;
+  label: string;
+  type: number;
+}
+
 export const ITEM_FILTER_SUGGESTION_LIMIT = 12;
 export const ITEM_FILTER_RARITIES = ["Set", "Satanic", "Heroic", "Angelic", "Unholy", "Runeword"];
 export const INVENTORY_SOURCE_ITEM_FILTER_TYPES = new Set([11, 12, 13, 14, 15, 18]);
@@ -179,7 +197,7 @@ export function createCustomSoundId(fileName: string, index: number): string {
 }
 
 export function customSoundDisplayName(fileName: string): string {
-  return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || "Custom Sound";
+  return fileName.replace(/\\/g, "/").split("/").filter(Boolean).pop()?.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim() || "Custom Sound";
 }
 
 export function itemFilterSoundOptions(customSounds: CustomItemFilterSound[] = []): ItemFilterSoundOption[] {
@@ -273,25 +291,46 @@ export function matchItemFilter(item: ItemTimelineEntry, activeGroups: ItemFilte
   const label = item.label || (item.id ? `#${item.id}` : "");
   const normalizedLookupLabel = normalizeLookupText(label);
   for (const group of activeGroups) {
-    const specificItem = group.items.find((candidate) => normalizeLookupText(candidate.name) === normalizedLookupLabel);
-    if (specificItem) return { group, soundId: specificItem.soundId || group.soundId, item };
+    const specificItem = matchingSpecificCriteriaItem(group, normalizedLookupLabel);
+    if (specificItem) return { group, soundId: criteriaItemSoundId(specificItem) || group.soundId, item };
   }
 
   for (const group of activeGroups) {
-    const hasGroupCriteria = group.rarities.length > 0 || group.types.length > 0;
-    if (!hasGroupCriteria) continue;
-    const matchesType = group.types.length === 0 || group.types.includes(item.type);
-    const matchesRarity =
-      group.rarities.length === 0 ||
-      itemCanMatchSelectedTypeWithoutRarity(item, group, matchesType) ||
-      group.rarities.some((rarity) => rarity.toLowerCase() === item.rarity.toLowerCase());
-    if (matchesRarity && matchesType) return { group, soundId: group.soundId, item };
+    if (itemMatchesRarityTypeCriteria(item, group)) return { group, soundId: group.soundId, item };
   }
 
   return null;
 }
 
-function itemCanMatchSelectedTypeWithoutRarity(item: ItemTimelineEntry, group: ItemFilterGroup, matchesType: boolean): boolean {
+export function itemMatchesItemFilterCriteria(item: ItemFilterMatchCandidate, group: ItemFilterCriteriaGroup): boolean {
+  const normalizedLookupLabel = normalizeLookupText(item.label);
+  return Boolean(matchingSpecificCriteriaItem(group, normalizedLookupLabel)) || itemMatchesRarityTypeCriteria(item, group);
+}
+
+function matchingSpecificCriteriaItem(group: ItemFilterCriteriaGroup, normalizedLookupLabel: string): string | ItemFilterCriteriaItem | null {
+  return group.items.find((candidate) => normalizeLookupText(criteriaItemName(candidate)) === normalizedLookupLabel) ?? null;
+}
+
+function criteriaItemName(item: string | ItemFilterCriteriaItem): string {
+  return typeof item === "string" ? item : item.name;
+}
+
+function criteriaItemSoundId(item: string | ItemFilterCriteriaItem): string {
+  return typeof item === "string" ? "" : item.soundId ?? "";
+}
+
+function itemMatchesRarityTypeCriteria(item: ItemFilterMatchCandidate, group: ItemFilterCriteriaGroup): boolean {
+  const hasGroupCriteria = group.rarities.length > 0 || group.types.length > 0;
+  if (!hasGroupCriteria) return false;
+  const matchesType = group.types.length === 0 || group.types.includes(item.type);
+  const matchesRarity =
+    group.rarities.length === 0 ||
+    itemCanMatchSelectedTypeWithoutRarity(item, group, matchesType) ||
+    group.rarities.some((rarity) => rarity.toLowerCase() === item.rarity.toLowerCase());
+  return matchesRarity && matchesType;
+}
+
+function itemCanMatchSelectedTypeWithoutRarity(item: ItemFilterMatchCandidate, group: ItemFilterCriteriaGroup, matchesType: boolean): boolean {
   return item.source === "inventory" && matchesType && group.types.length > 0 && INVENTORY_SOURCE_ITEM_FILTER_TYPES.has(item.type);
 }
 

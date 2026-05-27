@@ -16,7 +16,7 @@ Download the latest Windows build from the GitHub Releases page:
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
 
-Current release target: `v0.2.0`.
+Current release target: `v0.2.2`.
 
 ## Quick Start
 
@@ -26,7 +26,7 @@ Current release target: `v0.2.0`.
 4. Leave capture running while you play.
 5. Use `End Run` when a run is complete and should be saved to Past Runs.
 
-The app only shows data after Hero Siege sends the relevant packet. For example, Satanic Zone details appear after a zone packet arrives, and gold may update after a zone change or town interaction.
+Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details appear after a zone vote/reset packet arrives.
 
 ## Core Features
 
@@ -35,20 +35,20 @@ The app only shows data after Hero Siege sends the relevant packet. For example,
 - Compact overlay mode for keeping the current run visible while playing.
 - Satanic Zone name, reset countdown, pros, and cons in both full and compact views.
 - Loot audio filters with custom groups, rarity/type rules, exact watched items, sound selection, volume, cooldown, and mute controls.
-- Imported loot alert sounds from local audio files or zip soundpacks.
+- Imported loot alert sounds from local audio files or zip soundpacks, plus soundpack ZIP export.
 - Dark, Cyberpunk, and Light themes with separate full-app and compact choices, accent colors, and theme import/export.
 - Developer item research for resolving unknown item signatures into a shareable JSON lookup contribution.
 - Shopping list for quickly saving and copying marketplace searches.
-- Past Runs explorer with search, per-run tags, configurable report cards, tracked item groups, top drops, and resource drawers.
-- Settings import/export for app settings, Past Run settings, report tracking, loot filters, and optional research data.
-- Support diagnostics ZIP export for troubleshooting capture/setup issues.
+- Past Runs explorer with search, compare mode, JSON export, per-run tags, configurable report cards, tracked item groups, top drops, and resource drawers.
+- Settings import/export for app settings, Past Run settings, report tracking, loot filters, sounds, and optional research data.
+- Support diagnostics summary copy and ZIP export for troubleshooting capture/setup issues.
 - Local-only desktop app: no account login, no cloud service, and no packet capture files are written by the app.
 
 ## Live Dashboard
 
 The dashboard is built around the current run. It tracks duration, gold, XP rate, kills, Satanic Zone timer, and any configured custom tiles. The right side focuses on drops, shopping list access, and diagnostics so the important play-session data stays visible.
 
-Satanic Zone details use the same source data in full and compact mode: zone name, remaining time, pros, and cons all come from parsed game packets.
+Satanic Zone details use the same source data in full and compact mode: zone name, remaining time, pros, and cons come from parsed game packets and are cached until the next half-hour window.
 
 ## Compact Overlay
 
@@ -64,7 +64,7 @@ Past Runs stores local run summaries so you can compare farming strategies over 
 
 ![Hero Siege Companion Past Runs](docs/assets/past-runs.png)
 
-Use search and tags to narrow saved history by strategy, character, resource, drop, or stat. Use `Configure Report` to choose which summary cards, rarity groups, tracked item groups, drawers, and top-drop counts appear in run recaps. Empty tracked item groups use the default rarity-based report; enabled groups focus the report on exact drops or strategies you care about.
+Use search and tags to narrow saved history by strategy, character, resource, drop, or stat. Compare mode shows the recent matching slice against the full matching set, and Export JSON writes the current matching runs plus their aggregate summary. Use `Configure Report` to choose which summary cards, rarity groups, tracked item groups, drawers, and top-drop counts appear in run recaps. Empty tracked item groups use the default rarity-based report; enabled groups focus the report on exact drops or strategies you care about.
 
 ## Loot Audio And Item Research
 
@@ -84,9 +84,10 @@ The configuration JSON import/export flow can include:
 - Past run settings
 - Report tracking
 - Loot filters
+- Sounds
 - Research data
 
-Loot filters and research data are optional export sections so you can share a report setup without sharing every personal filter group.
+Loot filters, sounds, and research data are optional export sections so you can share a report setup without sharing every personal filter group. When Sounds is checked, imported custom audio is embedded into the configuration JSON and installed back into local app storage during import.
 
 ## Required: Install Npcap
 
@@ -147,11 +148,19 @@ Run tests:
 npm test
 ```
 
+Run the headless Electron E2E suite:
+
+```powershell
+npm run test:electron
+```
+
 Build the portable Windows release:
 
 ```powershell
 npm run dist:win
 ```
+
+For release prep, follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before publishing.
 
 ## Notes
 

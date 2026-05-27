@@ -1,7 +1,7 @@
 {
   "name": "hero-siege-companion",
   "productName": "Hero Siege Companion",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "private": true,
   "description": "Electron + Vue companion app for passive Hero Siege stat tracking.",
   "main": "dist/main/main/main.js",
@@ -13,6 +13,7 @@
     "prepare:cap": "node scripts/prepare-cap-native.js",
     "start": "npm run build && electron .",
     "test": "vitest run",
+    "test:electron": "npm run build && playwright test -c playwright.electron.config.cjs",
     "test:watch": "vitest",
     "rebuild": "electron-rebuild -f -w cap",
     "postinstall:electron": "node ./node_modules/electron/install.js"
@@ -59,6 +60,7 @@
     "cap": "^0.2.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@types/node": "^22.15.21",
     "@vitejs/plugin-vue": "^5.2.4",
     "@vue/test-utils": "2.4.10",

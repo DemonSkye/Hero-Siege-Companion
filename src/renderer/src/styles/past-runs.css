@@ -197,6 +197,61 @@
   background: rgba(137, 216, 199, 0.055);
 }
 
+.past-run-compare-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid rgba(255, 242, 0, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 242, 0, 0.055);
+}
+
+.past-run-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.past-run-compare-row {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.past-run-compare-row span {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.past-run-compare-row strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--app-heading);
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.past-run-compare-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.past-run-compare-row.up small {
+  color: #89d8c7;
+}
+
+.past-run-compare-row.down small {
+  color: #ff8a8a;
+}
+
 .aggregate-heading {
   display: flex;
   align-items: flex-start;

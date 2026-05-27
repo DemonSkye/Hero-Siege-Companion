@@ -3,6 +3,7 @@ import type { SupportDiagnosticsInfo } from "../../../shared/support-diagnostics
 
 export const DEFAULT_SUPPORT_DIAGNOSTICS_INFO: SupportDiagnosticsInfo = {
   userDataPath: "%APPDATA%\\Hero Siege Companion",
+  appVersion: "unknown",
   generatedFiles: [
     {
       name: "diagnostics-summary.txt",
@@ -12,11 +13,11 @@ export const DEFAULT_SUPPORT_DIAGNOSTICS_INFO: SupportDiagnosticsInfo = {
   logFiles: [],
 };
 
-export function createSupportDiagnosticsSummary(state: CompanionState, appVersion: string): string {
+export function createSupportDiagnosticsSummary(state: CompanionState, info: SupportDiagnosticsInfo): string {
   const health = state.health;
   return [
     "Hero Siege Companion capture diagnostics",
-    `App version: ${appVersion}`,
+    `App version: ${info.appVersion || "unknown"}`,
     `Capture status: ${state.captureStatus}`,
     `Capture running: ${state.captureRunning ? "yes" : "no"}`,
     `Npcap service: ${health.npcapService || "Unknown"}`,

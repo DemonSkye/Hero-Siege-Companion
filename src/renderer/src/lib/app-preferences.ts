@@ -55,6 +55,7 @@ export interface AppPreferencesState {
   configIncludeRunSaving: Ref<boolean>;
   configIncludeReportTracking: Ref<boolean>;
   configIncludeLootFilters: Ref<boolean>;
+  configIncludeSounds: Ref<boolean>;
   configIncludeItemResearch: Ref<boolean>;
   preferenceWatchSources: Array<Ref<unknown>>;
   currentPreferences(shoppingListItems: string[]): UiPreferences;
@@ -118,6 +119,7 @@ export function useAppPreferences(): AppPreferencesState {
   const configIncludeRunSaving = ref(true);
   const configIncludeReportTracking = ref(true);
   const configIncludeLootFilters = ref(true);
+  const configIncludeSounds = ref(true);
   const configIncludeItemResearch = ref(false);
 
   const preferenceWatchSources: Array<Ref<unknown>> = [
@@ -273,6 +275,7 @@ export function useAppPreferences(): AppPreferencesState {
       includeRunSaving: configIncludeRunSaving.value,
       includeReportTracking: configIncludeReportTracking.value,
       includeLootFilters: configIncludeLootFilters.value,
+      includeSounds: configIncludeSounds.value,
       includeItemResearch: configIncludeItemResearch.value,
     };
   }
@@ -335,6 +338,7 @@ export function useAppPreferences(): AppPreferencesState {
     configIncludeRunSaving,
     configIncludeReportTracking,
     configIncludeLootFilters,
+    configIncludeSounds,
     configIncludeItemResearch,
     preferenceWatchSources,
     currentPreferences,

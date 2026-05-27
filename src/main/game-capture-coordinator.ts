@@ -1,6 +1,6 @@
 import { shell } from "electron";
 import fs from "node:fs";
-import type { CaptureService } from "./capture";
+import type { CaptureRuntime } from "./capture-runtime";
 import type { CompanionState, LogEntry } from "../shared/app-state";
 import type { LaunchGameOptions } from "../shared/ipc";
 
@@ -10,7 +10,7 @@ const GAME_PROCESS_MONITOR_MS = 12_000;
 
 interface GameCaptureCoordinatorOptions {
   state: CompanionState;
-  getCaptureService: () => CaptureService | null;
+  getCaptureService: () => CaptureRuntime | null;
   addLog: (level: LogEntry["level"], message: string) => void;
   publishState: () => void;
   writeAppLog: (type: string, data: Record<string, unknown>) => void;

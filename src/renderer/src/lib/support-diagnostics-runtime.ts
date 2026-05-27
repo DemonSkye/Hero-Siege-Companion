@@ -4,14 +4,13 @@ import { DEFAULT_SUPPORT_DIAGNOSTICS_INFO, createSupportDiagnosticsSummary } fro
 
 interface UseSupportDiagnosticsRuntimeOptions {
   state: Ref<CompanionState>;
-  appVersion: string;
   showToast: (message: string) => void;
 }
 
-export function useSupportDiagnosticsRuntime({ state, appVersion, showToast }: UseSupportDiagnosticsRuntimeOptions) {
+export function useSupportDiagnosticsRuntime({ state, showToast }: UseSupportDiagnosticsRuntimeOptions) {
   const supportDiagnosticsInfo = ref(DEFAULT_SUPPORT_DIAGNOSTICS_INFO);
   const supportBundleBusy = ref(false);
-  const supportDiagnostics = computed(() => createSupportDiagnosticsSummary(state.value, appVersion));
+  const supportDiagnostics = computed(() => createSupportDiagnosticsSummary(state.value, supportDiagnosticsInfo.value));
 
   async function refreshSupportDiagnosticsInfo() {
     try {
@@ -37,6 +36,15 @@ export function useSupportDiagnosticsRuntime({ state, appVersion, showToast }: U
     }
   }
 
+  async function copySupportDiagnosticsSummary() {
+    try {
+      await window.heroSiegeCompanion.writeClipboardText(supportDiagnostics.value);
+      showToast("Diagnostics summary copied");
+    } catch {
+      showToast("Diagnostics summary copy failed");
+    }
+  }
+
   async function openNpcapGuide() {
     await window.heroSiegeCompanion.openNpcapGuide();
   }
@@ -47,6 +55,7 @@ export function useSupportDiagnosticsRuntime({ state, appVersion, showToast }: U
     supportDiagnostics,
     refreshSupportDiagnosticsInfo,
     saveSupportDiagnostics,
+    copySupportDiagnosticsSummary,
     openNpcapGuide,
   };
 }

@@ -7,6 +7,7 @@ defineProps<{
 
 defineEmits<{
   importSounds: [];
+  exportSounds: [];
   removeSound: [sound: CustomItemFilterSound];
 }>();
 </script>
@@ -18,8 +19,11 @@ defineEmits<{
         <strong>Loot alert sounds</strong>
         <span>{{ customItemFilterSounds.length }} imported</span>
       </div>
-      <p class="settings-note settings-wide-note">Import .wav, .mp3, .ogg, or a .zip soundpack. Imported sounds appear in the Item Filter sound menus.</p>
-      <button class="icon-button ghost settings-import-sounds" type="button" @click="$emit('importSounds')">Import Sounds</button>
+      <p class="settings-note settings-wide-note">Import .wav, .mp3, .ogg, or a .zip soundpack. Zip soundpacks are installed under their pack name, and imported sounds appear in the Item Filter sound menus.</p>
+      <div class="settings-sound-actions">
+        <button class="icon-button ghost settings-import-sounds" type="button" @click="$emit('importSounds')">Import Sounds</button>
+        <button class="icon-button ghost" type="button" :disabled="!customItemFilterSounds.length" @click="$emit('exportSounds')">Export Soundpack</button>
+      </div>
       <div v-if="customItemFilterSounds.length" class="settings-sound-list" aria-label="Imported sounds">
         <div v-for="sound in customItemFilterSounds" :key="sound.id" class="settings-sound-row">
           <div>

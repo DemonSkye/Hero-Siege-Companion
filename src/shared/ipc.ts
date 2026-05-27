@@ -18,7 +18,9 @@ export const IPC_CHANNELS = {
   configurationImport: "configuration:import",
   itemResearchExport: "item-research:export",
   soundsImport: "sounds:import",
+  soundsExport: "sounds:export",
   soundsRemove: "sounds:remove",
+  pastRunsExportJson: "past-runs:export-json",
   windowMinimize: "window:minimize",
   windowToggleMaximize: "window:toggle-maximize",
   windowClose: "window:close",
@@ -43,6 +45,19 @@ export interface ImportedSoundReference {
   src: string;
 }
 
+export interface ExportableSoundReference {
+  fileName: string;
+  name: string;
+  src: string;
+}
+
+export interface SoundPackExportResult {
+  exported: boolean;
+  canceled: boolean;
+  filePath: string | null;
+  includedFiles: string[];
+}
+
 export interface HeroSiegeCompanionApi {
   getState: () => Promise<CompanionState>;
   startCapture: () => Promise<CompanionState>;
@@ -59,7 +74,9 @@ export interface HeroSiegeCompanionApi {
   importConfiguration: () => Promise<string | null>;
   exportItemResearch: (json: string) => Promise<boolean>;
   importSounds: () => Promise<ImportedSoundReference[]>;
+  exportSoundPack: (sounds: ExportableSoundReference[]) => Promise<SoundPackExportResult>;
   removeSound: (src: string) => Promise<boolean>;
+  exportPastRunsJson: (json: string) => Promise<boolean>;
   minimizeWindow: () => Promise<void>;
   toggleMaximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;

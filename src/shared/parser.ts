@@ -11,7 +11,7 @@ import {
   WEAPON_TYPE_NAMES,
 } from "./constants";
 import { asMessageObject, getMessageField, hasMessageField, intMessageField, messageEntries, type MessageObject, type MessageValue } from "./fields";
-import { lookupItemTranslation, lookupItemTranslationByName, type ItemTranslation } from "./item-lookup";
+import { isTrustedInventoryItemTranslation, lookupItemTranslation, lookupItemTranslationByName, type ItemTranslation } from "./item-lookup";
 import { lookupKnownItemRarity } from "./item-rarity";
 import { isSetItemName } from "./set-item-names";
 import { lookupStackItemTranslation } from "./stack-item-lookup";
@@ -30,8 +30,9 @@ const ITEM_RARITY_FIELDS = ["rarity", "itemRarity", "item_rarity", "d"];
 const GOLD_DELTA_FIELDS = ["goldAmount", "gold_amount"];
 const SATANIC_ZONE_FIELDS = ["satanicZoneName", "satanic_zone_name"];
 const ACCOUNT_SIGNATURE_FIELDS = ["name", "class", "class_id", "heroLevel", "herolevel", "season", "hardcore"];
+const ACTIVE_ACCOUNT_IDENTITY_FIELDS = ["accountUID", "accountUid", "unique_id", "uniqueId"];
 const ACCOUNT_MODE_HINT_FIELDS = ["blood_pact", "bloodPact"];
-const ACCOUNT_MODE_SIGNATURE_FIELDS = ["hardcore", "season", "seasonal"];
+const ACCOUNT_MODE_SIGNATURE_FIELDS = ["hardcore", "seasonal"];
 
 export interface ParsedEvent<T = unknown> {
   name: EventName;
@@ -92,6 +93,7 @@ export interface SatanicZoneInfo {
 export interface AccountInfo {
   name: string;
   experience: number;
+  hasExperience: boolean;
   totalMonsterKills: number;
   season: number;
   hardcore: number;
@@ -173,7 +175,12 @@ function identifyEvents(msg: MessageObject): EventName[] {
   if (isItemPayload(msg)) events.push(EVENT_NAMES.item);
   if (isServerFoundPayload(msg) || isTrustedGeneratedItemDataPayload(msg)) events.push(EVENT_NAMES.itemDrop);
   if (hasMessageField(msg, SATANIC_ZONE_FIELDS)) events.push(EVENT_NAMES.satanicZone);
-  if (hasMessageField(msg, ["experience"]) && hasMessageField(msg, ACCOUNT_SIGNATURE_FIELDS)) events.push(EVENT_NAMES.account);
+  if (
+    (hasMessageField(msg, ["experience"]) && hasMessageField(msg, ACCOUNT_SIGNATURE_FIELDS)) ||
+    isActiveAccountIdentityPayload(msg)
+  ) {
+    events.push(EVENT_NAMES.account);
+  }
   if (hasMessageField(msg, ACCOUNT_MODE_HINT_FIELDS) && hasMessageField(msg, ACCOUNT_MODE_SIGNATURE_FIELDS)) {
     events.push(EVENT_NAMES.accountMode);
   }
@@ -198,6 +205,15 @@ function isItemPayload(msg: MessageObject): boolean {
     hasMessageField(operations, ["add", "stack"]) ||
     hasMessageField(msg, ["itemsAdded", "items_added"]) ||
     isInventoryItemDataPayload(msg)
+  );
+}
+
+function isActiveAccountIdentityPayload(msg: MessageObject): boolean {
+  return (
+    hasMessageField(msg, ["name"]) &&
+    hasMessageField(msg, ACTIVE_ACCOUNT_IDENTITY_FIELDS) &&
+    hasMessageField(msg, ["season"]) &&
+    hasMessageField(msg, ["hardcore"])
   );
 }
 
@@ -277,6 +293,7 @@ function parseAccount(msg: MessageObject): AccountInfo {
   return {
     name: String(getMessageField(msg, ["name"], "")),
     experience: intMessageField(msg, ["experience"]),
+    hasExperience: hasMessageField(msg, ["experience"]),
     totalMonsterKills: intMessageField(msg, ["statisticTotalMonsterKills", "statistic_total_monster_kills", "totalMonsterKills", "total_monster_kills"]),
     season,
     hardcore,
@@ -579,7 +596,10 @@ function trustTranslationForRarity(
 ): boolean {
   if (!translation) return true;
   if (options.trustServerAnnouncedRarity) return true;
-  return !isServerAnnouncedRarity(mappedRarity) && !isServerAnnouncedRarity(lookupKnownItemRarity(translation.type, translation.name));
+  return (
+    isTrustedInventoryItemTranslation(translation) ||
+    (!isServerAnnouncedRarity(mappedRarity) && !isServerAnnouncedRarity(lookupKnownItemRarity(translation.type, translation.name)))
+  );
 }
 
 function trustExplicitNameForRarity(

@@ -265,6 +265,7 @@ describe("Vue component contracts", () => {
         configIncludeRunSaving: true,
         configIncludeReportTracking: true,
         configIncludeLootFilters: true,
+        configIncludeSounds: true,
         configIncludeItemResearch: false,
         compactRunTiles: defaultCompactRunTiles,
       },
@@ -291,9 +292,11 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Loot alert sounds");
     expect(wrapper.text()).toContain("Boss Drop");
     await buttonByText(wrapper, "Import Sounds").trigger("click");
+    await buttonByText(wrapper, "Export Soundpack").trigger("click");
     await wrapper.get('button[aria-label="Remove Boss Drop"]').trigger("click");
 
     await buttonByText(wrapper, "Import / Export").trigger("click");
+    await checkboxByLabel(wrapper, "Sounds").setValue(false);
     await checkboxByLabel(wrapper, "Research data").setValue(true);
     await buttonByText(wrapper, "Import JSON").trigger("click");
     await buttonByText(wrapper, "Export JSON").trigger("click");
@@ -303,13 +306,23 @@ describe("Vue component contracts", () => {
 
     await buttonByText(wrapper, "What's New").trigger("click");
     expect(wrapper.text()).toContain(`What's New in ${WHATS_NEW_RELEASE.version}`);
+    expect(wrapper.text()).toContain("Hero Siege Companion v0.2.2");
+    expect(wrapper.text()).toContain("Npcap is still required for capture.");
+    expect(wrapper.text()).toContain("Highlights");
     expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.items[0]);
+    expect(wrapper.text()).toContain("Soundpacks");
+    expect(wrapper.text()).toContain("Past Runs");
+    expect(wrapper.text()).toContain("Configure Report can reuse existing Item Filter groups.");
+    expect(wrapper.text()).toContain("Added UAT-confirmed item lookup for several cards / items.");
+    expect(wrapper.text()).not.toContain("Added The Hierophant for collectible type 13 / id 40.");
 
     await buttonByText(wrapper, "Support").trigger("click");
     expect(wrapper.text()).toContain("Diagnostics bundle");
+    expect(wrapper.text()).toContain("does not include packet captures");
     expect(wrapper.text()).toContain("Npcap service: Running");
     expect(wrapper.text()).toContain("app-debug.log");
     expect(wrapper.text()).toContain("capture-debug.log.old");
+    await buttonByText(wrapper, "Copy Summary").trigger("click");
     await buttonByText(wrapper, "Save ZIP").trigger("click");
 
     await buttonByText(wrapper, "General").trigger("click");
@@ -324,11 +337,14 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("updateThemeAccent")).toEqual([["#00f0ff", "cyberpunk"], ["#ffffff", "light"]]);
     expect(wrapper.emitted("exportTheme")).toHaveLength(1);
     expect(wrapper.emitted("importTheme")).toHaveLength(1);
+    expect(wrapper.emitted("update:configIncludeSounds")).toEqual([[false]]);
     expect(wrapper.emitted("update:configIncludeItemResearch")).toEqual([[true]]);
     expect(wrapper.emitted("update:compactRunTiles")?.[0]?.[0]).toHaveLength(defaultCompactRunTiles.length + 1);
     expect(wrapper.emitted("chooseGameExecutable")).toHaveLength(1);
     expect(wrapper.emitted("importSounds")).toHaveLength(1);
+    expect(wrapper.emitted("exportSounds")).toHaveLength(1);
     expect(wrapper.emitted("removeSound")?.[0]?.[0]).toMatchObject({ id: "custom-sound:boss" });
+    expect(wrapper.emitted("copySupportDiagnosticsSummary")).toHaveLength(1);
     expect(wrapper.emitted("saveSupportDiagnostics")).toHaveLength(1);
     expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
@@ -344,6 +360,7 @@ describe("Vue component contracts", () => {
         pastRuns: [run, pastRun({ id: "run-2", accountName: "ForgeHero", tags: ["Codex"], totalGoldGained: 50_000, durationMs: 300_000 })],
         expandedDropKey: null,
         reportConfig: defaultPostRunReportConfig,
+        itemFilterGroups: [itemFilterGroup()],
       },
     });
 
@@ -367,16 +384,25 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "Configure Report").trigger("click");
     expect(wrapper.text()).toContain("Configure Report");
 
+    await buttonByText(wrapper, "Compare").trigger("click");
+    expect(wrapper.text()).toContain("Last 10 Runs vs All Runs");
+    expect(wrapper.text()).toContain("Gold/h");
+    await buttonByText(wrapper, "Export JSON").trigger("click");
     await buttonByText(wrapper, "Satanic").trigger("click");
 
     expect(wrapper.emitted("update:expandedDropKey")).toEqual([[`${run.id}:Satanic`]]);
     expect(wrapper.emitted("update-run-tags")).toEqual([[run.id, ["Dungeons", "Codex"]]]);
+    expect(wrapper.emitted("export-runs-json")?.[0]?.[0]).toMatchObject({
+      kind: "past-runs",
+      filter: { runCount: 2 },
+    });
   });
 
   test("PastRunReportConfigModal owns report editing events", async () => {
     const wrapper = mount(PastRunReportConfigModal, {
       props: {
         reportConfig: defaultPostRunReportConfig,
+        itemFilterGroups: [itemFilterGroup()],
       },
       global: {
         stubs: {
@@ -390,9 +416,19 @@ describe("Vue component contracts", () => {
     const createdConfig = wrapper.emitted("update:reportConfig")?.[0]?.[0];
 
     expect(createdConfig).toMatchObject({
+      itemFilterGroupIds: [],
       trackedItems: [],
-      itemGroups: [expect.objectContaining({ name: "Bossing", enabled: true })],
+      itemGroups: [expect.objectContaining({ name: "Bossing", enabled: true, types: [] })],
     });
+
+    await wrapper.setProps({ reportConfig: createdConfig });
+    await checkboxByLabel(wrapper, "Loot Alerts").setValue(true);
+    const linkedConfig = wrapper.emitted("update:reportConfig")?.[1]?.[0];
+    expect(linkedConfig?.itemFilterGroupIds).toEqual(["loot-alerts"]);
+
+    await wrapper.setProps({ reportConfig: linkedConfig });
+    await checkboxByLabel(wrapper, "Ring").setValue(true);
+    expect(wrapper.emitted("update:reportConfig")?.[2]?.[0].itemGroups[0].types).toEqual([7]);
 
     await buttonByText(wrapper, "Done").trigger("click");
     expect(wrapper.emitted("close")).toHaveLength(1);

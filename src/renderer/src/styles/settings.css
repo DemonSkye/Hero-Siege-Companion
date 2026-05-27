@@ -166,6 +166,35 @@
   margin-top: 14px;
 }
 
+.whats-new-intro {
+  margin: 16px 0 0;
+  color: var(--app-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.whats-new-sections {
+  display: grid;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.whats-new-section {
+  display: grid;
+  gap: 8px;
+}
+
+.whats-new-section h3 {
+  margin: 0;
+  color: var(--app-text-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.whats-new-section .whats-new-list {
+  margin-top: 0;
+}
+
 .settings-label {
   display: inline-flex;
   min-width: 0;

@@ -2,7 +2,14 @@ import { app, clipboard, crashReporter, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { createAppDiagnostics, type AppDiagnostics } from "./app-diagnostics";
-import { CaptureService, type CaptureUpdate } from "./capture";
+import {
+  createCaptureRuntime,
+  emitElectronE2eCaptureEvents,
+  emitElectronE2eCapturePayloads,
+  type CaptureRuntime,
+  type CaptureUpdate,
+} from "./capture-runtime";
+import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
 import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
 import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
@@ -20,7 +27,13 @@ import {
   type WindowBoundsPreferences,
 } from "./persistence";
 import { checkForReleaseUpdate } from "./release-updates";
-import { importLootSounds, removeImportedLootSound } from "./sound-import";
+import {
+  embedConfigurationSoundData,
+  exportLootSoundPackWithDialog,
+  importLootSounds,
+  installEmbeddedConfigurationSounds,
+  removeImportedLootSound,
+} from "./sound-import";
 import { getSupportDiagnosticsInfo, saveSupportDiagnosticsBundle } from "./support-diagnostics";
 import { MainWindowManager } from "./window-manager";
 import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
@@ -34,13 +47,13 @@ const logs: LogEntry[] = [];
 const STATE_PUBLISH_INTERVAL_MS = 1000;
 const GITHUB_RELEASES_URL = "https://github.com/DemonSkye/Hero-Siege-Companion/releases";
 const GITHUB_NPCAP_GUIDE_URL = "https://github.com/DemonSkye/Hero-Siege-Companion#required-install-npcap";
-const MAX_CONFIGURATION_IMPORT_BYTES = 1024 * 1024;
+const MAX_CONFIGURATION_IMPORT_BYTES = 128 * 1024 * 1024;
 
 const state: CompanionState = createInitialCompanionState(logs);
 
 const pendingCaptureEvents: NonNullable<CaptureUpdate["events"]> = [];
 let windowManager: MainWindowManager | null = null;
-let captureService: CaptureService | null = null;
+let captureService: CaptureRuntime | null = null;
 let appLogPath = "";
 let pastRunsPath = "";
 let preferencesPath = "";
@@ -61,6 +74,7 @@ const gameCaptureCoordinator = new GameCaptureCoordinator({
 });
 
 if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
+configureElectronE2eApp(app);
 
 try {
   crashReporter.start({ uploadToServer: false });
@@ -311,10 +325,11 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetCapture, (_event, preferences: Partial
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string) => {
+  const contents = embedConfigurationSoundData(String(json ?? ""), app.getPath("userData"));
   const exported = await saveJsonFileWithDialog(currentWindow(), {
     title: "Export Hero Siege Companion configuration",
     defaultPath: "hero-siege-companion-config.json",
-    contents: json,
+    contents,
   });
   if (exported) addLog("success", "Configuration exported.");
   return exported;
@@ -326,7 +341,7 @@ ipcMain.handle(IPC_CHANNELS.configurationImport, async () => {
     tooLargeMessage: "Configuration file is too large.",
   });
   if (contents) addLog("info", "Configuration selected for import.");
-  return contents;
+  return contents ? installEmbeddedConfigurationSounds(contents, app.getPath("userData")) : contents;
 });
 ipcMain.handle(IPC_CHANNELS.itemResearchExport, async (_event, json: string) => {
   const exported = await saveJsonFileWithDialog(currentWindow(), {
@@ -355,6 +370,12 @@ ipcMain.handle(IPC_CHANNELS.soundsImport, async () => {
   return imported;
 });
 
+ipcMain.handle(IPC_CHANNELS.soundsExport, async (_event, sounds = []) => {
+  const result = await exportLootSoundPackWithDialog(currentWindow(), Array.isArray(sounds) ? sounds : [], app.getPath("userData"));
+  if (result.exported) addLog("success", `Soundpack ZIP exported with ${result.includedFiles.length} sound${result.includedFiles.length === 1 ? "" : "s"}.`);
+  return result;
+});
+
 ipcMain.handle(IPC_CHANNELS.soundsRemove, async (_event, src?: string) => {
   try {
     if (typeof src !== "string" || !removeImportedLootSound(src, app.getPath("userData"))) return false;
@@ -364,6 +385,16 @@ ipcMain.handle(IPC_CHANNELS.soundsRemove, async (_event, src?: string) => {
     addLog("warning", `Custom loot sound could not be removed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
+});
+
+ipcMain.handle(IPC_CHANNELS.pastRunsExportJson, async (_event, json: string) => {
+  const exported = await saveJsonFileWithDialog(currentWindow(), {
+    title: "Export Hero Siege past runs JSON",
+    defaultPath: "hero-siege-past-runs.json",
+    contents: json,
+  });
+  if (exported) addLog("success", "Past runs JSON exported.");
+  return exported;
 });
 
 ipcMain.handle(IPC_CHANNELS.windowMinimize, () => {
@@ -384,13 +415,14 @@ ipcMain.handle(IPC_CHANNELS.windowSetCompactMode, (_event, enabled: boolean, loc
 ipcMain.handle(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
   clipboard.writeText(String(value));
 });
-ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData")));
+ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData"), app.getVersion()));
 ipcMain.handle(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
   saveSupportDiagnostics(String(diagnosticsSummary ?? "")),
 );
-ipcMain.handle(IPC_CHANNELS.updatesCheck, async () =>
-  checkForReleaseUpdate(app.getVersion(), (error) => writeAppLog("release-check-error", { error: error.message })),
-);
+ipcMain.handle(IPC_CHANNELS.updatesCheck, async () => {
+  if (isElectronE2eTestMode()) return null;
+  return checkForReleaseUpdate(app.getVersion(), (error) => writeAppLog("release-check-error", { error: error.message }));
+});
 ipcMain.handle(IPC_CHANNELS.updatesOpenRelease, async (_event, url?: string) => {
   const target = typeof url === "string" && /^https:\/\/github\.com\/DemonSkye\/Hero-Siege-Companion\/releases(?:\/|$)/i.test(url)
     ? url
@@ -467,9 +499,33 @@ app.whenReady().then(async () => {
     crashDumpsPath: app.getPath("crashDumps"),
     lastCrashReport: crashReporter.getLastCrashReport(),
   });
-  captureService = new CaptureService(applyCaptureUpdate, debugLogPath, wideDebugLogPath, state.capturePreferences.createDebugMode);
+  captureService = await createCaptureRuntime(
+    applyCaptureUpdate,
+    debugLogPath,
+    wideDebugLogPath,
+    state.capturePreferences.createDebugMode,
+  );
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   createWindow();
+  installElectronE2eMainHooks({
+    emitCaptureEvents: (events) => {
+      if (!emitElectronE2eCaptureEvents(captureService, events)) applyCaptureUpdate({ events });
+      publishStateNow();
+    },
+    emitCapturePayloads: (payloads) => {
+      emitElectronE2eCapturePayloads(captureService, payloads);
+      publishStateNow();
+    },
+    getState: () => state,
+    getWindowState: () => {
+      const window = currentWindow();
+      return {
+        compactMode: windowManager?.isCompactMode ?? false,
+        bounds: window && !window.isDestroyed() ? window.getBounds() : null,
+        alwaysOnTop: window && !window.isDestroyed() ? window.isAlwaysOnTop() : false,
+      };
+    },
+  });
   addLog("info", "Hero Siege Companion started.");
   addLog("info", `Capture debug log: ${debugLogPath}`);
   addLog("info", `Wide capture log: ${wideDebugLogPath}`);

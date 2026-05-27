@@ -882,8 +882,16 @@ const ITEM_TRANSLATIONS: ItemTranslation[] = [
 
 const ITEM_TRANSLATION_OVERRIDES: ItemTranslation[] = [
   { localizationId: "armors_sharpshooters_cloak", name: "Sharpshooter's Cloak", gameId: 100, type: 1, weaponType: 0 },
+  { localizationId: "gloves_shade_of_sand", name: "Shade of Sand", gameId: 61, type: 4, weaponType: 0 },
   { localizationId: "rings_scourge_loop", name: "Scourge Loop", gameId: 48, type: 7, weaponType: 0 },
 ];
+
+// User-submitted research can confirm a generic inventory signature without
+// making every Heroic/Angelic inventory id trusted.
+const TRUSTED_INVENTORY_IDENTITY_KEYS = new Set<string>([
+  lookupKey(4, 50, 0),
+  lookupKey(4, 61, 0),
+]);
 
 const exactLookup = new Map<string, ItemTranslation>();
 const looseLookup = new Map<string, ItemTranslation[]>();
@@ -920,6 +928,10 @@ export function lookupItemTranslationByName(name: string): ItemTranslation | nul
 
 export function allItemTranslations(): ItemTranslation[] {
   return [...ITEM_TRANSLATIONS, ...ITEM_TRANSLATION_OVERRIDES];
+}
+
+export function isTrustedInventoryItemTranslation(item: ItemTranslation): boolean {
+  return TRUSTED_INVENTORY_IDENTITY_KEYS.has(lookupKey(item.type, item.gameId, item.weaponType));
 }
 
 function lookupKey(type: number, gameId: number, weaponType = 0): string {

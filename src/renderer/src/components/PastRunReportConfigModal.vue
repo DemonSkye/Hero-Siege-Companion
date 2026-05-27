@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { ITEM_FILTER_SUGGESTION_LIMIT, itemTypeLabelForName } from "../lib/item-filters";
-import { shoppingAutocompleteNames } from "../lib/item-options";
+import { ITEM_FILTER_SUGGESTION_LIMIT, itemTypeLabelForName, type ItemFilterGroup } from "../lib/item-filters";
+import { ITEM_TYPE_OPTIONS, shoppingAutocompleteNames } from "../lib/item-options";
 import { TRACKED_RARITY_ORDER } from "../lib/past-runs";
-import { eventChecked } from "../lib/dom-events";
+import { eventChecked, eventValue } from "../lib/dom-events";
 import {
   createReportItemGroup,
   defaultPostRunReportConfig,
@@ -19,6 +19,7 @@ import {
 
 const props = defineProps<{
   reportConfig: PostRunReportConfig;
+  itemFilterGroups: ItemFilterGroup[];
 }>();
 
 const emit = defineEmits<{
@@ -33,6 +34,8 @@ const selectedReportGroupId = ref("");
 const reportItemGroups = computed(() => props.reportConfig.itemGroups);
 const selectedReportGroup = computed(() => reportItemGroups.value.find((group) => group.id === selectedReportGroupId.value) ?? reportItemGroups.value[0] ?? null);
 const activeReportGroups = computed(() => reportItemGroups.value.filter((group) => group.enabled));
+const selectedItemFilterGroupIdSet = computed(() => new Set(props.reportConfig.itemFilterGroupIds));
+const selectedItemFilterGroupCount = computed(() => props.itemFilterGroups.filter((group) => selectedItemFilterGroupIdSet.value.has(group.id)).length);
 const isDefaultReportConfig = computed(() => isDefaultPostRunReportConfig(props.reportConfig));
 const reportModeLabel = computed(() => (isDefaultReportConfig.value ? "Default report" : "Custom report"));
 const selectedReportGroupedItems = computed(() => groupedReportItems(selectedReportGroup.value));
@@ -45,8 +48,8 @@ const reportItemSuggestions = computed(() => {
     .slice(0, ITEM_FILTER_SUGGESTION_LIMIT);
 });
 const reportGroupHelp = computed(() => {
-  if (activeReportGroups.value.length > 0) {
-    return "Enabled groups are combined. Empty rarities mean any rarity; empty watched items mean any item in the selected rarities.";
+  if (activeReportGroups.value.length > 0 || selectedItemFilterGroupCount.value > 0) {
+    return "Enabled groups are combined. Empty custom group rules include all tracked drops; linked Item Filter groups use their own rules.";
   }
   return "No enabled groups, so drop recaps include every saved drop from the default rarities.";
 });
@@ -54,6 +57,7 @@ const reportGroupHelp = computed(() => {
 const reportMetricOptions = REPORT_METRIC_OPTIONS;
 const reportResourceDrawerOptions = REPORT_RESOURCE_DRAWER_OPTIONS;
 const reportTopDropLimitOptions = REPORT_TOP_DROP_LIMIT_OPTIONS;
+const itemTypeOptions = ITEM_TYPE_OPTIONS;
 
 function toggleReportMetric(metric: ReportMetricId, enabled: boolean) {
   emit("update:reportConfig", { ...props.reportConfig, summaryMetrics: toggledList(props.reportConfig.summaryMetrics, metric, enabled) });
@@ -64,7 +68,7 @@ function toggleReportResourceDrawer(drawer: ReportResourceDrawerId, enabled: boo
 }
 
 function updateTopDropLimit(event: Event) {
-  const value = Number((event.target as HTMLSelectElement | null)?.value);
+  const value = Number(eventValue(event));
   emit("update:reportConfig", { ...props.reportConfig, topDropLimit: value });
 }
 
@@ -101,11 +105,22 @@ function updateReportItemGroup(group: ReportItemGroup, patch: Partial<ReportItem
 }
 
 function updateReportGroupName(group: ReportItemGroup, event: Event) {
-  updateReportItemGroup(group, { name: (event.target as HTMLInputElement | null)?.value ?? "" });
+  updateReportItemGroup(group, { name: eventValue(event) });
 }
 
 function toggleReportGroupRarity(group: ReportItemGroup, rarity: string, enabled: boolean) {
   updateReportItemGroup(group, { rarities: toggledList(group.rarities, rarity, enabled) });
+}
+
+function toggleReportGroupType(group: ReportItemGroup, type: number, enabled: boolean) {
+  updateReportItemGroup(group, { types: toggledNumberList(group.types, type, enabled) });
+}
+
+function toggleLinkedItemFilterGroup(group: ItemFilterGroup, enabled: boolean) {
+  emit("update:reportConfig", {
+    ...props.reportConfig,
+    itemFilterGroupIds: toggledList(props.reportConfig.itemFilterGroupIds, group.id, enabled),
+  });
 }
 
 function addTrackedReportItem(group: ReportItemGroup, value = reportDraftItem.value) {
@@ -128,6 +143,22 @@ function toggledList<T extends string>(values: T[], value: T, enabled: boolean):
   if (enabled) next.add(value);
   else next.delete(value);
   return Array.from(next);
+}
+
+function toggledNumberList(values: number[], value: number, enabled: boolean): number[] {
+  const next = new Set(values);
+  if (enabled) next.add(value);
+  else next.delete(value);
+  return Array.from(next).sort((a, b) => a - b);
+}
+
+function reportGroupCriteriaSummary(group: ReportItemGroup): string {
+  const parts = [
+    group.rarities.length ? `${group.rarities.length} rarit${group.rarities.length === 1 ? "y" : "ies"}` : "",
+    group.types.length ? `${group.types.length} type${group.types.length === 1 ? "" : "s"}` : "",
+    group.items.length ? `${group.items.length} item${group.items.length === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "All tracked drops";
 }
 
 function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: string; items: string[] }> {
@@ -157,10 +188,23 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
         </div>
 
         <div class="report-config-modal-body">
+          <section v-if="itemFilterGroups.length" class="item-filter-rule-section">
+            <div class="item-filter-rule-heading">
+              <strong>Item filter groups</strong>
+              <span>{{ selectedItemFilterGroupCount }} selected</span>
+            </div>
+            <div class="item-filter-chip-grid">
+              <label v-for="group in itemFilterGroups" :key="group.id" class="filter-box">
+                <input :checked="selectedItemFilterGroupIdSet.has(group.id)" type="checkbox" @change="toggleLinkedItemFilterGroup(group, eventChecked($event))" />
+                <span>{{ group.name }}</span>
+              </label>
+            </div>
+          </section>
+
           <section class="item-filter-rule-section">
             <div class="item-filter-rule-heading">
               <strong>Recap item groups</strong>
-              <span>Enabled groups include exact items in drop recaps.</span>
+              <span>Enabled groups include custom rarity, type, and exact item rules.</span>
             </div>
 
             <div class="report-item-group-layout">
@@ -178,7 +222,7 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
                     @click="selectReportItemGroup(group)"
                   >
                     <strong>{{ group.name }}</strong>
-                    <span>{{ group.enabled ? "Included" : "Disabled" }} &middot; {{ group.items.length }} items</span>
+                    <span>{{ group.enabled ? "Included" : "Disabled" }} &middot; {{ reportGroupCriteriaSummary(group) }}</span>
                   </button>
                 </div>
                 <p v-else class="empty-copy">Create a group when you want the report to focus on exact drops.</p>
@@ -213,8 +257,21 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
 
                 <div class="item-filter-rule-section">
                   <div class="item-filter-rule-heading">
+                    <strong>Item types</strong>
+                    <span>Empty means any type.</span>
+                  </div>
+                  <div class="item-filter-type-grid">
+                    <label v-for="option in itemTypeOptions" :key="option.value" class="filter-box">
+                      <input :checked="selectedReportGroup.types.includes(Number(option.value))" type="checkbox" @change="toggleReportGroupType(selectedReportGroup, Number(option.value), eventChecked($event))" />
+                      <span>{{ option.label }}</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="item-filter-rule-section">
+                  <div class="item-filter-rule-heading">
                     <strong>Watched items</strong>
-                    <span>Empty means any item matching the selected rarities.</span>
+                    <span>Exact names match before rarity and type rules.</span>
                   </div>
                   <div class="item-filter-search-wrap">
                     <form class="item-filter-add-item" @submit.prevent="addTrackedReportItem(selectedReportGroup)">
@@ -255,6 +312,13 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
                     <span>Groups can include Set, Satanic, Heroic, or Angelic drops.</span>
                   </div>
                   <p class="empty-copy">After adding a group, rarity checkboxes appear here just like the Item Filter rules.</p>
+                </div>
+                <div class="item-filter-rule-section">
+                  <div class="item-filter-rule-heading">
+                    <strong>Item types</strong>
+                    <span>Groups can include matching item categories.</span>
+                  </div>
+                  <p class="empty-copy">Type checkboxes appear here after a group exists.</p>
                 </div>
                 <div class="item-filter-rule-section">
                   <div class="item-filter-rule-heading">

@@ -14,6 +14,7 @@ export interface SupportDiagnosticLogFileInfo {
 
 export interface SupportDiagnosticsInfo {
   userDataPath: string;
+  appVersion: string;
   generatedFiles: SupportDiagnosticGeneratedFileInfo[];
   logFiles: SupportDiagnosticLogFileInfo[];
 }

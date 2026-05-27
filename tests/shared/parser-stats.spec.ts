@@ -94,6 +94,54 @@ test("account snapshots track character kill deltas", () => {
   assert.equal(summary.totalKillsGained, 31);
 });
 
+test("active character identity packets set the displayed character without resetting XP", () => {
+  const stats = new StatsEngine();
+
+  stats.applyEvents(messageToEvents([{ name: "Dante", experience: 5000, season: 10, hardcore: 0 }]));
+  const events = messageToEvents([
+    {
+      name: "Dante",
+      accountUID: 3909410,
+      class: 11,
+      level: 164,
+      hardcore: 0,
+      season: 10,
+      cross_region_identifier: "12000987609",
+    },
+  ]);
+  const snapshot = stats.applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.name), ["updateAccount"]);
+  assert.equal(snapshot.accountName, "Dante");
+  assert.equal(snapshot.totalXp, 5000);
+});
+
+test("nearby player list entries do not overwrite the active character name", () => {
+  const stats = new StatsEngine();
+
+  stats.applyEvents(messageToEvents([{ name: "Dante", accountUID: 3909410, hardcore: 0, season: 10 }]));
+  const playerListEvents = messageToEvents([
+    {
+      name: "OpBlast",
+      nameColor: 6805557,
+      level: 146,
+      class: 22,
+      platformUserName: "OpKryptonite",
+      uid: 185295201,
+      region: 3,
+      slot: 21,
+      hc: 0,
+      ssf: 1,
+      season: 10,
+      bloodPact: 0,
+    },
+  ]);
+  const snapshot = stats.applyEvents(playerListEvents);
+
+  assert.deepEqual(playerListEvents.map((event) => event.name), []);
+  assert.equal(snapshot.accountName, "Dante");
+});
+
 test("blood pact route packets set GBP mode before gold snapshots arrive", () => {
   const stats = new StatsEngine();
   const modeEvents = messageToEvents([
@@ -536,6 +584,42 @@ test("heroic and angelic item identities require server just found messages", ()
   assert.equal(serverEvents[0].value.rarityName, "Angelic");
   assert.equal(snapshot.items.Angelic.total, 1);
   assert.equal(snapshot.itemBreakdown.Angelic["Aurelion Fury"].total, 1);
+});
+
+test("submitted research resolves confirmed glove identities without widening heroic inventory counts", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-3909410-research-50-4": {
+            a: 1,
+            b: 50,
+            d: 2,
+            c: 0,
+          },
+          "10-3909410-research-61-4": {
+            a: 2,
+            b: 61,
+            d: 2,
+            c: 0,
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.deepEqual(
+    events.map((event) => event.value.label),
+    ["Ali's Boxing Gloves", "Shade of Sand"],
+  );
+  assert.equal(events[0].value.rarityName, "Unknown");
+  assert.equal(events[1].value.rarityName, "Satanic");
+  assert.equal(snapshot.items.Heroic.total, 0);
+  assert.equal(snapshot.items.Satanic.total, 1);
 });
 
 test("inventory item_data payloads are treated as picked up items", () => {
@@ -1092,11 +1176,17 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
           "10-3909410-collectible-24-13": {
             pickup_add_data: { a: 11, b: 24, d: 1 },
           },
+          "10-3909410-collectible-32-13": {
+            pickup_add_data: { a: 14, b: 32, d: 1 },
+          },
           "10-3909410-collectible-33-13": {
             pickup_add_data: { a: 12, b: 33, d: 1 },
           },
           "10-3909410-collectible-34-13": {
             pickup_add_data: { a: 13, b: 34, d: 1 },
+          },
+          "10-3909410-collectible-40-13": {
+            pickup_add_data: { a: 15, b: 40, d: 1 },
           },
           "10-3909410-material-0-14": {
             pickup_add_data: { a: 6, b: 0, d: 1 },
@@ -1125,8 +1215,10 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
       "The Hanged Man",
       "The Tower",
       "The Wheel of Fortune",
+      "Temperance",
       "The Devil",
       "The Moon",
+      "The Hierophant",
       "Bloodstone",
       "Tarethium Ore",
       "Blacksmith's Mallet",

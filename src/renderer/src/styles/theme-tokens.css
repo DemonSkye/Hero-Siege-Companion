@@ -317,6 +317,14 @@ input[type="checkbox"] {
   margin-top: 14px;
 }
 
+.settings-support-actions,
+.settings-sound-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-support-bundle {
   overflow: auto;
   max-height: 260px;

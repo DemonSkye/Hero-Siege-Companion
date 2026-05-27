@@ -46,6 +46,7 @@ export interface ConfigurationTransferOptions {
   includeRunSaving: boolean;
   includeReportTracking: boolean;
   includeLootFilters: boolean;
+  includeSounds: boolean;
   includeItemResearch: boolean;
 }
 
@@ -59,6 +60,7 @@ export interface ConfigurationExportPayload {
     runSaving: boolean;
     reportTracking: boolean;
     lootFilters: boolean;
+    sounds: boolean;
     itemResearch: boolean;
   };
   uiPreferences: Partial<UiPreferences>;
@@ -158,6 +160,8 @@ export function createConfigurationExportPayload(
   if (!options.includeLootFilters) {
     delete exportedUiPreferences.itemFilterGroups;
     delete exportedUiPreferences.itemFilterMuted;
+  }
+  if (!options.includeSounds) {
     delete exportedUiPreferences.customItemFilterSounds;
   }
   if (!options.includeItemResearch) {
@@ -174,6 +178,7 @@ export function createConfigurationExportPayload(
       runSaving: options.includeRunSaving,
       reportTracking: options.includeReportTracking,
       lootFilters: options.includeLootFilters,
+      sounds: options.includeSounds,
       itemResearch: options.includeItemResearch,
     },
     uiPreferences: exportedUiPreferences,
@@ -191,6 +196,10 @@ export function importConfigurationPayload(
   const payload = isRecord(parsed) ? parsed : {};
   const rawUiPreferences = isRecord(payload.uiPreferences) ? payload.uiPreferences : payload;
   const nextUiPreferences: Partial<UiPreferences> = { ...currentPreferences, ...rawUiPreferences };
+  nextUiPreferences.customItemFilterSounds =
+    options.includeSounds && Object.prototype.hasOwnProperty.call(rawUiPreferences, "customItemFilterSounds")
+      ? mergeCustomItemFilterSounds(currentPreferences.customItemFilterSounds, rawUiPreferences.customItemFilterSounds)
+      : currentPreferences.customItemFilterSounds;
 
   if (!options.includeAppSettings) {
     for (const key of APP_SETTING_KEYS) nextUiPreferences[key] = currentPreferences[key];
@@ -201,7 +210,6 @@ export function importConfigurationPayload(
   if (!options.includeLootFilters) {
     nextUiPreferences.itemFilterGroups = currentPreferences.itemFilterGroups;
     nextUiPreferences.itemFilterMuted = currentPreferences.itemFilterMuted;
-    nextUiPreferences.customItemFilterSounds = currentPreferences.customItemFilterSounds;
   }
   if (!options.includeItemResearch) {
     nextUiPreferences.itemResearchEntries = currentPreferences.itemResearchEntries;
@@ -214,6 +222,12 @@ export function importConfigurationPayload(
     capturePreferences:
       options.includeAppSettings && isRecord(payload.capturePreferences) ? normalizeCapturePreferences(payload.capturePreferences) : undefined,
   };
+}
+
+function mergeCustomItemFilterSounds(current: CustomItemFilterSound[], imported: unknown): CustomItemFilterSound[] {
+  const soundsById = new Map(current.map((sound) => [sound.id, sound]));
+  for (const sound of normalizeCustomItemFilterSounds(imported)) soundsById.set(sound.id, sound);
+  return normalizeCustomItemFilterSounds(Array.from(soundsById.values()));
 }
 
 export function normalizePreferences(value: Partial<UiPreferences>): UiPreferences {

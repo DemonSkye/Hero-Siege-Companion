@@ -11,6 +11,7 @@ defineProps<{
 
 defineEmits<{
   saveSupportDiagnostics: [];
+  copySupportDiagnosticsSummary: [];
 }>();
 
 function formatBytes(bytes: number): string {
@@ -32,11 +33,14 @@ function formatUpdatedAt(value: string | null): string {
     <section class="settings-wide compact-settings-section">
       <div class="compact-settings-heading">
         <strong>Diagnostics bundle</strong>
-        <button class="icon-button ghost" type="button" :disabled="supportBundleBusy" @click="$emit('saveSupportDiagnostics')">
-          {{ supportBundleBusy ? "Preparing ZIP" : "Save ZIP" }}
-        </button>
+        <div class="settings-support-actions">
+          <button class="icon-button ghost" type="button" @click="$emit('copySupportDiagnosticsSummary')">Copy Summary</button>
+          <button class="icon-button ghost" type="button" :disabled="supportBundleBusy" @click="$emit('saveSupportDiagnostics')">
+            {{ supportBundleBusy ? "Preparing ZIP" : "Save ZIP" }}
+          </button>
+        </div>
       </div>
-      <p class="settings-note settings-wide-note">Save this when asking for capture help. The ZIP includes the current capture summary and local diagnostics logs.</p>
+      <p class="settings-note settings-wide-note">Save this when asking for capture help. The ZIP includes the current capture summary and local diagnostics logs. It does not include packet captures, saved run history, settings JSON, or account credentials.</p>
       <p class="settings-note settings-wide-note settings-support-path">Log folder: <code>{{ supportLogsPath }}</code></p>
       <div class="settings-support-files" aria-label="Diagnostics files">
         <div v-for="file in supportGeneratedFiles" :key="file.name" class="settings-support-file">

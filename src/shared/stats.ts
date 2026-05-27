@@ -147,10 +147,10 @@ export class StatsEngine {
 
     if (event.name === EVENT_NAMES.account || event.name === EVENT_NAMES.accountMode) {
       const account = event.value as AccountInfo;
-      this.stats.accountName = account.name || this.stats.accountName;
+      if (event.name === EVENT_NAMES.account) this.stats.accountName = account.name || this.stats.accountName;
       this.stats.seasonMode = account.seasonMode;
       if (event.name === EVENT_NAMES.account) {
-        this.updateXpTotal(account.experience);
+        if (account.hasExperience !== false) this.updateXpTotal(account.experience);
         this.updateKillTotal(account.totalMonsterKills);
       }
       if (this.lastCurrencyData) this.updateGold(this.lastCurrencyData);

@@ -116,12 +116,14 @@ describe("renderer preferences persistence", () => {
       resourceDrawers: ["materials"],
       topDropLimit: 10,
       trackedItems: [],
+      itemFilterGroupIds: [],
       itemGroups: [
         {
           id: "legacy-focus-items",
           name: "Focus Items",
           enabled: true,
           rarities: [],
+          types: [],
           items: ["Sash of the Magi"],
         },
       ],
@@ -249,6 +251,7 @@ describe("renderer preferences persistence", () => {
             name: "Bosses",
             enabled: true,
             rarities: ["Satanic"],
+            types: [7],
             items: ["Battle Worn Gauntlets"],
           },
           {
@@ -256,9 +259,11 @@ describe("renderer preferences persistence", () => {
             name: "Disabled",
             enabled: false,
             rarities: ["Heroic"],
+            types: [],
             items: ["Ignored Heroic"],
           },
         ],
+        itemFilterGroupIds: ["boss"],
       },
       itemResearchEntries: [],
     };
@@ -272,12 +277,13 @@ describe("renderer preferences persistence", () => {
         includeRunSaving: true,
         includeReportTracking: true,
         includeLootFilters: false,
+        includeSounds: true,
         includeItemResearch: false,
       },
     );
 
     expect(payload.uiPreferences.itemFilterMuted).toBeUndefined();
-    expect(payload.uiPreferences.customItemFilterSounds).toBeUndefined();
+    expect(payload.uiPreferences.customItemFilterSounds).toEqual([{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }]);
     expect(payload.uiPreferences.itemResearchEntries).toBeUndefined();
     expect(payload.uiPreferences.themeId).toBe("cyberpunk");
     expect(payload.uiPreferences.compactThemeId).toBe("light");
@@ -290,6 +296,7 @@ describe("renderer preferences persistence", () => {
         name: "Bosses",
         enabled: true,
         rarities: ["Satanic"],
+        types: [7],
         items: ["Battle Worn Gauntlets"],
       },
       {
@@ -297,9 +304,11 @@ describe("renderer preferences persistence", () => {
         name: "Disabled",
         enabled: false,
         rarities: ["Heroic"],
+        types: [],
         items: ["Ignored Heroic"],
       },
     ]);
+    expect(payload.uiPreferences.postRunReport?.itemFilterGroupIds).toEqual(["boss"]);
 
     const reportExcludedPayload = createConfigurationExportPayload(
       imported,
@@ -310,22 +319,25 @@ describe("renderer preferences persistence", () => {
         includeRunSaving: true,
         includeReportTracking: false,
         includeLootFilters: false,
+        includeSounds: false,
         includeItemResearch: false,
       },
     );
     expect(reportExcludedPayload.uiPreferences.postRunReport).toBeUndefined();
+    expect(reportExcludedPayload.uiPreferences.customItemFilterSounds).toBeUndefined();
 
     const result = importConfigurationPayload(payload, current, {
       includeAppSettings: true,
       includeRunSaving: true,
       includeReportTracking: false,
       includeLootFilters: false,
+      includeSounds: true,
       includeItemResearch: false,
     });
 
     expect(result.uiPreferences.logLimit).toBe(100);
     expect(result.uiPreferences.itemFilterMuted).toBe(true);
-    expect(result.uiPreferences.customItemFilterSounds[0].id).toBe("custom-sound:alert");
+    expect(result.uiPreferences.customItemFilterSounds.map((sound) => sound.id)).toEqual(["custom-sound:alert", "custom-sound:boss"]);
     expect(result.uiPreferences.postRunReport.topDropLimit).toBe(3);
     expect(result.uiPreferences.itemResearchEntries).toHaveLength(1);
     expect(result.runArchivePreferences).toEqual({ skipEmptyRuns: true, minDurationMinutes: 12 });

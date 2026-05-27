@@ -34,6 +34,7 @@ import {
 } from "./lib/themes";
 import { useThemeApplication } from "./lib/theme-application";
 import { useSessionDisplay } from "./lib/session-display";
+import type { PastRunsExportPayload } from "./lib/past-runs";
 import { useShoppingListRuntime } from "./lib/shopping-list-runtime";
 import { useSupportDiagnosticsRuntime } from "./lib/support-diagnostics-runtime";
 import { useUpdateNotice } from "./lib/update-notice";
@@ -109,6 +110,7 @@ const {
   configIncludeRunSaving,
   configIncludeReportTracking,
   configIncludeLootFilters,
+  configIncludeSounds,
   configIncludeItemResearch,
   preferenceWatchSources,
   currentPreferences,
@@ -128,8 +130,9 @@ const {
   supportDiagnostics,
   refreshSupportDiagnosticsInfo,
   saveSupportDiagnostics,
+  copySupportDiagnosticsSummary,
   openNpcapGuide,
-} = useSupportDiagnosticsRuntime({ state, appVersion, showToast });
+} = useSupportDiagnosticsRuntime({ state, showToast });
 const {
   shoppingListItems,
   shoppingDraftItem,
@@ -197,6 +200,7 @@ const {
   processItemFilterTimeline,
   testItemFilterSound,
   importItemFilterSounds,
+  exportItemFilterSoundPack,
   removeItemFilterSound,
 } = useItemFilterRuntime({ itemFilterGroups, itemFilterMuted, customItemFilterSounds, showToast });
 const {
@@ -405,6 +409,15 @@ async function exportItemResearch() {
   }
 }
 
+async function exportPastRunsJson(payload: PastRunsExportPayload) {
+  try {
+    const exported = await window.heroSiegeCompanion.exportPastRunsJson(JSON.stringify(payload, null, 2));
+    if (exported) showToast("Past runs JSON exported");
+  } catch {
+    showToast("Past runs export failed");
+  }
+}
+
 async function chooseGameExecutable() {
   const selected = await window.heroSiegeCompanion.chooseGameExecutable();
   if (!selected) return;
@@ -545,9 +558,11 @@ function toggleLog(log: LogEntry) {
         :expanded-drop-key="expandedPastRunDropKey"
         :report-config="postRunReport"
         :past-runs="pastRuns"
+        :item-filter-groups="itemFilterGroups"
         @update:expanded-drop-key="expandedPastRunDropKey = $event"
         @update:report-config="updatePostRunReportConfig"
         @update-run-tags="updatePastRunTags"
+        @export-runs-json="exportPastRunsJson"
       />
     </div>
     <SettingsModal
@@ -575,6 +590,7 @@ function toggleLog(log: LogEntry) {
       v-model:config-include-run-saving="configIncludeRunSaving"
       v-model:config-include-report-tracking="configIncludeReportTracking"
       v-model:config-include-loot-filters="configIncludeLootFilters"
+      v-model:config-include-sounds="configIncludeSounds"
       v-model:config-include-item-research="configIncludeItemResearch"
       v-model:compact-run-tiles="compactRunTiles"
       :log-limit-options="logLimitOptions"
@@ -596,8 +612,10 @@ function toggleLog(log: LogEntry) {
       @import-theme="importTheme"
       @export-theme="exportTheme"
       @import-sounds="importItemFilterSounds"
+      @export-sounds="exportItemFilterSoundPack"
       @remove-sound="removeItemFilterSound"
       @save-support-diagnostics="saveSupportDiagnostics"
+      @copy-support-diagnostics-summary="copySupportDiagnosticsSummary"
       @export-configuration="exportConfiguration"
       @import-configuration="importConfiguration"
       @reset="resetDraftPreferences"

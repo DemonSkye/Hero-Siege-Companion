@@ -253,6 +253,18 @@
   white-space: nowrap;
 }
 
+.compact-zone-source {
+  display: block;
+  overflow: hidden;
+  color: #9fa8b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .compact-shopping-close {
   width: 26px;
   height: 26px;
@@ -444,7 +456,8 @@
   white-space: nowrap;
 }
 
-.compact-run-cover-controls button:disabled {
+.compact-run-cover-controls button:disabled,
+.compact-cover-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }

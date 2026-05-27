@@ -50,8 +50,10 @@ const emit = defineEmits<{
   importTheme: [];
   exportTheme: [];
   importSounds: [];
+  exportSounds: [];
   removeSound: [sound: CustomItemFilterSound];
   saveSupportDiagnostics: [];
+  copySupportDiagnosticsSummary: [];
   exportConfiguration: [];
   importConfiguration: [];
   reset: [];
@@ -81,6 +83,7 @@ const configIncludeAppSettings = defineModel<boolean>("configIncludeAppSettings"
 const configIncludeRunSaving = defineModel<boolean>("configIncludeRunSaving", { required: true });
 const configIncludeReportTracking = defineModel<boolean>("configIncludeReportTracking", { required: true });
 const configIncludeLootFilters = defineModel<boolean>("configIncludeLootFilters", { required: true });
+const configIncludeSounds = defineModel<boolean>("configIncludeSounds", { required: true });
 const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearch", { required: true });
 const draftCompactRunTiles = defineModel<CompactRunTileConfig[]>("compactRunTiles", { required: true });
 
@@ -161,6 +164,7 @@ function updateThemeAccent(value: string, themeId?: ThemeId) {
         v-else-if="activeSettingsTab === 'sounds'"
         :custom-item-filter-sounds="customItemFilterSounds"
         @import-sounds="$emit('importSounds')"
+        @export-sounds="$emit('exportSounds')"
         @remove-sound="$emit('removeSound', $event)"
       />
 
@@ -184,6 +188,7 @@ function updateThemeAccent(value: string, themeId?: ThemeId) {
         :support-logs-path="supportLogsPath"
         :support-bundle-busy="supportBundleBusy"
         @save-support-diagnostics="$emit('saveSupportDiagnostics')"
+        @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
       />
 
       <SettingsConfigTab
@@ -192,6 +197,7 @@ function updateThemeAccent(value: string, themeId?: ThemeId) {
         v-model:config-include-run-saving="configIncludeRunSaving"
         v-model:config-include-report-tracking="configIncludeReportTracking"
         v-model:config-include-loot-filters="configIncludeLootFilters"
+        v-model:config-include-sounds="configIncludeSounds"
         v-model:config-include-item-research="configIncludeItemResearch"
         @import-configuration="$emit('importConfiguration')"
         @export-configuration="$emit('exportConfiguration')"

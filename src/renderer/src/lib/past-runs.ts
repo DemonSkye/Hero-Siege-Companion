@@ -1,4 +1,6 @@
 import type { ItemDropCounter, PastRunSummary, ResourceCounter } from "../../../shared/stats";
+import { itemMatchesItemFilterCriteria, type ItemFilterCriteriaGroup } from "./item-filters";
+import { itemTypeValueForName } from "./item-options";
 
 export const TRACKED_RARITY_ORDER = ["Set", "Satanic", "Heroic", "Angelic"];
 
@@ -26,7 +28,33 @@ export interface PastRunAggregate {
 export interface PastRunDropFilterGroup {
   enabled: boolean;
   rarities: string[];
-  items: string[];
+  types: number[];
+  items: ItemFilterCriteriaGroup["items"];
+  emptyCriteriaMatchesAll?: boolean;
+}
+
+export interface PastRunsExportPayload {
+  app: "hero-siege-companion";
+  kind: "past-runs";
+  version: 1;
+  exportedAt: string;
+  filter: {
+    query: string;
+    runCount: number;
+  };
+  summary: PastRunAggregate;
+  runs: PastRunSummary[];
+}
+
+export interface PastRunComparisonMetric {
+  id: string;
+  label: string;
+  format: "duration" | "number";
+  primary: number;
+  baseline: number;
+  delta: number;
+  deltaPercent: number | null;
+  direction: "up" | "down" | "flat";
 }
 
 export function runTrackedItems(run: PastRunSummary, rarities = TRACKED_RARITY_ORDER, trackedItems: string[] = [], groups: PastRunDropFilterGroup[] = []) {
@@ -103,9 +131,60 @@ export function aggregatePastRuns(runs: PastRunSummary[], rarities = TRACKED_RAR
   };
 }
 
+export function createPastRunsExportPayload(runs: PastRunSummary[], query: string, summary: PastRunAggregate): PastRunsExportPayload {
+  return {
+    app: "hero-siege-companion",
+    kind: "past-runs",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    filter: {
+      query: query.trim(),
+      runCount: runs.length,
+    },
+    summary,
+    runs,
+  };
+}
+
+export function comparePastRunAggregates(primary: PastRunAggregate, baseline: PastRunAggregate): PastRunComparisonMetric[] {
+  return [
+    comparisonMetric("averageDuration", "Avg duration", "duration", primary.averageDurationMs, baseline.averageDurationMs),
+    comparisonMetric("goldPerHour", "Gold/h", "number", primary.goldPerHour, baseline.goldPerHour),
+    comparisonMetric("xpPerHour", "XP/h", "number", primary.xpPerHour, baseline.xpPerHour),
+    comparisonMetric("killsPerHour", "Kills/h", "number", primary.killsPerHour, baseline.killsPerHour),
+    comparisonMetric("keysPerRun", "Keys/run", "number", averagePerRun(primary.totalKeys, primary.runCount), averagePerRun(baseline.totalKeys, baseline.runCount)),
+    comparisonMetric("materialsPerRun", "Materials/run", "number", averagePerRun(primary.totalMaterials, primary.runCount), averagePerRun(baseline.totalMaterials, baseline.runCount)),
+    comparisonMetric("mfDropsPerRun", "MF drops/run", "number", averagePerRun(primary.totalMfDrops, primary.runCount), averagePerRun(baseline.totalMfDrops, baseline.runCount)),
+  ];
+}
+
 function ratePerHour(value: number, durationMs: number): number {
   if (durationMs <= 0) return 0;
   return Math.trunc(value / (durationMs / 3_600_000));
+}
+
+function averagePerRun(value: number, runCount: number): number {
+  return runCount ? Math.trunc(value / runCount) : 0;
+}
+
+function comparisonMetric(
+  id: string,
+  label: string,
+  format: PastRunComparisonMetric["format"],
+  primary: number,
+  baseline: number,
+): PastRunComparisonMetric {
+  const delta = Math.trunc(primary - baseline);
+  return {
+    id,
+    label,
+    format,
+    primary: Math.trunc(primary),
+    baseline: Math.trunc(baseline),
+    delta,
+    deltaPercent: baseline ? delta / baseline : null,
+    direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
+  };
 }
 
 export function pastRunDropKey(run: PastRunSummary, rarity: string): string {
@@ -124,14 +203,7 @@ function filteredBreakdown(breakdown: Record<string, ItemDropCounter> | undefine
   const values = breakdown ?? {};
   const activeGroups = activeDropGroups(groups);
   if (activeGroups.length > 0) {
-    const tracked = new Set<string>();
-    for (const group of activeGroups) {
-      if (!groupMatchesRarity(group, rarity)) continue;
-      if (group.items.length === 0) return values;
-      for (const item of group.items) tracked.add(normalizeDropName(item));
-    }
-    if (tracked.size === 0) return {};
-    return Object.fromEntries(Object.entries(values).filter(([name]) => tracked.has(normalizeDropName(name))));
+    return Object.fromEntries(Object.entries(values).filter(([name]) => activeGroups.some((group) => pastRunDropMatchesGroup(name, rarity, group))));
   }
   if (trackedItems.length === 0) return values;
   const tracked = new Set(trackedItems.map(normalizeDropName));
@@ -143,7 +215,7 @@ function effectiveRarities(fallbackRarities: string[], groups: PastRunDropFilter
   if (activeGroups.length === 0) return fallbackRarities;
   const rarities = new Set<string>();
   for (const group of activeGroups) {
-    const groupRarities = group.rarities.length ? group.rarities : TRACKED_RARITY_ORDER;
+    const groupRarities = group.items.length || group.rarities.length === 0 ? TRACKED_RARITY_ORDER : group.rarities;
     for (const rarity of groupRarities) {
       if (TRACKED_RARITY_ORDER.includes(rarity)) rarities.add(rarity);
     }
@@ -155,8 +227,17 @@ function activeDropGroups(groups: PastRunDropFilterGroup[]): PastRunDropFilterGr
   return groups.filter((group) => group.enabled);
 }
 
-function groupMatchesRarity(group: PastRunDropFilterGroup, rarity: string): boolean {
-  return group.rarities.length === 0 || group.rarities.includes(rarity);
+function pastRunDropMatchesGroup(name: string, rarity: string, group: PastRunDropFilterGroup): boolean {
+  if (group.emptyCriteriaMatchesAll !== false && group.rarities.length === 0 && group.types.length === 0 && group.items.length === 0) return true;
+  return itemMatchesItemFilterCriteria(
+    {
+      source: "server",
+      rarity,
+      label: name,
+      type: itemTypeValueForName(name) ?? -1,
+    },
+    group,
+  );
 }
 
 function normalizeDropName(name: string): string {

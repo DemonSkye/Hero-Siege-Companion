@@ -1,3 +1,4 @@
+import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import { TRACKED_RARITY_ORDER } from "./past-runs";
 
 export type ReportMetricId = "gold" | "xp" | "kills" | "keys" | "ores" | "materials" | "mfDrops";
@@ -8,6 +9,7 @@ export interface ReportItemGroup {
   name: string;
   enabled: boolean;
   rarities: string[];
+  types: number[];
   items: string[];
 }
 
@@ -18,6 +20,7 @@ export interface PostRunReportConfig {
   topDropLimit: number;
   trackedItems: string[];
   itemGroups: ReportItemGroup[];
+  itemFilterGroupIds: string[];
 }
 
 export const REPORT_METRIC_OPTIONS: Array<{ id: ReportMetricId; label: string }> = [
@@ -45,6 +48,7 @@ export const defaultPostRunReportConfig: PostRunReportConfig = {
   topDropLimit: 8,
   trackedItems: [],
   itemGroups: [],
+  itemFilterGroupIds: [],
 };
 
 export function normalizePostRunReportConfig(value: unknown): PostRunReportConfig {
@@ -60,6 +64,7 @@ export function normalizePostRunReportConfig(value: unknown): PostRunReportConfi
       : defaultPostRunReportConfig.topDropLimit,
     trackedItems: itemGroups.length ? [] : legacyTrackedItems,
     itemGroups,
+    itemFilterGroupIds: normalizeIdList(candidate.itemFilterGroupIds),
   };
 }
 
@@ -70,7 +75,8 @@ export function isDefaultPostRunReportConfig(config: PostRunReportConfig): boole
     sameStringList(config.resourceDrawers, defaultPostRunReportConfig.resourceDrawers) &&
     config.topDropLimit === defaultPostRunReportConfig.topDropLimit &&
     config.trackedItems.length === 0 &&
-    config.itemGroups.length === 0
+    config.itemGroups.length === 0 &&
+    (config.itemFilterGroupIds?.length ?? 0) === 0
   );
 }
 
@@ -80,6 +86,7 @@ export function createReportItemGroup(name: string, index: number): ReportItemGr
     name: cleanGroupName(name) || `Group ${index + 1}`,
     enabled: true,
     rarities: [],
+    types: [],
     items: [],
   };
 }
@@ -95,6 +102,7 @@ export function normalizeReportItemGroups(value: unknown, legacyTrackedItems: st
       name: "Focus Items",
       enabled: true,
       rarities: [],
+      types: [],
       items: legacyTrackedItems,
     },
   ];
@@ -122,6 +130,25 @@ function normalizeTrackedItems(value: unknown): string[] {
   return items.slice(0, 150);
 }
 
+function normalizeTypeList(value: unknown): number[] {
+  const values = Array.isArray(value) ? value : [];
+  const allowedTypes = new Set(Object.keys(ITEM_TYPE_NAMES).map(Number));
+  return Array.from(new Set(values.map(Number).filter((type) => Number.isFinite(type) && allowedTypes.has(type)).map(Math.trunc)));
+}
+
+function normalizeIdList(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const item of values) {
+    const id = String(item).trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids.slice(0, 40);
+}
+
 function normalizeReportItemGroup(value: unknown): ReportItemGroup | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Partial<ReportItemGroup>;
@@ -134,6 +161,7 @@ function normalizeReportItemGroup(value: unknown): ReportItemGroup | null {
     name,
     enabled: candidate.enabled === undefined ? true : Boolean(candidate.enabled),
     rarities: normalizeOptionList(candidate.rarities, TRACKED_RARITY_ORDER, []),
+    types: normalizeTypeList(candidate.types),
     items: normalizeTrackedItems(candidate.items),
   };
 }
