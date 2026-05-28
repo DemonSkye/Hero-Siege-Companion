@@ -134,11 +134,17 @@ describe("renderer item filter rules", () => {
       { id: "bad", name: "Bad", fileName: "bad.txt", src: "data:text/plain;base64,AAAA" },
     ]);
     const [group] = normalizeItemFilterGroups([{ id: "custom", name: "Custom", soundId: customSounds[0].id, items: [{ name: "Copper Ore", soundId: customSounds[0].id }] }], customSounds);
+    const [missingSoundGroup] = normalizeItemFilterGroups(
+      [{ id: "missing-custom", name: "Missing", soundId: "custom-sound:missing", items: [{ name: "Copper Ore", soundId: "custom-sound:missing" }] }],
+      customSounds,
+    );
     const soundOptions = itemFilterSoundOptions(customSounds);
 
     expect(customSounds).toHaveLength(1);
     expect(group.soundId).toBe(customSounds[0].id);
     expect(group.items[0].soundId).toBe(customSounds[0].id);
+    expect(missingSoundGroup.soundId).toBe("crystal-tink");
+    expect(missingSoundGroup.items[0].soundId).toBe("");
     expect(soundName(customSounds[0].id, soundOptions)).toBe("Boss Drop");
     expect(customSoundDisplayName("Ding_123.ogg")).toBe("Ding 123");
   });

@@ -16,7 +16,7 @@ const api: HeroSiegeCompanionApi = {
   setRunArchivePreferences: (preferences) => ipcRenderer.invoke(IPC_CHANNELS.preferencesSetRunArchive, preferences),
   setCapturePreferences: (preferences) => ipcRenderer.invoke(IPC_CHANNELS.preferencesSetCapture, preferences),
   exportConfiguration: (json) => ipcRenderer.invoke(IPC_CHANNELS.configurationExport, json),
-  importConfiguration: () => ipcRenderer.invoke(IPC_CHANNELS.configurationImport),
+  importConfiguration: (installEmbeddedSounds) => ipcRenderer.invoke(IPC_CHANNELS.configurationImport, installEmbeddedSounds === true),
   exportItemResearch: (json) => ipcRenderer.invoke(IPC_CHANNELS.itemResearchExport, json),
   importSounds: () => ipcRenderer.invoke(IPC_CHANNELS.soundsImport),
   exportSoundPack: (sounds) => ipcRenderer.invoke(IPC_CHANNELS.soundsExport, sounds),

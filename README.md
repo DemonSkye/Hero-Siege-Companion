@@ -87,7 +87,7 @@ The configuration JSON import/export flow can include:
 - Sounds
 - Research data
 
-Loot filters, sounds, and research data are optional export sections so you can share a report setup without sharing every personal filter group. When Sounds is checked, imported custom audio is embedded into the configuration JSON and installed back into local app storage during import.
+Loot filters, sounds, and research data are optional export sections so you can share a report setup without sharing every personal filter group. When Sounds is checked, imported custom audio is embedded into the configuration JSON and installed back into local app storage during import. When Sounds is unchecked, import leaves local sound preferences and embedded audio files alone.
 
 ## Required: Install Npcap
 

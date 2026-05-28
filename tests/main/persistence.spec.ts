@@ -9,10 +9,12 @@ import {
   loadWindowBounds,
   normalizeCapturePreferences,
   normalizeRunArchivePreferences,
+  savePastRuns,
   saveCapturePreferences,
   saveRunArchivePreferences,
   withMinimumBounds,
 } from "../../src/main/persistence";
+import { PAST_RUN_SCHEMA_VERSION } from "../../src/shared/stats";
 import { pastRun } from "../renderer/fixtures";
 
 let tempDir = "";
@@ -73,17 +75,46 @@ describe("main process persistence helpers", () => {
     const runsPath = tempFile("past-runs.json");
     const legacyRun = {
       ...pastRun({ id: "legacy-run", tags: ["Keys", " keys ", "Bossing"] }),
+      schemaVersion: undefined,
+      totalKillsGained: undefined,
+      setDrops: undefined,
+      satanicDrops: undefined,
+      heroicDrops: undefined,
+      angelicDrops: undefined,
+      itemBreakdown: undefined,
+      keys: undefined,
+      ores: undefined,
       materials: undefined,
     };
     fs.writeFileSync(runsPath, `${JSON.stringify([legacyRun, { id: "not-a-run" }])}\n`, "utf8");
 
     expect(loadPastRuns(runsPath)).toEqual([
       expect.objectContaining({
+        schemaVersion: PAST_RUN_SCHEMA_VERSION,
         id: "legacy-run",
         tags: ["Keys", "Bossing"],
+        totalKillsGained: 0,
+        setDrops: 0,
+        satanicDrops: 0,
+        heroicDrops: 0,
+        angelicDrops: 0,
+        itemBreakdown: { Set: {}, Satanic: {}, Heroic: {}, Angelic: {} },
+        keys: [],
+        ores: [],
         materials: [],
       }),
     ]);
+  });
+
+  test("saves past runs with the current schema version", () => {
+    const runsPath = tempFile("past-runs-save.json");
+
+    savePastRuns(runsPath, [pastRun({ id: "saved-run" })]);
+
+    expect(JSON.parse(fs.readFileSync(runsPath, "utf8"))[0]).toMatchObject({
+      schemaVersion: PAST_RUN_SCHEMA_VERSION,
+      id: "saved-run",
+    });
   });
 
   test("normalizes and bounds saved window positions", () => {

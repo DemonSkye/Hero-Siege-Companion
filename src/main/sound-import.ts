@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import zlib from "node:zlib";
 import type { BrowserWindow } from "electron";
 import { showSaveDialogWithParent } from "./electron-dialogs";
+import { readSoundPackEntries } from "./sound-pack-archive";
 import { createZipArchive, type ZipArchiveEntry } from "./zip-archive";
 import type { ExportableSoundReference, SoundPackExportResult } from "../shared/ipc";
 
@@ -22,10 +22,7 @@ const CUSTOM_SOUND_MIME_TYPES: Record<string, string> = {
   ".webm": "audio/webm",
 };
 
-interface SoundPackEntry {
-  fileName: string;
-  contents: Buffer;
-}
+const CUSTOM_SOUND_EXTENSIONS = new Set(Object.keys(CUSTOM_SOUND_MIME_TYPES));
 
 export interface ImportedLootSound {
   fileName: string;
@@ -40,13 +37,20 @@ export function importLootSounds(filePaths: string[], userDataPath: string): Imp
   const imported: ImportedLootSound[] = [];
   for (const filePath of filePaths) {
     if (imported.length >= MAX_SOUND_IMPORT_COUNT) break;
-    const stats = fs.statSync(filePath);
+    const stats = statImportableFile(filePath);
+    if (!stats) continue;
     const extension = path.extname(filePath).toLowerCase();
 
     if (extension === ".zip") {
       if (stats.size <= 0 || stats.size > MAX_SOUND_PACK_IMPORT_BYTES) continue;
+      const entries = readSoundPackEntries(filePath, {
+        maxEntries: MAX_SOUND_IMPORT_COUNT,
+        maxEntryBytes: MAX_CUSTOM_SOUND_IMPORT_BYTES,
+        supportedExtensions: CUSTOM_SOUND_EXTENSIONS,
+      });
+      if (entries.length === 0) continue;
       const packName = safeDirectoryName(path.basename(filePath, extension));
-      for (const entry of readSoundPackEntries(filePath)) {
+      for (const entry of entries) {
         if (imported.length >= MAX_SOUND_IMPORT_COUNT) break;
         const target = writeImportedSound({
           soundsDir,
@@ -62,12 +66,14 @@ export function importLootSounds(filePaths: string[], userDataPath: string): Imp
 
     if (stats.size <= 0 || stats.size > MAX_CUSTOM_SOUND_IMPORT_BYTES) continue;
     if (!CUSTOM_SOUND_MIME_TYPES[extension]) continue;
+    const contents = readSoundFile(filePath);
+    if (!contents) continue;
     const target = writeImportedSound({
       soundsDir,
       targetDir: soundsDir,
       displayDirectory: "",
       fileName: path.basename(filePath),
-      contents: fs.readFileSync(filePath),
+      contents,
     });
     if (target) imported.push(target);
   }
@@ -130,7 +136,7 @@ export function installEmbeddedConfigurationSounds(json: string, userDataPath: s
 
     const decoded = decodeAudioDataUrl(source, stringField(sound, "fileName"));
     if (!decoded) return null;
-    const displayPath = normalizedSoundDisplayPath(stringField(sound, "fileName") || decoded.fileName);
+    const displayPath = normalizedDecodedSoundDisplayPath(stringField(sound, "fileName"), decoded.fileName);
     const displayParts = displayPath.split("/").filter(Boolean);
     const displayDirectory = displayParts.length > 1 ? safeDirectoryName(displayParts[0]) : CONFIGURATION_SOUND_DIRECTORY;
     const fileName = displayParts.at(-1) ?? decoded.fileName;
@@ -162,66 +168,21 @@ export function removeImportedLootSound(src: string, userDataPath: string): bool
   return true;
 }
 
-function readSoundPackEntries(filePath: string): SoundPackEntry[] {
-  const archive = fs.readFileSync(filePath);
-  const eocdOffset = findZipEndOfCentralDirectory(archive);
-  if (eocdOffset < 0) return [];
-
-  const entryCount = archive.readUInt16LE(eocdOffset + 10);
-  const centralDirectoryOffset = archive.readUInt32LE(eocdOffset + 16);
-  const entries: SoundPackEntry[] = [];
-  let offset = centralDirectoryOffset;
-
-  for (let index = 0; index < entryCount && offset + 46 <= archive.length && entries.length < MAX_SOUND_IMPORT_COUNT; index += 1) {
-    if (archive.readUInt32LE(offset) !== 0x02014b50) break;
-
-    const flags = archive.readUInt16LE(offset + 8);
-    const compressionMethod = archive.readUInt16LE(offset + 10);
-    const compressedSize = archive.readUInt32LE(offset + 20);
-    const uncompressedSize = archive.readUInt32LE(offset + 24);
-    const fileNameLength = archive.readUInt16LE(offset + 28);
-    const extraLength = archive.readUInt16LE(offset + 30);
-    const commentLength = archive.readUInt16LE(offset + 32);
-    const localHeaderOffset = archive.readUInt32LE(offset + 42);
-    const fileNameStart = offset + 46;
-    const fileNameEnd = fileNameStart + fileNameLength;
-    const rawName = archive.slice(fileNameStart, fileNameEnd).toString(flags & 0x800 ? "utf8" : "latin1");
-    offset = fileNameEnd + extraLength + commentLength;
-
-    if (!rawName || rawName.endsWith("/") || rawName.endsWith("\\")) continue;
-    if (uncompressedSize <= 0 || uncompressedSize > MAX_CUSTOM_SOUND_IMPORT_BYTES) continue;
-    if (compressionMethod !== 0 && compressionMethod !== 8) continue;
-
-    const fileName = rawName.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "";
-    if (!CUSTOM_SOUND_MIME_TYPES[path.extname(fileName).toLowerCase()]) continue;
-    if (localHeaderOffset + 30 > archive.length || archive.readUInt32LE(localHeaderOffset) !== 0x04034b50) continue;
-
-    const localFileNameLength = archive.readUInt16LE(localHeaderOffset + 26);
-    const localExtraLength = archive.readUInt16LE(localHeaderOffset + 28);
-    const dataStart = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
-    const dataEnd = dataStart + compressedSize;
-    if (dataStart < 0 || dataEnd > archive.length) continue;
-
-    const compressed = archive.slice(dataStart, dataEnd);
-    let contents: Buffer;
-    try {
-      contents = compressionMethod === 0 ? compressed : zlib.inflateRawSync(compressed);
-    } catch {
-      continue;
-    }
-    if (contents.length <= 0 || contents.length > MAX_CUSTOM_SOUND_IMPORT_BYTES) continue;
-    entries.push({ fileName, contents });
+function statImportableFile(filePath: string): fs.Stats | null {
+  try {
+    const stats = fs.statSync(filePath);
+    return stats.isFile() ? stats : null;
+  } catch {
+    return null;
   }
-
-  return entries;
 }
 
-function findZipEndOfCentralDirectory(buffer: Buffer): number {
-  const minOffset = Math.max(0, buffer.length - 65_557);
-  for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
-    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
+function readSoundFile(filePath: string): Buffer | null {
+  try {
+    return fs.readFileSync(filePath);
+  } catch {
+    return null;
   }
-  return -1;
 }
 
 function writeImportedSound(options: {
@@ -342,6 +303,12 @@ function extensionForMimeType(mimeType: string): string | null {
 function normalizedSoundDisplayPath(fileName: string): string {
   const parts = fileName.replace(/\\/g, "/").split("/").map(safeFileName).filter(Boolean);
   return parts.length ? parts.join("/") : "sound.wav";
+}
+
+function normalizedDecodedSoundDisplayPath(rawFileName: string, decodedFileName: string): string {
+  const rawDisplayPath = normalizedSoundDisplayPath(rawFileName || decodedFileName);
+  const rawExtension = path.extname(rawDisplayPath).toLowerCase();
+  return CUSTOM_SOUND_MIME_TYPES[rawExtension] ? rawDisplayPath : normalizedSoundDisplayPath(decodedFileName);
 }
 
 function safeDirectoryName(value: string): string {

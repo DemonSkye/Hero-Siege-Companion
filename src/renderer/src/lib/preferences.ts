@@ -15,6 +15,7 @@ import { defaultPostRunReportConfig, normalizePostRunReportConfig, type PostRunR
 import { DEFAULT_THEME_ACCENTS, DEFAULT_THEME_ID, normalizeThemeAccents, normalizeThemeId, normalizeThemeTokenMaps, type ThemeAccentMap, type ThemeId, type ThemeTokenMaps } from "./themes";
 
 export interface UiPreferences {
+  schemaVersion: number;
   logLimit: number;
   timelineLimit: number;
   showCaptureDetails: boolean;
@@ -75,9 +76,11 @@ export interface ConfigurationImportResult {
 }
 
 export const LOG_LIMIT_OPTIONS = [10, 20, 50, 100, 250, 500];
+export const UI_PREFERENCES_SCHEMA_VERSION = 1;
 const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
 
 export const defaultPreferences: UiPreferences = {
+  schemaVersion: UI_PREFERENCES_SCHEMA_VERSION,
   logLimit: 20,
   timelineLimit: 10,
   showCaptureDetails: false,
@@ -138,7 +141,7 @@ export function loadPreferences(): UiPreferences {
 
 export function savePreferences(preferences: UiPreferences) {
   try {
-    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(normalizePreferences(preferences)));
   } catch {
     // Preferences should never block the live tracker.
   }
@@ -244,6 +247,7 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
   const customItemFilterSounds = normalizeCustomItemFilterSounds(value.customItemFilterSounds);
 
   return {
+    schemaVersion: UI_PREFERENCES_SCHEMA_VERSION,
     logLimit: validLogLimit,
     timelineLimit: validTimelineLimit,
     showCaptureDetails: Boolean(value.showCaptureDetails),

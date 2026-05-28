@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import type { CapturePreferences, RunArchivePreferences } from "../shared/app-state";
 import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../shared/initial-state";
-import { normalizePastRunTags, type PastRunSummary } from "../shared/stats";
+import { PAST_RUN_SCHEMA_VERSION, normalizePastRunTags, type ItemDropCounter, type PastRunSummary, type ResourceCounter } from "../shared/stats";
 
 export const MAX_PAST_RUNS = 100;
+const PAST_RUN_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
 
 export interface WindowBounds {
   x: number;
@@ -18,6 +19,14 @@ export interface WindowBoundsPreferences {
 }
 
 type StorageLog = (type: string, data: Record<string, unknown>) => void;
+type StoredPastRunSummary = Partial<PastRunSummary> & {
+  id: string;
+  sessionStartedAt: number;
+  sessionEndedAt: number;
+  durationMs: number;
+  totalGoldGained: number;
+  totalXpGained: number;
+};
 
 export function loadPastRuns(filePath: string, log: StorageLog = noopLog): PastRunSummary[] {
   try {
@@ -34,7 +43,7 @@ export function loadPastRuns(filePath: string, log: StorageLog = noopLog): PastR
 export function savePastRuns(filePath: string, runs: PastRunSummary[], log: StorageLog = noopLog): void {
   if (!filePath) return;
   try {
-    writeJsonFile(filePath, runs.slice(0, MAX_PAST_RUNS));
+    writeJsonFile(filePath, runs.slice(0, MAX_PAST_RUNS).map(normalizePastRunSummary));
   } catch (error) {
     logStorageError(log, "past-runs-save-error", error);
   }
@@ -153,27 +162,102 @@ export function savePreferencesFile(filePath: string, preferences: Record<string
   writeJsonFile(filePath, preferences);
 }
 
-export function isPastRunSummary(value: unknown): value is PastRunSummary {
-  const candidate = value as Partial<PastRunSummary>;
+export function isPastRunSummary(value: unknown): value is StoredPastRunSummary {
+  if (!isRecord(value)) return false;
   return (
-    Boolean(candidate) &&
-    typeof candidate.id === "string" &&
-    typeof candidate.sessionStartedAt === "number" &&
-    typeof candidate.sessionEndedAt === "number" &&
-    typeof candidate.durationMs === "number" &&
-    typeof candidate.totalGoldGained === "number" &&
-    typeof candidate.totalXpGained === "number" &&
-    Array.isArray(candidate.keys) &&
-    Array.isArray(candidate.ores)
+    stringField(value, "id") !== "" &&
+    isFiniteNumber(value.sessionStartedAt) &&
+    isFiniteNumber(value.sessionEndedAt) &&
+    isFiniteNumber(value.durationMs) &&
+    isFiniteNumber(value.totalGoldGained) &&
+    isFiniteNumber(value.totalXpGained)
   );
 }
 
-export function normalizePastRunSummary(run: PastRunSummary): PastRunSummary {
+export function normalizePastRunSummary(run: StoredPastRunSummary): PastRunSummary {
+  const itemBreakdown = normalizeItemBreakdown(run.itemBreakdown);
   return {
-    ...run,
-    tags: normalizePastRunTags((run as { tags?: unknown }).tags),
-    materials: Array.isArray(run.materials) ? run.materials : [],
+    schemaVersion: PAST_RUN_SCHEMA_VERSION,
+    id: run.id.trim(),
+    sessionStartedAt: timestampField(run.sessionStartedAt),
+    sessionEndedAt: timestampField(run.sessionEndedAt),
+    durationMs: numberField(run.durationMs),
+    accountName: typeof run.accountName === "string" ? run.accountName : "",
+    tags: normalizePastRunTags(run.tags),
+    totalGoldGained: numberField(run.totalGoldGained),
+    totalXpGained: numberField(run.totalXpGained),
+    totalKillsGained: numberField(run.totalKillsGained),
+    setDrops: dropTotal(run.setDrops, itemBreakdown.Set),
+    satanicDrops: dropTotal(run.satanicDrops, itemBreakdown.Satanic),
+    heroicDrops: dropTotal(run.heroicDrops, itemBreakdown.Heroic),
+    angelicDrops: dropTotal(run.angelicDrops, itemBreakdown.Angelic),
+    itemBreakdown,
+    keys: normalizeResourceList(run.keys),
+    ores: normalizeResourceList(run.ores),
+    materials: normalizeResourceList(run.materials),
   };
+}
+
+function normalizeItemBreakdown(value: unknown): Record<string, Record<string, ItemDropCounter>> {
+  const normalized: Record<string, Record<string, ItemDropCounter>> = {};
+  for (const rarity of PAST_RUN_RARITIES) normalized[rarity] = {};
+  if (!isRecord(value)) return normalized;
+
+  for (const [rawRarity, rawBreakdown] of Object.entries(value)) {
+    const rarity = rawRarity.trim();
+    if (!rarity || !isRecord(rawBreakdown)) continue;
+    const breakdown = normalized[rarity] ?? {};
+    for (const [rawName, rawDrop] of Object.entries(rawBreakdown)) {
+      if (!isRecord(rawDrop)) continue;
+      const name = stringField(rawDrop, "name") || rawName.trim();
+      const total = numberField(rawDrop.total);
+      if (!name || total <= 0) continue;
+      breakdown[name] = { name, total, mf: Math.min(numberField(rawDrop.mf), total) };
+    }
+    normalized[rarity] = breakdown;
+  }
+
+  return normalized;
+}
+
+function normalizeResourceList(value: unknown): ResourceCounter[] {
+  if (!Array.isArray(value)) return [];
+  const resources: ResourceCounter[] = [];
+  for (const resource of value) {
+    if (!isRecord(resource)) continue;
+    const id = Number(resource.id);
+    const name = stringField(resource, "name");
+    const total = numberField(resource.total);
+    if (!Number.isFinite(id) || !name || total <= 0) continue;
+    resources.push({ id: Math.trunc(id), name, total });
+  }
+  return resources.sort((left, right) => left.id - right.id || left.name.localeCompare(right.name));
+}
+
+function dropTotal(value: unknown, breakdown: Record<string, ItemDropCounter>): number {
+  return isFiniteNumber(value) ? numberField(value) : Object.values(breakdown).reduce((total, drop) => total + drop.total, 0);
+}
+
+function isFiniteNumber(value: unknown): boolean {
+  return Number.isFinite(Number(value));
+}
+
+function numberField(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : 0;
+}
+
+function timestampField(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.trunc(number) : 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringField(record: Record<string, unknown>, field: string): string {
+  return typeof record[field] === "string" ? record[field].trim() : "";
 }
 
 function readJsonFile(filePath: string): unknown {

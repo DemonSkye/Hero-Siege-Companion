@@ -71,7 +71,7 @@ export interface HeroSiegeCompanionApi {
   setRunArchivePreferences: (preferences: RunArchivePreferences) => Promise<CompanionState>;
   setCapturePreferences: (preferences: CapturePreferences) => Promise<CompanionState>;
   exportConfiguration: (json: string) => Promise<boolean>;
-  importConfiguration: () => Promise<string | null>;
+  importConfiguration: (installEmbeddedSounds?: boolean) => Promise<string | null>;
   exportItemResearch: (json: string) => Promise<boolean>;
   importSounds: () => Promise<ImportedSoundReference[]>;
   exportSoundPack: (sounds: ExportableSoundReference[]) => Promise<SoundPackExportResult>;

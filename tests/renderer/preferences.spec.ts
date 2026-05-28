@@ -10,6 +10,7 @@ import {
 } from "../../src/renderer/src/lib/item-research";
 import {
   LOG_LIMIT_OPTIONS,
+  UI_PREFERENCES_SCHEMA_VERSION,
   createConfigurationExportPayload,
   defaultPreferences,
   importConfigurationPayload,
@@ -38,6 +39,7 @@ describe("renderer preferences persistence", () => {
 
   test("loads defaults when local storage is missing or corrupt", () => {
     expect(loadPreferences()).toMatchObject(defaultPreferences);
+    expect(loadPreferences().schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
 
     window.localStorage.setItem("hero-siege-companion:preferences:v1", "{not-json");
     expect(loadPreferences()).toMatchObject(defaultPreferences);
@@ -97,6 +99,7 @@ describe("renderer preferences persistence", () => {
 
     const preferences = loadPreferences();
 
+    expect(preferences.schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(preferences.logLimit).toBe(defaultPreferences.logLimit);
     expect(preferences.timelineLimit).toBe(LOG_LIMIT_OPTIONS[2]);
     expect(preferences.timelineType).toBe(defaultPreferences.timelineType);
@@ -143,6 +146,7 @@ describe("renderer preferences persistence", () => {
     });
 
     expect(loadPreferences().logLimit).toBe(50);
+    expect(loadPreferences().schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(loadPreferences().timelineType).toBe("item-filter:boss-drops");
     expect(loadPreferences().shoppingListItems).toEqual(["Jade"]);
     expect(normalizeShoppingList(["Ruby", "Ruby", "", "Jade"])).toEqual(["Ruby", "Jade"]);
@@ -284,6 +288,7 @@ describe("renderer preferences persistence", () => {
 
     expect(payload.uiPreferences.itemFilterMuted).toBeUndefined();
     expect(payload.uiPreferences.customItemFilterSounds).toEqual([{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }]);
+    expect(payload.uiPreferences.schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(payload.uiPreferences.itemResearchEntries).toBeUndefined();
     expect(payload.uiPreferences.themeId).toBe("cyberpunk");
     expect(payload.uiPreferences.compactThemeId).toBe("light");

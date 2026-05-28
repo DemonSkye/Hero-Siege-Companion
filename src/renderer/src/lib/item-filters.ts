@@ -134,11 +134,12 @@ function normalizeItemFilterGroup(value: unknown, customSounds: CustomItemFilter
   const id = stringField(value, "id") || `group-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const volume = Number(value.volume);
   const cooldownMs = Number(value.cooldownMs);
+  const soundId = stringField(value, "soundId");
   return {
     id,
     name: stringField(value, "name") || "Untitled Group",
     enabled: value.enabled === undefined ? true : Boolean(value.enabled),
-    soundId: validSoundId(stringField(value, "soundId"), customSounds) ? stringField(value, "soundId") : ITEM_FILTER_SOUNDS[0].id,
+    soundId: validSoundId(soundId, customSounds) ? soundId : ITEM_FILTER_SOUNDS[0].id,
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(100, Math.trunc(volume))) : 70,
     cooldownMs: Number.isFinite(cooldownMs) ? Math.max(0, Math.min(30_000, Math.trunc(cooldownMs))) : 1000,
     rarities: normalizeStringList(value.rarities).filter((rarity) => ITEM_FILTER_RARITIES.includes(rarity)),
@@ -239,10 +240,9 @@ export function itemFilterGroupedItems(group: ItemFilterGroup | null): Array<{ t
     if (seen.has(normalizedName)) continue;
     seen.add(normalizedName);
     const typeLabel = itemTypeLabelForName(canonical);
-    item.name = canonical;
-    item.typeLabel = typeLabel;
+    const groupedItem = { ...item, name: canonical, typeLabel };
     const items = groups.get(typeLabel) ?? [];
-    items.push(item);
+    items.push(groupedItem);
     groups.set(typeLabel, items);
   }
   return Array.from(groups.entries())

@@ -353,10 +353,11 @@ async function exportConfiguration() {
 
 async function importConfiguration() {
   try {
-    const contents = await window.heroSiegeCompanion.importConfiguration();
+    const transferOptions = currentConfigurationTransferOptions();
+    const contents = await window.heroSiegeCompanion.importConfiguration(transferOptions.includeSounds);
     if (!contents) return;
 
-    const imported = importConfigurationPayload(contents, currentUiPreferences(), currentConfigurationTransferOptions());
+    const imported = importConfigurationPayload(contents, currentUiPreferences(), transferOptions);
     applyUiPreferences(imported.uiPreferences);
     savePreferences(currentUiPreferences());
 

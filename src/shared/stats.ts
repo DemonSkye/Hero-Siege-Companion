@@ -59,6 +59,7 @@ export interface CompanionStats {
 }
 
 export interface PastRunSummary {
+  schemaVersion: number;
   id: string;
   sessionStartedAt: number;
   sessionEndedAt: number;
@@ -81,6 +82,7 @@ export interface PastRunSummary {
 const TRACKED_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
 const UNTRACKED_ITEM_TYPES = new Set([12, 13, 14, 15]);
 const MAX_ITEM_TIMELINE_ENTRIES = 500;
+export const PAST_RUN_SCHEMA_VERSION = 1;
 export const MAX_PAST_RUN_TAGS = 12;
 export const MAX_PAST_RUN_TAG_LENGTH = 36;
 const BASIC_KEY_ID = 0;
@@ -356,6 +358,7 @@ export function normalizePastRunTags(tags: unknown): string[] {
 
 function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now(), pausedDurationMs = 0): PastRunSummary {
   return {
+    schemaVersion: PAST_RUN_SCHEMA_VERSION,
     id: `${stats.sessionStartedAt}-${sessionEndedAt}`,
     sessionStartedAt: stats.sessionStartedAt,
     sessionEndedAt,

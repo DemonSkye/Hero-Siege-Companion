@@ -9,6 +9,7 @@ import {
   importLootSounds,
   installEmbeddedConfigurationSounds,
 } from "../../src/main/sound-import";
+import { createZipArchive } from "../../src/main/zip-archive";
 import type { ExportableSoundReference } from "../../src/shared/ipc";
 
 let tempDirs: string[] = [];
@@ -42,6 +43,44 @@ describe("sound import and export", () => {
     const packImport = importLootSounds([soundpackPath], secondUserData);
     expect(packImport).toMatchObject([{ fileName: "soundpack1/alert.wav", mimeType: "audio/wav" }]);
     expect(fileURLToPath(packImport[0].src)).toContain(path.join("sounds", "soundpack1", "alert.wav"));
+  });
+
+  test("skips missing selected sound files and imports the remaining valid files", () => {
+    const sourceDir = tempPath("hsc-missing-sound-source-");
+    const userData = tempPath("hsc-missing-sound-user-data-");
+    const missingSound = path.join(sourceDir, "missing.wav");
+    const validSound = path.join(sourceDir, "alert.wav");
+    fs.writeFileSync(validSound, Buffer.from("alert"));
+
+    const imported = importLootSounds([missingSound, validSound], userData);
+
+    expect(imported).toMatchObject([{ fileName: "alert.wav", mimeType: "audio/wav" }]);
+    expect(fs.existsSync(fileURLToPath(imported[0].src))).toBe(true);
+  });
+
+  test("keeps zip soundpack imports bounded and flattens nested sound entries safely", () => {
+    const sourceDir = tempPath("hsc-edge-sound-source-");
+    const userData = tempPath("hsc-edge-sound-user-data-");
+    const soundpackPath = path.join(sourceDir, "edge-pack.zip");
+    fs.writeFileSync(
+      soundpackPath,
+      createZipArchive([
+        { name: "nested/Boss Alert.wav", data: Buffer.from("boss-alert"), modifiedAt: new Date(0) },
+        { name: "nested/Boss Alert.wav", data: Buffer.from("duplicate-alert"), modifiedAt: new Date(0) },
+        { name: "notes.txt", data: Buffer.from("not audio"), modifiedAt: new Date(0) },
+        { name: "empty.wav", data: Buffer.alloc(0), modifiedAt: new Date(0) },
+        { name: "huge.wav", data: Buffer.alloc(4 * 1024 * 1024 + 1), modifiedAt: new Date(0) },
+      ]),
+    );
+
+    const imported = importLootSounds([soundpackPath], userData);
+
+    expect(imported).toMatchObject([
+      { fileName: "edge-pack/Boss-Alert.wav", mimeType: "audio/wav" },
+      { fileName: "edge-pack/Boss-Alert-2.wav", mimeType: "audio/wav" },
+    ]);
+    expect(fs.readFileSync(fileURLToPath(imported[0].src))).toEqual(Buffer.from("boss-alert"));
+    expect(fs.readFileSync(fileURLToPath(imported[1].src))).toEqual(Buffer.from("duplicate-alert"));
   });
 
   test("embeds local configuration sounds and installs embedded sounds back into userData", () => {
@@ -78,6 +117,31 @@ describe("sound import and export", () => {
     expect(installedSound.src).toMatch(/^file:\/\//);
     expect(installedSound.fileName).toBe("imported-settings/boss.wav");
     expect(fs.existsSync(fileURLToPath(installedSound.src))).toBe(true);
+  });
+
+  test("installs embedded configuration data-url sounds when the display name lacks an extension", () => {
+    const importUserData = tempPath("hsc-config-data-url-import-");
+    const audioData = Buffer.from("embedded-boss-alert");
+    const payload = {
+      uiPreferences: {
+        customItemFilterSounds: [
+          {
+            id: "custom-sound:boss-alert",
+            name: "Boss Alert",
+            fileName: "Boss Alert",
+            src: `data:audio/wav;base64,${audioData.toString("base64")}`,
+          },
+        ],
+      },
+    };
+
+    const installedJson = installEmbeddedConfigurationSounds(JSON.stringify(payload), importUserData);
+    const installedPayload = JSON.parse(installedJson) as typeof payload;
+    const installedSound = installedPayload.uiPreferences.customItemFilterSounds[0];
+
+    expect(installedSound.fileName).toBe("imported-settings/Boss-Alert.wav");
+    expect(fileURLToPath(installedSound.src)).toContain(path.join("sounds", "imported-settings", "Boss-Alert.wav"));
+    expect(fs.readFileSync(fileURLToPath(installedSound.src))).toEqual(audioData);
   });
 
   test("does not export file sound references outside the app sounds directory", () => {

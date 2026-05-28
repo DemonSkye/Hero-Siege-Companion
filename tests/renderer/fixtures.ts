@@ -1,5 +1,5 @@
 import type { CompanionState, LogEntry } from "../../src/shared/app-state";
-import { createInitialStats, type ItemTimelineEntry, type PastRunSummary } from "../../src/shared/stats";
+import { PAST_RUN_SCHEMA_VERSION, createInitialStats, type ItemTimelineEntry, type PastRunSummary } from "../../src/shared/stats";
 import type { ItemFilterGroup } from "../../src/renderer/src/lib/item-filters";
 
 export const baseTime = new Date("2026-05-23T12:00:00.000Z").getTime();
@@ -133,6 +133,7 @@ export function itemFilterGroup(overrides: Partial<ItemFilterGroup> = {}): ItemF
 
 export function pastRun(overrides: Partial<PastRunSummary> = {}): PastRunSummary {
   return {
+    schemaVersion: PAST_RUN_SCHEMA_VERSION,
     id: "run-1",
     sessionStartedAt: baseTime - 600_000,
     sessionEndedAt: baseTime,

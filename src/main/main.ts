@@ -334,14 +334,14 @@ ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string) =>
   if (exported) addLog("success", "Configuration exported.");
   return exported;
 });
-ipcMain.handle(IPC_CHANNELS.configurationImport, async () => {
+ipcMain.handle(IPC_CHANNELS.configurationImport, async (_event, installEmbeddedSounds?: boolean) => {
   const contents = await readJsonFileWithDialog(currentWindow(), {
     title: "Import Hero Siege Companion configuration",
     maxBytes: MAX_CONFIGURATION_IMPORT_BYTES,
     tooLargeMessage: "Configuration file is too large.",
   });
   if (contents) addLog("info", "Configuration selected for import.");
-  return contents ? installEmbeddedConfigurationSounds(contents, app.getPath("userData")) : contents;
+  return contents && installEmbeddedSounds === true ? installEmbeddedConfigurationSounds(contents, app.getPath("userData")) : contents;
 });
 ipcMain.handle(IPC_CHANNELS.itemResearchExport, async (_event, json: string) => {
   const exported = await saveJsonFileWithDialog(currentWindow(), {
@@ -448,6 +448,7 @@ ipcMain.handle(IPC_CHANNELS.gameChooseExecutable, async () => {
 async function saveSupportDiagnostics(diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> {
   const result = await saveSupportDiagnosticsBundle({
     diagnosticsSummary,
+    appVersion: app.getVersion(),
     ownerWindow: currentWindow(),
     userDataPath: app.getPath("userData"),
     onLogReadFailed: (file) => writeAppLog("support-diagnostics-log-read-failed", file),

@@ -41,6 +41,7 @@ const SUPPORT_DIAGNOSTIC_LOG_FILES = [
 
 interface SaveSupportDiagnosticsOptions {
   diagnosticsSummary: string;
+  appVersion?: string;
   ownerWindow: BrowserWindow | null;
   userDataPath: string;
   onLogReadFailed: (file: { name: string; path: string }) => void;
@@ -70,7 +71,7 @@ export async function saveSupportDiagnosticsBundle(options: SaveSupportDiagnosti
     return { saved: false, canceled: true, filePath: null, includedFiles: [] };
   }
 
-  const info = getSupportDiagnosticsInfo(options.userDataPath);
+  const info = getSupportDiagnosticsInfo(options.userDataPath, options.appVersion);
   const entries: ZipArchiveEntry[] = [
     {
       name: "diagnostics-summary.txt",
