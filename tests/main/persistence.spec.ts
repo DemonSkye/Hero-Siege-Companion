@@ -44,6 +44,13 @@ describe("main process persistence helpers", () => {
     expect(normalizeCapturePreferences({ createDebugMode: 1 as unknown as boolean })).toEqual({
       createDebugMode: true,
     });
+    expect(normalizeRunArchivePreferences(null)).toEqual({
+      skipEmptyRuns: false,
+      minDurationMinutes: 0,
+    });
+    expect(normalizeCapturePreferences(undefined)).toEqual({
+      createDebugMode: false,
+    });
   });
 
   test("preserves unrelated preference sections while saving one section", () => {
@@ -104,6 +111,15 @@ describe("main process persistence helpers", () => {
         materials: [],
       }),
     ]);
+  });
+
+  test("filters invalid past runs before applying the archive cap", () => {
+    const runsPath = tempFile("past-runs-cap.json");
+    const invalidRuns = Array.from({ length: 100 }, (_, index) => ({ id: `invalid-${index}` }));
+    const validRun = pastRun({ id: "durable-run" });
+    fs.writeFileSync(runsPath, `${JSON.stringify([...invalidRuns, validRun])}\n`, "utf8");
+
+    expect(loadPastRuns(runsPath).map((run) => run.id)).toEqual(["durable-run"]);
   });
 
   test("saves past runs with the current schema version", () => {

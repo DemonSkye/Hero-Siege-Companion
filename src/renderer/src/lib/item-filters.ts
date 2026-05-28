@@ -250,18 +250,18 @@ export function itemFilterGroupedItems(group: ItemFilterGroup | null): Array<{ t
     .map(([typeLabel, items]) => ({ typeLabel, items }));
 }
 
-export function toggleFilterRarity(group: ItemFilterGroup, rarity: string, enabled: boolean) {
-  const next = new Set(group.rarities);
-  if (enabled) next.add(rarity);
-  else next.delete(rarity);
-  group.rarities = Array.from(next);
+export function toggledStringList(values: string[], value: string, enabled: boolean): string[] {
+  const next = new Set(values);
+  if (enabled) next.add(value);
+  else next.delete(value);
+  return Array.from(next);
 }
 
-export function toggleFilterType(group: ItemFilterGroup, type: number, enabled: boolean) {
-  const next = new Set(group.types);
-  if (enabled) next.add(type);
-  else next.delete(type);
-  group.types = Array.from(next).sort((a, b) => a - b);
+export function toggledNumberList(values: number[], value: number, enabled: boolean): number[] {
+  const next = new Set(values);
+  if (enabled) next.add(value);
+  else next.delete(value);
+  return Array.from(next).sort((a, b) => a - b);
 }
 
 export function itemFilterTimelineValue(group: Pick<ItemFilterGroup, "id">): string {

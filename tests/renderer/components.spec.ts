@@ -67,9 +67,10 @@ describe("Vue component contracts", () => {
 
     await buttonByText(wrapper, "Show me").trigger("click");
     await buttonByText(wrapper, "No Thanks").trigger("click");
+    await wrapper.get(".modal-backdrop").trigger("keydown", { key: "Escape" });
 
     expect(wrapper.emitted("open")).toHaveLength(1);
-    expect(wrapper.emitted("dismiss")).toHaveLength(1);
+    expect(wrapper.emitted("dismiss")).toHaveLength(2);
   });
 
   test("UpdateBanner documents the release action contract", async () => {
@@ -134,7 +135,22 @@ describe("Vue component contracts", () => {
 
   test("ItemFilterView exercises group editing, mute state, suggestions, and rule toggles", async () => {
     const group = itemFilterGroup();
+    const researchEntry = {
+      signature: "4:55:0:gloves #55",
+      label: "Gloves #55",
+      rarity: "Satanic",
+      type: 4,
+      id: 55,
+      dropQuality: 0,
+      count: 1,
+      firstSeenAt: Date.now(),
+      lastSeenAt: Date.now(),
+      resolvedName: "",
+      notes: "",
+      ignored: false,
+    };
     const wrapper = mount(ItemFilterView, {
+      attachTo: document.body,
       props: {
         itemFilterGroups: [group],
         recoverableCompactFilterGroups: [{ id: "merc-items", name: "Merc Items", tileCount: 1 }],
@@ -147,22 +163,7 @@ describe("Vue component contracts", () => {
         itemTypeOptions: [{ value: "6", label: "Belt" }],
         itemFilterMuted: false,
         developerItemResearchEnabled: true,
-        itemResearchEntries: [
-          {
-            signature: "4:55:0:gloves #55",
-            label: "Gloves #55",
-            rarity: "Satanic",
-            type: 4,
-            id: 55,
-            dropQuality: 0,
-            count: 1,
-            firstSeenAt: Date.now(),
-            lastSeenAt: Date.now(),
-            resolvedName: "",
-            notes: "",
-            ignored: false,
-          },
-        ],
+        itemResearchEntries: [researchEntry],
         unresolvedItemResearchCount: 1,
       },
     });
@@ -180,12 +181,25 @@ describe("Vue component contracts", () => {
     await checkboxByLabel(wrapper, "Satanic").setValue(false);
     await checkboxByLabel(wrapper, "Belt").setValue(false);
     await buttonByText(wrapper, "Export Research JSON").trigger("click");
+    const researchInputs = wrapper.findAll(".item-research-row input");
+    await researchInputs[0].setValue("Sash of the Magi");
+    await researchInputs[1].setValue("confirmed");
     await buttonByText(wrapper, "Save").trigger("click");
+    await wrapper.setProps({ itemResearchEntries: [{ ...researchEntry, resolvedName: "Sash of the Magi", notes: "confirmed" }] });
+    await buttonByText(wrapper, "Reset").trigger("click");
+    await wrapper.setProps({ itemResearchEntries: [researchEntry] });
+    expect((wrapper.findAll(".item-research-row input")[0].element as HTMLInputElement).value).toBe("");
     await buttonByText(wrapper, "Remove Group").trigger("click");
 
     expect(wrapper.text()).toContain('Remove "Loot Alerts"?');
     expect(wrapper.emitted("removeGroup")).toBeUndefined();
+    const removeDialog = wrapper.get('[aria-labelledby="remove-filter-group-title"]');
+    expect(document.activeElement).toBe(removeDialog.element);
 
+    await removeDialog.trigger("keydown", { key: "Escape" });
+    expect(wrapper.text()).not.toContain('Remove "Loot Alerts"?');
+
+    await buttonByText(wrapper, "Remove Group").trigger("click");
     await wrapper.get(".item-filter-confirm-remove").trigger("click");
 
     expect(wrapper.emitted("update:itemFilterMuted")).toEqual([[true]]);
@@ -194,9 +208,13 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("removeGroup")?.[0]).toEqual([group]);
     expect(wrapper.emitted("addItemToGroup")?.[0]).toEqual([group, "Sash of the Magi"]);
     expect(wrapper.emitted("exportItemResearch")).toHaveLength(1);
-    expect(wrapper.emitted("saveItemResearchEntry")?.[0]?.[0]).toBe("4:55:0:gloves #55");
-    expect(group.rarities).toEqual([]);
-    expect(group.types).toEqual([]);
+    expect(wrapper.emitted("saveItemResearchEntry")?.[0]).toEqual(["4:55:0:gloves #55", { resolvedName: "Sash of the Magi", notes: "confirmed" }]);
+    expect(wrapper.emitted("resetItemResearchEntry")?.[0]).toEqual(["4:55:0:gloves #55"]);
+    expect(wrapper.emitted("updateGroup")).toContainEqual([{ ...group, rarities: [] }]);
+    expect(wrapper.emitted("updateGroup")).toContainEqual([{ ...group, types: [] }]);
+    expect(group.rarities).toEqual(["Satanic"]);
+    expect(group.types).toEqual([6]);
+    wrapper.unmount();
   });
 
   test("SettingsModal keeps persisted settings explicit and emits application actions", async () => {
@@ -274,6 +292,8 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Settings");
     await buttonByText(wrapper, "Capture").trigger("click");
     expect(wrapper.text()).toContain("Verbose live logging");
+    await wrapper.get('nav[role="tablist"]').trigger("keydown", { key: "ArrowRight" });
+    expect(wrapper.text()).toContain("Rarity colors stay game-matched.");
 
     await buttonByText(wrapper, "General").trigger("click");
     expect((wrapper.get(".path-setting input").element as HTMLInputElement).value).toBe("C:\\Games\\Hero Siege\\Hero_Siege.exe");
@@ -329,6 +349,9 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "Browse").trigger("click");
     await buttonByText(wrapper, "Reset Preferences").trigger("click");
     await wrapper.get(".modal-backdrop").trigger("click");
+    expect(wrapper.find('nav[role="tablist"]').exists()).toBe(true);
+    expect(wrapper.findAll('button[role="tab"]').some((tab) => tab.attributes("aria-selected") === "true")).toBe(true);
+    await wrapper.get(".modal-backdrop").trigger("keydown", { key: "Escape" });
     await buttonByText(wrapper, "Done").trigger("click");
 
     expect(wrapper.emitted("update:logLimit")).toEqual([[50]]);
@@ -349,8 +372,27 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("reset")).toHaveLength(1);
-    expect(wrapper.emitted("close")).toBeUndefined();
+    expect(wrapper.emitted("close")).toHaveLength(1);
     expect(wrapper.emitted("apply")).toHaveLength(1);
+  });
+
+  test("SettingsModal focuses the dialog and links tabs to panels", async () => {
+    const wrapper = mount(SettingsModal, {
+      attachTo: document.body,
+      props: settingsModalProps(),
+    });
+
+    await Promise.resolve();
+    const dialog = wrapper.get('[role="dialog"]');
+    const generalTab = wrapper.get('[data-settings-tab="general"]');
+    expect(document.activeElement).toBe(dialog.element);
+    expect(generalTab.attributes("aria-controls")).toBe("settings-panel-general");
+    expect(wrapper.get('[role="tabpanel"]').attributes("aria-labelledby")).toBe("settings-tab-general");
+
+    await dialog.trigger("keydown", { key: "Escape" });
+
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    wrapper.unmount();
   });
 
   test("PastRunsView aggregates saved runs and toggles per-rarity breakdowns", async () => {
@@ -377,6 +419,8 @@ describe("Vue component contracts", () => {
 
     await wrapper.get(".past-run-search input").setValue("");
     await wrapper.get(".tag-selector-button").trigger("click");
+    expect(wrapper.get(".tag-selector-button").attributes("aria-controls")).toContain("run-tag-menu-");
+    expect(wrapper.get(".run-tag-menu").attributes("role")).toBe("menu");
     const codexOption = wrapper.findAll(".run-tag-option").find((option) => option.text().includes("#Codex"));
     if (!codexOption) throw new Error("Expected Codex tag option");
     await codexOption.trigger("click");
@@ -430,8 +474,9 @@ describe("Vue component contracts", () => {
     await checkboxByLabel(wrapper, "Ring").setValue(true);
     expect(wrapper.emitted("update:reportConfig")?.[2]?.[0].itemGroups[0].types).toEqual([7]);
 
+    await wrapper.get(".modal-backdrop").trigger("keydown", { key: "Escape" });
     await buttonByText(wrapper, "Done").trigger("click");
-    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(wrapper.emitted("close")).toHaveLength(2);
   });
 
   test("LiveView binds the high-churn dashboard controls through explicit update events", async () => {
@@ -592,4 +637,47 @@ function checkboxByLabel(wrapper: ReturnType<typeof mount>, text: string) {
   const label = wrapper.findAll("label").find((candidate) => candidate.text().includes(text));
   if (!label) throw new Error(`Unable to find label containing text: ${text}`);
   return label.get("input");
+}
+
+function settingsModalProps() {
+  return {
+    logLimitOptions: [10, 20, 50],
+    itemTypeOptions: [{ value: "6", label: "Belt" }],
+    itemFilterGroups: [itemFilterGroup()],
+    itemSuggestions: ["Sash of the Magi"],
+    themeOptions: THEME_OPTIONS,
+    customItemFilterSounds: [],
+    supportDiagnostics: "Hero Siege Companion capture diagnostics",
+    supportGeneratedFiles: [],
+    supportLogFiles: [],
+    supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion",
+    supportBundleBusy: false,
+    whatsNew: WHATS_NEW_RELEASE,
+    logLimit: 20,
+    timelineLimit: 10,
+    timelineType: "all",
+    launchThroughSteam: false,
+    gameExecutablePath: "",
+    showCaptureDetails: false,
+    createDebugMode: false,
+    alwaysOnTop: true,
+    lockCompactLocation: false,
+    hideSocketables: false,
+    hideKeys: false,
+    hideMaterials: false,
+    developerItemResearchEnabled: true,
+    unknownItemAudioPrompt: false,
+    themeId: "dark",
+    compactThemeId: "dark",
+    themeAccents: { ...DEFAULT_THEME_ACCENTS },
+    skipEmptyRuns: true,
+    minRunDurationMinutes: 5,
+    configIncludeAppSettings: true,
+    configIncludeRunSaving: true,
+    configIncludeReportTracking: true,
+    configIncludeLootFilters: true,
+    configIncludeSounds: true,
+    configIncludeItemResearch: false,
+    compactRunTiles: defaultCompactRunTiles,
+  };
 }

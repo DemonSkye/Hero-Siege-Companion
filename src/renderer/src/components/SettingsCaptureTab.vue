@@ -15,7 +15,7 @@ const draftUnknownItemAudioPrompt = defineModel<boolean>("unknownItemAudioPrompt
     </label>
     <label class="settings-check">
       <input v-model="draftCreateDebugMode" type="checkbox" />
-      <span class="settings-label">Verbose live logging <span class="info-bubble" data-tip="Writes a wider packet trace to capture-wide-debug.log for loot correlation diagnostics. Parsed item events still appear in Live Log.">i</span></span>
+      <span class="settings-label">Verbose live logging <span class="info-bubble" data-tip="Writes wider redacted packet metadata to capture-wide-debug.log for loot correlation diagnostics. Parsed item events still appear in Live Log.">i</span></span>
     </label>
     <label class="settings-check">
       <input v-model="draftDeveloperItemResearchEnabled" type="checkbox" />

@@ -1,5 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 
+import { allItemIconFiles, lookupItemIconFile } from "../../src/shared/item-icons";
 import {
   createItemFilterGroup,
   createCustomSoundId,
@@ -18,6 +22,8 @@ import {
   soundName,
 } from "../../src/renderer/src/lib/item-filters";
 import { itemFilterGroup, itemTimelineEntry } from "./fixtures";
+
+const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("renderer item filter rules", () => {
   test("normalizes persisted filter groups so stale preferences cannot break matching", () => {
@@ -68,6 +74,21 @@ describe("renderer item filter rules", () => {
       { typeLabel: "Item", items: [{ name: "unknown trophy", soundId: "", typeLabel: "Item" }] },
       { typeLabel: "Material", items: [{ name: "Copper Ore", soundId: "deep-gong", typeLabel: "Material" }] },
     ]);
+  });
+
+  test("canonicalizes user-entered diacritics the same way lookup and icons do", () => {
+    const items = normalizeSpecificItems(["Bifrost Key", "Signet of Bifrost"]);
+    const group = itemFilterGroup({ items: [{ name: "Bifrost Key", soundId: "deep-gong", typeLabel: "Key" }] });
+
+    expect(items.map((item) => item.name)).toEqual(["Bifröst Key", "Signet of Bifröst"]);
+    expect(lookupItemIconFile("Bifrost Key")).toBe(lookupItemIconFile("Bifröst Key"));
+    expect(matchItemFilter(itemTimelineEntry({ label: "Bifröst Key", rarity: "Common", type: 12 }), [group])).toMatchObject({ group });
+  });
+
+  test("icon manifest entries point at files that exist in img/items", () => {
+    const missingFiles = allItemIconFiles().filter((file) => !fs.existsSync(path.join(appRoot, "img", "items", file)));
+
+    expect(missingFiles).toEqual([]);
   });
 
   test("specific watched items override broader rarity/type rules and can choose their own sound", () => {

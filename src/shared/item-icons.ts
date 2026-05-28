@@ -771,6 +771,10 @@ export function allItemIconNames(): string[] {
   );
 }
 
+export function allItemIconFiles(): string[] {
+  return Array.from(new Set(Object.values(ITEM_ICON_FILE_BY_NAME))).sort();
+}
+
 function normalizeItemIconName(name: string): string {
   return name
     .normalize("NFKD")

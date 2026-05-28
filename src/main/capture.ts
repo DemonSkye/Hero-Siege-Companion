@@ -587,7 +587,6 @@ export class CaptureService {
       dstPort: packet.dstPort,
       ack: packet.ack ?? null,
       payloadLength: packet.payloadLength,
-      payloadBase64: packet.payloadBase64,
       textSnippet: sanitizeDebugSnippet(packet.text, 4000),
     });
   }
@@ -604,7 +603,6 @@ export class CaptureService {
       ack: packet.ack ?? null,
       parseableCandidate: isLikelyParseablePayload(payloadText),
       textLength: payloadText.length,
-      textBase64: Buffer.from(payloadText, "utf8").toString("base64"),
       textSnippet: sanitizeDebugSnippet(payloadText, 4000),
     });
   }

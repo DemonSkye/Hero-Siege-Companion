@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onMounted, ref } from "vue";
+
 defineProps<{
   version: string;
 }>();
@@ -7,11 +9,17 @@ const emit = defineEmits<{
   open: [];
   dismiss: [];
 }>();
+
+const promptDialog = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+  promptDialog.value?.focus();
+});
 </script>
 
 <template>
-  <div class="modal-backdrop">
-    <section class="settings-panel whats-new-prompt" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
+  <div class="modal-backdrop" @keydown.esc="emit('dismiss')">
+    <section ref="promptDialog" class="settings-panel whats-new-prompt" role="dialog" aria-modal="true" aria-labelledby="whats-new-title" tabindex="-1">
       <div class="settings-heading">
         <div>
           <p class="eyebrow">Updated</p>

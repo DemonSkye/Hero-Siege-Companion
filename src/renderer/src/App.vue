@@ -192,6 +192,7 @@ const {
   removeItemFilterGroup,
   restoreMissingItemFilterGroup,
   selectItemFilterGroup,
+  updateItemFilterGroup,
   addItemToFilterGroup,
   removeItemFromFilterGroup,
   clampActiveItemFilterGroup,
@@ -470,12 +471,12 @@ function toggleLog(log: LogEntry) {
     />
 
     <div v-if="!compactMode" class="app-scroll">
-      <nav class="view-tabs" aria-label="Companion views">
-        <button type="button" :class="{ active: activeTab === 'live' }" @click="activeTab = 'live'">Live Session</button>
-        <button type="button" :class="{ active: activeTab === 'filter' }" @click="activeTab = 'filter'">
+      <nav class="view-tabs" role="tablist" aria-label="Companion views">
+        <button type="button" role="tab" :aria-selected="activeTab === 'live'" :class="{ active: activeTab === 'live' }" @click="activeTab = 'live'">Live Session</button>
+        <button type="button" role="tab" :aria-selected="activeTab === 'filter'" :class="{ active: activeTab === 'filter' }" @click="activeTab = 'filter'">
           Item Filter <span class="info-bubble" data-tip="Sounds are triggered from captured network traffic, so alerts can arrive a couple seconds after the item appears in game.">i</span>
         </button>
-        <button type="button" :class="{ active: activeTab === 'past' }" @click="activeTab = 'past'">Past Runs</button>
+        <button type="button" role="tab" :aria-selected="activeTab === 'past'" :class="{ active: activeTab === 'past' }" @click="activeTab = 'past'">Past Runs</button>
       </nav>
 
       <LiveView
@@ -544,6 +545,7 @@ function toggleLog(log: LogEntry) {
         @select-group="selectItemFilterGroup"
         @remove-group="removeItemFilterGroup"
         @restore-missing-group="restoreMissingItemFilterGroup($event.id, $event.name)"
+        @update-group="updateItemFilterGroup"
         @add-item-to-group="addItemToFilterGroup"
         @remove-item-from-group="removeItemFromFilterGroup"
         @test-sound="testItemFilterSound"

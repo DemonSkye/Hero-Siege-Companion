@@ -160,8 +160,6 @@ Build the portable Windows release:
 npm run dist:win
 ```
 
-For release prep, follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before publishing.
-
 ## Notes
 
 Npcap is developed by the Nmap Project. Hero Siege Companion is not affiliated with Hero Siege, Panic Art Studios, Nmap, or Npcap.

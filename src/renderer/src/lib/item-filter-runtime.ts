@@ -93,22 +93,36 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
     activeItemFilterGroupId.value = group.id;
   }
 
+  function updateItemFilterGroup(group: ItemFilterGroup): void {
+    const [normalizedGroup] = normalizeItemFilterGroups([group], options.customItemFilterSounds.value);
+    if (!normalizedGroup) return;
+    options.itemFilterGroups.value = options.itemFilterGroups.value.map((candidate) =>
+      candidate.id === normalizedGroup.id ? normalizedGroup : candidate,
+    );
+  }
+
   function addItemToFilterGroup(group: ItemFilterGroup, value = itemFilterDraftItem.value): void {
     const trimmed = value.trim();
     const canonical = canonicalItemName(trimmed);
     if (!canonical) return;
     const normalizedName = normalizeLookupText(canonical);
     if (group.items.some((item) => normalizeLookupText(item.name) === normalizedName)) return;
-    group.items = normalizeSpecificItems(
-      [...group.items, { name: canonical, soundId: "", typeLabel: itemTypeLabelForName(canonical) }],
-      options.customItemFilterSounds.value,
-    );
+    updateItemFilterGroup({
+      ...group,
+      items: normalizeSpecificItems(
+        [...group.items, { name: canonical, soundId: "", typeLabel: itemTypeLabelForName(canonical) }],
+        options.customItemFilterSounds.value,
+      ),
+    });
     itemFilterDraftItem.value = "";
   }
 
   function removeItemFromFilterGroup(group: ItemFilterGroup, item: ItemFilterSpecificItem): void {
     const normalizedName = normalizeLookupText(item.name);
-    group.items = group.items.filter((candidate) => normalizeLookupText(candidate.name) !== normalizedName);
+    updateItemFilterGroup({
+      ...group,
+      items: group.items.filter((candidate) => normalizeLookupText(candidate.name) !== normalizedName),
+    });
   }
 
   function clampActiveItemFilterGroup(): void {
@@ -251,6 +265,7 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
     removeItemFilterGroup,
     restoreMissingItemFilterGroup,
     selectItemFilterGroup,
+    updateItemFilterGroup,
     addItemToFilterGroup,
     removeItemFromFilterGroup,
     clampActiveItemFilterGroup,

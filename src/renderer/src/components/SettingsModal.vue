@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 import type { CompactRunTileConfig } from "../lib/compact-tiles";
 import type { CustomItemFilterSound, ItemFilterGroup } from "../lib/item-filters";
@@ -87,7 +87,23 @@ const configIncludeSounds = defineModel<boolean>("configIncludeSounds", { requir
 const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearch", { required: true });
 const draftCompactRunTiles = defineModel<CompactRunTileConfig[]>("compactRunTiles", { required: true });
 
+const SETTINGS_TAB_ORDER: SettingsTab[] = ["general", "capture", "appearance", "sounds", "dashboard", "whatsNew", "support", "config"];
+const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
+  general: "General",
+  capture: "Capture",
+  appearance: "Appearance",
+  sounds: "Sounds",
+  dashboard: "Dashboard",
+  whatsNew: "What's New",
+  support: "Support",
+  config: "Import / Export",
+};
 const activeSettingsTab = ref<SettingsTab>(props.initialTab ?? "general");
+const settingsDialog = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+  settingsDialog.value?.focus();
+});
 
 watch(() => props.initialTab, (tab) => {
   if (tab) activeSettingsTab.value = tab;
@@ -96,11 +112,44 @@ watch(() => props.initialTab, (tab) => {
 function updateThemeAccent(value: string, themeId?: ThemeId) {
   emit("updateThemeAccent", value, themeId);
 }
+
+function selectSettingsTab(tab: SettingsTab) {
+  activeSettingsTab.value = tab;
+}
+
+function settingsTabButtonId(tab: SettingsTab): string {
+  return `settings-tab-${tab}`;
+}
+
+function settingsTabPanelId(tab: SettingsTab): string {
+  return `settings-panel-${tab}`;
+}
+
+function handleSettingsTabKeydown(event: KeyboardEvent) {
+  const currentIndex = SETTINGS_TAB_ORDER.indexOf(activeSettingsTab.value);
+  const lastIndex = SETTINGS_TAB_ORDER.length - 1;
+  const nextIndex =
+    event.key === "ArrowRight"
+      ? (currentIndex + 1) % SETTINGS_TAB_ORDER.length
+      : event.key === "ArrowLeft"
+        ? (currentIndex + lastIndex) % SETTINGS_TAB_ORDER.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? lastIndex
+            : -1;
+  if (nextIndex < 0) return;
+  event.preventDefault();
+  activeSettingsTab.value = SETTINGS_TAB_ORDER[nextIndex];
+  void nextTick(() => {
+    document.querySelector<HTMLButtonElement>(`[data-settings-tab="${activeSettingsTab.value}"]`)?.focus();
+  });
+}
 </script>
 
 <template>
-  <div class="modal-backdrop">
-    <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="modal-backdrop" @keydown.esc="$emit('close')">
+    <section ref="settingsDialog" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
       <div class="settings-heading">
         <div>
           <p class="eyebrow">Preferences</p>
@@ -110,98 +159,107 @@ function updateThemeAccent(value: string, themeId?: ThemeId) {
         <button class="settings-close" type="button" title="Close settings" aria-label="Close settings" @click="$emit('close')">x</button>
       </div>
 
-      <nav class="settings-tabs" aria-label="Settings sections">
-        <button :class="{ active: activeSettingsTab === 'general' }" type="button" @click="activeSettingsTab = 'general'">General</button>
-        <button :class="{ active: activeSettingsTab === 'capture' }" type="button" @click="activeSettingsTab = 'capture'">Capture</button>
-        <button :class="{ active: activeSettingsTab === 'appearance' }" type="button" @click="activeSettingsTab = 'appearance'">Appearance</button>
-        <button :class="{ active: activeSettingsTab === 'sounds' }" type="button" @click="activeSettingsTab = 'sounds'">Sounds</button>
-        <button :class="{ active: activeSettingsTab === 'dashboard' }" type="button" @click="activeSettingsTab = 'dashboard'">Dashboard</button>
-        <button :class="{ active: activeSettingsTab === 'whatsNew' }" type="button" @click="activeSettingsTab = 'whatsNew'">What's New</button>
-        <button :class="{ active: activeSettingsTab === 'support' }" type="button" @click="activeSettingsTab = 'support'">Support</button>
-        <button :class="{ active: activeSettingsTab === 'config' }" type="button" @click="activeSettingsTab = 'config'">Import / Export</button>
+      <nav class="settings-tabs" role="tablist" aria-label="Settings sections" @keydown="handleSettingsTabKeydown">
+        <button
+          v-for="tab in SETTINGS_TAB_ORDER"
+          :id="settingsTabButtonId(tab)"
+          :key="tab"
+          :data-settings-tab="tab"
+          role="tab"
+          :aria-selected="activeSettingsTab === tab"
+          :aria-controls="settingsTabPanelId(tab)"
+          :tabindex="activeSettingsTab === tab ? 0 : -1"
+          :class="{ active: activeSettingsTab === tab }"
+          type="button"
+          @click="selectSettingsTab(tab)"
+        >
+          {{ SETTINGS_TAB_LABELS[tab] }}
+        </button>
       </nav>
 
-      <SettingsGeneralTab
-        v-if="activeSettingsTab === 'general'"
-        v-model:log-limit="draftLogLimit"
-        v-model:timeline-limit="draftTimelineLimit"
-        v-model:timeline-type="draftTimelineType"
-        v-model:launch-through-steam="draftLaunchThroughSteam"
-        v-model:game-executable-path="draftGameExecutablePath"
-        v-model:always-on-top="draftAlwaysOnTop"
-        v-model:lock-compact-location="draftLockCompactLocation"
-        v-model:hide-socketables="draftHideSocketables"
-        v-model:hide-keys="draftHideKeys"
-        v-model:hide-materials="draftHideMaterials"
-        :log-limit-options="logLimitOptions"
-        :item-type-options="itemTypeOptions"
-        :item-filter-groups="itemFilterGroups"
-        @choose-game-executable="$emit('chooseGameExecutable')"
-      />
+      <section :id="settingsTabPanelId(activeSettingsTab)" role="tabpanel" :aria-labelledby="settingsTabButtonId(activeSettingsTab)" tabindex="0">
+        <SettingsGeneralTab
+          v-if="activeSettingsTab === 'general'"
+          v-model:log-limit="draftLogLimit"
+          v-model:timeline-limit="draftTimelineLimit"
+          v-model:timeline-type="draftTimelineType"
+          v-model:launch-through-steam="draftLaunchThroughSteam"
+          v-model:game-executable-path="draftGameExecutablePath"
+          v-model:always-on-top="draftAlwaysOnTop"
+          v-model:lock-compact-location="draftLockCompactLocation"
+          v-model:hide-socketables="draftHideSocketables"
+          v-model:hide-keys="draftHideKeys"
+          v-model:hide-materials="draftHideMaterials"
+          :log-limit-options="logLimitOptions"
+          :item-type-options="itemTypeOptions"
+          :item-filter-groups="itemFilterGroups"
+          @choose-game-executable="$emit('chooseGameExecutable')"
+        />
 
-      <SettingsCaptureTab
-        v-else-if="activeSettingsTab === 'capture'"
-        v-model:show-capture-details="draftShowCaptureDetails"
-        v-model:create-debug-mode="draftCreateDebugMode"
-        v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
-        v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
-        v-model:skip-empty-runs="draftSkipEmptyRuns"
-        v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
-      />
+        <SettingsCaptureTab
+          v-else-if="activeSettingsTab === 'capture'"
+          v-model:show-capture-details="draftShowCaptureDetails"
+          v-model:create-debug-mode="draftCreateDebugMode"
+          v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
+          v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
+          v-model:skip-empty-runs="draftSkipEmptyRuns"
+          v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
+        />
 
-      <SettingsAppearanceTab
-        v-else-if="activeSettingsTab === 'appearance'"
-        v-model:theme-id="draftThemeId"
-        v-model:compact-theme-id="draftCompactThemeId"
-        v-model:theme-accents="draftThemeAccents"
-        :theme-options="themeOptions"
-        @update-theme-accent="updateThemeAccent"
-        @import-theme="$emit('importTheme')"
-        @export-theme="$emit('exportTheme')"
-      />
+        <SettingsAppearanceTab
+          v-else-if="activeSettingsTab === 'appearance'"
+          v-model:theme-id="draftThemeId"
+          v-model:compact-theme-id="draftCompactThemeId"
+          v-model:theme-accents="draftThemeAccents"
+          :theme-options="themeOptions"
+          @update-theme-accent="updateThemeAccent"
+          @import-theme="$emit('importTheme')"
+          @export-theme="$emit('exportTheme')"
+        />
 
-      <SettingsSoundsTab
-        v-else-if="activeSettingsTab === 'sounds'"
-        :custom-item-filter-sounds="customItemFilterSounds"
-        @import-sounds="$emit('importSounds')"
-        @export-sounds="$emit('exportSounds')"
-        @remove-sound="$emit('removeSound', $event)"
-      />
+        <SettingsSoundsTab
+          v-else-if="activeSettingsTab === 'sounds'"
+          :custom-item-filter-sounds="customItemFilterSounds"
+          @import-sounds="$emit('importSounds')"
+          @export-sounds="$emit('exportSounds')"
+          @remove-sound="$emit('removeSound', $event)"
+        />
 
-      <SettingsDashboardTab
-        v-else-if="activeSettingsTab === 'dashboard'"
-        v-model:compact-run-tiles="draftCompactRunTiles"
-        :item-filter-groups="itemFilterGroups"
-        :item-suggestions="itemSuggestions"
-      />
+        <SettingsDashboardTab
+          v-else-if="activeSettingsTab === 'dashboard'"
+          v-model:compact-run-tiles="draftCompactRunTiles"
+          :item-filter-groups="itemFilterGroups"
+          :item-suggestions="itemSuggestions"
+        />
 
-      <SettingsWhatsNewTab
-        v-else-if="activeSettingsTab === 'whatsNew'"
-        :whats-new="whatsNew"
-      />
+        <SettingsWhatsNewTab
+          v-else-if="activeSettingsTab === 'whatsNew'"
+          :whats-new="whatsNew"
+        />
 
-      <SettingsSupportTab
-        v-else-if="activeSettingsTab === 'support'"
-        :support-diagnostics="supportDiagnostics"
-        :support-generated-files="supportGeneratedFiles"
-        :support-log-files="supportLogFiles"
-        :support-logs-path="supportLogsPath"
-        :support-bundle-busy="supportBundleBusy"
-        @save-support-diagnostics="$emit('saveSupportDiagnostics')"
-        @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
-      />
+        <SettingsSupportTab
+          v-else-if="activeSettingsTab === 'support'"
+          :support-diagnostics="supportDiagnostics"
+          :support-generated-files="supportGeneratedFiles"
+          :support-log-files="supportLogFiles"
+          :support-logs-path="supportLogsPath"
+          :support-bundle-busy="supportBundleBusy"
+          @save-support-diagnostics="$emit('saveSupportDiagnostics')"
+          @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
+        />
 
-      <SettingsConfigTab
-        v-else
-        v-model:config-include-app-settings="configIncludeAppSettings"
-        v-model:config-include-run-saving="configIncludeRunSaving"
-        v-model:config-include-report-tracking="configIncludeReportTracking"
-        v-model:config-include-loot-filters="configIncludeLootFilters"
-        v-model:config-include-sounds="configIncludeSounds"
-        v-model:config-include-item-research="configIncludeItemResearch"
-        @import-configuration="$emit('importConfiguration')"
-        @export-configuration="$emit('exportConfiguration')"
-      />
+        <SettingsConfigTab
+          v-else
+          v-model:config-include-app-settings="configIncludeAppSettings"
+          v-model:config-include-run-saving="configIncludeRunSaving"
+          v-model:config-include-report-tracking="configIncludeReportTracking"
+          v-model:config-include-loot-filters="configIncludeLootFilters"
+          v-model:config-include-sounds="configIncludeSounds"
+          v-model:config-include-item-research="configIncludeItemResearch"
+          @import-configuration="$emit('importConfiguration')"
+          @export-configuration="$emit('exportConfiguration')"
+        />
+      </section>
 
       <div class="settings-actions">
         <button class="icon-button ghost" type="button" @click="$emit('reset')">Reset Preferences</button>

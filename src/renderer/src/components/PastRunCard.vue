@@ -127,7 +127,7 @@ function ratePerHour(value: number, durationMs: number): number {
       </div>
       <div class="past-run-header-actions">
         <div class="past-run-time">{{ formatTime(run.sessionEndedAt) }}</div>
-        <button class="tag-selector-button" type="button" :aria-expanded="tagMenuOpen" @click="emit('toggle-tag-menu', run)">
+        <button class="tag-selector-button" type="button" :aria-expanded="tagMenuOpen" :aria-controls="`run-tag-menu-${run.id}`" @click="emit('toggle-tag-menu', run)">
           <span>Tag</span>
           <strong>{{ runTags(run)[0] ?? "Select" }}</strong>
         </button>
@@ -136,6 +136,7 @@ function ratePerHour(value: number, durationMs: number): number {
 
     <RunTagMenu
       v-if="tagMenuOpen"
+      :id="`run-tag-menu-${run.id}`"
       :run="run"
       :all-run-tags="allRunTags"
       @add-tag="addTagToRun"

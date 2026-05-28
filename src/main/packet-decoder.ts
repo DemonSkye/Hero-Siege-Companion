@@ -5,7 +5,6 @@ export interface ParsedPayload {
   dstPort: number;
   ack: number | undefined;
   payloadLength: number;
-  payloadBase64: string;
   text: string;
 }
 
@@ -85,7 +84,6 @@ export function getPayload(buffer: Buffer, nbytes: number, linkType: string): Pa
     dstPort: buffer.readUInt16BE(tcpOffset + 2),
     ack: buffer.readUInt32BE(tcpOffset + 8),
     payloadLength: payload.length,
-    payloadBase64: payload.toString("base64"),
     text: payload.toString("utf8").replace(/\0/g, ""),
   };
 }

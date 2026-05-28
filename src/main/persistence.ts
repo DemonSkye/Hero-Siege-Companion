@@ -33,7 +33,7 @@ export function loadPastRuns(filePath: string, log: StorageLog = noopLog): PastR
     if (!filePath || !fs.existsSync(filePath)) return [];
     const parsed = readJsonFile(filePath);
     if (!Array.isArray(parsed)) return [];
-    return parsed.slice(0, MAX_PAST_RUNS).filter(isPastRunSummary).map(normalizePastRunSummary);
+    return parsed.filter(isPastRunSummary).slice(0, MAX_PAST_RUNS).map(normalizePastRunSummary);
   } catch (error) {
     logStorageError(log, "past-runs-load-error", error);
     return [];
@@ -117,10 +117,11 @@ export function saveRunArchivePreferences(filePath: string, preferences: RunArch
   }
 }
 
-export function normalizeRunArchivePreferences(preferences: Partial<RunArchivePreferences>): RunArchivePreferences {
-  const minDuration = Number(preferences.minDurationMinutes);
+export function normalizeRunArchivePreferences(preferences: unknown): RunArchivePreferences {
+  const record = isRecord(preferences) ? preferences : {};
+  const minDuration = Number(record.minDurationMinutes);
   return {
-    skipEmptyRuns: Boolean(preferences.skipEmptyRuns),
+    skipEmptyRuns: Boolean(record.skipEmptyRuns),
     minDurationMinutes: Number.isFinite(minDuration) ? Math.max(0, Math.min(1440, Math.trunc(minDuration))) : 0,
   };
 }
@@ -145,9 +146,10 @@ export function saveCapturePreferences(filePath: string, preferences: CapturePre
   }
 }
 
-export function normalizeCapturePreferences(preferences: Partial<CapturePreferences>): CapturePreferences {
+export function normalizeCapturePreferences(preferences: unknown): CapturePreferences {
+  const record = isRecord(preferences) ? preferences : {};
   return {
-    createDebugMode: Boolean(preferences.createDebugMode),
+    createDebugMode: Boolean(record.createDebugMode),
   };
 }
 

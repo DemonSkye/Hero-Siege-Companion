@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import {
   ITEM_FILTER_RARITIES,
   soundName,
-  toggleFilterRarity,
-  toggleFilterType,
+  toggledNumberList,
+  toggledStringList,
   type ItemFilterGroup,
   type ItemFilterSoundOption,
   type ItemFilterSpecificItem,
 } from "../lib/item-filters";
-import { eventChecked } from "../lib/dom-events";
+import { eventChecked, eventValue } from "../lib/dom-events";
 import type { ItemResearchEntry } from "../lib/item-research";
 
 interface ItemTypeOption {
@@ -47,6 +47,7 @@ const emit = defineEmits<{
   "update:itemFilterDraftItem": [value: string];
   addGroup: [];
   selectGroup: [group: ItemFilterGroup];
+  updateGroup: [group: ItemFilterGroup];
   removeGroup: [group: ItemFilterGroup];
   restoreMissingGroup: [group: CompactFilterGroupRecoveryOption];
   addItemToGroup: [group: ItemFilterGroup, value?: string];
@@ -76,6 +77,16 @@ const itemDraftModel = computed({
 
 const itemResearchOpen = ref(props.unresolvedItemResearchCount > 0);
 const groupPendingRemoval = ref<ItemFilterGroup | null>(null);
+const removeGroupDialog = ref<HTMLElement | null>(null);
+interface ItemResearchDraft {
+  resolvedName: string;
+  notes: string;
+  baseResolvedName: string;
+  baseNotes: string;
+  baseIgnored: boolean;
+}
+
+const itemResearchDrafts = ref<Record<string, ItemResearchDraft>>({});
 const pendingRemovalSummary = computed(() => {
   const group = groupPendingRemoval.value;
   if (!group) return "";
@@ -103,8 +114,27 @@ watch(
   },
 );
 
+watch(
+  () => props.itemResearchEntries.map((entry) => `${entry.signature}\0${entry.resolvedName}\0${entry.notes}\0${entry.ignored}`).join("\n"),
+  () => {
+    const entriesBySignature = new Map(props.itemResearchEntries.map((entry) => [entry.signature, entry]));
+    const nextDrafts = { ...itemResearchDrafts.value };
+    let changed = false;
+    for (const [signature, draft] of Object.entries(nextDrafts)) {
+      const entry = entriesBySignature.get(signature);
+      const parentChanged = !entry || entry.resolvedName !== draft.baseResolvedName || entry.notes !== draft.baseNotes || entry.ignored !== draft.baseIgnored;
+      if (parentChanged) {
+        delete nextDrafts[signature];
+        changed = true;
+      }
+    }
+    if (changed) itemResearchDrafts.value = nextDrafts;
+  },
+);
+
 function requestRemoveGroup(group: ItemFilterGroup) {
   groupPendingRemoval.value = group;
+  void nextTick(() => removeGroupDialog.value?.focus());
 }
 
 function cancelRemoveGroup() {
@@ -117,8 +147,70 @@ function confirmRemoveGroup() {
   groupPendingRemoval.value = null;
 }
 
+function updateSelectedGroup(patch: Partial<ItemFilterGroup>) {
+  if (!props.selectedItemFilterGroup) return;
+  emit("updateGroup", { ...props.selectedItemFilterGroup, ...patch });
+}
+
+function updateSelectedGroupNumber(field: "volume" | "cooldownMs", event: Event) {
+  const value = Number(eventValue(event));
+  if (!Number.isFinite(value)) return;
+  updateSelectedGroup({ [field]: value } as Partial<ItemFilterGroup>);
+}
+
+function toggleSelectedGroupRarity(rarity: string, enabled: boolean) {
+  const group = props.selectedItemFilterGroup;
+  if (!group) return;
+  updateSelectedGroup({ rarities: toggledStringList(group.rarities, rarity, enabled) });
+}
+
+function toggleSelectedGroupType(type: number, enabled: boolean) {
+  const group = props.selectedItemFilterGroup;
+  if (!group) return;
+  updateSelectedGroup({ types: toggledNumberList(group.types, type, enabled) });
+}
+
+function updateSpecificItemSound(item: ItemFilterSpecificItem, soundId: string) {
+  const group = props.selectedItemFilterGroup;
+  if (!group) return;
+  updateSelectedGroup({
+    items: group.items.map((candidate) => (candidate.name === item.name ? { ...candidate, soundId } : candidate)),
+  });
+}
+
+function researchDraft(entry: ItemResearchEntry): { resolvedName: string; notes: string } {
+  const draft = itemResearchDrafts.value[entry.signature];
+  return draft ? { resolvedName: draft.resolvedName, notes: draft.notes } : { resolvedName: entry.resolvedName, notes: entry.notes };
+}
+
+function updateResearchDraft(entry: ItemResearchEntry, patch: Partial<{ resolvedName: string; notes: string }>) {
+  const current = itemResearchDrafts.value[entry.signature] ?? {
+    resolvedName: entry.resolvedName,
+    notes: entry.notes,
+    baseResolvedName: entry.resolvedName,
+    baseNotes: entry.notes,
+    baseIgnored: entry.ignored,
+  };
+  itemResearchDrafts.value = {
+    ...itemResearchDrafts.value,
+    [entry.signature]: { ...current, ...patch },
+  };
+}
+
 function saveResearchEntry(entry: ItemResearchEntry) {
-  emit("saveItemResearchEntry", entry.signature, { resolvedName: entry.resolvedName, notes: entry.notes });
+  emit("saveItemResearchEntry", entry.signature, researchDraft(entry));
+}
+
+function resetResearchEntry(entry: ItemResearchEntry) {
+  clearResearchDraft(entry.signature);
+  emit("resetItemResearchEntry", entry.signature);
+}
+
+function clearResearchDraft(signature: string) {
+  if (!(signature in itemResearchDrafts.value)) return;
+  const nextDrafts = { ...itemResearchDrafts.value };
+  delete nextDrafts[signature];
+  itemResearchDrafts.value = nextDrafts;
 }
 
 function entryTypeLabel(entry: ItemResearchEntry): string {
@@ -164,14 +256,14 @@ function formatSeen(timestamp: number): string {
           <div v-if="itemResearchEntries.length" class="item-research-list">
             <article v-for="entry in itemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName, ignored: entry.ignored }]">
               <div class="item-research-meta">
-                <strong>{{ entry.resolvedName || entry.label }}</strong>
+                <strong>{{ researchDraft(entry).resolvedName || entry.label }}</strong>
                 <span>{{ entry.rarity }} &middot; {{ entryTypeLabel(entry) }} #{{ entry.id }} &middot; Q{{ entry.dropQuality }} &middot; {{ entry.count }} seen &middot; {{ formatSeen(entry.lastSeenAt) }}</span>
               </div>
-              <input v-model="entry.resolvedName" type="text" placeholder="Actual item name" spellcheck="false" />
-              <input v-model="entry.notes" type="text" placeholder="Notes" spellcheck="false" />
+              <input :value="researchDraft(entry).resolvedName" type="text" placeholder="Actual item name" spellcheck="false" @input="updateResearchDraft(entry, { resolvedName: eventValue($event) })" />
+              <input :value="researchDraft(entry).notes" type="text" placeholder="Notes" spellcheck="false" @input="updateResearchDraft(entry, { notes: eventValue($event) })" />
               <div class="item-research-actions">
                 <button class="sound-test-button" type="button" @click="saveResearchEntry(entry)">Save</button>
-                <button v-if="entry.ignored || entry.resolvedName" class="sound-test-button" type="button" @click="$emit('resetItemResearchEntry', entry.signature)">Reset</button>
+                <button v-if="entry.ignored || researchDraft(entry).resolvedName" class="sound-test-button" type="button" @click="resetResearchEntry(entry)">Reset</button>
                 <button v-else class="shopping-remove" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)" :aria-label="`Ignore ${entry.label}`">x</button>
               </div>
             </article>
@@ -213,7 +305,7 @@ function formatSeen(timestamp: number): string {
         <section v-if="selectedItemFilterGroup" class="item-filter-editor">
           <div class="item-filter-editor-head">
             <label class="settings-check">
-              <input v-model="selectedItemFilterGroup.enabled" type="checkbox" />
+              <input :checked="selectedItemFilterGroup.enabled" type="checkbox" @change="updateSelectedGroup({ enabled: eventChecked($event) })" />
               <span>Enabled</span>
             </label>
             <button class="icon-button ghost" type="button" @click="requestRemoveGroup(selectedItemFilterGroup)">Remove Group</button>
@@ -222,12 +314,12 @@ function formatSeen(timestamp: number): string {
           <div class="item-filter-editor-grid">
             <label class="settings-row">
               <span>Group name</span>
-              <input v-model="selectedItemFilterGroup.name" type="text" spellcheck="false" />
+              <input :value="selectedItemFilterGroup.name" type="text" spellcheck="false" @input="updateSelectedGroup({ name: eventValue($event) })" />
             </label>
             <label class="settings-row">
               <span>Sound</span>
               <div class="sound-picker">
-                <select v-model="selectedItemFilterGroup.soundId">
+                <select :value="selectedItemFilterGroup.soundId" @change="updateSelectedGroup({ soundId: eventValue($event) })">
                   <option v-for="sound in itemFilterSounds" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
                 </select>
                 <button class="sound-test-button" type="button" @click="$emit('testSound', selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" aria-label="Play selected group sound">Play</button>
@@ -235,12 +327,12 @@ function formatSeen(timestamp: number): string {
             </label>
             <label class="settings-row">
               <span>Volume</span>
-              <input v-model.number="selectedItemFilterGroup.volume" type="range" min="0" max="100" />
+              <input :value="selectedItemFilterGroup.volume" type="range" min="0" max="100" @input="updateSelectedGroupNumber('volume', $event)" />
             </label>
             <label class="settings-row">
               <span>Cooldown</span>
               <div class="number-setting">
-                <input v-model.number="selectedItemFilterGroup.cooldownMs" type="number" min="0" max="30000" step="100" />
+                <input :value="selectedItemFilterGroup.cooldownMs" type="number" min="0" max="30000" step="100" @input="updateSelectedGroupNumber('cooldownMs', $event)" />
                 <small>ms</small>
               </div>
             </label>
@@ -253,7 +345,7 @@ function formatSeen(timestamp: number): string {
             </div>
             <div class="item-filter-chip-grid">
               <label v-for="rarity in ITEM_FILTER_RARITIES" :key="rarity" class="filter-box">
-                <input :checked="selectedItemFilterGroup.rarities.includes(rarity)" type="checkbox" @change="toggleFilterRarity(selectedItemFilterGroup, rarity, eventChecked($event))" />
+                <input :checked="selectedItemFilterGroup.rarities.includes(rarity)" type="checkbox" @change="toggleSelectedGroupRarity(rarity, eventChecked($event))" />
                 <span>{{ rarity }}</span>
               </label>
             </div>
@@ -266,7 +358,7 @@ function formatSeen(timestamp: number): string {
             </div>
             <div class="item-filter-type-grid">
               <label v-for="option in itemTypeOptions" :key="option.value" class="filter-box">
-                <input :checked="selectedItemFilterGroup.types.includes(Number(option.value))" type="checkbox" @change="toggleFilterType(selectedItemFilterGroup, Number(option.value), eventChecked($event))" />
+                <input :checked="selectedItemFilterGroup.types.includes(Number(option.value))" type="checkbox" @change="toggleSelectedGroupType(Number(option.value), eventChecked($event))" />
                 <span>{{ option.label }}</span>
               </label>
             </div>
@@ -296,7 +388,7 @@ function formatSeen(timestamp: number): string {
                 <div v-for="item in itemGroup.items" :key="`${itemGroup.typeLabel}-${item.name}`" class="item-filter-specific-row">
                   <span>{{ item.name }}</span>
                   <div class="sound-picker">
-                    <select v-model="item.soundId">
+                    <select :value="item.soundId" @change="updateSpecificItemSound(item, eventValue($event))">
                       <option value="">Group sound</option>
                       <option v-for="sound in itemFilterSounds" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
                     </select>
@@ -312,8 +404,8 @@ function formatSeen(timestamp: number): string {
         <p v-else class="empty-copy">Add a group to start building an item filter.</p>
       </div>
     </article>
-    <div v-if="groupPendingRemoval" class="modal-backdrop" @click.self="cancelRemoveGroup">
-      <section class="settings-panel item-filter-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="remove-filter-group-title">
+    <div v-if="groupPendingRemoval" class="modal-backdrop" @click.self="cancelRemoveGroup" @keydown.esc="cancelRemoveGroup">
+      <section ref="removeGroupDialog" class="settings-panel item-filter-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="remove-filter-group-title" tabindex="-1">
         <div class="settings-heading">
           <div>
             <p class="eyebrow">Confirm Remove</p>

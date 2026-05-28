@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { ITEM_FILTER_SUGGESTION_LIMIT, itemTypeLabelForName, type ItemFilterGroup } from "../lib/item-filters";
 import { ITEM_TYPE_OPTIONS, shoppingAutocompleteNames } from "../lib/item-options";
 import { TRACKED_RARITY_ORDER } from "../lib/past-runs";
@@ -30,6 +30,7 @@ const emit = defineEmits<{
 const reportDraftItem = ref("");
 const reportDraftGroupName = ref("");
 const selectedReportGroupId = ref("");
+const reportDialog = ref<HTMLElement | null>(null);
 
 const reportItemGroups = computed(() => props.reportConfig.itemGroups);
 const selectedReportGroup = computed(() => reportItemGroups.value.find((group) => group.id === selectedReportGroupId.value) ?? reportItemGroups.value[0] ?? null);
@@ -58,6 +59,10 @@ const reportMetricOptions = REPORT_METRIC_OPTIONS;
 const reportResourceDrawerOptions = REPORT_RESOURCE_DRAWER_OPTIONS;
 const reportTopDropLimitOptions = REPORT_TOP_DROP_LIMIT_OPTIONS;
 const itemTypeOptions = ITEM_TYPE_OPTIONS;
+
+onMounted(() => {
+  reportDialog.value?.focus();
+});
 
 function toggleReportMetric(metric: ReportMetricId, enabled: boolean) {
   emit("update:reportConfig", { ...props.reportConfig, summaryMetrics: toggledList(props.reportConfig.summaryMetrics, metric, enabled) });
@@ -176,8 +181,8 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
 
 <template>
   <Teleport to="body">
-    <div class="modal-backdrop" @click.self="$emit('close')">
-      <section class="settings-panel report-config-modal" role="dialog" aria-modal="true" aria-labelledby="report-config-title">
+    <div class="modal-backdrop" @click.self="$emit('close')" @keydown.esc="$emit('close')">
+      <section ref="reportDialog" class="settings-panel report-config-modal" role="dialog" aria-modal="true" aria-labelledby="report-config-title" tabindex="-1">
         <div class="settings-heading">
           <div>
             <p class="eyebrow">Past Runs</p>

@@ -17,7 +17,6 @@ function packet(overrides: Partial<ParsedPayload>): ParsedPayload {
     dstPort: 26921,
     ack: 1,
     payloadLength: 1,
-    payloadBase64: "",
     text: "",
     ...overrides,
   };

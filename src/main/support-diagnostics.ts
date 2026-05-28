@@ -85,7 +85,7 @@ export async function saveSupportDiagnosticsBundle(options: SaveSupportDiagnosti
     try {
       entries.push({
         name: file.name,
-        data: fs.readFileSync(file.path),
+        data: readSupportLogFile(file),
         modifiedAt: file.updatedAt ? new Date(file.updatedAt) : new Date(),
       });
     } catch {
@@ -100,6 +100,35 @@ export async function saveSupportDiagnosticsBundle(options: SaveSupportDiagnosti
     filePath: result.filePath,
     includedFiles: entries.map((entry) => entry.name),
   };
+}
+
+function readSupportLogFile(file: SupportDiagnosticLogFileInfo): Buffer {
+  const text = fs.readFileSync(file.path, "utf8");
+  const sanitizedText = file.name.startsWith("capture-wide-debug.log")
+    ? sanitizeWideDebugLogForSupport(text)
+    : text;
+  return Buffer.from(redactUserProfilePath(sanitizedText), "utf8");
+}
+
+export function sanitizeWideDebugLogForSupport(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => sanitizeWideDebugLogLine(line))
+    .join("\n");
+}
+
+function sanitizeWideDebugLogLine(line: string): string {
+  if (!line.trim()) return line;
+  try {
+    const entry = JSON.parse(line) as unknown;
+    if (!isRecord(entry)) return line;
+    const sanitized = { ...entry };
+    delete sanitized.payloadBase64;
+    delete sanitized.textBase64;
+    return JSON.stringify(sanitized);
+  } catch {
+    return line;
+  }
 }
 
 function getSupportLogFileInfo(userDataPath: string, file: { name: string; description: string }): SupportDiagnosticLogFileInfo {
@@ -150,5 +179,9 @@ function createSupportDiagnosticsSummary(diagnosticsSummary: string, info: Suppo
 }
 
 function redactUserProfilePath(value: string): string {
-  return value.replace(/^[A-Z]:\\Users\\[^\\]+/i, "%USERPROFILE%");
+  return value.replace(/[A-Z]:[\\/]+Users[\\/]+[^\\/\r\n"]+/gi, "%USERPROFILE%");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
