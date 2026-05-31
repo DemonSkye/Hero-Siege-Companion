@@ -36,12 +36,12 @@ defineEmits<{
         </button>
       </div>
       <div v-if="state.stats.satanicZone" class="compact-zone-effects">
-        <div>
+        <div class="compact-zone-pros">
           <span>Pros</span>
           <p v-if="!state.stats.satanicZone.pros.length">None found</p>
           <p v-for="effect in state.stats.satanicZone.pros" :key="`pro-${effect.id}`"><strong>{{ effect.name }}</strong></p>
         </div>
-        <div>
+        <div class="compact-zone-cons">
           <span>Cons</span>
           <p v-if="!state.stats.satanicZone.cons.length">None found</p>
           <p v-for="effect in state.stats.satanicZone.cons" :key="`con-${effect.id}`"><strong>{{ effect.name }}</strong></p>

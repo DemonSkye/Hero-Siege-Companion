@@ -52,7 +52,9 @@ export function getSupportDiagnosticsInfo(userDataPath: string, appVersion = "un
     userDataPath,
     appVersion,
     generatedFiles: SUPPORT_DIAGNOSTIC_GENERATED_FILES,
-    logFiles: SUPPORT_DIAGNOSTIC_LOG_FILES.map((file) => getSupportLogFileInfo(userDataPath, file)),
+    logFiles: SUPPORT_DIAGNOSTIC_LOG_FILES
+      .map((file) => getSupportLogFileInfo(userDataPath, file))
+      .filter((file) => file.exists),
   };
 }
 

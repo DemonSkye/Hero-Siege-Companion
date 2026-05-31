@@ -55,7 +55,7 @@ test("covers compact mode and support settings in an Electron window", async () 
 
     await page.getByRole("button", { name: "Settings" }).click();
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
-    await page.getByRole("button", { name: "Support" }).click();
+    await page.getByRole("tab", { name: "Support" }).click();
     await expect(page.getByLabel("Diagnostics files").getByText("diagnostics-summary.txt")).toBeVisible();
     await expect(page.locator(".settings-support-path code")).toHaveText(userDataDir);
     await expect(page.getByText("does not include packet captures")).toBeVisible();
@@ -66,21 +66,19 @@ test("covers compact mode and support settings in an Electron window", async () 
 
 test("searches, tags, and persists seeded Past Runs through the app UI", async () => {
   await withCompanionApp({ seedPastRuns: true }, async ({ page }) => {
-    await page.getByRole("button", { name: "Past Runs" }).click();
-    await expect(page.getByRole("heading", { name: "Past Runs" })).toBeVisible();
+    await page.getByRole("tab", { name: "Past Runs" }).click();
+    await expect(page.getByRole("heading", { name: "Past Runs", level: 1 })).toBeVisible();
     await expect(page.getByText("E2E Paladin")).toBeVisible();
 
     await page.getByPlaceholder("Tags, drops, resources, character, stats").fill("ruby");
     await expect(page.getByText("1/2 shown")).toBeVisible();
-    await expect(page.getByText("Ruby Key")).toBeVisible();
-    await page.getByRole("button", { name: "Compare" }).click();
-    await expect(page.getByLabel("Past run compare mode")).toContainText("Recent Matches vs Matching Runs");
-    await expect(page.getByLabel("Past run compare mode")).toContainText("Gold/h");
+    await page.getByRole("button", { name: "Details" }).click();
+    await expect(page.locator("#past-run-details-e2e-run-alpha").getByText("Ruby Key")).toBeVisible();
 
     await page.getByRole("button", { name: "Clear" }).click();
     await page.locator(".tag-selector-button").first().click();
     await page.getByPlaceholder("Search or create a new tag").fill("e2e reviewed");
-    await page.getByRole("button", { name: "Create #e2e reviewed" }).click();
+    await page.getByRole("menuitem", { name: "Create #e2e reviewed" }).click();
     await expect(page.locator(".run-tag-chip").filter({ hasText: "#e2e reviewed" })).toBeVisible();
 
     const state = await getRendererState(page);

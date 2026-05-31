@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ItemTimelineEntry } from "../../../shared/stats";
-import { formatTime } from "../lib/format";
+import { MAGIC_FIND_FLAG_HELP, MAGIC_FIND_FLAG_METRIC_LABEL, formatTime } from "../lib/format";
 import { itemIconUrl } from "../lib/item-assets";
-import { itemFilterTimelineOptions, type ItemFilterGroup } from "../lib/item-filters";
+import { itemFilterTimelineOptions, itemTimelineKey, type ItemFilterGroup, type ItemFilterMatchHistoryEntry } from "../lib/item-filters";
 import { isItemResearchCandidate } from "../lib/item-research";
 import type { LiveItemTypeOption } from "../lib/live-view-types";
 import LiveDashboardCard from "./LiveDashboardCard.vue";
@@ -11,6 +11,7 @@ import LiveDashboardCard from "./LiveDashboardCard.vue";
 const props = defineProps<{
   visibleItemTimeline: ItemTimelineEntry[];
   itemTimelineCount: number;
+  itemFilterMatchHistory: ItemFilterMatchHistoryEntry[];
   logLimitOptions: number[];
   itemTypeOptions: LiveItemTypeOption[];
   itemFilterGroups: ItemFilterGroup[];
@@ -19,6 +20,7 @@ const props = defineProps<{
 
 defineEmits<{
   identifyTimelineItem: [item: ItemTimelineEntry];
+  openItemFilterGroup: [groupId: string];
 }>();
 
 const timelineLimit = defineModel<number>("timelineLimit", { required: true });
@@ -26,11 +28,21 @@ const timelineType = defineModel<string>("timelineType", { required: true });
 const hideSocketables = defineModel<boolean>("hideSocketables", { required: true });
 const hideKeys = defineModel<boolean>("hideKeys", { required: true });
 const hideMaterials = defineModel<boolean>("hideMaterials", { required: true });
+const hideUnfilteredItems = defineModel<boolean>("hideUnfilteredItems", { required: true });
 
 const timelineItemFilterOptions = computed(() => itemFilterTimelineOptions(props.itemFilterGroups));
+const itemFilterMatchByTimelineKey = computed(() => new Map(props.itemFilterMatchHistory.map((entry) => [entry.id, entry])));
 
 function canIdentifyTimelineItem(item: ItemTimelineEntry): boolean {
   return props.developerItemResearchEnabled && isItemResearchCandidate(item);
+}
+
+function itemFilterMatch(item: ItemTimelineEntry): ItemFilterMatchHistoryEntry | null {
+  return itemFilterMatchByTimelineKey.value.get(itemTimelineKey(item)) ?? null;
+}
+
+function itemFilterGroupExists(groupId: string): boolean {
+  return props.itemFilterGroups.some((group) => group.id === groupId);
 }
 </script>
 
@@ -71,6 +83,10 @@ function canIdentifyTimelineItem(item: ItemTimelineEntry): boolean {
         <input v-model="hideMaterials" type="checkbox" />
         <span>Hide materials</span>
       </label>
+      <label class="filter-box">
+        <input v-model="hideUnfilteredItems" type="checkbox" />
+        <span>Hide unfiltered</span>
+      </label>
     </div>
     <div v-if="visibleItemTimeline.length" class="timeline">
       <div v-for="item in visibleItemTimeline" :key="`${item.createdAt}-${item.id}-${item.fingerprint}`" class="timeline-row">
@@ -80,8 +96,19 @@ function canIdentifyTimelineItem(item: ItemTimelineEntry): boolean {
         <strong>{{ item.label || (item.id ? `#${item.id}` : "Unknown item") }}</strong>
         <div class="timeline-meta-actions">
           <button v-if="canIdentifyTimelineItem(item)" class="sound-test-button timeline-identify-button" type="button" @click="$emit('identifyTimelineItem', item)">Identify</button>
+          <button
+            v-if="itemFilterMatch(item)"
+            class="timeline-filter-match"
+            type="button"
+            :disabled="!itemFilterGroupExists(itemFilterMatch(item)?.groupId ?? '')"
+            :title="`${itemFilterMatch(item)?.soundName} matched at ${formatTime(itemFilterMatch(item)?.matchedAt ?? item.createdAt)}`"
+            :aria-label="`Open ${itemFilterMatch(item)?.groupName} item filter`"
+            @click="$emit('openItemFilterGroup', itemFilterMatch(item)?.groupId ?? '')"
+          >
+            {{ itemFilterMatch(item)?.groupName }}
+          </button>
           <small>
-            {{ item.mfDrop ? "Magic find" : "Normal" }}
+            <span :title="item.mfDrop ? MAGIC_FIND_FLAG_HELP : undefined">{{ item.mfDrop ? MAGIC_FIND_FLAG_METRIC_LABEL : "Normal" }}</span>
             <template v-if="item.amount > 1">&middot; x{{ item.amount }}</template>
             &middot; {{ formatTime(item.createdAt) }}
           </small>

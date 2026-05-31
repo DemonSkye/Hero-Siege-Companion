@@ -25,12 +25,17 @@ afterEach(() => {
 });
 
 describe("support diagnostics metadata", () => {
-  test("includes the main process app version with diagnostics file metadata", () => {
-    const info = getSupportDiagnosticsInfo("C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion", "0.2.0");
+  test("includes the main process app version with available diagnostics file metadata", () => {
+    const userDataPath = path.join(tempDir, "userData");
+    fs.mkdirSync(userDataPath);
+    fs.writeFileSync(path.join(userDataPath, "app-debug.log"), "startup ok\n", "utf8");
+
+    const info = getSupportDiagnosticsInfo(userDataPath, "0.2.0");
 
     expect(info.appVersion).toBe("0.2.0");
     expect(info.generatedFiles[0].name).toBe("diagnostics-summary.txt");
-    expect(info.logFiles.map((file) => file.name)).toContain("capture-debug.log");
+    expect(info.logFiles.map((file) => file.name)).toEqual(["app-debug.log"]);
+    expect(info.logFiles[0]).toMatchObject({ exists: true, sizeBytes: 11 });
   });
 
   test("redacts verbose wide-log payload fields before support export", () => {
@@ -65,7 +70,7 @@ describe("support diagnostics metadata", () => {
 
     const result = await saveSupportDiagnosticsBundle({
       diagnosticsSummary: "Hero Siege Companion capture diagnostics",
-      appVersion: "0.2.2",
+      appVersion: "0.2.5",
       ownerWindow: null,
       userDataPath,
       onLogReadFailed: vi.fn(),
@@ -80,6 +85,7 @@ describe("support diagnostics metadata", () => {
     });
     expect(entries["diagnostics-summary.txt"]).toContain("%USERPROFILE%");
     expect(entries["diagnostics-summary.txt"]).not.toContain(os.userInfo().username);
+    expect(entries["diagnostics-summary.txt"]).not.toContain("capture-debug.log");
     expect(entries["app-debug.log"]).toContain("%USERPROFILE%\\AppData");
     expect(entries["app-debug.log"]).not.toContain(os.userInfo().username);
     expect(entries["capture-wide-debug.log"]).not.toContain("payloadBase64");

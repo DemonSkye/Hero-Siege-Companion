@@ -35,9 +35,10 @@ import {
   removeImportedLootSound,
 } from "./sound-import";
 import { getSupportDiagnosticsInfo, saveSupportDiagnosticsBundle } from "./support-diagnostics";
+import { saveTextFileWithDialog } from "./text-file-dialogs";
 import { MainWindowManager } from "./window-manager";
 import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
-import { IPC_CHANNELS } from "../shared/ipc";
+import { IPC_CHANNELS, type ConfigurationExportOptions } from "../shared/ipc";
 import { createInitialCompanionState } from "../shared/initial-state";
 import { hasRunActivity, normalizePastRunTags, StatsEngine, type PastRunSummary } from "../shared/stats";
 import type { SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
@@ -134,6 +135,28 @@ function createWindow(): void {
 
 function currentWindow() {
   return windowManager?.window ?? null;
+}
+
+function normalizeConfigurationExportOptions(options: unknown): Required<ConfigurationExportOptions> {
+  const fallback = {
+    title: "Export Hero Siege Companion configuration",
+    defaultPath: "hero-siege-companion-config.json",
+  };
+  if (!options || typeof options !== "object" || Array.isArray(options)) return fallback;
+
+  const title = normalizeDialogText((options as Partial<ConfigurationExportOptions>).title, fallback.title);
+  const defaultPath = normalizeDialogFileName((options as Partial<ConfigurationExportOptions>).defaultPath, fallback.defaultPath);
+  return { title, defaultPath };
+}
+
+function normalizeDialogText(value: unknown, fallback: string): string {
+  const text = typeof value === "string" ? value.replace(/[\r\n\t]/g, " ").trim() : "";
+  return text && text.length <= 80 ? text : fallback;
+}
+
+function normalizeDialogFileName(value: unknown, fallback: string): string {
+  const fileName = normalizeDialogText(value, fallback);
+  return /^[^<>:"/\\|?*]+\.json$/i.test(fileName) ? fileName : fallback;
 }
 
 function resolveIconPath(): string {
@@ -324,11 +347,12 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetCapture, (_event, preferences: Partial
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string) => {
+ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string, options?: ConfigurationExportOptions) => {
   const contents = embedConfigurationSoundData(String(json ?? ""), app.getPath("userData"));
+  const exportOptions = normalizeConfigurationExportOptions(options);
   const exported = await saveJsonFileWithDialog(currentWindow(), {
-    title: "Export Hero Siege Companion configuration",
-    defaultPath: "hero-siege-companion-config.json",
+    title: exportOptions.title,
+    defaultPath: exportOptions.defaultPath,
     contents,
   });
   if (exported) addLog("success", "Configuration exported.");
@@ -394,6 +418,20 @@ ipcMain.handle(IPC_CHANNELS.pastRunsExportJson, async (_event, json: string) => 
     contents: json,
   });
   if (exported) addLog("success", "Past runs JSON exported.");
+  return exported;
+});
+
+ipcMain.handle(IPC_CHANNELS.pastRunsExportCsv, async (_event, csv: string) => {
+  const exported = await saveTextFileWithDialog(currentWindow(), {
+    title: "Export Hero Siege past runs CSV",
+    defaultPath: "hero-siege-past-runs.csv",
+    contents: csv,
+    filters: [
+      { name: "CSV", extensions: ["csv"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (exported) addLog("success", "Past runs CSV exported.");
   return exported;
 });
 
@@ -500,6 +538,7 @@ app.whenReady().then(async () => {
     crashDumpsPath: app.getPath("crashDumps"),
     lastCrashReport: crashReporter.getLastCrashReport(),
   });
+  createWindow();
   captureService = await createCaptureRuntime(
     applyCaptureUpdate,
     debugLogPath,
@@ -507,7 +546,6 @@ app.whenReady().then(async () => {
     state.capturePreferences.createDebugMode,
   );
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
-  createWindow();
   installElectronE2eMainHooks({
     emitCaptureEvents: (events) => {
       if (!emitElectronE2eCaptureEvents(captureService, events)) applyCaptureUpdate({ events });
@@ -530,6 +568,10 @@ app.whenReady().then(async () => {
   addLog("info", "Hero Siege Companion started.");
   addLog("info", `Capture debug log: ${debugLogPath}`);
   addLog("info", `Wide capture log: ${wideDebugLogPath}`);
+  if (state.captureStatus === "error") {
+    publishStateNow();
+    return;
+  }
   if (await captureService.hasHeroSiegeProcess()) {
     await captureService.start();
   } else {

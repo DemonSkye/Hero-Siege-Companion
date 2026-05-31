@@ -1,7 +1,7 @@
 import { computed, type Ref } from "vue";
 import type { CompanionState } from "../../../shared/app-state";
 import { MATERIAL_LIKE_TIMELINE_TYPES } from "../../../shared/constants";
-import type { ItemDropCounter } from "../../../shared/stats";
+import type { ItemDropCounter, ItemTimelineEntry } from "../../../shared/stats";
 import {
   COMPACT_RUN_TILE_LIMIT,
   compactRunTileDisplay,
@@ -12,6 +12,7 @@ import {
   itemFilterIdFromTimelineValue,
   matchItemFilter,
   type ItemFilterGroup,
+  type ItemFilterMatchHistoryEntry,
 } from "./item-filters";
 import {
   TRACKED_RARITY_ORDER,
@@ -24,9 +25,11 @@ interface UseSessionDisplayOptions {
   now: Ref<number>;
   compactRunTiles: Ref<CompactRunTileConfig[]>;
   itemFilterGroups: Ref<ItemFilterGroup[]>;
+  itemFilterMatchHistory: Ref<ItemFilterMatchHistoryEntry[]>;
   logLimit: Ref<number>;
   timelineLimit: Ref<number>;
   timelineType: Ref<string>;
+  hideUnfilteredTimelineItems: Ref<boolean>;
   hideKeys: Ref<boolean>;
   hideMaterials: Ref<boolean>;
   hideSocketables: Ref<boolean>;
@@ -37,9 +40,11 @@ export function useSessionDisplay({
   now,
   compactRunTiles,
   itemFilterGroups,
+  itemFilterMatchHistory,
   logLimit,
   timelineLimit,
   timelineType,
+  hideUnfilteredTimelineItems,
   hideKeys,
   hideMaterials,
   hideSocketables,
@@ -93,20 +98,18 @@ export function useSessionDisplay({
     const groupId = itemFilterIdFromTimelineValue(timelineType.value);
     return groupId ? itemFilterGroups.value.find((group) => group.id === groupId) ?? null : null;
   });
-  const filteredItemTimeline = computed(() =>
-    state.value.stats.itemTimeline.filter((item) => {
-      if (hideKeys.value && item.type === 12) return false;
-      if (hideMaterials.value && MATERIAL_LIKE_TIMELINE_TYPES.has(item.type)) return false;
-      if (hideSocketables.value && item.type === 15) return false;
-      const selectedItemFilterGroupId = itemFilterIdFromTimelineValue(timelineType.value);
-      if (selectedItemFilterGroupId) {
-        const group = selectedTimelineItemFilterGroup.value;
-        return group ? Boolean(matchItemFilter(item, [group])) : true;
-      }
-      if (timelineType.value !== "all" && item.type !== Number(timelineType.value)) return false;
-      return true;
-    }),
+  const itemTimelineSourceCount = computed(() =>
+    hideUnfilteredTimelineItems.value ? itemFilterMatchHistory.value.length : state.value.stats.itemTimeline.length,
   );
+  const filteredItemTimeline = computed(() => {
+    if (hideUnfilteredTimelineItems.value) {
+      return itemFilterMatchHistory.value
+        .filter((entry) => itemPassesTimelineFilters(entry.item, entry.groupId))
+        .map((entry) => entry.item);
+    }
+
+    return state.value.stats.itemTimeline.filter((item) => itemPassesTimelineFilters(item));
+  });
   const visibleItemTimeline = computed(() => filteredItemTimeline.value.slice(0, timelineLimit.value));
   const recentLogs = computed(() => state.value.logs.slice(0, logLimit.value));
   const pastRuns = computed(() => state.value.pastRuns ?? []);
@@ -144,10 +147,25 @@ export function useSessionDisplay({
     trackedItems,
     compactTrackedItems,
     filteredItemTimeline,
+    itemTimelineSourceCount,
     visibleItemTimeline,
     recentLogs,
     pastRuns,
   };
+
+  function itemPassesTimelineFilters(item: ItemTimelineEntry, matchedGroupId = ""): boolean {
+    if (hideKeys.value && item.type === 12) return false;
+    if (hideMaterials.value && MATERIAL_LIKE_TIMELINE_TYPES.has(item.type)) return false;
+    if (hideSocketables.value && item.type === 15) return false;
+    const selectedItemFilterGroupId = itemFilterIdFromTimelineValue(timelineType.value);
+    if (selectedItemFilterGroupId) {
+      if (hideUnfilteredTimelineItems.value) return matchedGroupId === selectedItemFilterGroupId;
+      const group = selectedTimelineItemFilterGroup.value;
+      return group ? Boolean(matchItemFilter(item, [group])) : true;
+    }
+    if (timelineType.value !== "all" && item.type !== Number(timelineType.value)) return false;
+    return true;
+  }
 }
 
 function itemDropBreakdown(state: CompanionState, rarity: string): ItemDropCounter[] {

@@ -14,6 +14,14 @@ export interface ItemFilterSoundOption {
   name: string;
 }
 
+export interface ItemFilterSoundResolution {
+  soundId: string;
+  effectiveSoundId: string;
+  name: string;
+  fallbackName: string;
+  missingCustomSound: boolean;
+}
+
 export interface CustomItemFilterSound extends ItemFilterSoundOption {
   src: string;
   fileName: string;
@@ -31,19 +39,13 @@ export interface ItemFilterGroup {
   items: ItemFilterSpecificItem[];
 }
 
-export interface ItemFilterMatch {
-  itemLabel: string;
+export interface ItemFilterMatchHistoryEntry {
+  id: string;
+  item: ItemTimelineEntry;
+  groupId: string;
   groupName: string;
   soundName: string;
-  createdAt: number;
-}
-
-export interface ItemFilterMatchTotal {
-  id: string;
-  itemLabel: string;
-  groupName: string;
-  count: number;
-  lastMatchedAt: number;
+  matchedAt: number;
 }
 
 export interface ItemFilterRuleMatch {
@@ -84,6 +86,7 @@ export const ITEM_FILTER_SOUNDS: ItemFilterSoundOption[] = [
   { id: "bright-cascade", name: "Bright Cascade" },
   { id: "low-pulse", name: "Low Pulse" },
 ];
+export const ITEM_FILTER_FALLBACK_SOUND_ID = ITEM_FILTER_SOUNDS[0].id;
 export const CUSTOM_SOUND_LIMIT = 24;
 export const CUSTOM_SOUND_ID_PREFIX = "custom-sound:";
 
@@ -139,7 +142,7 @@ function normalizeItemFilterGroup(value: unknown, customSounds: CustomItemFilter
     id,
     name: stringField(value, "name") || "Untitled Group",
     enabled: value.enabled === undefined ? true : Boolean(value.enabled),
-    soundId: validSoundId(soundId, customSounds) ? soundId : ITEM_FILTER_SOUNDS[0].id,
+    soundId: normalizeItemFilterSoundId(soundId, customSounds, ITEM_FILTER_FALLBACK_SOUND_ID),
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(100, Math.trunc(volume))) : 70,
     cooldownMs: Number.isFinite(cooldownMs) ? Math.max(0, Math.min(30_000, Math.trunc(cooldownMs))) : 1000,
     rarities: normalizeStringList(value.rarities).filter((rarity) => ITEM_FILTER_RARITIES.includes(rarity)),
@@ -159,7 +162,7 @@ export function normalizeSpecificItems(value: unknown, customSounds: CustomItemF
     const normalizedName = normalizeLookupText(canonical);
     if (seen.has(normalizedName)) continue;
     seen.add(normalizedName);
-    const soundId = isRecord(item) && validSoundId(stringField(item, "soundId"), customSounds) ? stringField(item, "soundId") : "";
+    const soundId = isRecord(item) ? normalizeItemFilterSoundId(stringField(item, "soundId"), customSounds, "") : "";
     items.push({ name: canonical, soundId, typeLabel: itemTypeLabelForName(canonical) });
   }
   return sortSpecificItems(items).slice(0, 150);
@@ -209,12 +212,56 @@ export function customSoundForId(soundId: string, customSounds: CustomItemFilter
   return normalizeCustomItemFilterSounds(customSounds).find((sound) => sound.id === soundId) ?? null;
 }
 
+export function isCustomSoundId(soundId: string): boolean {
+  return soundId.trim().startsWith(CUSTOM_SOUND_ID_PREFIX);
+}
+
+export function resolveItemFilterSound(soundId: string, sounds: ItemFilterSoundOption[] = ITEM_FILTER_SOUNDS): ItemFilterSoundResolution {
+  const trimmedSoundId = soundId.trim();
+  const fallback = sounds.find((sound) => sound.id === ITEM_FILTER_FALLBACK_SOUND_ID) ?? ITEM_FILTER_SOUNDS[0];
+  const option = sounds.find((sound) => sound.id === trimmedSoundId);
+  if (option) {
+    return {
+      soundId: trimmedSoundId,
+      effectiveSoundId: option.id,
+      name: option.name,
+      fallbackName: fallback.name,
+      missingCustomSound: false,
+    };
+  }
+
+  if (isCustomSoundId(trimmedSoundId)) {
+    return {
+      soundId: trimmedSoundId,
+      effectiveSoundId: fallback.id,
+      name: "Missing custom sound",
+      fallbackName: fallback.name,
+      missingCustomSound: true,
+    };
+  }
+
+  return {
+    soundId: fallback.id,
+    effectiveSoundId: fallback.id,
+    name: fallback.name,
+    fallbackName: fallback.name,
+    missingCustomSound: false,
+  };
+}
+
 function validSoundId(soundId: string, customSounds: CustomItemFilterSound[] = []): boolean {
-  return itemFilterSoundOptions(customSounds).some((sound) => sound.id === soundId);
+  return itemFilterSoundOptions(customSounds).some((sound) => sound.id === soundId.trim());
+}
+
+function normalizeItemFilterSoundId(soundId: string, customSounds: CustomItemFilterSound[], fallbackSoundId: string): string {
+  const trimmedSoundId = soundId.trim();
+  if (!trimmedSoundId) return fallbackSoundId;
+  if (validSoundId(trimmedSoundId, customSounds)) return trimmedSoundId;
+  return isCustomSoundId(trimmedSoundId) ? trimmedSoundId : fallbackSoundId;
 }
 
 export function soundName(soundId: string, sounds: ItemFilterSoundOption[] = ITEM_FILTER_SOUNDS): string {
-  return sounds.find((sound) => sound.id === soundId)?.name ?? ITEM_FILTER_SOUNDS[0].name;
+  return resolveItemFilterSound(soundId, sounds).name;
 }
 
 export function canonicalItemName(name: string): string {

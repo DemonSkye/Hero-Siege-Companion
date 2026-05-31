@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import { MATERIAL_LIKE_TIMELINE_TYPES } from "../../src/shared/constants";
+import { lookupItemTranslationByName } from "../../src/shared/item-lookup";
+import { lookupKnownItemRarity } from "../../src/shared/item-rarity";
 import { captureMessages, identifyEvent, messageToEvents } from "../../src/shared/parser";
 import { hasRunActivity, StatsEngine } from "../../src/shared/stats";
 
@@ -119,17 +121,21 @@ test("active character identity packets set the displayed character without rese
 test("nearby player list entries do not overwrite the active character name", () => {
   const stats = new StatsEngine();
 
-  stats.applyEvents(messageToEvents([{ name: "Dante", accountUID: 3909410, hardcore: 0, season: 10 }]));
+  stats.applyEvents(messageToEvents([{ name: "Dante", accountUID: 3909410, hardcore: 0, season: 10, cross_region_identifier: "12000987609" }]));
   const playerListEvents = messageToEvents([
     {
       name: "OpBlast",
+      accountUID: 555001,
+      cross_region_identifier: "12000555001",
       nameColor: 6805557,
       level: 146,
       class: 22,
+      heroLevel: 146,
       platformUserName: "OpKryptonite",
       uid: 185295201,
       region: 3,
       slot: 21,
+      hardcore: 0,
       hc: 0,
       ssf: 1,
       season: 10,
@@ -140,6 +146,13 @@ test("nearby player list entries do not overwrite the active character name", ()
 
   assert.deepEqual(playerListEvents.map((event) => event.name), []);
   assert.equal(snapshot.accountName, "Dante");
+});
+
+test("account mode packets accept account id context without a route field", () => {
+  const events = messageToEvents([{ accountId: 39094, seasonal: 0, hardcore: 0, bloodPact: 6788 }]);
+
+  assert.deepEqual(events.map((event) => event.name), ["updateAccountMode"]);
+  assert.equal(events[0].value.seasonMode, "GBP");
 });
 
 test("blood pact route packets set GBP mode before gold snapshots arrive", () => {
@@ -275,6 +288,31 @@ test("item stats accept named rarity and magic find alias", () => {
 
   assert.equal(snapshot.items.Satanic.total, 1);
   assert.equal(snapshot.items.Satanic.mf, 1);
+});
+
+test("item parser accepts observed magic-find flag field names", () => {
+  const cases: Array<[string, Record<string, unknown>]> = [
+    ["mf_drop", { mf_drop: 1 }],
+    ["mfDrop", { mfDrop: "1" }],
+    ["m", { m: true }],
+  ];
+
+  for (const [fieldName, flag] of cases) {
+    const events = messageToEvents([
+      {
+        added_item_object: {
+          rarity: "Satanic",
+          item_id: 123,
+          type: 6,
+          addedItemFingerprint: `magic-find-${fieldName}`,
+          ...flag,
+        },
+      },
+    ]);
+
+    assert.equal(events[0].name, "itemAdded", fieldName);
+    assert.equal(events[0].value.mfDrop, 1, fieldName);
+  }
 });
 
 test("heroic-looking inventory weapon packets do not count without server announcement", () => {
@@ -895,6 +933,18 @@ test("known item rarity map classifies satanic drops", () => {
   assert.equal(snapshot.items.Satanic.total, 1);
 });
 
+test("wiki.gg verified aliases resolve to local item ids and rarities", () => {
+  assert.equal(lookupItemTranslationByName("St. Brooks Elementium Pistol")?.localizationId, "w_gun_st_brooks_elementium_pistol");
+  assert.equal(lookupItemTranslationByName("Destroyers End")?.localizationId, "rings_destroyers_end");
+  assert.equal(lookupItemTranslationByName("Komodos Bloodstrap")?.localizationId, "belts_komodo_dragon_leather_belt");
+  assert.equal(lookupItemTranslationByName("Sarcasters Coffee Mug")?.localizationId, "consumable_coffee_mug");
+
+  assert.equal(lookupKnownItemRarity(3, "St. Brooks Elementium Pistol"), "Angelic");
+  assert.equal(lookupKnownItemRarity(3, "Commander's Sentry Blaster"), "Angelic");
+  assert.equal(lookupKnownItemRarity(18, "Sung Lee's Flask of Carnage"), "Heroic");
+  assert.equal(lookupKnownItemRarity(18, "Sarcaster\u2019s Coffee Mug"), "Satanic");
+});
+
 test("known item rarity map classifies set boots", () => {
   const events = messageToEvents([
     {
@@ -1173,6 +1223,9 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
           "10-3909410-collectible-20-13": {
             pickup_add_data: { a: 10, b: 20, d: 1 },
           },
+          "10-3909410-collectible-22-13": {
+            pickup_add_data: { a: 16, b: 22, d: 1 },
+          },
           "10-3909410-collectible-24-13": {
             pickup_add_data: { a: 11, b: 24, d: 1 },
           },
@@ -1214,6 +1267,7 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
       "Battle Fragment",
       "The Hanged Man",
       "The Tower",
+      "The Magician",
       "The Wheel of Fortune",
       "Temperance",
       "The Devil",

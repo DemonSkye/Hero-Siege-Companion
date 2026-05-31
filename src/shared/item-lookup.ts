@@ -886,6 +886,15 @@ const ITEM_TRANSLATION_OVERRIDES: ItemTranslation[] = [
   { localizationId: "rings_scourge_loop", name: "Scourge Loop", gameId: 48, type: 7, weaponType: 0 },
 ];
 
+const ITEM_TRANSLATION_NAME_ALIASES: Array<{ name: string; type: number; gameId: number; weaponType: number }> = [
+  { name: "Destroyer's End", type: 7, gameId: 37, weaponType: 0 },
+  { name: "Destroyers End", type: 7, gameId: 37, weaponType: 0 },
+  { name: "Komodos Bloodstrap", type: 8, gameId: 49, weaponType: 0 },
+  { name: "Sarcaster's Coffee Mug", type: 18, gameId: 19, weaponType: 0 },
+  { name: "Sarcasters Coffee Mug", type: 18, gameId: 19, weaponType: 0 },
+  { name: "St. Brooks Elementium Pistol", type: 3, gameId: 8, weaponType: 14 },
+];
+
 // User-submitted research can confirm a generic inventory signature without
 // making every Heroic/Angelic inventory id trusted.
 const TRUSTED_INVENTORY_IDENTITY_KEYS = new Set<string>([
@@ -910,6 +919,11 @@ for (const item of ITEM_TRANSLATION_OVERRIDES) {
   exactLookup.set(lookupKey(item.type, item.gameId, item.weaponType), item);
   looseLookup.set(lookupKey(item.type, item.gameId), [item]);
   nameLookup.set(normalizeItemName(item.name), item);
+}
+
+for (const alias of ITEM_TRANSLATION_NAME_ALIASES) {
+  const target = exactLookup.get(lookupKey(alias.type, alias.gameId, alias.weaponType));
+  if (target) nameLookup.set(normalizeItemName(alias.name), target);
 }
 
 export function lookupItemTranslation(type: number, gameId: number, weaponType = 0): ItemTranslation | null {
@@ -942,6 +956,8 @@ function normalizeItemName(name: string): string {
   return name
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u2018\u2019`\u00b4]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
     .replace(/[’‘`´]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[\u2010-\u2015]/g, "-")

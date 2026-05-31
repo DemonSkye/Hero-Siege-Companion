@@ -1,0 +1,380 @@
+:root[data-background-texture] {
+  --background-texture-backdrop: none;
+  --background-texture-backdrop-light: none;
+  --background-texture-backdrop-size: auto;
+  --background-texture-backdrop-light-size: auto;
+  --background-texture-layer: none;
+  --background-texture-light: none;
+  --background-texture-compact: none;
+  --background-texture-layer-size: auto;
+  --background-texture-compact-size: auto;
+  --background-texture-backdrop-opacity: 0.58;
+  --background-texture-backdrop-light-opacity: 0.52;
+  --background-texture-opacity: 0.78;
+  --background-texture-light-opacity: 0.58;
+  --background-texture-compact-opacity: 0.72;
+}
+
+:root[data-background-texture] body::before,
+:root[data-background-texture] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: auto;
+  height: auto;
+  pointer-events: none;
+  animation: none;
+}
+
+:root[data-background-texture] body::before {
+  background: var(--background-texture-backdrop);
+  background-size: var(--background-texture-backdrop-size);
+  opacity: var(--background-texture-backdrop-opacity);
+}
+
+:root[data-background-texture] body::after {
+  background: var(--background-texture-backdrop-light);
+  background-size: var(--background-texture-backdrop-light-size);
+  opacity: var(--background-texture-backdrop-light-opacity);
+}
+
+:root[data-background-texture] .app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-background-texture] .app-shell:not(.compact) {
+  isolation: isolate;
+}
+
+:root[data-background-texture] .app-shell:not(.compact)::before,
+:root[data-background-texture] .app-shell:not(.compact)::after {
+  content: "";
+  position: fixed;
+  inset: 36px 0 0 24px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+:root[data-background-texture] .app-shell:not(.compact)::before {
+  background: var(--background-texture-layer);
+  background-size: var(--background-texture-layer-size);
+  opacity: var(--background-texture-opacity);
+}
+
+:root[data-background-texture] .app-shell:not(.compact)::after {
+  background: var(--background-texture-light);
+  opacity: var(--background-texture-light-opacity);
+}
+
+:root[data-background-texture] .app-shell.compact .compact-run-cover,
+:root[data-background-texture] .app-shell.compact .compact-zone-tray {
+  isolation: isolate;
+}
+
+:root[data-background-texture] .app-shell.compact .compact-run-cover::after,
+:root[data-background-texture] .app-shell.compact .compact-zone-tray::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background: var(--background-texture-compact);
+  background-size: var(--background-texture-compact-size);
+  opacity: var(--background-texture-compact-opacity);
+  animation: none;
+  pointer-events: none;
+}
+
+:root[data-background-texture] .app-shell.compact .compact-run-cover > *,
+:root[data-background-texture] .app-shell.compact .compact-zone-tray > * {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-background-texture="none"] {
+  --background-texture-backdrop-opacity: 0;
+  --background-texture-backdrop-light-opacity: 0;
+  --background-texture-opacity: 0;
+  --background-texture-light-opacity: 0;
+  --background-texture-compact-opacity: 0;
+}
+
+:root[data-background-texture="none"] body::before,
+:root[data-background-texture="none"] body::after,
+:root[data-background-texture="none"] .app-shell:not(.compact)::before,
+:root[data-background-texture="none"] .app-shell:not(.compact)::after,
+:root[data-background-texture="none"] .app-shell.compact .compact-run-cover::after,
+:root[data-background-texture="none"] .app-shell.compact .compact-zone-tray::after {
+  background: none;
+  opacity: 0;
+}
+
+:root[data-background-texture="carbon-fiber"] {
+  --background-texture-backdrop:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 8px),
+    radial-gradient(circle at 82% 2%, color-mix(in srgb, var(--user-accent) 18%, transparent), transparent 24rem),
+    linear-gradient(135deg, rgba(0, 0, 0, 0.22), transparent 55%);
+  --background-texture-backdrop-light:
+    linear-gradient(115deg, transparent 0 46%, rgba(255, 255, 255, 0.07) 50%, transparent 56% 100%);
+  --background-texture-layer:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.052) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 7px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 42%, rgba(255, 255, 255, 0.024));
+  --background-texture-light:
+    radial-gradient(circle at 16% 18%, color-mix(in srgb, var(--user-accent) 18%, transparent), transparent 18rem),
+    linear-gradient(115deg, transparent 0 47%, rgba(255, 255, 255, 0.045) 50%, transparent 54% 100%);
+  --background-texture-compact:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 7px),
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--user-accent) 17%, transparent), transparent 7rem);
+}
+
+:root[data-background-texture="brimstone"] {
+  --background-texture-backdrop:
+    radial-gradient(circle at 16% 18%, rgba(255, 69, 38, 0.28), transparent 18rem),
+    radial-gradient(circle at 86% 8%, rgba(255, 188, 79, 0.16), transparent 24rem),
+    repeating-linear-gradient(24deg, transparent 0 19px, rgba(255, 107, 54, 0.13) 20px 22px, transparent 23px 34px),
+    repeating-linear-gradient(116deg, transparent 0 36px, rgba(92, 9, 5, 0.34) 37px 42px, transparent 43px 60px),
+    linear-gradient(135deg, rgba(64, 8, 5, 0.42), transparent 58%);
+  --background-texture-backdrop-light:
+    radial-gradient(circle at 52% 80%, rgba(255, 78, 45, 0.18), transparent 22rem),
+    linear-gradient(118deg, transparent 0 38%, rgba(255, 146, 74, 0.14) 46%, transparent 54% 100%);
+  --background-texture-backdrop-opacity: 0.72;
+  --background-texture-backdrop-light-opacity: 0.62;
+  --background-texture-opacity: 0.9;
+  --background-texture-light-opacity: 0.72;
+  --background-texture-compact-opacity: 0.9;
+  --background-texture-layer:
+    radial-gradient(circle at 18% 20%, rgba(255, 78, 39, 0.18), transparent 16rem),
+    radial-gradient(circle at 80% 10%, rgba(255, 172, 83, 0.12), transparent 20rem),
+    repeating-linear-gradient(24deg, rgba(255, 93, 54, 0.11) 0 2px, transparent 2px 24px),
+    linear-gradient(135deg, rgba(55, 9, 6, 0.34), transparent 48%);
+  --background-texture-light:
+    linear-gradient(118deg, transparent 0 42%, rgba(255, 132, 74, 0.16) 48%, transparent 55% 100%),
+    radial-gradient(circle at 56% 72%, rgba(255, 68, 42, 0.13), transparent 22rem);
+  --background-texture-compact:
+    radial-gradient(circle at 0% 0%, rgba(255, 80, 45, 0.22), transparent 7rem),
+    repeating-linear-gradient(24deg, rgba(255, 151, 78, 0.12) 0 2px, transparent 2px 15px),
+    linear-gradient(135deg, rgba(72, 12, 8, 0.32), transparent 58%);
+}
+
+:root[data-background-texture="brushed-metal"] {
+  --background-texture-backdrop:
+    repeating-linear-gradient(90deg, rgba(15, 23, 31, 0.08) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(88, 102, 112, 0.18) 48%, rgba(255, 255, 255, 0.2));
+  --background-texture-backdrop-light:
+    radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.42), transparent 18rem),
+    linear-gradient(115deg, transparent 0 45%, rgba(255, 255, 255, 0.34) 50%, transparent 57% 100%);
+  --background-texture-opacity: 0.86;
+  --background-texture-light-opacity: 0.52;
+  --background-texture-compact-opacity: 0.78;
+  --background-texture-layer:
+    repeating-linear-gradient(90deg, rgba(15, 23, 31, 0.06) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(88, 102, 112, 0.12) 48%, rgba(255, 255, 255, 0.16));
+  --background-texture-light:
+    radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.32), transparent 18rem),
+    linear-gradient(115deg, transparent 0 45%, rgba(255, 255, 255, 0.32) 50%, transparent 57% 100%);
+  --background-texture-compact:
+    repeating-linear-gradient(90deg, rgba(15, 23, 31, 0.08) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(84, 98, 108, 0.12));
+}
+
+:root[data-background-texture="slate-grid"] {
+  --background-texture-backdrop:
+    linear-gradient(rgba(137, 216, 199, 0.052) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137, 216, 199, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--user-accent) 14%, transparent), transparent 24rem);
+  --background-texture-backdrop-light:
+    linear-gradient(115deg, transparent 0 48%, rgba(255, 255, 255, 0.05) 51%, transparent 54% 100%);
+  --background-texture-backdrop-size: 28px 28px, 28px 28px, auto;
+  --background-texture-layer:
+    linear-gradient(rgba(137, 216, 199, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137, 216, 199, 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--user-accent) 12%, transparent), transparent 22rem);
+  --background-texture-light:
+    linear-gradient(115deg, transparent 0 48%, rgba(255, 255, 255, 0.034) 51%, transparent 54% 100%);
+  --background-texture-compact:
+    linear-gradient(rgba(137, 216, 199, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137, 216, 199, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--user-accent) 16%, transparent), transparent 8rem);
+  --background-texture-layer-size: 28px 28px;
+  --background-texture-compact-size: 28px 28px, 28px 28px, auto;
+}
+
+:root[data-background-texture="slate-grid"] .app-shell:not(.compact)::before,
+:root[data-background-texture="slate-grid"] .app-shell.compact .compact-run-cover::after,
+:root[data-background-texture="slate-grid"] .app-shell.compact .compact-zone-tray::after {
+  background-size: 28px 28px, 28px 28px, auto;
+}
+
+:root[data-background-texture="neon-grid"] {
+  --background-texture-backdrop:
+    linear-gradient(rgba(0, 240, 255, 0.105) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.085) 1px, transparent 1px),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 5px),
+    radial-gradient(circle at 80% 0%, rgba(255, 0, 96, 0.18), transparent 26rem),
+    radial-gradient(circle at 15% 12%, rgba(0, 240, 255, 0.18), transparent 20rem);
+  --background-texture-backdrop-light:
+    linear-gradient(110deg, transparent 0 45%, rgba(0, 240, 255, 0.16) 48%, rgba(255, 0, 96, 0.1) 52%, transparent 58% 100%);
+  --background-texture-backdrop-size: 30px 30px, 30px 30px, auto, auto, auto;
+  --background-texture-backdrop-opacity: 0.7;
+  --background-texture-backdrop-light-opacity: 0.62;
+  --background-texture-opacity: 0.88;
+  --background-texture-light-opacity: 0.68;
+  --background-texture-compact-opacity: 0.46;
+  --background-texture-layer:
+    linear-gradient(rgba(0, 240, 255, 0.085) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.065) 1px, transparent 1px),
+    radial-gradient(circle at 80% 0%, rgba(255, 0, 96, 0.1), transparent 26rem),
+    radial-gradient(circle at 15% 12%, rgba(0, 240, 255, 0.12), transparent 20rem);
+  --background-texture-light:
+    linear-gradient(110deg, transparent 0 45%, rgba(0, 240, 255, 0.14) 48%, rgba(255, 0, 96, 0.08) 52%, transparent 58% 100%);
+  --background-texture-compact:
+    linear-gradient(rgba(0, 240, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.052) 1px, transparent 1px),
+    radial-gradient(circle at 100% 0%, rgba(255, 0, 96, 0.08), transparent 7rem);
+  --background-texture-layer-size: 30px 30px, 30px 30px, auto, auto;
+  --background-texture-compact-size: 26px 26px, 26px 26px, auto;
+}
+
+:root[data-background-texture="neon-grid"] .app-shell:not(.compact)::before,
+:root[data-background-texture="neon-grid"] .app-shell.compact .compact-run-cover::after,
+:root[data-background-texture="neon-grid"] .app-shell.compact .compact-zone-tray::after {
+  background-size: 32px 32px, 32px 32px, auto, auto;
+}
+
+:root[data-background-texture="reliquary-inlay"] {
+  --background-texture-backdrop:
+    repeating-linear-gradient(45deg, rgba(216, 180, 95, 0.075) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(135deg, rgba(142, 102, 42, 0.055) 0 1px, transparent 1px 14px),
+    radial-gradient(circle at 14% 12%, rgba(216, 180, 95, 0.16), transparent 18rem),
+    linear-gradient(135deg, rgba(84, 61, 30, 0.2), transparent 54%);
+  --background-texture-backdrop-light:
+    linear-gradient(116deg, transparent 0 43%, rgba(255, 223, 141, 0.12) 49%, transparent 56% 100%),
+    radial-gradient(circle at 82% 72%, rgba(142, 102, 42, 0.12), transparent 20rem);
+  --background-texture-layer:
+    repeating-linear-gradient(45deg, rgba(216, 180, 95, 0.04) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(135deg, rgba(142, 102, 42, 0.035) 0 1px, transparent 1px 14px),
+    radial-gradient(circle at 14% 12%, rgba(216, 180, 95, 0.12), transparent 18rem);
+  --background-texture-light:
+    linear-gradient(116deg, transparent 0 43%, rgba(255, 223, 141, 0.08) 49%, transparent 56% 100%),
+    radial-gradient(circle at 82% 72%, rgba(142, 102, 42, 0.1), transparent 20rem);
+  --background-texture-compact:
+    repeating-linear-gradient(45deg, rgba(216, 180, 95, 0.07) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(135deg, rgba(255, 226, 150, 0.035) 0 1px, transparent 1px 12px),
+    radial-gradient(circle at 0% 0%, rgba(216, 180, 95, 0.13), transparent 8rem);
+}
+
+:root[data-background-texture="void-fracture"] {
+  --background-texture-backdrop:
+    linear-gradient(126deg, transparent 0 27%, rgba(177, 147, 255, 0.13) 28%, transparent 29% 100%),
+    linear-gradient(38deg, transparent 0 62%, rgba(105, 230, 208, 0.1) 63%, transparent 64% 100%),
+    radial-gradient(circle at 70% 8%, rgba(177, 147, 255, 0.18), transparent 24rem),
+    radial-gradient(circle at 18% 24%, rgba(105, 230, 208, 0.13), transparent 18rem);
+  --background-texture-backdrop-light:
+    linear-gradient(116deg, transparent 0 46%, rgba(232, 255, 250, 0.11) 50%, transparent 54% 100%);
+  --background-texture-layer:
+    linear-gradient(126deg, transparent 0 28%, rgba(177, 147, 255, 0.075) 29%, transparent 30% 100%),
+    linear-gradient(38deg, transparent 0 62%, rgba(105, 230, 208, 0.06) 63%, transparent 64% 100%),
+    radial-gradient(circle at 70% 8%, rgba(177, 147, 255, 0.12), transparent 24rem);
+  --background-texture-light:
+    linear-gradient(116deg, transparent 0 46%, rgba(232, 255, 250, 0.07) 50%, transparent 54% 100%),
+    radial-gradient(circle at 18% 24%, rgba(105, 230, 208, 0.1), transparent 18rem);
+  --background-texture-compact:
+    linear-gradient(126deg, transparent 0 33%, rgba(177, 147, 255, 0.12) 34%, transparent 35% 100%),
+    linear-gradient(38deg, transparent 0 60%, rgba(105, 230, 208, 0.08) 61%, transparent 62% 100%),
+    radial-gradient(circle at 94% 0%, rgba(177, 147, 255, 0.12), transparent 7rem);
+}
+
+:root[data-background-texture="hex-mesh"] {
+  --background-texture-backdrop:
+    radial-gradient(circle farthest-side at 0 50%, rgba(137, 216, 199, 0.075) 23.5%, transparent 24%),
+    radial-gradient(circle farthest-side at 0 50%, rgba(137, 216, 199, 0.075) 23.5%, transparent 24%),
+    linear-gradient(rgba(137, 216, 199, 0.055) 14%, transparent 14% 85%, rgba(137, 216, 199, 0.055) 86%),
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--user-accent) 14%, transparent), transparent 20rem);
+  --background-texture-backdrop-light:
+    linear-gradient(110deg, transparent 0 47%, rgba(255, 255, 255, 0.06) 50%, transparent 53% 100%);
+  --background-texture-backdrop-size: 24px 42px, 24px 42px, 24px 42px, auto;
+  --background-texture-layer:
+    radial-gradient(circle farthest-side at 0 50%, rgba(137, 216, 199, 0.04) 23.5%, transparent 24%),
+    radial-gradient(circle farthest-side at 0 50%, rgba(137, 216, 199, 0.04) 23.5%, transparent 24%),
+    linear-gradient(rgba(137, 216, 199, 0.03) 14%, transparent 14% 85%, rgba(137, 216, 199, 0.03) 86%),
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--user-accent) 12%, transparent), transparent 20rem);
+  --background-texture-light:
+    linear-gradient(110deg, transparent 0 47%, rgba(255, 255, 255, 0.04) 50%, transparent 53% 100%);
+  --background-texture-compact:
+    radial-gradient(circle farthest-side at 0 50%, rgba(137, 216, 199, 0.08) 23.5%, transparent 24%),
+    linear-gradient(rgba(137, 216, 199, 0.05) 14%, transparent 14% 85%, rgba(137, 216, 199, 0.05) 86%),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--user-accent) 16%, transparent), transparent 8rem);
+}
+
+:root[data-background-texture="hex-mesh"] .app-shell:not(.compact)::before {
+  background-position: 0 0, 12px 21px, 0 0, 0 0;
+  background-size: 24px 42px, 24px 42px, 24px 42px, auto;
+}
+
+:root[data-background-texture="hex-mesh"] .app-shell.compact .compact-run-cover::after,
+:root[data-background-texture="hex-mesh"] .app-shell.compact .compact-zone-tray::after {
+  background-size: 20px 35px, 20px 35px, auto;
+}
+
+:root[data-background-texture="arcane-sigil"] {
+  --background-texture-backdrop:
+    radial-gradient(circle at 18% 22%, transparent 0 2.8rem, rgba(185, 130, 255, 0.08) 2.9rem 3rem, transparent 3.1rem),
+    radial-gradient(circle at 82% 14%, transparent 0 4.8rem, rgba(0, 240, 255, 0.07) 4.9rem 5rem, transparent 5.1rem),
+    repeating-conic-gradient(from 45deg at 18% 22%, rgba(185, 130, 255, 0.07) 0 4deg, transparent 4deg 18deg),
+    radial-gradient(circle at 18% 22%, rgba(185, 130, 255, 0.12), transparent 14rem),
+    linear-gradient(135deg, rgba(185, 130, 255, 0.08), transparent 54%);
+  --background-texture-backdrop-light:
+    linear-gradient(116deg, transparent 0 46%, rgba(0, 240, 255, 0.07) 50%, transparent 54% 100%);
+  --background-texture-layer:
+    radial-gradient(circle at 18% 22%, transparent 0 2.8rem, rgba(185, 130, 255, 0.05) 2.9rem 3rem, transparent 3.1rem),
+    radial-gradient(circle at 82% 14%, transparent 0 4.8rem, rgba(0, 240, 255, 0.045) 4.9rem 5rem, transparent 5.1rem),
+    repeating-conic-gradient(from 45deg at 18% 22%, rgba(185, 130, 255, 0.045) 0 4deg, transparent 4deg 18deg),
+    linear-gradient(135deg, rgba(185, 130, 255, 0.06), transparent 54%);
+  --background-texture-light:
+    radial-gradient(circle at 18% 22%, rgba(185, 130, 255, 0.08), transparent 12rem),
+    linear-gradient(116deg, transparent 0 46%, rgba(0, 240, 255, 0.045) 50%, transparent 54% 100%);
+  --background-texture-compact:
+    radial-gradient(circle at 10% 10%, transparent 0 2.6rem, rgba(185, 130, 255, 0.09) 2.7rem 2.82rem, transparent 2.95rem),
+    repeating-conic-gradient(from 45deg at 10% 10%, rgba(185, 130, 255, 0.08) 0 5deg, transparent 5deg 20deg),
+    radial-gradient(circle at 100% 0%, rgba(0, 240, 255, 0.09), transparent 7rem);
+}
+
+:root[data-background-texture="starfield-dust"] {
+  --background-texture-backdrop:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 32% 74%, rgba(255, 255, 255, 0.14) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 26%, color-mix(in srgb, var(--user-accent) 22%, transparent) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 84% 82%, rgba(255, 255, 255, 0.14) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 48% 10%, color-mix(in srgb, var(--user-accent) 15%, transparent), transparent 22rem);
+  --background-texture-backdrop-light:
+    radial-gradient(circle at 70% 12%, rgba(255, 255, 255, 0.08), transparent 24rem),
+    linear-gradient(115deg, transparent 0 48%, rgba(255, 255, 255, 0.05) 51%, transparent 54% 100%);
+  --background-texture-backdrop-size: 132px 132px, 148px 148px, 176px 176px, 208px 208px, auto;
+  --background-texture-layer:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.18) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 32% 74%, rgba(255, 255, 255, 0.12) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 26%, color-mix(in srgb, var(--user-accent) 18%, transparent) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 84% 82%, rgba(255, 255, 255, 0.1) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 48% 10%, color-mix(in srgb, var(--user-accent) 12%, transparent), transparent 22rem);
+  --background-texture-light:
+    radial-gradient(circle at 70% 12%, rgba(255, 255, 255, 0.06), transparent 24rem),
+    linear-gradient(115deg, transparent 0 48%, rgba(255, 255, 255, 0.04) 51%, transparent 54% 100%);
+  --background-texture-compact:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 26%, color-mix(in srgb, var(--user-accent) 22%, transparent) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 48% 10%, color-mix(in srgb, var(--user-accent) 16%, transparent), transparent 7rem);
+}
+
+:root[data-background-texture="starfield-dust"] .app-shell:not(.compact)::before {
+  background-size: 132px 132px, 148px 148px, 176px 176px, 208px 208px, auto;
+}
+
+:root[data-background-texture="starfield-dust"] .app-shell.compact .compact-run-cover::after,
+:root[data-background-texture="starfield-dust"] .app-shell.compact .compact-zone-tray::after {
+  background-size: 104px 104px, 132px 132px, auto;
+}

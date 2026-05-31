@@ -10,37 +10,42 @@ import {
   searchTerms as termsForSearch,
   uniquePastRunTags,
 } from "../lib/past-run-search";
-import { aggregatePastRuns, comparePastRunAggregates, createPastRunsExportPayload, type PastRunDropFilterGroup, type PastRunsExportPayload } from "../lib/past-runs";
-import { formatDuration, formatNumber } from "../lib/format";
+import {
+  aggregatePastRuns,
+  createPastRunsAggregateCsv,
+  createPastRunsDiscordSummary,
+  createPastRunsExportPayload,
+  type PastRunDropFilterGroup,
+  type PastRunsExportPayload,
+} from "../lib/past-runs";
 import type { PostRunReportConfig } from "../lib/report-config";
 import { itemFilterHasTimelineCriteria, type ItemFilterGroup } from "../lib/item-filters";
 
 const props = defineProps<{
   pastRuns: PastRunSummary[];
-  expandedDropKey: string | null;
   reportConfig: PostRunReportConfig;
   itemFilterGroups: ItemFilterGroup[];
 }>();
 
 const emit = defineEmits<{
-  "update:expandedDropKey": [value: string | null];
   "update:reportConfig": [value: PostRunReportConfig];
   "update-run-tags": [runId: string, tags: string[]];
   "export-runs-json": [payload: PastRunsExportPayload];
+  "export-runs-csv": [csv: string];
+  "copy-summary": [summary: string];
 }>();
 
 const showReportConfig = ref(false);
-const compareMode = ref(false);
 const runSearchQuery = ref("");
 const activeTagRunId = ref<string | null>(null);
+const expandedRunId = ref<string | null>(null);
 
 const activeReportGroups = computed<PastRunDropFilterGroup[]>(() => [
   ...props.reportConfig.itemGroups
-    .filter((group) => group.enabled)
-    .map((group) => ({ ...group, emptyCriteriaMatchesAll: true })),
-  ...props.reportConfig.itemFilterGroupIds
-    .map((groupId) => props.itemFilterGroups.find((group) => group.id === groupId))
-    .filter((group): group is ItemFilterGroup => Boolean(group) && itemFilterHasTimelineCriteria(group))
+    .filter((group) => props.reportConfig.summaryItems.includes(`group:${group.id}`))
+    .map((group) => ({ ...group, enabled: true, emptyCriteriaMatchesAll: true })),
+  ...props.itemFilterGroups
+    .filter((group) => props.reportConfig.summaryItems.includes(`filter:${group.id}`) && itemFilterHasTimelineCriteria(group))
     .map((group) => ({
       enabled: true,
       rarities: group.rarities,
@@ -52,14 +57,9 @@ const activeReportGroups = computed<PastRunDropFilterGroup[]>(() => [
 const allRunTags = computed(() => uniquePastRunTags(props.pastRuns));
 const searchTerms = computed(() => termsForSearch(runSearchQuery.value));
 const filteredPastRuns = computed(() => filterPastRunsBySearch(props.pastRuns, searchTerms.value));
-const allRunAggregate = computed(() => aggregatePastRuns(filteredPastRuns.value, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
-const recentRunAggregate = computed(() => aggregatePastRuns(filteredPastRuns.value.slice(0, 10), props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
-const aggregatePanels = computed(() => [
-  { key: "all", title: searchTerms.value.length ? "Matching Runs" : "All Runs", subtitle: `${allRunAggregate.value.runCount} saved`, aggregate: allRunAggregate.value },
-  { key: "recent", title: searchTerms.value.length ? "Recent Matches" : "Last 10 Runs", subtitle: `${recentRunAggregate.value.runCount} included`, aggregate: recentRunAggregate.value },
-]);
-const comparisonTitle = computed(() => `${aggregatePanels.value[1].title} vs ${aggregatePanels.value[0].title}`);
-const comparisonRows = computed(() => comparePastRunAggregates(recentRunAggregate.value, allRunAggregate.value));
+const filteredRunAggregate = computed(() => aggregatePastRuns(filteredPastRuns.value, props.reportConfig.dropRarities, props.reportConfig.topDropLimit, [], activeReportGroups.value));
+const aggregatePanelTitle = computed(() => (searchTerms.value.length ? "Matching Runs" : "All Runs"));
+const aggregatePanelSubtitle = computed(() => (searchTerms.value.length ? `${filteredRunAggregate.value.runCount} shown` : `${filteredRunAggregate.value.runCount} saved`));
 const pastRunCountLabel = computed(() => {
   if (!searchTerms.value.length) return `${props.pastRuns.length}/100 saved`;
   return `${filteredPastRuns.value.length}/${props.pastRuns.length} shown`;
@@ -81,18 +81,31 @@ function forwardRunTags(runId: string, tags: string[]) {
   emit("update-run-tags", runId, tags);
 }
 
+function toggleExpandedRun(runId: string) {
+  expandedRunId.value = expandedRunId.value === runId ? null : runId;
+}
+
 function exportMatchingRuns() {
-  emit("export-runs-json", createPastRunsExportPayload(filteredPastRuns.value, runSearchQuery.value, allRunAggregate.value));
+  emit("export-runs-json", createPastRunsExportPayload(filteredPastRuns.value, runSearchQuery.value, filteredRunAggregate.value));
 }
 
-function comparisonValue(row: ReturnType<typeof comparePastRunAggregates>[number], value: number): string {
-  return row.format === "duration" ? formatDuration(value) : formatNumber(value);
+function aggregateShareOptions() {
+  return {
+    title: aggregatePanelTitle.value,
+    query: runSearchQuery.value,
+    runs: filteredPastRuns.value,
+    aggregate: filteredRunAggregate.value,
+    reportConfig: props.reportConfig,
+    itemFilterGroups: props.itemFilterGroups,
+  };
 }
 
-function comparisonDelta(row: ReturnType<typeof comparePastRunAggregates>[number]): string {
-  const prefix = row.delta > 0 ? "+" : "";
-  const percent = row.deltaPercent === null ? "" : ` (${prefix}${Math.round(row.deltaPercent * 100)}%)`;
-  return `${prefix}${comparisonValue(row, Math.abs(row.delta))}${percent}`;
+function exportMatchingRunsCsv() {
+  emit("export-runs-csv", createPastRunsAggregateCsv(aggregateShareOptions()));
+}
+
+function copyMatchingRunsSummary() {
+  emit("copy-summary", createPastRunsDiscordSummary(aggregateShareOptions()));
 }
 
 </script>
@@ -107,7 +120,8 @@ function comparisonDelta(row: ReturnType<typeof comparePastRunAggregates>[number
         </div>
         <div class="past-runs-heading-actions">
           <button class="icon-button ghost" type="button" @click="showReportConfig = true">Configure Report</button>
-          <button class="icon-button ghost" type="button" :disabled="!filteredPastRuns.length" @click="compareMode = !compareMode">{{ compareMode ? "Hide Compare" : "Compare" }}</button>
+          <button class="icon-button ghost past-run-copy-filtered-summary" type="button" :disabled="!filteredPastRuns.length" @click="copyMatchingRunsSummary">Copy Summary</button>
+          <button class="icon-button ghost past-run-export-csv" type="button" :disabled="!filteredPastRuns.length" @click="exportMatchingRunsCsv">Export CSV</button>
           <button class="icon-button ghost" type="button" :disabled="!filteredPastRuns.length" @click="exportMatchingRuns">Export JSON</button>
           <span class="info-bubble" data-tip="The default report shows all saved drops from the selected rarities. Configure Report changes the view only, not saved run data.">i</span>
           <span class="past-run-count">{{ pastRunCountLabel }}</span>
@@ -132,34 +146,21 @@ function comparisonDelta(row: ReturnType<typeof comparePastRunAggregates>[number
         </div>
         <button v-if="runSearchQuery.trim()" class="icon-button ghost past-run-clear-search" type="button" @click="runSearchQuery = ''">Clear</button>
       </div>
+      <p v-if="pastRuns.length" class="past-run-report-note">
+        Past Runs counts: total drops are tracked item drops, magic-find flagged is the server flag count, and unique is distinct item names.
+      </p>
 
       <div v-if="filteredPastRuns.length" class="past-run-aggregate-grid">
         <PastRunAggregatePanel
-          v-for="panel in aggregatePanels"
-          :key="panel.key"
-          :panel-key="panel.key"
-          :title="panel.title"
-          :subtitle="panel.subtitle"
-          :aggregate="panel.aggregate"
-          :summary-metrics="reportConfig.summaryMetrics"
+          panel-key="filtered"
+          :title="aggregatePanelTitle"
+          :subtitle="aggregatePanelSubtitle"
+          :runs="filteredPastRuns"
+          :aggregate="filteredRunAggregate"
+          :report-config="reportConfig"
+          :item-filter-groups="itemFilterGroups"
         />
       </div>
-
-      <section v-if="filteredPastRuns.length && compareMode" class="past-run-compare-panel" aria-label="Past run compare mode">
-        <div class="aggregate-heading">
-          <div>
-            <h3>{{ comparisonTitle }}</h3>
-            <span>Recent strategy slice compared with the full matching set</span>
-          </div>
-        </div>
-        <div class="past-run-compare-grid">
-          <div v-for="row in comparisonRows" :key="row.id" :class="['past-run-compare-row', row.direction]">
-            <span>{{ row.label }}</span>
-            <strong>{{ comparisonValue(row, row.primary) }}</strong>
-            <small>{{ comparisonDelta(row) }} from {{ comparisonValue(row, row.baseline) }}</small>
-          </div>
-        </div>
-      </section>
 
       <div v-if="filteredPastRuns.length" class="past-runs-list">
         <PastRunCard
@@ -168,13 +169,15 @@ function comparisonDelta(row: ReturnType<typeof comparePastRunAggregates>[number
           :run="run"
           :report-config="reportConfig"
           :active-report-groups="activeReportGroups"
-          :expanded-drop-key="expandedDropKey"
+          :item-filter-groups="itemFilterGroups"
+          :expanded="expandedRunId === run.id"
           :all-run-tags="allRunTags"
           :tag-menu-open="activeTagRunId === run.id"
+          @toggle-expanded="toggleExpandedRun"
           @toggle-tag-menu="toggleTagMenu"
           @close-tag-menu="closeTagMenu"
-          @update:expanded-drop-key="$emit('update:expandedDropKey', $event)"
           @update-run-tags="forwardRunTags"
+          @copy-run-summary="$emit('copy-summary', $event)"
         />
       </div>
       <p v-else-if="pastRuns.length" class="empty-copy past-run-filter-empty">No saved runs match this search.</p>

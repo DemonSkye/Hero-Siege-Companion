@@ -1,3 +1,34 @@
+.app-shell.compact {
+  padding: 0 8px 8px;
+}
+
+.app-shell.compact .app-titlebar {
+  height: 34px;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+.app-shell.compact .window-controls {
+  grid-template-columns: repeat(4, 30px);
+  gap: 4px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell.compact .window-controls button {
+  min-width: 30px;
+  min-height: 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  color: var(--app-text);
+  font-size: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
 .compact-view {
   display: grid;
   min-height: 0;
@@ -337,6 +368,16 @@
   color: #ffffff;
 }
 
+.compact-zone-effects .compact-zone-pros span,
+.compact-zone-effects .compact-zone-pros strong {
+  color: var(--effect-benefit);
+}
+
+.compact-zone-effects .compact-zone-cons span,
+.compact-zone-effects .compact-zone-cons strong {
+  color: var(--danger);
+}
+
 .compact-cover {
   position: fixed;
   inset: 34px 0 0;
@@ -403,9 +444,13 @@
 }
 
 .compact-run-cover {
+  position: fixed;
+  inset: 34px 6px 8px;
   gap: 8px;
   overflow: hidden;
   padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
 .compact-run-cover .compact-cover-head {
@@ -473,17 +518,18 @@
 
 .compact-run-cover .compact-cover-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .compact-run-cover .compact-cover-grid div {
-  min-height: 50px;
-  padding: 7px;
+  min-height: 44px;
+  padding: 6px 7px;
 }
 
 .compact-run-cover .compact-cover-grid strong {
-  margin-top: 3px;
+  margin-top: 2px;
   font-size: 15px;
+  line-height: 1.05;
 }
 
 .compact-settings-section {
@@ -526,6 +572,46 @@
 
 .compact-settings-chip-grid-wide {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.compact-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 7px;
+}
+
+.compact-preset-button {
+  display: grid;
+  min-width: 0;
+  min-height: 72px;
+  gap: 5px;
+  align-content: start;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-soft);
+  color: var(--app-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.compact-preset-button:hover,
+.compact-preset-button.active {
+  border-color: var(--accent-border);
+  background: var(--surface-hover);
+}
+
+.compact-preset-button strong {
+  color: var(--app-heading);
+  font-size: 12px;
+}
+
+.compact-preset-button span {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .compact-custom-tile-list {

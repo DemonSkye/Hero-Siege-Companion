@@ -7,8 +7,8 @@ const {
   launchCompanionApp,
 } = require("./support/companion-app.cjs");
 
-const EXPECTED_WHATS_NEW_VERSION = "0.2.2";
-const EXPECTED_WHATS_NEW_TITLE = "Hero Siege Companion v0.2.2";
+const EXPECTED_WHATS_NEW_VERSION = "0.2.5";
+const EXPECTED_WHATS_NEW_TITLE = "Hero Siege Companion v0.2.5";
 
 test("dismisses What's New with No Thanks and does not prompt again", async () => {
   const userDataDir = createUserDataDir();
@@ -47,15 +47,15 @@ test("opens the What's New settings tab from the prompt and marks it seen", asyn
 
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings).toBeVisible();
-    await expect(settings.getByRole("button", { name: "What's New" })).toHaveClass(/active/);
+    await expect(settings.getByRole("tab", { name: "What's New" })).toHaveClass(/active/);
     await expect(settings.getByText(`What's New in ${EXPECTED_WHATS_NEW_VERSION}`)).toBeVisible();
     await expect(settings.getByText(EXPECTED_WHATS_NEW_TITLE)).toBeVisible();
     await expect(settings.getByText("Npcap is still required for capture.")).toBeVisible();
     await expect(settings.getByRole("heading", { name: "Highlights" })).toBeVisible();
-    await expect(settings.getByRole("heading", { name: "Soundpacks" })).toBeVisible();
+    await expect(settings.getByRole("heading", { name: "Themes And Appearance" })).toBeVisible();
     await expect(settings.getByRole("heading", { name: "Past Runs" })).toBeVisible();
-    await expect(settings.getByText("Configure Report can reuse existing Item Filter groups.")).toBeVisible();
-    await expect(settings.getByText("Added UAT-confirmed item lookup for several cards / items.")).toBeVisible();
+    await expect(settings.getByText("Use report presets, linked Item Filter groups, custom recap groups, top-drop limits, and resource drawers to shape run recaps.")).toBeVisible();
+    await expect(settings.getByText("Item Research can filter, classify, export scoped review data, clear resolved or ignored rows, and separate generated placeholders from missing-icon follow-up work.")).toBeVisible();
     await expect(settings.getByRole("heading", { name: "Item Lookup" })).toHaveCount(0);
     await expect.poll(() => getStoredWhatsNewVersion(page)).toBe(EXPECTED_WHATS_NEW_VERSION);
   });

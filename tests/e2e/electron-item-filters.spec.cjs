@@ -9,10 +9,10 @@ const { e2eRareDropTrafficPayloads } = require("./support/fixtures.cjs");
 
 test("builds, exercises, and removes an item filter group against mocked drop traffic", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
-    const viewTabs = page.getByRole("navigation", { name: "Companion views" });
+    const viewTabs = page.getByRole("tablist", { name: "Companion views" });
 
-    await viewTabs.getByRole("button", { name: /Item Filter/ }).click();
-    await expect(page.getByRole("heading", { name: "Item Filter" })).toBeVisible();
+    await viewTabs.getByRole("tab", { name: /Item Filter/ }).click();
+    await expect(page.getByRole("heading", { name: "Item Filter", level: 1 })).toBeVisible();
 
     const addGroupForm = page.locator(".item-filter-add-group");
     await addGroupForm.locator("input").fill("E2E Loot Alerts");
@@ -47,7 +47,7 @@ test("builds, exercises, and removes an item filter group against mocked drop tr
       );
     }, { message: "configured filter group should be persisted before traffic arrives" }).toBe(true);
 
-    await viewTabs.getByRole("button", { name: "Live Session" }).click();
+    await viewTabs.getByRole("tab", { name: "Live Session" }).click();
     await emitCapturePayloads(electronApp, e2eRareDropTrafficPayloads());
     await waitForRendererState(
       page,
@@ -55,14 +55,13 @@ test("builds, exercises, and removes an item filter group against mocked drop tr
       { message: "mocked rare drops should update live state" },
     );
 
-    const itemFilterCard = page.locator(".item-filter-panel.live-dashboard-card");
-    await expect(itemFilterCard.locator(".item-filter-last")).toContainText("E2E Loot Alerts");
-    await expect(itemFilterCard.locator(".item-filter-last strong")).toContainText(/Aurelion Fury|Fumacinha's Favela Flipflop/);
-    await itemFilterCard.getByRole("button", { name: /Totals/ }).click();
-    await expect(page.getByLabel("Filtered drop totals").getByText("Fumacinha's Favela Flipflop")).toBeVisible();
-    await expect(page.getByLabel("Filtered drop totals").getByText("Aurelion Fury")).toBeVisible();
+    const timelineCard = page.locator(".timeline-panel.live-dashboard-card");
+    await timelineCard.getByLabel("Hide unfiltered").setChecked(true);
+    await expect(timelineCard.locator(".timeline-row", { hasText: "E2E Loot Alerts" }).filter({ hasText: "Aurelion Fury" })).toBeVisible();
+    await expect(timelineCard.locator(".timeline-row", { hasText: "E2E Loot Alerts" }).filter({ hasText: "Fumacinha's Favela Flipflop" })).toBeVisible();
+    await timelineCard.getByRole("button", { name: "Open E2E Loot Alerts item filter" }).first().click();
+    await expect(page.getByRole("heading", { name: "Item Filter", level: 1 })).toBeVisible();
 
-    await viewTabs.getByRole("button", { name: /Item Filter/ }).click();
     await groupButton.click();
     await page.getByRole("button", { name: "Remove Group" }).click();
 

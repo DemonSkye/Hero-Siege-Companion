@@ -5,7 +5,15 @@ import type { CustomItemFilterSound, ItemFilterGroup } from "./item-filters";
 import type { ItemResearchEntry } from "./item-research";
 import { defaultPreferences, normalizeRunDurationMinutes, type ConfigurationTransferOptions, type UiPreferences } from "./preferences";
 import { normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
-import { DEFAULT_THEME_ACCENTS, normalizeThemeAccent, type ThemeAccentMap, type ThemeId, type ThemeTokenMaps } from "./themes";
+import {
+  DEFAULT_THEME_ACCENTS,
+  normalizeThemeAccent,
+  type ThemeAccentMap,
+  type ThemeForegroundFillMap,
+  type ThemeId,
+  type ThemeTextureMap,
+  type ThemeTokenMaps,
+} from "./themes";
 
 export interface AppPreferencesState {
   logLimit: Ref<number>;
@@ -22,6 +30,10 @@ export interface AppPreferencesState {
   themeId: Ref<ThemeId>;
   compactThemeId: Ref<ThemeId>;
   themeAccents: Ref<ThemeAccentMap>;
+  themeTextures: Ref<ThemeTextureMap>;
+  compactThemeTextures: Ref<ThemeTextureMap>;
+  themeForegroundFills: Ref<ThemeForegroundFillMap>;
+  compactThemeForegroundFills: Ref<ThemeForegroundFillMap>;
   themeTokenMaps: Ref<ThemeTokenMaps>;
   itemFilterGroups: Ref<ItemFilterGroup[]>;
   itemFilterMuted: Ref<boolean>;
@@ -47,6 +59,10 @@ export interface AppPreferencesState {
   draftThemeId: Ref<ThemeId>;
   draftCompactThemeId: Ref<ThemeId>;
   draftThemeAccents: Ref<ThemeAccentMap>;
+  draftThemeTextures: Ref<ThemeTextureMap>;
+  draftCompactThemeTextures: Ref<ThemeTextureMap>;
+  draftThemeForegroundFills: Ref<ThemeForegroundFillMap>;
+  draftCompactThemeForegroundFills: Ref<ThemeForegroundFillMap>;
   draftThemeTokenMaps: Ref<ThemeTokenMaps>;
   draftCreateDebugMode: Ref<boolean>;
   draftSkipEmptyRuns: Ref<boolean>;
@@ -84,6 +100,10 @@ export function useAppPreferences(): AppPreferencesState {
   const themeId = ref<ThemeId>("dark");
   const compactThemeId = ref<ThemeId>("dark");
   const themeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
+  const themeTextures = ref<ThemeTextureMap>({});
+  const compactThemeTextures = ref<ThemeTextureMap>({});
+  const themeForegroundFills = ref<ThemeForegroundFillMap>({});
+  const compactThemeForegroundFills = ref<ThemeForegroundFillMap>({});
   const themeTokenMaps = ref<ThemeTokenMaps>({});
   const itemFilterGroups = ref<ItemFilterGroup[]>([]);
   const itemFilterMuted = ref(false);
@@ -110,6 +130,10 @@ export function useAppPreferences(): AppPreferencesState {
   const draftThemeId = ref<ThemeId>("dark");
   const draftCompactThemeId = ref<ThemeId>("dark");
   const draftThemeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
+  const draftThemeTextures = ref<ThemeTextureMap>({});
+  const draftCompactThemeTextures = ref<ThemeTextureMap>({});
+  const draftThemeForegroundFills = ref<ThemeForegroundFillMap>({});
+  const draftCompactThemeForegroundFills = ref<ThemeForegroundFillMap>({});
   const draftThemeTokenMaps = ref<ThemeTokenMaps>({});
   const draftCreateDebugMode = ref(false);
   const draftSkipEmptyRuns = ref(false);
@@ -126,14 +150,21 @@ export function useAppPreferences(): AppPreferencesState {
     logLimit,
     timelineLimit,
     showCaptureDetails,
+    alwaysOnTop,
+    lockCompactLocation,
     hideSocketables,
     hideKeys,
     hideMaterials,
     timelineType,
-    lockCompactLocation,
+    gameExecutablePath,
+    launchThroughSteam,
     themeId,
     compactThemeId,
     themeAccents,
+    themeTextures,
+    compactThemeTextures,
+    themeForegroundFills,
+    compactThemeForegroundFills,
     themeTokenMaps,
     itemFilterGroups,
     itemFilterMuted,
@@ -162,6 +193,10 @@ export function useAppPreferences(): AppPreferencesState {
       themeId: themeId.value,
       compactThemeId: compactThemeId.value,
       themeAccents: themeAccents.value,
+      themeTextures: themeTextures.value,
+      compactThemeTextures: compactThemeTextures.value,
+      themeForegroundFills: themeForegroundFills.value,
+      compactThemeForegroundFills: compactThemeForegroundFills.value,
       themeTokenMaps: themeTokenMaps.value,
       itemFilterGroups: itemFilterGroups.value,
       itemFilterMuted: itemFilterMuted.value,
@@ -189,6 +224,10 @@ export function useAppPreferences(): AppPreferencesState {
     themeId.value = preferences.themeId;
     compactThemeId.value = preferences.compactThemeId;
     themeAccents.value = preferences.themeAccents;
+    themeTextures.value = preferences.themeTextures;
+    compactThemeTextures.value = preferences.compactThemeTextures;
+    themeForegroundFills.value = preferences.themeForegroundFills;
+    compactThemeForegroundFills.value = preferences.compactThemeForegroundFills;
     themeTokenMaps.value = preferences.themeTokenMaps;
     itemFilterGroups.value = preferences.itemFilterGroups;
     itemFilterMuted.value = preferences.itemFilterMuted;
@@ -217,6 +256,10 @@ export function useAppPreferences(): AppPreferencesState {
       themeId: draftThemeId.value,
       compactThemeId: draftCompactThemeId.value,
       themeAccents: draftThemeAccents.value,
+      themeTextures: draftThemeTextures.value,
+      compactThemeTextures: draftCompactThemeTextures.value,
+      themeForegroundFills: draftThemeForegroundFills.value,
+      compactThemeForegroundFills: draftCompactThemeForegroundFills.value,
       themeTokenMaps: draftThemeTokenMaps.value,
       itemFilterGroups: itemFilterGroups.value,
       itemFilterMuted: itemFilterMuted.value,
@@ -250,6 +293,10 @@ export function useAppPreferences(): AppPreferencesState {
     draftThemeId.value = preferences.themeId;
     draftCompactThemeId.value = preferences.compactThemeId;
     draftThemeAccents.value = { ...preferences.themeAccents };
+    draftThemeTextures.value = { ...preferences.themeTextures };
+    draftCompactThemeTextures.value = { ...preferences.compactThemeTextures };
+    draftThemeForegroundFills.value = { ...preferences.themeForegroundFills };
+    draftCompactThemeForegroundFills.value = { ...preferences.compactThemeForegroundFills };
     draftThemeTokenMaps.value = { ...preferences.themeTokenMaps };
     draftCreateDebugMode.value = capturePreferences.createDebugMode;
     draftSkipEmptyRuns.value = runArchivePreferences.skipEmptyRuns;
@@ -305,6 +352,10 @@ export function useAppPreferences(): AppPreferencesState {
     themeId,
     compactThemeId,
     themeAccents,
+    themeTextures,
+    compactThemeTextures,
+    themeForegroundFills,
+    compactThemeForegroundFills,
     themeTokenMaps,
     itemFilterGroups,
     itemFilterMuted,
@@ -330,6 +381,10 @@ export function useAppPreferences(): AppPreferencesState {
     draftThemeId,
     draftCompactThemeId,
     draftThemeAccents,
+    draftThemeTextures,
+    draftCompactThemeTextures,
+    draftThemeForegroundFills,
+    draftCompactThemeForegroundFills,
     draftThemeTokenMaps,
     draftCreateDebugMode,
     draftSkipEmptyRuns,

@@ -15,6 +15,7 @@ const EXPECTED_PRELOAD_API = [
   "closeWindow",
   "exportConfiguration",
   "exportItemResearch",
+  "exportPastRunsCsv",
   "exportPastRunsJson",
   "exportSoundPack",
   "getState",
@@ -99,6 +100,7 @@ async function withCompanionApp(optionsOrCallback, maybeCallback) {
 
 async function dismissWhatsNewPrompt(page) {
   const noThanks = page.getByRole("button", { name: "No Thanks" });
+  await noThanks.waitFor({ state: "visible", timeout: 1_000 }).catch(() => undefined);
   if (await noThanks.isVisible().catch(() => false)) await noThanks.click();
 }
 

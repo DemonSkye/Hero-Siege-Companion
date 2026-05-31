@@ -1,20 +1,22 @@
 import { ref } from "vue";
 import { describe, expect, test } from "vitest";
 import { standardTile } from "../../src/renderer/src/lib/compact-tiles";
-import { itemFilterTimelineValue } from "../../src/renderer/src/lib/item-filters";
+import { itemFilterTimelineValue, itemTimelineKey } from "../../src/renderer/src/lib/item-filters";
 import { useSessionDisplay } from "../../src/renderer/src/lib/session-display";
-import { baseTime, companionState, itemFilterGroup } from "./fixtures";
+import { baseTime, companionState, itemFilterGroup, itemTimelineEntry } from "./fixtures";
 
 describe("session display runtime", () => {
   test("projects capture, run tile, resource, and timeline state for the renderer", () => {
     const display = useSessionDisplay({
       state: ref(companionState()),
       now: ref(baseTime),
-      compactRunTiles: ref([standardTile("duration"), standardTile("gold")]),
+      compactRunTiles: ref([standardTile("duration"), standardTile("gold"), standardTile("keys"), standardTile("ores"), standardTile("materials")]),
       itemFilterGroups: ref([itemFilterGroup()]),
+      itemFilterMatchHistory: ref([]),
       logLimit: ref(1),
       timelineLimit: ref(5),
       timelineType: ref("all"),
+      hideUnfilteredTimelineItems: ref(false),
       hideKeys: ref(false),
       hideMaterials: ref(true),
       hideSocketables: ref(false),
@@ -26,6 +28,9 @@ describe("session display runtime", () => {
       value: "10:00",
       detail: "TestHero",
     });
+    expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Keys", "2"]);
+    expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Ore", "5"]);
+    expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Materials", "3"]);
     expect(display.keyDropTotal.value).toBe(2);
     expect(display.oreDropTotal.value).toBe(5);
     expect(display.visibleItemTimeline.value.map((item) => item.label)).toEqual(["Sash of the Magi"]);
@@ -40,9 +45,11 @@ describe("session display runtime", () => {
       now: ref(baseTime),
       compactRunTiles: ref([]),
       itemFilterGroups: ref([]),
+      itemFilterMatchHistory: ref([]),
       logLimit: ref(10),
       timelineLimit: ref(10),
       timelineType: ref("all"),
+      hideUnfilteredTimelineItems: ref(false),
       hideKeys: ref(false),
       hideMaterials: ref(false),
       hideSocketables: ref(false),
@@ -59,14 +66,54 @@ describe("session display runtime", () => {
       now: ref(baseTime),
       compactRunTiles: ref([]),
       itemFilterGroups: ref([group]),
+      itemFilterMatchHistory: ref([]),
       logLimit: ref(10),
       timelineLimit: ref(10),
       timelineType: ref(itemFilterTimelineValue(group)),
+      hideUnfilteredTimelineItems: ref(false),
       hideKeys: ref(false),
       hideMaterials: ref(false),
       hideSocketables: ref(false),
     });
 
     expect(display.visibleItemTimeline.value.map((item) => item.label)).toEqual(["Sash of the Magi"]);
+  });
+
+  test("keeps filter-matched timeline rows available when unfiltered drops are hidden", () => {
+    const group = itemFilterGroup();
+    const matchedItem = itemTimelineEntry({
+      label: "Aurelion Fury",
+      rarity: "Angelic",
+      type: 3,
+      id: 9,
+      fingerprint: "old-match",
+      createdAt: baseTime - 120_000,
+    });
+    const display = useSessionDisplay({
+      state: ref(companionState()),
+      now: ref(baseTime),
+      compactRunTiles: ref([]),
+      itemFilterGroups: ref([group]),
+      itemFilterMatchHistory: ref([
+        {
+          id: itemTimelineKey(matchedItem),
+          item: matchedItem,
+          groupId: group.id,
+          groupName: group.name,
+          soundName: "Deep Gong",
+          matchedAt: matchedItem.createdAt,
+        },
+      ]),
+      logLimit: ref(10),
+      timelineLimit: ref(10),
+      timelineType: ref("all"),
+      hideUnfilteredTimelineItems: ref(true),
+      hideKeys: ref(false),
+      hideMaterials: ref(false),
+      hideSocketables: ref(false),
+    });
+
+    expect(display.itemTimelineSourceCount.value).toBe(1);
+    expect(display.visibleItemTimeline.value.map((item) => item.label)).toEqual(["Aurelion Fury"]);
   });
 });

@@ -1,0 +1,146 @@
+:root[data-theme="demonsteel"] .app-shell.compact {
+  background:
+    radial-gradient(circle at 0% 18%, rgba(255, 75, 53, 0.13), transparent 9rem),
+    radial-gradient(circle at 100% 0%, rgba(215, 166, 79, 0.08), transparent 10rem),
+    linear-gradient(135deg, #090607 0%, #111114 55%, #1a0909 100%);
+}
+
+:root[data-theme="demonsteel"] .app-shell.compact .app-titlebar {
+  border-bottom: 1px solid rgba(255, 87, 62, 0.24);
+  background:
+    linear-gradient(90deg, rgba(255, 75, 53, 0.13), transparent 46%),
+    linear-gradient(180deg, rgba(255, 245, 232, 0.035), transparent);
+}
+
+:root[data-theme="demonsteel"] .app-shell.compact .drag-strip {
+  color: rgba(239, 229, 221, 0.78);
+  text-shadow: 0 0 10px rgba(255, 75, 53, 0.18);
+}
+
+:root[data-theme="demonsteel"] .app-shell.compact .app-mark {
+  border-color: rgba(255, 87, 62, 0.56);
+  background: rgba(255, 75, 53, 0.1);
+  color: #ff725d;
+  box-shadow: 0 0 12px rgba(255, 75, 53, 0.16);
+}
+
+:root[data-theme="demonsteel"] .app-shell.compact .window-controls button {
+  border-color: rgba(255, 87, 62, 0.28);
+  background: rgba(18, 14, 14, 0.78);
+  color: #f3e8e0;
+}
+
+:root[data-theme="demonsteel"] .app-shell.compact .window-controls button:hover {
+  border-color: rgba(255, 87, 62, 0.52);
+  background: rgba(255, 75, 53, 0.14);
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover,
+:root[data-theme="demonsteel"] .compact-zone-tray {
+  border-color: rgba(255, 87, 62, 0.34);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 75, 53, 0.1), transparent 10rem),
+    linear-gradient(135deg, rgba(215, 166, 79, 0.055), transparent 46%),
+    rgba(12, 10, 11, 0.97);
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 75, 53, 0.08),
+    inset 0 1px 0 rgba(255, 244, 232, 0.05);
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(215, 166, 79, 0.84), transparent);
+  box-shadow:
+    0 0 16px rgba(215, 166, 79, 0.26),
+    10px 0 30px rgba(255, 75, 53, 0.11);
+  pointer-events: none;
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-head,
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-grid {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 87, 62, 0.2);
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-head span,
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-grid span {
+  color: #ff9a84;
+  text-shadow: 0 0 10px rgba(255, 75, 53, 0.18);
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-head strong,
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-grid strong {
+  color: #fff5ee;
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-grid div {
+  border-color: rgba(255, 87, 62, 0.22);
+  background:
+    linear-gradient(135deg, rgba(255, 75, 53, 0.06), transparent 52%),
+    rgba(24, 21, 21, 0.9);
+  box-shadow:
+    inset 2px 0 rgba(215, 166, 79, 0.15),
+    inset 0 1px 0 rgba(255, 244, 232, 0.035);
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover-controls button,
+:root[data-theme="demonsteel"] .compact-cover-button {
+  border-color: rgba(255, 87, 62, 0.34);
+  background: rgba(12, 9, 10, 0.8);
+  color: #fff0e8;
+}
+
+:root[data-theme="demonsteel"] .compact-cover-button {
+  border-color: rgba(215, 166, 79, 0.42);
+  color: #f1c978;
+  box-shadow: 0 0 14px rgba(215, 166, 79, 0.08);
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover,
+:root[data-theme="demonsteel"] .compact-zone-tray {
+  isolation: isolate;
+  background:
+    repeating-linear-gradient(115deg, rgba(255, 244, 232, 0.022) 0 1px, transparent 1px 11px),
+    repeating-linear-gradient(25deg, rgba(255, 75, 53, 0.026) 0 1px, transparent 1px 8px),
+    radial-gradient(circle at 0% 0%, rgba(255, 75, 53, 0.12), transparent 10rem),
+    linear-gradient(135deg, rgba(215, 166, 79, 0.07), transparent 46%),
+    rgba(13, 9, 10, 0.98);
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover::after,
+:root[data-theme="demonsteel"] .compact-zone-tray::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 75, 53, 0.14), transparent 7rem),
+    linear-gradient(130deg, transparent 0 38%, rgba(255, 244, 232, 0.055) 47%, rgba(215, 166, 79, 0.04) 52%, transparent 62% 100%);
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover > *,
+:root[data-theme="demonsteel"] .compact-zone-tray > * {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="demonsteel"] .compact-run-cover .compact-cover-grid div {
+  border-color: rgba(255, 87, 62, 0.26);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 232, 0.04), transparent),
+    linear-gradient(135deg, rgba(255, 75, 53, 0.08), transparent 52%),
+    rgba(25, 19, 19, 0.92);
+}

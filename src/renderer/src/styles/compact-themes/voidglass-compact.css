@@ -1,0 +1,149 @@
+:root[data-theme="voidglass"] .app-shell.compact {
+  background:
+    radial-gradient(circle at 0% 18%, rgba(105, 230, 208, 0.12), transparent 9rem),
+    radial-gradient(circle at 100% 0%, rgba(177, 147, 255, 0.1), transparent 10rem),
+    linear-gradient(135deg, #050708 0%, #091012 55%, #0e0b13 100%);
+}
+
+:root[data-theme="voidglass"] .app-shell.compact .app-titlebar {
+  border-bottom: 1px solid rgba(105, 230, 208, 0.24);
+  background:
+    linear-gradient(110deg, rgba(105, 230, 208, 0.12), transparent 44%),
+    linear-gradient(180deg, rgba(232, 255, 250, 0.035), transparent);
+}
+
+:root[data-theme="voidglass"] .app-shell.compact .drag-strip {
+  color: rgba(225, 246, 241, 0.78);
+  text-shadow: 0 0 10px rgba(105, 230, 208, 0.18);
+}
+
+:root[data-theme="voidglass"] .app-shell.compact .app-mark {
+  border-color: rgba(105, 230, 208, 0.58);
+  background: rgba(105, 230, 208, 0.09);
+  color: #8ff3e4;
+  box-shadow: 0 0 12px rgba(105, 230, 208, 0.16);
+}
+
+:root[data-theme="voidglass"] .app-shell.compact .window-controls button {
+  border-color: rgba(105, 230, 208, 0.28);
+  background: rgba(7, 13, 15, 0.78);
+  color: #eafffb;
+}
+
+:root[data-theme="voidglass"] .app-shell.compact .window-controls button:hover {
+  border-color: rgba(105, 230, 208, 0.52);
+  background: rgba(105, 230, 208, 0.13);
+}
+
+:root[data-theme="voidglass"] .compact-run-cover,
+:root[data-theme="voidglass"] .compact-zone-tray {
+  border-color: rgba(105, 230, 208, 0.34);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(105, 230, 208, 0.1), transparent 10rem),
+    linear-gradient(135deg, rgba(177, 147, 255, 0.06), transparent 48%),
+    rgba(6, 10, 12, 0.97);
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(105, 230, 208, 0.08),
+    inset 0 1px 0 rgba(232, 255, 250, 0.05);
+}
+
+:root[data-theme="voidglass"] .compact-run-cover::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(177, 147, 255, 0.78), transparent);
+  box-shadow:
+    0 0 16px rgba(177, 147, 255, 0.24),
+    10px 0 30px rgba(105, 230, 208, 0.1);
+  pointer-events: none;
+}
+
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-head,
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-grid {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(105, 230, 208, 0.2);
+}
+
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-head span,
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-grid span {
+  color: #9ff6e8;
+  text-shadow: 0 0 10px rgba(105, 230, 208, 0.18);
+}
+
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-head strong,
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-grid strong {
+  color: #f7fffc;
+}
+
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-grid div {
+  border-color: rgba(105, 230, 208, 0.24);
+  background:
+    linear-gradient(135deg, rgba(105, 230, 208, 0.055), transparent 50%),
+    rgba(13, 19, 21, 0.9);
+  box-shadow:
+    inset 2px 0 rgba(177, 147, 255, 0.14),
+    inset 0 1px 0 rgba(232, 255, 250, 0.04);
+}
+
+:root[data-theme="voidglass"] .compact-run-cover-controls button,
+:root[data-theme="voidglass"] .compact-cover-button {
+  border-color: rgba(105, 230, 208, 0.34);
+  background: rgba(5, 9, 11, 0.8);
+  color: #eafffb;
+}
+
+:root[data-theme="voidglass"] .compact-cover-button {
+  border-color: rgba(177, 147, 255, 0.42);
+  color: #d8c8ff;
+  box-shadow: 0 0 14px rgba(177, 147, 255, 0.08);
+}
+
+:root[data-theme="voidglass"] .compact-run-cover,
+:root[data-theme="voidglass"] .compact-zone-tray {
+  isolation: isolate;
+  background:
+    repeating-linear-gradient(45deg, rgba(232, 255, 250, 0.024) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(135deg, rgba(105, 230, 208, 0.018) 0 1px, transparent 1px 9px),
+    radial-gradient(circle at 0% 0%, rgba(105, 230, 208, 0.12), transparent 10rem),
+    linear-gradient(135deg, rgba(177, 147, 255, 0.08), transparent 48%),
+    rgba(5, 10, 12, 0.96);
+  -webkit-backdrop-filter: blur(18px) saturate(1.18);
+  backdrop-filter: blur(18px) saturate(1.18);
+}
+
+:root[data-theme="voidglass"] .compact-run-cover::after,
+:root[data-theme="voidglass"] .compact-zone-tray::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(118deg, transparent 0 39%, rgba(232, 255, 250, 0.085) 47%, rgba(105, 230, 208, 0.038) 51%, transparent 60% 100%),
+    radial-gradient(circle at 94% 8%, rgba(177, 147, 255, 0.08), transparent 7rem);
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+:root[data-theme="voidglass"] .compact-run-cover > *,
+:root[data-theme="voidglass"] .compact-zone-tray > * {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="voidglass"] .compact-run-cover .compact-cover-grid div {
+  background:
+    linear-gradient(180deg, rgba(232, 255, 250, 0.045), transparent),
+    linear-gradient(135deg, rgba(105, 230, 208, 0.07), transparent 50%),
+    rgba(10, 18, 20, 0.88);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}

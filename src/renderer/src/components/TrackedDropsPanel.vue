@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { formatNumber } from "../lib/format";
+import { MAGIC_FIND_FLAG_HELP, formatMagicFindFlagCount, formatNumber } from "../lib/format";
 import { itemIconUrl } from "../lib/item-assets";
 import type { LiveTrackedItem } from "../lib/live-view-types";
 import LiveDashboardCard from "./LiveDashboardCard.vue";
@@ -33,7 +33,7 @@ function toggleDropBreakdown(rarity: string) {
       >
         <span>{{ item.rarity }}</span>
         <strong>{{ formatNumber(item.total) }}</strong>
-        <small>{{ formatNumber(item.mf) }} MF &middot; {{ formatNumber(item.perHour) }}/h</small>
+        <small :title="MAGIC_FIND_FLAG_HELP">{{ formatMagicFindFlagCount(item.mf, { short: true }) }} &middot; {{ formatNumber(item.perHour) }}/h</small>
       </button>
     </div>
     <div v-if="expandedDropRarity" class="drop-breakdown" :class="expandedDropRarity.toLowerCase()">

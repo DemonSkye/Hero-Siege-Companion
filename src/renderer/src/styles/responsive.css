@@ -11,6 +11,30 @@
     grid-template-columns: 1fr;
   }
 
+  .dashboard-column {
+    display: contents;
+  }
+
+  .zone-panel {
+    order: 1;
+  }
+
+  .items-panel {
+    order: 2;
+  }
+
+  .timeline-panel {
+    order: 3;
+  }
+
+  .log-panel {
+    order: 4;
+  }
+
+  .shopping-panel {
+    order: 5;
+  }
+
   .zone-effects {
     grid-template-columns: 1fr;
   }
@@ -23,8 +47,9 @@
     grid-template-columns: 1fr;
   }
 
-  .past-run-drop-grid {
+  .past-run-details {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: min(462px, calc(100vh - 300px));
   }
 
   .past-runs-heading-actions {
@@ -49,11 +74,11 @@
     grid-template-columns: 1fr;
   }
 
-  .report-item-group-layout {
+  .report-summary-option-groups {
     grid-template-columns: 1fr;
   }
 
-  .resource-columns {
+  .report-item-group-layout {
     grid-template-columns: 1fr;
   }
 
@@ -67,6 +92,14 @@
 
   .item-research-row {
     grid-template-columns: 1fr;
+  }
+
+  .item-research-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .item-research-batch-actions {
+    justify-content: flex-start;
   }
 
   .item-filter-group-list {
@@ -87,7 +120,8 @@
     grid-template-columns: 1fr;
   }
 
-  .settings-theme-grid {
+  .settings-theme-grid,
+  .settings-theme-sections {
     grid-template-columns: 1fr;
   }
 
@@ -128,34 +162,36 @@
     flex-direction: column;
   }
 
-  .aggregate-metrics,
-  .aggregate-drop-grid {
+  .aggregate-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .aggregate-metrics div:nth-child(2),
-  .aggregate-drop:nth-child(2) {
+  .aggregate-metrics div:nth-child(2) {
     border-right: 0;
   }
 
   .past-run-header {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .past-run-header-actions {
+    grid-column: auto;
     width: 100%;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    justify-items: start;
+    justify-content: flex-start;
   }
 
-  .past-run-time {
-    justify-self: start;
+  .past-run-preview-metrics {
+    grid-column: auto;
+  }
+
+  .past-run-details {
+    grid-template-columns: 1fr;
+    max-height: min(462px, calc(100vh - 260px));
   }
 
   .tag-selector-button {
-    justify-self: end;
+    justify-self: start;
   }
 
   .run-tag-menu {
@@ -163,7 +199,6 @@
     justify-self: stretch;
   }
 
-  .item-filter-status-grid,
   .item-filter-editor-grid {
     grid-template-columns: 1fr;
   }

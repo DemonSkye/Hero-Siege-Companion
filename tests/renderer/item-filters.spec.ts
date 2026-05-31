@@ -19,6 +19,7 @@ import {
   normalizeItemFilterGroups,
   normalizeCustomItemFilterSounds,
   normalizeSpecificItems,
+  resolveItemFilterSound,
   soundName,
 } from "../../src/renderer/src/lib/item-filters";
 import { itemFilterGroup, itemTimelineEntry } from "./fixtures";
@@ -89,6 +90,16 @@ describe("renderer item filter rules", () => {
     const missingFiles = allItemIconFiles().filter((file) => !fs.existsSync(path.join(appRoot, "img", "items", file)));
 
     expect(missingFiles).toEqual([]);
+    expect(lookupItemIconFile("Angel")).toBe("angel.png");
+    expect(lookupItemIconFile("Abomination's Brain")).toBe("abomination-s-brain.png");
+    expect(lookupItemIconFile("Solar Prophet's Crown")).toBe("solar-prophet-s-crown.png");
+    expect(lookupItemIconFile("Solar Prophet's Robes")).toBe("solar-prophet-s-robes.png");
+    expect(lookupItemIconFile("The Detonator")).toBe("the-detonator.png");
+    expect(lookupItemIconFile("Valkyrie's Thunder Javelin")).toBe("valkyrie-s-thunder-javelin.png");
+    expect(lookupItemIconFile("Gut's HFS")).toBe("gut-s-hfs.png");
+    expect(lookupItemIconFile("St. Brooks Elementium Pistol")).toBe("st-brooks-elementium-pistol.png");
+    expect(lookupItemIconFile("Commander's Sentry Blaster")).toBe("st-brooks-elementium-pistol.png");
+    expect(lookupItemIconFile("Sarcasters Coffee Mug")).toBe("sarcasters-coffee-mug.png");
   });
 
   test("specific watched items override broader rarity/type rules and can choose their own sound", () => {
@@ -164,8 +175,15 @@ describe("renderer item filter rules", () => {
     expect(customSounds).toHaveLength(1);
     expect(group.soundId).toBe(customSounds[0].id);
     expect(group.items[0].soundId).toBe(customSounds[0].id);
-    expect(missingSoundGroup.soundId).toBe("crystal-tink");
-    expect(missingSoundGroup.items[0].soundId).toBe("");
+    expect(missingSoundGroup.soundId).toBe("custom-sound:missing");
+    expect(missingSoundGroup.items[0].soundId).toBe("custom-sound:missing");
+    expect(resolveItemFilterSound("custom-sound:missing", soundOptions)).toMatchObject({
+      effectiveSoundId: "crystal-tink",
+      name: "Missing custom sound",
+      fallbackName: "Crystal Tink",
+      missingCustomSound: true,
+    });
+    expect(soundName("custom-sound:missing", soundOptions)).toBe("Missing custom sound");
     expect(soundName(customSounds[0].id, soundOptions)).toBe("Boss Drop");
     expect(customSoundDisplayName("Ding_123.ogg")).toBe("Ding 123");
   });

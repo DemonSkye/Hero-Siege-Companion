@@ -41,11 +41,11 @@ async function applySettings({ electronApp, page }) {
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
 
-  await page.getByRole("button", { name: "General", exact: true }).click();
+  await page.getByRole("tab", { name: "General", exact: true }).click();
   await setCheckboxByLabel(page, "Always on top", true);
   await setCheckboxByLabel(page, "Hide key items", true);
 
-  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  await page.getByRole("tab", { name: "Capture", exact: true }).click();
   await setCheckboxByLabel(page, "Show capture details", true);
   await setCheckboxByLabel(page, "Verbose live logging", true);
   await setCheckboxByLabel(page, "Developer item research", true);
@@ -53,7 +53,7 @@ async function applySettings({ electronApp, page }) {
   await setCheckboxByLabel(page, "Don't save empty runs", true);
   await page.locator('input[title="Minimum run duration in minutes"]').fill("7");
 
-  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
   await selectOptionByTitle(page, "Application theme", "light");
   await selectOptionByTitle(page, "Compact mode theme", "cyberpunk");
 
@@ -94,7 +94,7 @@ async function assertAppliedSettings({ electronApp, page }, { reopened }) {
   if (!reopened) return;
 
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  await page.getByRole("tab", { name: "Capture", exact: true }).click();
   await expect(page.locator("label", { hasText: "Show capture details" }).locator("input")).toBeChecked();
   await expect(page.locator("label", { hasText: "Verbose live logging" }).locator("input")).toBeChecked();
   await expect(page.locator("label", { hasText: "Prompt on unknown drops" }).locator("input")).toBeChecked();

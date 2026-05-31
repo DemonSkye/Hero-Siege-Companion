@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 
-defineProps<{
+const props = defineProps<{
   supportDiagnostics: string;
   supportGeneratedFiles: SupportDiagnosticGeneratedFileInfo[];
   supportLogFiles: SupportDiagnosticLogFileInfo[];
@@ -26,6 +27,8 @@ function formatUpdatedAt(value: string | null): string {
   if (!Number.isFinite(date.getTime())) return "";
   return date.toLocaleString();
 }
+
+const availableSupportLogFiles = computed(() => props.supportLogFiles.filter((file) => file.exists));
 </script>
 
 <template>
@@ -40,7 +43,7 @@ function formatUpdatedAt(value: string | null): string {
           </button>
         </div>
       </div>
-      <p class="settings-note settings-wide-note">Save this when asking for capture help. The ZIP includes the current capture summary and local diagnostics logs. It does not include packet captures, saved run history, settings JSON, or account credentials.</p>
+      <p class="settings-note settings-wide-note">Save this when asking for capture help. The ZIP includes the current capture summary and available local diagnostics logs. It does not include packet captures, saved run history, settings JSON, or account credentials.</p>
       <p class="settings-note settings-wide-note settings-support-path">Log folder: <code>{{ supportLogsPath }}</code></p>
       <div class="settings-support-files" aria-label="Diagnostics files">
         <div v-for="file in supportGeneratedFiles" :key="file.name" class="settings-support-file">
@@ -50,14 +53,14 @@ function formatUpdatedAt(value: string | null): string {
           </div>
           <small class="settings-support-file-status">Generated</small>
         </div>
-        <div v-for="file in supportLogFiles" :key="file.name" class="settings-support-file" :class="{ missing: !file.exists }">
+        <div v-for="file in availableSupportLogFiles" :key="file.name" class="settings-support-file">
           <div>
             <strong>{{ file.name }}</strong>
             <span>{{ file.description }}</span>
             <code>{{ file.path }}</code>
           </div>
           <small class="settings-support-file-status">
-            {{ file.exists ? formatBytes(file.sizeBytes) : "Missing" }}
+            {{ formatBytes(file.sizeBytes) }}
             <span v-if="file.updatedAt">{{ formatUpdatedAt(file.updatedAt) }}</span>
           </small>
         </div>

@@ -18,11 +18,10 @@ import {
   normalizeCustomItemFilterSounds,
   normalizeItemFilterGroups,
   normalizeSpecificItems,
-  soundName,
+  resolveItemFilterSound,
   type CustomItemFilterSound,
   type ItemFilterGroup,
-  type ItemFilterMatch,
-  type ItemFilterMatchTotal,
+  type ItemFilterMatchHistoryEntry,
   type ItemFilterRuleMatch,
   type ItemFilterSpecificItem,
 } from "./item-filters";
@@ -40,8 +39,7 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
   const itemFilterDraftItem = ref("");
   const itemFilterDraftGroupName = ref("");
   const activeItemFilterGroupId = ref("");
-  const lastItemFilterMatch = ref<ItemFilterMatch | null>(null);
-  const itemFilterMatchTotals = ref<ItemFilterMatchTotal[]>([]);
+  const itemFilterMatchHistory = ref<ItemFilterMatchHistoryEntry[]>([]);
   const itemFilterSeenTimelineKeys = new Set<string>();
   const itemFilterLastPlayedAt = new Map<string, number>();
 
@@ -137,7 +135,16 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
 
   function initializeItemFilterSeenItems(items: ItemTimelineEntry[]): void {
     itemFilterSeenTimelineKeys.clear();
-    for (const item of items) itemFilterSeenTimelineKeys.add(itemTimelineKey(item));
+    itemFilterMatchHistory.value = [];
+    for (const item of [...items].reverse()) {
+      itemFilterSeenTimelineKeys.add(itemTimelineKey(item));
+      if (!canProcessItemFilterTimelineItem(item)) continue;
+      const match = matchItemFilter(item, activeItemFilterGroups.value);
+      if (match) {
+        const soundResolution = resolveItemFilterSound(match.soundId, itemFilterSoundOptionsList.value);
+        updateItemFilterMatchHistory(match, itemFilterMatchSoundLabel(soundResolution), item.createdAt || Date.now());
+      }
+    }
   }
 
   function processItemFilterTimeline(items: ItemTimelineEntry[]): void {
@@ -152,41 +159,32 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
 
   function handleItemFilterMatch(match: ItemFilterRuleMatch): void {
     const nowMs = Date.now();
-    const itemLabel = match.item.label || `Type ${match.item.type} #${match.item.id}`;
-    lastItemFilterMatch.value = {
-      itemLabel,
-      groupName: match.group.name,
-      soundName: soundName(match.soundId, itemFilterSoundOptionsList.value),
-      createdAt: nowMs,
-    };
-    updateItemFilterMatchTotal(match, itemLabel, nowMs);
+    const soundResolution = resolveItemFilterSound(match.soundId, itemFilterSoundOptionsList.value);
+    updateItemFilterMatchHistory(match, itemFilterMatchSoundLabel(soundResolution), nowMs);
     if (options.itemFilterMuted.value) return;
     const lastPlayedAt = itemFilterLastPlayedAt.get(match.group.id) ?? 0;
     if (nowMs - lastPlayedAt < match.group.cooldownMs) return;
     itemFilterLastPlayedAt.set(match.group.id, nowMs);
-    void playItemFilterSound(match.soundId, match.group.volume, options.customItemFilterSounds.value).catch(() => {
+    void playItemFilterSound(soundResolution.effectiveSoundId, match.group.volume, options.customItemFilterSounds.value).catch(() => {
       // Audio feedback should never interfere with capture or rendering.
     });
   }
 
-  function updateItemFilterMatchTotal(match: ItemFilterRuleMatch, itemLabel: string, nowMs: number): void {
-    const id = `${match.group.id}:${normalizeLookupText(itemLabel)}`;
-    const existing = itemFilterMatchTotals.value.find((total) => total.id === id);
-    const nextTotal: ItemFilterMatchTotal = {
+  function updateItemFilterMatchHistory(match: ItemFilterRuleMatch, soundName: string, matchedAt: number): void {
+    const id = itemTimelineKey(match.item);
+    const nextMatch: ItemFilterMatchHistoryEntry = {
       id,
-      itemLabel,
+      item: match.item,
+      groupId: match.group.id,
       groupName: match.group.name,
-      count: (existing?.count ?? 0) + itemFilterMatchAmount(match.item),
-      lastMatchedAt: nowMs,
+      soundName,
+      matchedAt,
     };
-    itemFilterMatchTotals.value = [nextTotal, ...itemFilterMatchTotals.value.filter((total) => total.id !== id)]
-      .sort((a, b) => b.count - a.count || b.lastMatchedAt - a.lastMatchedAt || a.itemLabel.localeCompare(b.itemLabel))
-      .slice(0, 60);
+    itemFilterMatchHistory.value = [nextMatch, ...itemFilterMatchHistory.value.filter((entry) => entry.id !== id)].slice(0, 100);
   }
 
   function resetItemFilterSession(items: ItemTimelineEntry[] = []): void {
-    lastItemFilterMatch.value = null;
-    itemFilterMatchTotals.value = [];
+    itemFilterMatchHistory.value = [];
     initializeItemFilterSeenItems(items);
     itemFilterLastPlayedAt.clear();
   }
@@ -196,7 +194,8 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
     volume = selectedItemFilterGroup.value?.volume ?? 70,
   ): Promise<void> {
     try {
-      await playItemFilterSound(soundId, volume, options.customItemFilterSounds.value);
+      const soundResolution = resolveItemFilterSound(soundId, itemFilterSoundOptionsList.value);
+      await playItemFilterSound(soundResolution.effectiveSoundId, volume, options.customItemFilterSounds.value);
     } catch (error) {
       // Some systems block audio until the next direct user gesture.
       console.warn("Item filter sound did not play", error);
@@ -253,8 +252,7 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
   return {
     itemFilterDraftItem,
     itemFilterDraftGroupName,
-    lastItemFilterMatch,
-    itemFilterMatchTotals,
+    itemFilterMatchHistory,
     activeItemFilterGroups,
     watchedItemCount,
     itemFilterSoundOptionsList,
@@ -283,6 +281,6 @@ export function canProcessItemFilterTimelineItem(item: ItemTimelineEntry): boole
   return item.source === "server" || INVENTORY_SOURCE_ITEM_FILTER_TYPES.has(item.type);
 }
 
-function itemFilterMatchAmount(item: ItemTimelineEntry): number {
-  return Number.isFinite(item.amount) ? Math.max(Math.trunc(item.amount), 1) : 1;
+function itemFilterMatchSoundLabel(soundResolution: { name: string; fallbackName: string; missingCustomSound: boolean }): string {
+  return soundResolution.missingCustomSound ? `${soundResolution.name} (${soundResolution.fallbackName} fallback)` : soundResolution.name;
 }

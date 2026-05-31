@@ -19,6 +19,7 @@ export function createSupportDiagnosticsSummary(state: CompanionState, info: Sup
     "Hero Siege Companion capture diagnostics",
     `App version: ${info.appVersion || "unknown"}`,
     `Capture status: ${state.captureStatus}`,
+    `Capture error: ${state.captureError || "none"}`,
     `Capture running: ${state.captureRunning ? "yes" : "no"}`,
     `Npcap service: ${health.npcapService || "Unknown"}`,
     `WinPcap compatible: ${health.winPcapCompatible ? "yes" : "no"}`,

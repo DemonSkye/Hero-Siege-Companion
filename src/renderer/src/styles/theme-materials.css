@@ -1,0 +1,148 @@
+:root[data-theme] {
+  --foreground-panel-rgb: 22 26 34;
+  --foreground-strong-rgb: 12 15 21;
+  --foreground-input-rgb: 9 11 15;
+  --foreground-cell-rgb: 255 255 255;
+  --foreground-sheen-rgb: 255 255 255;
+  --foreground-sheen-alpha: 0.035;
+  --foreground-sheen-scale: 1;
+  --foreground-backdrop-blur: 18px;
+  --foreground-backdrop-saturation: 1.12;
+  --foreground-surface: rgb(var(--foreground-panel-rgb) / var(--foreground-fill-alpha));
+  --foreground-surface-strong: rgb(var(--foreground-strong-rgb) / var(--foreground-strong-fill-alpha));
+  --foreground-surface-soft: rgb(var(--foreground-cell-rgb) / var(--foreground-soft-fill-alpha));
+  --foreground-surface-cell: rgb(var(--foreground-cell-rgb) / var(--foreground-cell-fill-alpha));
+  --foreground-surface-hover: color-mix(in srgb, var(--user-accent) 10%, rgb(var(--foreground-cell-rgb) / var(--foreground-hover-fill-alpha)));
+  --foreground-surface-selected: color-mix(in srgb, var(--user-accent) 18%, rgb(var(--foreground-panel-rgb) / var(--foreground-selected-fill-alpha)));
+  --surface: var(--foreground-surface);
+  --surface-strong: var(--foreground-surface-strong);
+  --surface-soft: var(--foreground-surface-soft);
+  --surface-cell: var(--foreground-surface-cell);
+  --surface-hover: var(--foreground-surface-hover);
+  --surface-selected: var(--foreground-surface-selected);
+  --surface-input-hover: color-mix(in srgb, var(--user-accent) 16%, transparent);
+  --foreground-input-bg: rgb(var(--foreground-input-rgb) / var(--foreground-input-fill-alpha));
+  --input-bg: var(--foreground-input-bg);
+}
+
+:root[data-theme="dark"] {
+  --foreground-panel-rgb: 22 26 34;
+  --foreground-strong-rgb: 10 13 18;
+  --foreground-input-rgb: 9 11 16;
+  --foreground-sheen-alpha: 0.035;
+}
+
+:root[data-theme="demonsteel"] {
+  --foreground-panel-rgb: 30 19 16;
+  --foreground-strong-rgb: 13 9 8;
+  --foreground-input-rgb: 9 7 7;
+  --foreground-cell-rgb: 255 232 220;
+  --foreground-sheen-rgb: 255 105 78;
+  --foreground-sheen-alpha: 0.055;
+}
+
+:root[data-theme="voidglass"] {
+  --foreground-panel-rgb: 8 21 24;
+  --foreground-strong-rgb: 4 8 10;
+  --foreground-input-rgb: 4 8 10;
+  --foreground-cell-rgb: 218 255 248;
+  --foreground-sheen-rgb: 186 255 244;
+  --foreground-sheen-alpha: 0.05;
+}
+
+:root[data-theme="reliquary"] {
+  --foreground-panel-rgb: 34 28 17;
+  --foreground-strong-rgb: 16 13 8;
+  --foreground-input-rgb: 10 8 6;
+  --foreground-cell-rgb: 255 232 174;
+  --foreground-sheen-rgb: 255 222 143;
+  --foreground-sheen-alpha: 0.055;
+}
+
+:root[data-theme="cyberpunk"] {
+  --foreground-panel-rgb: 5 13 20;
+  --foreground-strong-rgb: 3 5 8;
+  --foreground-input-rgb: 2 4 7;
+  --foreground-cell-rgb: 212 252 255;
+  --foreground-sheen-rgb: 0 240 255;
+  --foreground-sheen-alpha: 0.045;
+}
+
+:root[data-theme="light"] {
+  --foreground-panel-rgb: 199 209 215;
+  --foreground-strong-rgb: 190 201 208;
+  --foreground-input-rgb: 247 250 252;
+  --foreground-cell-rgb: 255 255 255;
+  --foreground-sheen-rgb: 255 255 255;
+  --foreground-sheen-alpha: 0.28;
+  --foreground-surface-soft: rgb(255 255 255 / max(0.34, var(--foreground-soft-fill-alpha)));
+  --foreground-surface-cell: rgb(255 255 255 / max(0.48, var(--foreground-cell-fill-alpha)));
+  --foreground-surface-hover: color-mix(in srgb, var(--user-accent) 9%, rgb(255 255 255 / max(0.58, var(--foreground-hover-fill-alpha))));
+  --foreground-surface-selected: color-mix(in srgb, var(--user-accent) 16%, rgb(255 255 255 / max(0.5, var(--foreground-selected-fill-alpha))));
+  --foreground-input-bg: rgb(var(--foreground-input-rgb) / max(0.84, var(--foreground-input-fill-alpha)));
+}
+
+:root[data-theme] .topbar,
+:root[data-theme] .status-strip,
+:root[data-theme] .panel,
+:root[data-theme] .metric,
+:root[data-theme] .settings-panel,
+:root[data-theme] .settings-panel.report-config-modal,
+:root[data-theme] .item-research-panel,
+:root[data-theme] .item-filter-editor,
+:root[data-theme] .item-filter-recovery-panel,
+:root[data-theme] .past-run-aggregate,
+:root[data-theme] .past-run-card,
+:root[data-theme] .aggregate-detail-panel,
+:root[data-theme] .past-run-detail-panel,
+:root[data-theme] .compact-run-cover,
+:root[data-theme] .compact-zone-tray {
+  background:
+    linear-gradient(180deg, rgb(var(--foreground-sheen-rgb) / calc(var(--foreground-sheen-alpha) * var(--foreground-sheen-scale))), transparent 72%),
+    var(--foreground-surface);
+  backdrop-filter: blur(var(--foreground-backdrop-blur)) saturate(var(--foreground-backdrop-saturation));
+}
+
+:root[data-theme] .status-details,
+:root[data-theme] .view-tabs,
+:root[data-theme] .settings-tabs,
+:root[data-theme] .settings-row,
+:root[data-theme] .settings-check,
+:root[data-theme] .settings-stack,
+:root[data-theme] .settings-launch-row,
+:root[data-theme] .settings-config-row,
+:root[data-theme] .settings-theme-group,
+:root[data-theme] .filter-box,
+:root[data-theme] .item-filter-rule-section,
+:root[data-theme] .item-filter-group-button,
+:root[data-theme] .item-research-row,
+:root[data-theme] .past-run-toolbar,
+:root[data-theme] .past-run-metrics,
+:root[data-theme] .aggregate-metrics,
+:root[data-theme] .aggregate-top-list div,
+:root[data-theme] .timeline-row,
+:root[data-theme] .log {
+  background: var(--foreground-surface-cell);
+}
+
+:root[data-theme] input,
+:root[data-theme] select,
+:root[data-theme] textarea,
+:root[data-theme] .settings-row select,
+:root[data-theme] .settings-stack textarea,
+:root[data-theme] .number-setting input,
+:root[data-theme] .shopping-input-wrap input,
+:root[data-theme] .path-setting input,
+:root[data-theme] .item-filter-add-group input,
+:root[data-theme] .item-filter-add-item input,
+:root[data-theme] .item-filter-editor-grid input[type="text"],
+:root[data-theme] .item-filter-editor-grid input[type="number"],
+:root[data-theme] .item-filter-editor-grid select,
+:root[data-theme] .item-filter-specific-row select {
+  background: var(--foreground-input-bg);
+}
+
+:root[data-theme] .compact-run-cover::before,
+:root[data-theme] .compact-zone-tray::before {
+  opacity: calc(var(--foreground-fill-alpha) * 0.5);
+}

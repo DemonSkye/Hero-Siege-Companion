@@ -5,6 +5,9 @@ import { isElectronE2eTestMode } from "./electron-test-mode";
 
 export type { CaptureUpdate };
 
+export const NATIVE_CAPTURE_UNAVAILABLE_MESSAGE =
+  "Capture unavailable: Npcap native capture support could not be loaded. Install or reinstall Npcap with WinPcap API-compatible mode enabled, then restart the app.";
+
 export interface CaptureRuntime {
   diagnostics(): Promise<Partial<CaptureHealth>>;
   hasHeroSiegeProcess(): Promise<boolean>;
@@ -21,8 +24,14 @@ export async function createCaptureRuntime(
 ): Promise<CaptureRuntime> {
   if (isElectronE2eTestMode()) return new ElectronE2eCaptureRuntime(onUpdate, createDebugMode);
 
-  const { CaptureService } = await import("./capture");
-  return new CaptureService(onUpdate, debugLogPath, wideDebugLogPath, createDebugMode);
+  try {
+    const { CaptureService } = await import("./capture");
+    return new CaptureService(onUpdate, debugLogPath, wideDebugLogPath, createDebugMode);
+  } catch (error) {
+    const runtime = new NativeCaptureUnavailableRuntime(onUpdate, error);
+    runtime.emitUnavailable();
+    return runtime;
+  }
 }
 
 export function emitElectronE2eCaptureEvents(runtime: CaptureRuntime | null, events: ParsedEvent[]): boolean {
@@ -173,4 +182,67 @@ function e2eLog(level: LogEntry["level"], message: string): LogEntry {
     message,
     createdAt: Date.now(),
   };
+}
+
+class NativeCaptureUnavailableRuntime implements CaptureRuntime {
+  constructor(
+    private readonly onUpdate: (update: CaptureUpdate) => void,
+    private readonly loadError: unknown,
+  ) {}
+
+  async diagnostics(): Promise<Partial<CaptureHealth>> {
+    return {
+      npcapService: "Unavailable",
+      winPcapCompatible: false,
+      adminOnly: false,
+      device: null,
+      filter: "",
+    };
+  }
+
+  async hasHeroSiegeProcess(): Promise<boolean> {
+    return false;
+  }
+
+  setCreateDebugMode(): void {
+    // Native capture never loaded, so there is no live capture logger to update.
+  }
+
+  async start(): Promise<void> {
+    this.emitUnavailable();
+  }
+
+  stop(): void {
+    this.onUpdate({
+      running: false,
+      status: "idle",
+      error: null,
+      health: { device: null, filter: "" },
+      log: { level: "info", message: "Capture stopped." },
+    });
+  }
+
+  emitUnavailable(): void {
+    this.onUpdate({
+      running: false,
+      status: "error",
+      error: NATIVE_CAPTURE_UNAVAILABLE_MESSAGE,
+      connections: [],
+      health: {
+        npcapService: "Unavailable",
+        winPcapCompatible: false,
+        adminOnly: false,
+        device: null,
+        filter: "",
+      },
+      log: {
+        level: "error",
+        message: `${NATIVE_CAPTURE_UNAVAILABLE_MESSAGE} (${errorMessage(this.loadError)})`,
+      },
+    });
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

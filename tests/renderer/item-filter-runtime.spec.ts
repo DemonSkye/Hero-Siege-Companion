@@ -3,7 +3,7 @@ import { ref } from "vue";
 
 import { compactFilterGroupRecoveryOptions } from "../../src/renderer/src/lib/compact-tiles";
 import { canProcessItemFilterTimelineItem, useItemFilterRuntime } from "../../src/renderer/src/lib/item-filter-runtime";
-import { itemFilterGroup, itemTimelineEntry } from "./fixtures";
+import { baseTime, itemFilterGroup, itemTimelineEntry } from "./fixtures";
 
 describe("renderer item filter runtime", () => {
   afterEach(() => {
@@ -64,14 +64,16 @@ describe("renderer item filter runtime", () => {
       }),
     ]);
 
-    expect(runtime.lastItemFilterMatch.value).toMatchObject({
-      itemLabel: "Infernal Colosseum Fragment",
+    expect(runtime.itemFilterMatchHistory.value).toHaveLength(1);
+    expect(runtime.itemFilterMatchHistory.value[0]).toMatchObject({
+      item: expect.objectContaining({ label: "Infernal Colosseum Fragment" }),
+      groupId: "loot-alerts",
       groupName: "Valuables",
       soundName: "Deep Gong",
     });
   });
 
-  test("counts matched filtered drops by item amount until the filter session resets", () => {
+  test("keeps recent filter matches until the filter session resets", () => {
     const runtime = useItemFilterRuntime({
       itemFilterGroups: ref([
         itemFilterGroup({
@@ -95,15 +97,58 @@ describe("renderer item filter runtime", () => {
       itemTimelineEntry({ source: "inventory", label: "Copper Ore", type: 13, amount: 2, fingerprint: "copper-1", createdAt: 10 }),
     ]);
 
-    expect(runtime.itemFilterMatchTotals.value).toEqual([
-      expect.objectContaining({ itemLabel: "Copper Ore", groupName: "Loot Alerts", count: 5 }),
-      expect.objectContaining({ itemLabel: "Sash of the Magi", groupName: "Loot Alerts", count: 1 }),
-    ]);
+    expect(runtime.itemFilterMatchHistory.value.map((entry) => entry.item.label)).toEqual(["Copper Ore", "Sash of the Magi", "Copper Ore"]);
 
     runtime.resetItemFilterSession([]);
 
-    expect(runtime.lastItemFilterMatch.value).toBeNull();
-    expect(runtime.itemFilterMatchTotals.value).toEqual([]);
+    expect(runtime.itemFilterMatchHistory.value).toEqual([]);
+  });
+
+  test("rebuilds existing filter match history newest first with a 100 item cap", () => {
+    const runtime = useItemFilterRuntime({
+      itemFilterGroups: ref([itemFilterGroup()]),
+      itemFilterMuted: ref(true),
+      customItemFilterSounds: ref([]),
+      showToast: vi.fn(),
+    });
+    const existingTimeline = Array.from({ length: 105 }, (_, index) =>
+      itemTimelineEntry({
+        source: "server",
+        fingerprint: `existing-${index}`,
+        createdAt: baseTime + 1000 - index,
+      }),
+    );
+
+    runtime.initializeItemFilterSeenItems(existingTimeline);
+
+    expect(runtime.itemFilterMatchHistory.value).toHaveLength(100);
+    expect(runtime.itemFilterMatchHistory.value[0].item.fingerprint).toBe("existing-0");
+    expect(runtime.itemFilterMatchHistory.value.at(-1)?.item.fingerprint).toBe("existing-99");
+  });
+
+  test("labels missing custom sounds with fallback copy for matched drops", () => {
+    const runtime = useItemFilterRuntime({
+      itemFilterGroups: ref([
+        itemFilterGroup({
+          soundId: "custom-sound:missing",
+          items: [{ name: "Sash of the Magi", soundId: "", typeLabel: "Belt" }],
+          rarities: [],
+          types: [],
+        }),
+      ]),
+      itemFilterMuted: ref(true),
+      customItemFilterSounds: ref([]),
+      showToast: vi.fn(),
+    });
+
+    runtime.initializeItemFilterSeenItems([]);
+    runtime.processItemFilterTimeline([itemTimelineEntry({ source: "server", label: "Sash of the Magi", fingerprint: "missing-sound" })]);
+
+    expect(runtime.itemFilterMatchHistory.value[0]).toMatchObject({
+      item: expect.objectContaining({ label: "Sash of the Magi" }),
+      groupName: "Loot Alerts",
+      soundName: "Missing custom sound (Crystal Tink fallback)",
+    });
   });
 
   test("recovers a deleted filter group from a compact tile reference", () => {

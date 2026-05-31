@@ -12,7 +12,20 @@ import {
 import { DEFAULT_SHOPPING_LIST } from "./item-options";
 import { normalizeItemResearchEntries, type ItemResearchEntry } from "./item-research";
 import { defaultPostRunReportConfig, normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
-import { DEFAULT_THEME_ACCENTS, DEFAULT_THEME_ID, normalizeThemeAccents, normalizeThemeId, normalizeThemeTokenMaps, type ThemeAccentMap, type ThemeId, type ThemeTokenMaps } from "./themes";
+import {
+  DEFAULT_THEME_ACCENTS,
+  DEFAULT_THEME_ID,
+  normalizeThemeAccents,
+  normalizeThemeForegroundFillMap,
+  normalizeThemeId,
+  normalizeThemeTextureMap,
+  normalizeThemeTokenMaps,
+  type ThemeAccentMap,
+  type ThemeForegroundFillMap,
+  type ThemeId,
+  type ThemeTextureMap,
+  type ThemeTokenMaps,
+} from "./themes";
 
 export interface UiPreferences {
   schemaVersion: number;
@@ -31,6 +44,10 @@ export interface UiPreferences {
   themeId: ThemeId;
   compactThemeId: ThemeId;
   themeAccents: ThemeAccentMap;
+  themeTextures: ThemeTextureMap;
+  compactThemeTextures: ThemeTextureMap;
+  themeForegroundFills: ThemeForegroundFillMap;
+  compactThemeForegroundFills: ThemeForegroundFillMap;
   themeTokenMaps: ThemeTokenMaps;
   itemFilterGroups: ItemFilterGroup[];
   itemFilterMuted: boolean;
@@ -96,6 +113,10 @@ export const defaultPreferences: UiPreferences = {
   themeId: DEFAULT_THEME_ID,
   compactThemeId: DEFAULT_THEME_ID,
   themeAccents: DEFAULT_THEME_ACCENTS,
+  themeTextures: {},
+  compactThemeTextures: {},
+  themeForegroundFills: {},
+  compactThemeForegroundFills: {},
   themeTokenMaps: {},
   itemFilterGroups: DEFAULT_ITEM_FILTER_GROUPS,
   itemFilterMuted: false,
@@ -123,6 +144,10 @@ const APP_SETTING_KEYS: Array<keyof UiPreferences> = [
   "themeId",
   "compactThemeId",
   "themeAccents",
+  "themeTextures",
+  "compactThemeTextures",
+  "themeForegroundFills",
+  "compactThemeForegroundFills",
   "themeTokenMaps",
   "compactRunTiles",
   "developerItemResearchEnabled",
@@ -263,6 +288,10 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     themeId: normalizeThemeId(value.themeId),
     compactThemeId: normalizeThemeId(value.compactThemeId ?? value.themeId),
     themeAccents: normalizeThemeAccents(value.themeAccents),
+    themeTextures: normalizeThemeTextureMap(value.themeTextures),
+    compactThemeTextures: normalizeThemeTextureMap(value.compactThemeTextures),
+    themeForegroundFills: normalizeThemeForegroundFillMap(value.themeForegroundFills),
+    compactThemeForegroundFills: normalizeThemeForegroundFillMap(value.compactThemeForegroundFills),
     themeTokenMaps: normalizeThemeTokenMaps(value.themeTokenMaps),
     itemFilterGroups: normalizeItemFilterGroups(value.itemFilterGroups, customItemFilterSounds),
     itemFilterMuted: Boolean(value.itemFilterMuted),

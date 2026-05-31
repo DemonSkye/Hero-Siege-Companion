@@ -1,0 +1,146 @@
+:root[data-theme="reliquary"] .app-shell.compact {
+  background:
+    radial-gradient(circle at 0% 18%, rgba(216, 180, 95, 0.13), transparent 9rem),
+    radial-gradient(circle at 100% 0%, rgba(94, 174, 148, 0.09), transparent 10rem),
+    linear-gradient(135deg, #0b0906 0%, #12100d 55%, #171309 100%);
+}
+
+:root[data-theme="reliquary"] .app-shell.compact .app-titlebar {
+  border-bottom: 1px solid rgba(216, 180, 95, 0.26);
+  background:
+    linear-gradient(90deg, rgba(216, 180, 95, 0.13), transparent 46%),
+    linear-gradient(180deg, rgba(255, 244, 220, 0.035), transparent);
+}
+
+:root[data-theme="reliquary"] .app-shell.compact .drag-strip {
+  color: rgba(239, 232, 219, 0.78);
+  text-shadow: 0 0 10px rgba(216, 180, 95, 0.18);
+}
+
+:root[data-theme="reliquary"] .app-shell.compact .app-mark {
+  border-color: rgba(216, 180, 95, 0.58);
+  background: rgba(216, 180, 95, 0.1);
+  color: #e7c879;
+  box-shadow: 0 0 12px rgba(216, 180, 95, 0.16);
+}
+
+:root[data-theme="reliquary"] .app-shell.compact .window-controls button {
+  border-color: rgba(216, 180, 95, 0.3);
+  background: rgba(18, 15, 11, 0.78);
+  color: #f4ecde;
+}
+
+:root[data-theme="reliquary"] .app-shell.compact .window-controls button:hover {
+  border-color: rgba(216, 180, 95, 0.54);
+  background: rgba(216, 180, 95, 0.14);
+}
+
+:root[data-theme="reliquary"] .compact-run-cover,
+:root[data-theme="reliquary"] .compact-zone-tray {
+  border-color: rgba(216, 180, 95, 0.36);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(216, 180, 95, 0.11), transparent 10rem),
+    linear-gradient(135deg, rgba(94, 174, 148, 0.055), transparent 46%),
+    rgba(13, 11, 8, 0.97);
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.56),
+    0 0 0 1px rgba(216, 180, 95, 0.08),
+    inset 0 1px 0 rgba(255, 244, 220, 0.05);
+}
+
+:root[data-theme="reliquary"] .compact-run-cover::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(94, 174, 148, 0.8), transparent);
+  box-shadow:
+    0 0 16px rgba(94, 174, 148, 0.22),
+    10px 0 30px rgba(216, 180, 95, 0.1);
+  pointer-events: none;
+}
+
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-head,
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-grid {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(216, 180, 95, 0.22);
+}
+
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-head span,
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-grid span {
+  color: #e4c675;
+  text-shadow: 0 0 10px rgba(216, 180, 95, 0.18);
+}
+
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-head strong,
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-grid strong {
+  color: #fff8eb;
+}
+
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-grid div {
+  border-color: rgba(216, 180, 95, 0.24);
+  background:
+    linear-gradient(135deg, rgba(216, 180, 95, 0.06), transparent 52%),
+    rgba(25, 22, 16, 0.9);
+  box-shadow:
+    inset 2px 0 rgba(94, 174, 148, 0.14),
+    inset 0 1px 0 rgba(255, 244, 220, 0.04);
+}
+
+:root[data-theme="reliquary"] .compact-run-cover-controls button,
+:root[data-theme="reliquary"] .compact-cover-button {
+  border-color: rgba(216, 180, 95, 0.36);
+  background: rgba(12, 10, 8, 0.8);
+  color: #fff1d8;
+}
+
+:root[data-theme="reliquary"] .compact-cover-button {
+  border-color: rgba(94, 174, 148, 0.42);
+  color: #a7dbc9;
+  box-shadow: 0 0 14px rgba(94, 174, 148, 0.08);
+}
+
+:root[data-theme="reliquary"] .compact-run-cover,
+:root[data-theme="reliquary"] .compact-zone-tray {
+  isolation: isolate;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 244, 220, 0.024) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, rgba(216, 180, 95, 0.022) 0 1px, transparent 1px 18px),
+    radial-gradient(circle at 0% 0%, rgba(216, 180, 95, 0.13), transparent 10rem),
+    linear-gradient(135deg, rgba(94, 174, 148, 0.065), transparent 46%),
+    rgba(14, 11, 8, 0.98);
+}
+
+:root[data-theme="reliquary"] .compact-run-cover::after,
+:root[data-theme="reliquary"] .compact-zone-tray::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(94, 174, 148, 0.08), transparent 7rem),
+    linear-gradient(118deg, transparent 0 42%, rgba(255, 244, 220, 0.07) 49%, rgba(216, 180, 95, 0.05) 53%, transparent 62% 100%);
+  opacity: 0.76;
+  pointer-events: none;
+}
+
+:root[data-theme="reliquary"] .compact-run-cover > *,
+:root[data-theme="reliquary"] .compact-zone-tray > * {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="reliquary"] .compact-run-cover .compact-cover-grid div {
+  border-color: rgba(216, 180, 95, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 220, 0.045), transparent),
+    linear-gradient(135deg, rgba(216, 180, 95, 0.075), transparent 52%),
+    rgba(27, 23, 16, 0.92);
+}

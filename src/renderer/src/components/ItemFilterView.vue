@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   ITEM_FILTER_RARITIES,
-  soundName,
+  resolveItemFilterSound,
   toggledNumberList,
   toggledStringList,
   type ItemFilterGroup,
@@ -10,7 +10,14 @@ import {
   type ItemFilterSpecificItem,
 } from "../lib/item-filters";
 import { eventChecked, eventValue } from "../lib/dom-events";
-import type { ItemResearchEntry } from "../lib/item-research";
+import {
+  isKnownMissingIconResearchEntry,
+  isKnownItemResearchName,
+  itemResearchClassificationLabel,
+  type ItemResearchEntry,
+  type ItemResearchExportScope,
+} from "../lib/item-research";
+import { useModalFocus } from "../lib/modal-focus";
 
 interface ItemTypeOption {
   value: string;
@@ -53,11 +60,12 @@ const emit = defineEmits<{
   addItemToGroup: [group: ItemFilterGroup, value?: string];
   removeItemFromGroup: [group: ItemFilterGroup, item: ItemFilterSpecificItem];
   testSound: [soundId?: string, volume?: number];
-  exportItemResearch: [];
+  exportItemResearch: [scope?: ItemResearchExportScope];
   saveItemResearchEntry: [signature: string, value: { resolvedName: string; notes: string }];
   ignoreItemResearchEntry: [signature: string];
   resetItemResearchEntry: [signature: string];
   clearResolvedItemResearchEntries: [];
+  clearIgnoredItemResearchEntries: [];
 }>();
 
 const mutedModel = computed({
@@ -78,6 +86,11 @@ const itemDraftModel = computed({
 const itemResearchOpen = ref(props.unresolvedItemResearchCount > 0);
 const groupPendingRemoval = ref<ItemFilterGroup | null>(null);
 const removeGroupDialog = ref<HTMLElement | null>(null);
+const {
+  openModalFocus: openRemoveGroupDialogFocus,
+  closeModalFocus: closeRemoveGroupDialogFocus,
+  handleModalFocusKeydown: handleRemoveGroupDialogKeydown,
+} = useModalFocus(removeGroupDialog, { manual: true });
 interface ItemResearchDraft {
   resolvedName: string;
   notes: string;
@@ -86,7 +99,19 @@ interface ItemResearchDraft {
   baseIgnored: boolean;
 }
 
+type ItemResearchStatusFilter = "all" | "unresolved" | "missing-icon" | "resolved" | "ignored";
+
 const itemResearchDrafts = ref<Record<string, ItemResearchDraft>>({});
+const itemResearchStatusFilter = ref<ItemResearchStatusFilter>("all");
+const itemResearchTypeFilter = ref("all");
+const itemResearchRarityFilter = ref("all");
+const itemResearchStatusOptions: Array<{ value: ItemResearchStatusFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "unresolved", label: "Unresolved" },
+  { value: "missing-icon", label: "App Icon Missing" },
+  { value: "resolved", label: "Resolved" },
+  { value: "ignored", label: "Ignored" },
+];
 const pendingRemovalSummary = computed(() => {
   const group = groupPendingRemoval.value;
   if (!group) return "";
@@ -97,13 +122,38 @@ const pendingRemovalSummary = computed(() => {
   ].filter(Boolean);
   return parts.length ? parts.join(" / ") : "No rules configured";
 });
-
-watch(
-  () => props.unresolvedItemResearchCount,
-  (count) => {
-    if (count > 0) itemResearchOpen.value = true;
-  },
+const selectedGroupSoundResolution = computed(() =>
+  props.selectedItemFilterGroup ? resolveItemFilterSound(props.selectedItemFilterGroup.soundId, props.itemFilterSounds) : null,
 );
+const unresolvedResearchTaskCount = computed(() => props.itemResearchEntries.filter((entry) => entryMatchesResearchStatus(entry, "unresolved")).length);
+const missingIconResearchCount = computed(() => props.itemResearchEntries.filter((entry) => entryMatchesResearchStatus(entry, "missing-icon")).length);
+const itemResearchSummary = computed(() => {
+  const parts = [`${unresolvedResearchTaskCount.value} need naming`];
+  if (missingIconResearchCount.value) parts.push(`${missingIconResearchCount.value} app icon backlog`);
+  parts.push("developer notebook");
+  return parts.join(" \u00b7 ");
+});
+const resolvedItemResearchCount = computed(() => props.itemResearchEntries.filter((entry) => entryMatchesResearchStatus(entry, "resolved")).length);
+const ignoredItemResearchCount = computed(() => props.itemResearchEntries.filter((entry) => entry.ignored).length);
+const filteredItemResearchEntries = computed(() =>
+  props.itemResearchEntries.filter((entry) =>
+    entryMatchesResearchStatus(entry, itemResearchStatusFilter.value) &&
+    (itemResearchTypeFilter.value === "all" || String(entry.type) === itemResearchTypeFilter.value) &&
+    (itemResearchRarityFilter.value === "all" || entry.rarity === itemResearchRarityFilter.value),
+  ),
+);
+const itemResearchTypeFilterOptions = computed(() =>
+  Array.from(new Set(props.itemResearchEntries.map((entry) => entry.type)))
+    .sort((left, right) => entryTypeLabelValue(left).localeCompare(entryTypeLabelValue(right)))
+    .map((type) => ({ value: String(type), label: entryTypeLabelValue(type) })),
+);
+const itemResearchRarityFilterOptions = computed(() =>
+  Array.from(new Set(props.itemResearchEntries.map((entry) => entry.rarity).filter(Boolean))).sort((left, right) => left.localeCompare(right)),
+);
+
+watch(unresolvedResearchTaskCount, (unresolvedCount) => {
+  if (unresolvedCount > 0) itemResearchOpen.value = true;
+});
 
 watch(
   () => props.itemFilterGroups.map((group) => group.id).join("\n"),
@@ -132,19 +182,22 @@ watch(
   },
 );
 
-function requestRemoveGroup(group: ItemFilterGroup) {
+function requestRemoveGroup(group: ItemFilterGroup, event?: MouseEvent) {
+  if (event?.currentTarget instanceof HTMLElement) event.currentTarget.focus();
   groupPendingRemoval.value = group;
-  void nextTick(() => removeGroupDialog.value?.focus());
+  openRemoveGroupDialogFocus();
 }
 
 function cancelRemoveGroup() {
   groupPendingRemoval.value = null;
+  closeRemoveGroupDialogFocus();
 }
 
 function confirmRemoveGroup() {
   if (!groupPendingRemoval.value) return;
   emit("removeGroup", groupPendingRemoval.value);
   groupPendingRemoval.value = null;
+  closeRemoveGroupDialogFocus();
 }
 
 function updateSelectedGroup(patch: Partial<ItemFilterGroup>) {
@@ -198,7 +251,11 @@ function updateResearchDraft(entry: ItemResearchEntry, patch: Partial<{ resolved
 }
 
 function saveResearchEntry(entry: ItemResearchEntry) {
-  emit("saveItemResearchEntry", entry.signature, researchDraft(entry));
+  const draft = researchDraft(entry);
+  emit("saveItemResearchEntry", entry.signature, {
+    resolvedName: isKnownMissingIconEntry(entry) ? "" : draft.resolvedName,
+    notes: draft.notes,
+  });
 }
 
 function resetResearchEntry(entry: ItemResearchEntry) {
@@ -214,11 +271,59 @@ function clearResearchDraft(signature: string) {
 }
 
 function entryTypeLabel(entry: ItemResearchEntry): string {
-  return props.itemTypeOptions.find((option) => Number(option.value) === entry.type)?.label ?? `Type ${entry.type}`;
+  return entryTypeLabelValue(entry.type);
+}
+
+function entryTypeLabelValue(type: number): string {
+  return props.itemTypeOptions.find((option) => Number(option.value) === type)?.label ?? `Type ${type}`;
+}
+
+function researchClassificationLabel(entry: ItemResearchEntry): string {
+  return itemResearchClassificationLabel(entry.classification);
+}
+
+function entryMatchesResearchStatus(entry: ItemResearchEntry, status: ItemResearchStatusFilter): boolean {
+  const missingIcon = isKnownMissingIconEntry(entry);
+  if (status === "ignored") return entry.ignored;
+  if (status === "missing-icon") return !entry.ignored && missingIcon;
+  if (status === "resolved") return !entry.ignored && !missingIcon && Boolean(entry.resolvedName.trim());
+  if (status === "unresolved") return !entry.ignored && !missingIcon && !entry.resolvedName.trim();
+  return true;
+}
+
+function isKnownMissingIconEntry(entry: ItemResearchEntry): boolean {
+  return isKnownMissingIconResearchEntry(entry);
+}
+
+function wikiItemPageUrl(entry: ItemResearchEntry): string {
+  return `https://herosiege.wiki.gg/wiki/${encodeURIComponent(entry.label.trim().replace(/\s+/g, "_"))}`;
+}
+
+function canResetResearchEntry(entry: ItemResearchEntry): boolean {
+  const draft = researchDraft(entry);
+  return entry.ignored || Boolean(draft.resolvedName.trim() || draft.notes.trim());
+}
+
+function hasUnknownResolvedName(entry: ItemResearchEntry): boolean {
+  const resolvedName = researchDraft(entry).resolvedName.trim();
+  return Boolean(resolvedName && !isKnownItemResearchName(resolvedName));
 }
 
 function formatSeen(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function soundSummary(soundId: string): string {
+  const resolution = resolveItemFilterSound(soundId, props.itemFilterSounds);
+  return resolution.missingCustomSound ? `${resolution.name} - uses ${resolution.fallbackName}` : resolution.name;
+}
+
+function missingCustomSound(soundId: string): boolean {
+  return resolveItemFilterSound(soundId, props.itemFilterSounds).missingCustomSound;
+}
+
+function fallbackSoundName(soundId: string): string {
+  return resolveItemFilterSound(soundId, props.itemFilterSounds).fallbackName;
 }
 </script>
 
@@ -240,7 +345,7 @@ function formatSeen(timestamp: number): string {
         <div class="item-filter-rule-heading item-research-heading">
           <div>
             <strong>Item Research</strong>
-            <span>{{ unresolvedItemResearchCount }} unresolved &middot; local developer notebook</span>
+            <span>{{ itemResearchSummary }}</span>
           </div>
           <div class="item-research-heading-actions">
             <button class="icon-button ghost" type="button" @click="itemResearchOpen = !itemResearchOpen">{{ itemResearchOpen ? "Hide Research" : "Show Research" }}</button>
@@ -249,27 +354,71 @@ function formatSeen(timestamp: number): string {
         </div>
         <template v-if="itemResearchOpen">
           <p class="item-research-share">
-            Names are case-normalized on save and export. Share exported research as a
+            Unknown drops need names. Known items with missing app icons are maintainer asset backlog, not player research. Share exported research as a
             <a href="https://gist.github.com/" target="_blank" rel="noreferrer">GitHub Gist</a>
             with sarevok9 on Reddit or Snyne on the Hero Siege Discord.
           </p>
-          <div v-if="itemResearchEntries.length" class="item-research-list">
-            <article v-for="entry in itemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName, ignored: entry.ignored }]">
-              <div class="item-research-meta">
-                <strong>{{ researchDraft(entry).resolvedName || entry.label }}</strong>
-                <span>{{ entry.rarity }} &middot; {{ entryTypeLabel(entry) }} #{{ entry.id }} &middot; Q{{ entry.dropQuality }} &middot; {{ entry.count }} seen &middot; {{ formatSeen(entry.lastSeenAt) }}</span>
+          <template v-if="itemResearchEntries.length">
+            <div class="item-research-toolbar">
+              <label>
+                <span>Status</span>
+                <select v-model="itemResearchStatusFilter">
+                  <option v-for="option in itemResearchStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </label>
+              <label>
+                <span>Type</span>
+                <select v-model="itemResearchTypeFilter">
+                  <option value="all">All types</option>
+                  <option v-for="option in itemResearchTypeFilterOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </label>
+              <label>
+                <span>Rarity</span>
+                <select v-model="itemResearchRarityFilter">
+                  <option value="all">All rarities</option>
+                  <option v-for="rarity in itemResearchRarityFilterOptions" :key="rarity" :value="rarity">{{ rarity }}</option>
+                </select>
+              </label>
+              <div class="item-research-batch-actions">
+                <button class="icon-button ghost" type="button" @click="$emit('exportItemResearch', 'resolved')">Export Resolved</button>
+                <button class="icon-button ghost" type="button" @click="$emit('exportItemResearch', 'unresolved')">Export Unresolved</button>
+                <button v-if="resolvedItemResearchCount" class="icon-button ghost" type="button" @click="$emit('clearResolvedItemResearchEntries')">Clear Resolved</button>
+                <button v-if="ignoredItemResearchCount" class="icon-button ghost" type="button" @click="$emit('clearIgnoredItemResearchEntries')">Clear Ignored</button>
               </div>
-              <input :value="researchDraft(entry).resolvedName" type="text" placeholder="Actual item name" spellcheck="false" @input="updateResearchDraft(entry, { resolvedName: eventValue($event) })" />
-              <input :value="researchDraft(entry).notes" type="text" placeholder="Notes" spellcheck="false" @input="updateResearchDraft(entry, { notes: eventValue($event) })" />
-              <div class="item-research-actions">
-                <button class="sound-test-button" type="button" @click="saveResearchEntry(entry)">Save</button>
-                <button v-if="entry.ignored || researchDraft(entry).resolvedName" class="sound-test-button" type="button" @click="resetResearchEntry(entry)">Reset</button>
-                <button v-else class="shopping-remove" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)" :aria-label="`Ignore ${entry.label}`">x</button>
-              </div>
-            </article>
-          </div>
+            </div>
+            <div v-if="filteredItemResearchEntries.length" class="item-research-list">
+              <article v-for="entry in filteredItemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName && !isKnownMissingIconEntry(entry), ignored: entry.ignored, 'missing-icon': isKnownMissingIconEntry(entry) }]">
+                <div class="item-research-meta">
+                  <strong>{{ researchDraft(entry).resolvedName || entry.label }}</strong>
+                  <div class="item-research-details">
+                    <span class="item-research-classification">{{ researchClassificationLabel(entry) }}</span>
+                    <span class="item-research-stats">{{ entry.rarity }} &middot; {{ entryTypeLabel(entry) }} #{{ entry.id }} &middot; Q{{ entry.dropQuality }} &middot; {{ entry.count }} seen &middot; {{ formatSeen(entry.lastSeenAt) }}</span>
+                  </div>
+                </div>
+                <div v-if="isKnownMissingIconEntry(entry)" class="item-research-field item-research-missing-icon-note">
+                  <span>App icon missing</span>
+                  <small>No player action needed; included in maintainer exports.</small>
+                  <a :href="wikiItemPageUrl(entry)" target="_blank" rel="noreferrer">Wiki</a>
+                </div>
+                <div v-else class="item-research-field">
+                  <input :value="researchDraft(entry).resolvedName" type="text" placeholder="Actual item name" spellcheck="false" @input="updateResearchDraft(entry, { resolvedName: eventValue($event) })" />
+                  <small v-if="hasUnknownResolvedName(entry)">Name is not in known item options.</small>
+                </div>
+                <input v-if="!isKnownMissingIconEntry(entry)" :value="researchDraft(entry).notes" type="text" placeholder="Notes" spellcheck="false" @input="updateResearchDraft(entry, { notes: eventValue($event) })" />
+                <div v-if="!isKnownMissingIconEntry(entry)" class="item-research-actions">
+                  <button class="sound-test-button" type="button" @click="saveResearchEntry(entry)">Save</button>
+                  <button v-if="canResetResearchEntry(entry)" class="sound-test-button" type="button" @click="resetResearchEntry(entry)">Reset</button>
+                  <button v-else class="shopping-remove" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)" :aria-label="`Ignore ${entry.label}`">x</button>
+                </div>
+                <div v-else class="item-research-actions">
+                  <button class="sound-test-button" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)">Dismiss</button>
+                </div>
+              </article>
+            </div>
+            <p v-else class="empty-copy">No research entries match the current filters.</p>
+          </template>
           <p v-else class="empty-copy">Item signatures will appear here after developer item research is enabled.</p>
-          <button v-if="itemResearchEntries.some((entry) => entry.ignored)" class="icon-button ghost item-research-clear" type="button" @click="$emit('clearResolvedItemResearchEntries')">Clear Ignored</button>
         </template>
       </section>
 
@@ -293,11 +442,11 @@ function formatSeen(timestamp: number): string {
               v-for="group in itemFilterGroups"
               :key="group.id"
               type="button"
-              :class="['item-filter-group-button', { active: selectedItemFilterGroup?.id === group.id, disabled: !group.enabled }]"
+              :class="['item-filter-group-button', { active: selectedItemFilterGroup?.id === group.id, disabled: !group.enabled, 'missing-sound': missingCustomSound(group.soundId) }]"
               @click="$emit('selectGroup', group)"
             >
               <strong>{{ group.name }}</strong>
-              <span>{{ group.enabled ? "Enabled" : "Disabled" }} &middot; {{ soundName(group.soundId, itemFilterSounds) }}</span>
+              <span>{{ group.enabled ? "Enabled" : "Disabled" }} &middot; {{ soundSummary(group.soundId) }}</span>
             </button>
           </div>
         </aside>
@@ -308,7 +457,7 @@ function formatSeen(timestamp: number): string {
               <input :checked="selectedItemFilterGroup.enabled" type="checkbox" @change="updateSelectedGroup({ enabled: eventChecked($event) })" />
               <span>Enabled</span>
             </label>
-            <button class="icon-button ghost" type="button" @click="requestRemoveGroup(selectedItemFilterGroup)">Remove Group</button>
+            <button class="icon-button ghost" type="button" @click="requestRemoveGroup(selectedItemFilterGroup, $event)">Remove Group</button>
           </div>
 
           <div class="item-filter-editor-grid">
@@ -320,10 +469,14 @@ function formatSeen(timestamp: number): string {
               <span>Sound</span>
               <div class="sound-picker">
                 <select :value="selectedItemFilterGroup.soundId" @change="updateSelectedGroup({ soundId: eventValue($event) })">
+                  <option v-if="selectedGroupSoundResolution?.missingCustomSound" :value="selectedItemFilterGroup.soundId" disabled>Missing custom sound</option>
                   <option v-for="sound in itemFilterSounds" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
                 </select>
                 <button class="sound-test-button" type="button" @click="$emit('testSound', selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" aria-label="Play selected group sound">Play</button>
               </div>
+              <small v-if="selectedGroupSoundResolution?.missingCustomSound" class="item-filter-sound-warning">
+                Missing custom sound. Alerts use {{ selectedGroupSoundResolution.fallbackName }} until another sound is selected or the sound is re-imported.
+              </small>
             </label>
             <label class="settings-row">
               <span>Volume</span>
@@ -387,12 +540,16 @@ function formatSeen(timestamp: number): string {
                 <h4>{{ itemGroup.typeLabel }}</h4>
                 <div v-for="item in itemGroup.items" :key="`${itemGroup.typeLabel}-${item.name}`" class="item-filter-specific-row">
                   <span>{{ item.name }}</span>
-                  <div class="sound-picker">
-                    <select :value="item.soundId" @change="updateSpecificItemSound(item, eventValue($event))">
-                      <option value="">Group sound</option>
-                      <option v-for="sound in itemFilterSounds" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
-                    </select>
-                    <button class="sound-test-button" type="button" @click="$emit('testSound', item.soundId || selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" :aria-label="`Play sound for ${item.name}`">Play</button>
+                  <div class="sound-picker-stack">
+                    <div class="sound-picker">
+                      <select :value="item.soundId" @change="updateSpecificItemSound(item, eventValue($event))">
+                        <option value="">Group sound</option>
+                        <option v-if="missingCustomSound(item.soundId)" :value="item.soundId" disabled>Missing custom sound</option>
+                        <option v-for="sound in itemFilterSounds" :key="sound.id" :value="sound.id">{{ sound.name }}</option>
+                      </select>
+                      <button class="sound-test-button" type="button" @click="$emit('testSound', item.soundId || selectedItemFilterGroup.soundId, selectedItemFilterGroup.volume)" title="Play sound" :aria-label="`Play sound for ${item.name}`">Play</button>
+                    </div>
+                    <small v-if="missingCustomSound(item.soundId)" class="item-filter-sound-warning item-filter-specific-warning">Uses {{ fallbackSoundName(item.soundId) }} until another sound is selected.</small>
                   </div>
                   <button class="shopping-remove" type="button" @click="$emit('removeItemFromGroup', selectedItemFilterGroup, item)" :aria-label="`Remove ${item.name}`">×</button>
                 </div>
@@ -404,7 +561,7 @@ function formatSeen(timestamp: number): string {
         <p v-else class="empty-copy">Add a group to start building an item filter.</p>
       </div>
     </article>
-    <div v-if="groupPendingRemoval" class="modal-backdrop" @click.self="cancelRemoveGroup" @keydown.esc="cancelRemoveGroup">
+    <div v-if="groupPendingRemoval" class="modal-backdrop" @click.self="cancelRemoveGroup" @keydown="handleRemoveGroupDialogKeydown" @keydown.esc="cancelRemoveGroup">
       <section ref="removeGroupDialog" class="settings-panel item-filter-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="remove-filter-group-title" tabindex="-1">
         <div class="settings-heading">
           <div>

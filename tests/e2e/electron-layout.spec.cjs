@@ -58,44 +58,62 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
   });
 });
 
-test("keeps compact mode controls inside the compact window without clipped labels", async () => {
+test("keeps compact mode controls inside every compact theme without clipped labels", async () => {
   await withCompanionApp(async ({ page }) => {
     await page.getByRole("button", { name: "Compact mode" }).click();
     await expect(page.locator(".compact-view")).toBeVisible();
 
-    const diagnostics = await page.evaluate(() => {
-      const compactRoot = document.querySelector(".compact-view");
-      const buttons = Array.from(document.querySelectorAll(".compact-view button")).map((button) => ({
-        label: button.textContent?.trim() || button.getAttribute("aria-label") || button.title,
-        rect: rectOf(button),
-        clipped: button.scrollWidth > button.clientWidth + 2 || button.scrollHeight > button.clientHeight + 2,
-      }));
+    for (const theme of ["dark", "demonsteel", "voidglass", "reliquary", "cyberpunk", "light"]) {
+      const diagnostics = await page.evaluate((nextTheme) => {
+        document.documentElement.dataset.theme = nextTheme;
+        const compactRoot = document.querySelector(".compact-view");
+        const compactRunCover = document.querySelector(".compact-run-cover");
+        const compactRunGrid = compactRunCover?.querySelector(".compact-cover-grid") ?? null;
+        const coverRect = compactRunCover ? rectOf(compactRunCover) : null;
+        const gridRect = compactRunGrid ? rectOf(compactRunGrid) : null;
+        const buttons = Array.from(document.querySelectorAll(".compact-view button")).map((button) => ({
+          label: button.textContent?.trim() || button.getAttribute("aria-label") || button.title,
+          rect: rectOf(button),
+          clipped: button.scrollWidth > button.clientWidth + 2 || button.scrollHeight > button.clientHeight + 2,
+        }));
 
-      return {
-        hasCompactRoot: Boolean(compactRoot),
-        horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        clippedButtons: buttons.filter((button) => button.clipped).map((button) => button.label),
-        offscreenButtons: buttons
-          .filter((button) => button.rect.left < -1 || button.rect.right > window.innerWidth + 1 || button.rect.top < -1 || button.rect.bottom > window.innerHeight + 1)
-          .map((button) => button.label),
-      };
-
-      function rectOf(element) {
-        const rect = element.getBoundingClientRect();
         return {
-          bottom: rect.bottom,
-          height: rect.height,
-          left: rect.left,
-          right: rect.right,
-          top: rect.top,
-          width: rect.width,
+          theme: nextTheme,
+          hasCompactRoot: Boolean(compactRoot),
+          coverPosition: compactRunCover ? getComputedStyle(compactRunCover).position : "",
+          coverRect,
+          coverBottomGap: coverRect ? window.innerHeight - coverRect.bottom : null,
+          coverGridBottomGap: coverRect && gridRect ? coverRect.bottom - gridRect.bottom : null,
+          compactCoverAnimation: compactRunCover ? getComputedStyle(compactRunCover, "::after").animationName : "",
+          horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          clippedButtons: buttons.filter((button) => button.clipped).map((button) => button.label),
+          offscreenButtons: buttons
+            .filter((button) => button.rect.left < -1 || button.rect.right > window.innerWidth + 1 || button.rect.top < -1 || button.rect.bottom > window.innerHeight + 1)
+            .map((button) => button.label),
         };
-      }
-    });
 
-    expect(diagnostics.hasCompactRoot).toBe(true);
-    expect(diagnostics.horizontalOverflow).toBeLessThanOrEqual(4);
-    expect(diagnostics.clippedButtons).toEqual([]);
-    expect(diagnostics.offscreenButtons).toEqual([]);
+        function rectOf(element) {
+          const rect = element.getBoundingClientRect();
+          return {
+            bottom: rect.bottom,
+            height: rect.height,
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            width: rect.width,
+          };
+        }
+      }, theme);
+
+      expect(diagnostics.hasCompactRoot).toBe(true);
+      expect(diagnostics.coverPosition, diagnostics.theme).toBe("fixed");
+      expect(diagnostics.coverRect?.top, diagnostics.theme).toBeLessThanOrEqual(36);
+      expect(diagnostics.coverBottomGap, diagnostics.theme).toBeGreaterThanOrEqual(7);
+      expect(diagnostics.coverGridBottomGap, diagnostics.theme).toBeGreaterThanOrEqual(8);
+      if (diagnostics.theme === "cyberpunk") expect(diagnostics.compactCoverAnimation).toBe("none");
+      expect(diagnostics.horizontalOverflow, diagnostics.theme).toBeLessThanOrEqual(4);
+      expect(diagnostics.clippedButtons, diagnostics.theme).toEqual([]);
+      expect(diagnostics.offscreenButtons, diagnostics.theme).toEqual([]);
+    }
   });
 });

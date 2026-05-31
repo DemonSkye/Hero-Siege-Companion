@@ -19,6 +19,7 @@
   width: min(840px, calc(100vw - 48px));
   max-height: calc(100vh - var(--modal-gutter-top) - var(--modal-gutter-bottom));
   min-height: 0;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   background: #141820;
@@ -33,6 +34,14 @@
 .settings-panel.whats-new-prompt {
   grid-template-rows: auto auto;
   width: min(620px, calc(100vw - 48px));
+}
+
+.settings-tab-panel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .whats-new-prompt-actions {
@@ -82,6 +91,11 @@
 
 .settings-actions {
   flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-strong);
 }
 
 .settings-grid {
@@ -93,7 +107,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   margin: 18px 0;
-  padding: 0 6px 8px 0;
+  padding: 0 6px 12px 0;
   scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
   scrollbar-width: thin;
 }
@@ -148,6 +162,31 @@
   grid-column: 1 / -1;
 }
 
+.settings-range-row {
+  align-items: center;
+}
+
+.settings-range-control {
+  display: grid;
+  min-width: min(210px, 48%);
+  grid-template-columns: minmax(110px, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-range-control input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--user-accent);
+}
+
+.settings-range-control code {
+  color: var(--app-muted-strong);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: right;
+}
+
 .whats-new-list {
   display: grid;
   gap: 10px;
@@ -160,6 +199,32 @@
 
 .whats-new-list li::marker {
   color: var(--accent-warm);
+}
+
+.whats-new-settings {
+  align-content: start;
+  max-height: clamp(360px, 56vh, 620px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 12px;
+  overscroll-behavior: contain;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.whats-new-settings::-webkit-scrollbar {
+  width: 9px;
+}
+
+.whats-new-settings::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.whats-new-settings::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(20, 24, 32, 0.96);
+  border-radius: 999px;
+  background: #3f9487;
 }
 
 .whats-new-settings .whats-new-list {

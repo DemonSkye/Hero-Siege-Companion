@@ -29,7 +29,7 @@ describe("support diagnostics runtime", () => {
 
     const showToast = vi.fn();
     const runtime = useSupportDiagnosticsRuntime({
-      state: ref(companionState()),
+      state: ref(companionState({ captureError: "Native capture unavailable: Npcap is missing" })),
       showToast,
     });
 
@@ -39,6 +39,7 @@ describe("support diagnostics runtime", () => {
 
     expect(runtime.supportDiagnosticsInfo.value.userDataPath).toContain("Hero Siege Companion");
     expect(saveSupportDiagnostics).toHaveBeenCalledWith(expect.stringContaining("App version: 0.2.0"));
+    expect(saveSupportDiagnostics).toHaveBeenCalledWith(expect.stringContaining("Capture error: Native capture unavailable: Npcap is missing"));
     expect(showToast).toHaveBeenCalledWith("Diagnostics ZIP saved with 1 file");
     expect(showToast).toHaveBeenCalledWith("Diagnostics summary copied");
     expect(runtime.supportBundleBusy.value).toBe(false);

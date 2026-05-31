@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 import type { CompactRunTileConfig } from "../lib/compact-tiles";
 import type { CustomItemFilterSound, ItemFilterGroup } from "../lib/item-filters";
-import type { ThemeAccentMap, ThemeId } from "../lib/themes";
+import type { ThemeAccentMap, ThemeForegroundFillMap, ThemeId, ThemeTextureMap } from "../lib/themes";
 import type { WhatsNewRelease } from "../lib/whats-new";
 import SettingsAppearanceTab from "./SettingsAppearanceTab.vue";
 import SettingsCaptureTab from "./SettingsCaptureTab.vue";
@@ -13,6 +13,7 @@ import SettingsGeneralTab from "./SettingsGeneralTab.vue";
 import SettingsSoundsTab from "./SettingsSoundsTab.vue";
 import SettingsSupportTab from "./SettingsSupportTab.vue";
 import SettingsWhatsNewTab from "./SettingsWhatsNewTab.vue";
+import { useModalFocus } from "../lib/modal-focus";
 
 interface ItemTypeOption {
   value: string;
@@ -49,6 +50,7 @@ const emit = defineEmits<{
   updateThemeAccent: [value: string, themeId?: ThemeId];
   importTheme: [];
   exportTheme: [];
+  exportThemeTemplate: [];
   importSounds: [];
   exportSounds: [];
   removeSound: [sound: CustomItemFilterSound];
@@ -58,6 +60,7 @@ const emit = defineEmits<{
   importConfiguration: [];
   reset: [];
   apply: [];
+  settingsTabChange: [tab: SettingsTab];
 }>();
 
 const draftLogLimit = defineModel<number>("logLimit", { required: true });
@@ -79,6 +82,10 @@ const draftUnknownItemAudioPrompt = defineModel<boolean>("unknownItemAudioPrompt
 const draftThemeId = defineModel<ThemeId>("themeId", { required: true });
 const draftCompactThemeId = defineModel<ThemeId>("compactThemeId", { required: true });
 const draftThemeAccents = defineModel<ThemeAccentMap>("themeAccents", { required: true });
+const draftThemeTextures = defineModel<ThemeTextureMap>("themeTextures", { required: true });
+const draftCompactThemeTextures = defineModel<ThemeTextureMap>("compactThemeTextures", { required: true });
+const draftThemeForegroundFills = defineModel<ThemeForegroundFillMap>("themeForegroundFills", { required: true });
+const draftCompactThemeForegroundFills = defineModel<ThemeForegroundFillMap>("compactThemeForegroundFills", { required: true });
 const configIncludeAppSettings = defineModel<boolean>("configIncludeAppSettings", { required: true });
 const configIncludeRunSaving = defineModel<boolean>("configIncludeRunSaving", { required: true });
 const configIncludeReportTracking = defineModel<boolean>("configIncludeReportTracking", { required: true });
@@ -100,13 +107,10 @@ const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
 };
 const activeSettingsTab = ref<SettingsTab>(props.initialTab ?? "general");
 const settingsDialog = ref<HTMLElement | null>(null);
-
-onMounted(() => {
-  settingsDialog.value?.focus();
-});
+const { handleModalFocusKeydown } = useModalFocus(settingsDialog);
 
 watch(() => props.initialTab, (tab) => {
-  if (tab) activeSettingsTab.value = tab;
+  if (tab) setActiveSettingsTab(tab, false);
 });
 
 function updateThemeAccent(value: string, themeId?: ThemeId) {
@@ -114,7 +118,13 @@ function updateThemeAccent(value: string, themeId?: ThemeId) {
 }
 
 function selectSettingsTab(tab: SettingsTab) {
+  setActiveSettingsTab(tab);
+}
+
+function setActiveSettingsTab(tab: SettingsTab, notify = true) {
+  if (activeSettingsTab.value === tab) return;
   activeSettingsTab.value = tab;
+  if (notify) emit("settingsTabChange", tab);
 }
 
 function settingsTabButtonId(tab: SettingsTab): string {
@@ -140,15 +150,16 @@ function handleSettingsTabKeydown(event: KeyboardEvent) {
             : -1;
   if (nextIndex < 0) return;
   event.preventDefault();
-  activeSettingsTab.value = SETTINGS_TAB_ORDER[nextIndex];
+  const nextTab = SETTINGS_TAB_ORDER[nextIndex];
+  setActiveSettingsTab(nextTab);
   void nextTick(() => {
-    document.querySelector<HTMLButtonElement>(`[data-settings-tab="${activeSettingsTab.value}"]`)?.focus();
+    document.querySelector<HTMLButtonElement>(`[data-settings-tab="${nextTab}"]`)?.focus();
   });
 }
 </script>
 
 <template>
-  <div class="modal-backdrop" @keydown.esc="$emit('close')">
+  <div class="modal-backdrop" @keydown="handleModalFocusKeydown" @keydown.esc="$emit('close')">
     <section ref="settingsDialog" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
       <div class="settings-heading">
         <div>
@@ -177,7 +188,13 @@ function handleSettingsTabKeydown(event: KeyboardEvent) {
         </button>
       </nav>
 
-      <section :id="settingsTabPanelId(activeSettingsTab)" role="tabpanel" :aria-labelledby="settingsTabButtonId(activeSettingsTab)" tabindex="0">
+      <section
+        :id="settingsTabPanelId(activeSettingsTab)"
+        class="settings-tab-panel"
+        role="tabpanel"
+        :aria-labelledby="settingsTabButtonId(activeSettingsTab)"
+        tabindex="0"
+      >
         <SettingsGeneralTab
           v-if="activeSettingsTab === 'general'"
           v-model:log-limit="draftLogLimit"
@@ -211,10 +228,15 @@ function handleSettingsTabKeydown(event: KeyboardEvent) {
           v-model:theme-id="draftThemeId"
           v-model:compact-theme-id="draftCompactThemeId"
           v-model:theme-accents="draftThemeAccents"
+          v-model:theme-textures="draftThemeTextures"
+          v-model:compact-theme-textures="draftCompactThemeTextures"
+          v-model:theme-foreground-fills="draftThemeForegroundFills"
+          v-model:compact-theme-foreground-fills="draftCompactThemeForegroundFills"
           :theme-options="themeOptions"
           @update-theme-accent="updateThemeAccent"
           @import-theme="$emit('importTheme')"
           @export-theme="$emit('exportTheme')"
+          @export-theme-template="$emit('exportThemeTemplate')"
         />
 
         <SettingsSoundsTab

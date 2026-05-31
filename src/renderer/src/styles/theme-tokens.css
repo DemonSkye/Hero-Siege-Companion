@@ -181,6 +181,48 @@ input[type="checkbox"] {
   gap: 10px;
 }
 
+.settings-theme-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-theme-group {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-cell);
+}
+
+.settings-theme-group-heading {
+  display: flex;
+  min-height: 18px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-theme-group-heading strong {
+  color: var(--app-heading);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.settings-theme-group-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-theme-group .settings-row {
+  min-height: 46px;
+  background: var(--surface-soft);
+}
+
 .settings-color-control {
   display: inline-flex;
   align-items: center;
@@ -240,15 +282,50 @@ input[type="checkbox"] {
   margin: 8px 0 0;
 }
 
-.settings-theme-help code {
+.settings-theme-help pre {
   display: block;
-  margin-top: 8px;
+  margin: 8px 0 0;
   padding: 8px;
   border-radius: 6px;
   background: var(--input-bg);
   color: var(--user-accent);
   font-size: 12px;
-  overflow-wrap: anywhere;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.settings-theme-token-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.settings-theme-token-list span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+
+.settings-theme-token-list code {
+  color: var(--app-heading);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.settings-theme-token-list small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-support-path {
@@ -390,9 +467,6 @@ input[type="checkbox"] {
 .status-strip,
 .view-tabs,
 .status-details,
-.item-filter-status-grid div,
-.item-filter-last,
-.item-filter-card-group,
 .item-filter-suggestions button,
 .shopping-item,
 .past-run-toolbar,
@@ -403,7 +477,6 @@ input[type="checkbox"] {
 .run-tag-option,
 .past-run-aggregate,
 .aggregate-metrics,
-.aggregate-drop-grid,
 .aggregate-top-list div,
 .past-run-card,
 .past-run-metrics,
@@ -428,7 +501,6 @@ input[type="checkbox"] {
 .run-tag-option,
 .past-run-aggregate,
 .aggregate-metrics,
-.aggregate-drop-grid,
 .past-run-card,
 .past-run-metrics,
 .resource-chip,
@@ -447,14 +519,10 @@ input[type="checkbox"] {
 .empty-copy,
 .countdown small,
 .buff span,
-.item-filter-status-grid span,
-.item-filter-last span,
-.item-filter-card-group span,
 .item-filter-rule-heading span,
 .past-run-search span,
 .run-tag-search span,
 .tag-selector-button span,
-.item-filter-last small,
 .item-research-meta span,
 .item-filter-search-hint,
 .item-filter-group-button span,
@@ -475,23 +543,15 @@ input[type="checkbox"] {
 .past-run-time,
 .aggregate-heading span,
 .aggregate-heading strong,
-.aggregate-top-drops > span,
-.aggregate-top-drops > small,
 .aggregate-metrics span,
-.aggregate-drop span,
 .aggregate-metrics small,
-.aggregate-drop small,
 .past-run-metrics span,
-.past-run-metrics small,
-.resource-column h4 {
+.past-run-metrics small {
   color: var(--app-muted);
 }
 
 .metric strong,
 .status-item strong,
-.item-filter-status-grid strong,
-.item-filter-last strong,
-.item-filter-card-group strong,
 .item-research-meta strong,
 .item-filter-rule-heading strong,
 .tag-selector-button strong,
@@ -508,21 +568,19 @@ input[type="checkbox"] {
 .aggregate-heading h3,
 .past-run-header h3,
 .aggregate-metrics strong,
-.aggregate-drop strong,
 .aggregate-top-list strong,
 .past-run-metrics strong,
 .resource-chip strong {
   color: var(--app-heading);
 }
 
-.aggregate-top-list span,
+.aggregate-top-list .drop-breakdown-name,
 .resource-chip span {
   color: var(--app-text);
 }
 
 .aggregate-heading strong,
-.aggregate-duration-total strong,
-.resource-column-toggle span {
+.aggregate-duration-total strong {
   color: var(--user-accent);
 }
 
@@ -610,6 +668,29 @@ input[type="checkbox"] {
   border-color: color-mix(in srgb, var(--danger) 36%, transparent);
 }
 
+.buff-pro {
+  border-color: var(--effect-benefit-border);
+  background: var(--effect-benefit-bg);
+}
+
+.buff-pro strong,
+:root[data-theme] .buff-pro strong,
+.compact-zone-effects .compact-zone-pros span,
+.compact-zone-effects .compact-zone-pros strong,
+:root[data-theme] .compact-zone-effects .compact-zone-pros span,
+:root[data-theme] .compact-zone-effects .compact-zone-pros strong {
+  color: var(--effect-benefit);
+}
+
+.buff-con strong,
+:root[data-theme] .buff-con strong,
+.compact-zone-effects .compact-zone-cons span,
+.compact-zone-effects .compact-zone-cons strong,
+:root[data-theme] .compact-zone-effects .compact-zone-cons span,
+:root[data-theme] .compact-zone-effects .compact-zone-cons strong {
+  color: var(--danger);
+}
+
 .shopping-remove:hover,
 .compact-shopping-close:hover {
   color: var(--danger);
@@ -628,8 +709,6 @@ input[type="checkbox"] {
   color: var(--app-text);
 }
 
-.item-filter-card-groups,
-.item-filter-match-totals,
 .item-filter-suggestions,
 .item-research-list,
 .item-filter-group-list,
@@ -647,12 +726,14 @@ input[type="checkbox"] {
 
 .app-scroll,
 .settings-grid,
+.whats-new-settings,
 .compact-shopping-list {
   scrollbar-color: var(--scrollbar) color-mix(in srgb, var(--surface-strong) 76%, transparent);
 }
 
 .app-scroll::-webkit-scrollbar-thumb,
 .settings-grid::-webkit-scrollbar-thumb,
+.whats-new-settings::-webkit-scrollbar-thumb,
 .compact-shopping-list::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
 }

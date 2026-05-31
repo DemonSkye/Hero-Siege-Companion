@@ -1,5 +1,13 @@
+export const MAGIC_FIND_FLAG_METRIC_LABEL = "Magic-find flagged";
+export const MAGIC_FIND_FLAG_SHORT_LABEL = "MF flagged";
+export const MAGIC_FIND_FLAG_HELP = "Server-provided magic-find flags. This is not local proof that magic find caused a drop.";
+
 export function formatNumber(value: number): string {
   return Math.trunc(value || 0).toLocaleString();
+}
+
+export function formatMagicFindFlagCount(value: number, options: { short?: boolean } = {}): string {
+  return `${formatNumber(value)} ${options.short ? MAGIC_FIND_FLAG_SHORT_LABEL : MAGIC_FIND_FLAG_METRIC_LABEL.toLowerCase()}`;
 }
 
 export function formatDuration(ms: number): string {

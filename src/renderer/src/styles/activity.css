@@ -350,6 +350,7 @@
 
 .timeline-meta-actions {
   display: flex;
+  flex-wrap: wrap;
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
@@ -359,6 +360,33 @@
 .timeline-identify-button {
   min-height: 28px;
   padding: 0 9px;
+}
+
+.timeline-filter-match {
+  max-width: 180px;
+  min-height: 28px;
+  overflow: hidden;
+  padding: 0 9px;
+  border: 1px solid rgba(137, 216, 199, 0.28);
+  border-radius: 7px;
+  background: rgba(137, 216, 199, 0.1);
+  color: #b9efe3;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-filter-match:hover {
+  border-color: rgba(137, 216, 199, 0.46);
+  background: rgba(137, 216, 199, 0.16);
+}
+
+.timeline-filter-match:disabled {
+  cursor: default;
+  opacity: 0.58;
 }
 
 .rarity-pill {

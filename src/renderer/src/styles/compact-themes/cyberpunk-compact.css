@@ -81,7 +81,7 @@
 }
 
 :root[data-theme="cyberpunk"] .compact-run-cover {
-  inset: 34px 6px 6px;
+  inset: 34px 6px 8px;
   border: 1px solid rgba(0, 240, 255, 0.34);
   border-radius: 8px;
   background:
@@ -115,8 +115,8 @@
   background:
     linear-gradient(110deg, transparent 0 40%, rgba(255, 255, 255, 0.075) 48%, rgba(255, 242, 0, 0.04) 51%, transparent 59% 100%);
   background-size: 260% 100%;
-  opacity: 0.2;
-  animation: cyberpunk-metal-sheen 29s linear infinite;
+  opacity: 0.12;
+  animation: none;
   pointer-events: none;
 }
 
@@ -175,8 +175,48 @@
     rgba(4, 6, 10, 0.97);
 }
 
+:root[data-theme="cyberpunk"] .compact-run-cover,
+:root[data-theme="cyberpunk"] .compact-zone-tray {
+  isolation: isolate;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.024) 0 1px, transparent 1px 9px),
+    repeating-linear-gradient(90deg, rgba(255, 242, 0, 0.018) 0 1px, transparent 1px 14px),
+    radial-gradient(circle at 0% 0%, rgba(255, 242, 0, 0.1), transparent 10rem),
+    linear-gradient(135deg, rgba(0, 240, 255, 0.075), transparent 42%),
+    rgba(4, 6, 10, 0.98);
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover::after,
+:root[data-theme="cyberpunk"] .compact-zone-tray::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(135deg, transparent 0 18px, rgba(255, 242, 0, 0.028) 18px 19px, transparent 19px 36px),
+    linear-gradient(110deg, transparent 0 42%, rgba(255, 255, 255, 0.045) 49%, rgba(255, 242, 0, 0.026) 51%, transparent 58% 100%);
+  background-size: auto, 360% 100%;
+  opacity: 0.14;
+  animation: none;
+  pointer-events: none;
+}
+
+:root[data-theme="cyberpunk"] .compact-zone-tray > * {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="cyberpunk"] .compact-run-cover .compact-cover-grid div {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    linear-gradient(135deg, rgba(0, 240, 255, 0.07), transparent 50%),
+    rgba(10, 12, 18, 0.92);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme="cyberpunk"] .compact-run-cover::after {
+  :root[data-theme="cyberpunk"] .compact-run-cover::after,
+  :root[data-theme="cyberpunk"] .compact-zone-tray::after {
     animation: none;
   }
 }

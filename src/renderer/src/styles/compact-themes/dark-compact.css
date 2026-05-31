@@ -1,0 +1,130 @@
+:root[data-theme="dark"] .app-shell.compact {
+  background:
+    radial-gradient(circle at 0% 18%, rgba(137, 216, 199, 0.09), transparent 9rem),
+    radial-gradient(circle at 100% 0%, rgba(255, 211, 138, 0.07), transparent 10rem),
+    linear-gradient(135deg, #0d1117 0%, #11141a 56%, #15130f 100%);
+}
+
+:root[data-theme="dark"] .app-shell.compact .app-titlebar {
+  border-bottom: 1px solid rgba(137, 216, 199, 0.2);
+  background:
+    linear-gradient(90deg, rgba(137, 216, 199, 0.08), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+}
+
+:root[data-theme="dark"] .app-shell.compact .drag-strip {
+  color: rgba(226, 234, 243, 0.76);
+}
+
+:root[data-theme="dark"] .app-shell.compact .app-mark {
+  border-color: rgba(137, 216, 199, 0.5);
+  background: rgba(137, 216, 199, 0.08);
+  color: #9ee4d7;
+}
+
+:root[data-theme="dark"] .app-shell.compact .window-controls button {
+  border-color: rgba(137, 216, 199, 0.24);
+  background: rgba(12, 16, 22, 0.76);
+  color: #e9edf4;
+}
+
+:root[data-theme="dark"] .app-shell.compact .window-controls button:hover {
+  border-color: rgba(137, 216, 199, 0.44);
+  background: rgba(137, 216, 199, 0.11);
+}
+
+:root[data-theme="dark"] .compact-run-cover,
+:root[data-theme="dark"] .compact-zone-tray {
+  border-color: rgba(137, 216, 199, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(137, 216, 199, 0.07), transparent 10rem),
+    rgba(13, 16, 21, 0.97);
+  box-shadow:
+    0 20px 52px rgba(0, 0, 0, 0.54),
+    0 0 0 1px rgba(137, 216, 199, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="dark"] .compact-run-cover::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(255, 211, 138, 0.72), transparent);
+  box-shadow: 0 0 16px rgba(255, 211, 138, 0.18);
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .compact-run-cover .compact-cover-head,
+:root[data-theme="dark"] .compact-run-cover .compact-cover-grid {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="dark"] .compact-run-cover .compact-cover-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(137, 216, 199, 0.16);
+}
+
+:root[data-theme="dark"] .compact-run-cover .compact-cover-head span,
+:root[data-theme="dark"] .compact-run-cover .compact-cover-grid span {
+  color: #9ee4d7;
+}
+
+:root[data-theme="dark"] .compact-run-cover .compact-cover-grid div {
+  border-color: rgba(137, 216, 199, 0.18);
+  background:
+    linear-gradient(135deg, rgba(137, 216, 199, 0.05), transparent 52%),
+    rgba(19, 22, 29, 0.88);
+  box-shadow: inset 2px 0 rgba(255, 211, 138, 0.13);
+}
+
+:root[data-theme="dark"] .compact-run-cover-controls button,
+:root[data-theme="dark"] .compact-cover-button {
+  border-color: rgba(137, 216, 199, 0.3);
+  background: rgba(12, 16, 22, 0.78);
+}
+
+:root[data-theme="dark"] .compact-cover-button {
+  border-color: rgba(255, 211, 138, 0.34);
+  color: #ffe3a8;
+}
+
+:root[data-theme="dark"] .compact-run-cover,
+:root[data-theme="dark"] .compact-zone-tray {
+  isolation: isolate;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 10px),
+    repeating-linear-gradient(90deg, rgba(137, 216, 199, 0.018) 0 1px, transparent 1px 12px),
+    radial-gradient(circle at 0% 0%, rgba(137, 216, 199, 0.08), transparent 10rem),
+    linear-gradient(145deg, rgba(255, 211, 138, 0.035), transparent 52%),
+    rgba(13, 16, 21, 0.98);
+}
+
+:root[data-theme="dark"] .compact-run-cover::after,
+:root[data-theme="dark"] .compact-zone-tray::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.045), transparent 34%),
+    radial-gradient(circle at 100% 100%, rgba(255, 211, 138, 0.06), transparent 8rem);
+  opacity: 0.74;
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .compact-run-cover > *,
+:root[data-theme="dark"] .compact-zone-tray > * {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="dark"] .compact-run-cover .compact-cover-grid div {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    linear-gradient(135deg, rgba(137, 216, 199, 0.055), transparent 52%),
+    rgba(18, 22, 28, 0.92);
+}

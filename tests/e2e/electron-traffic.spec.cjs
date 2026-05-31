@@ -24,11 +24,11 @@ test("parses mocked traffic payloads through main and renders live outcomes", as
     expect(state.health).toMatchObject({
       packetsSeen: 1,
       payloadsAssembled: 1,
-      parsedEvents: 6,
+      parsedEvents: 5,
       parserErrors: 0,
     });
 
-    await expect(page.getByText(/1 seen.*6 parsed/)).toBeVisible();
+    await expect(page.getByText(/1 seen.*5 parsed/)).toBeVisible();
     await expect(page.getByText(/Act 1/).first()).toBeVisible();
     await expect(page.getByText("Aurelion Fury").first()).toBeVisible();
 
@@ -56,7 +56,7 @@ test("classifies heroic and angelic drops from mocked traffic messages", async (
     expect(state.health).toMatchObject({
       packetsSeen: 1,
       payloadsAssembled: 1,
-      parsedEvents: 4,
+      parsedEvents: 3,
       parserErrors: 0,
     });
     expect(state.stats.itemBreakdown.Heroic["Fumacinha's Favela Flipflop"].total).toBe(1);

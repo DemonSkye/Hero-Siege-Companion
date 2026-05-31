@@ -31,7 +31,10 @@ const GOLD_DELTA_FIELDS = ["goldAmount", "gold_amount"];
 const SATANIC_ZONE_FIELDS = ["satanicZoneName", "satanic_zone_name"];
 const ACCOUNT_SIGNATURE_FIELDS = ["name", "class", "class_id", "heroLevel", "herolevel", "season", "hardcore"];
 const ACTIVE_ACCOUNT_IDENTITY_FIELDS = ["accountUID", "accountUid", "unique_id", "uniqueId"];
+const ACTIVE_ACCOUNT_OWNER_FIELDS = ["cross_region_identifier", "crossRegionIdentifier", "cross_region_id", "crossRegionId"];
+const NEARBY_PLAYER_LIST_FIELDS = ["platformUserName", "platform_user_name", "nameColor", "name_color", "uid", "slot"];
 const ACCOUNT_MODE_HINT_FIELDS = ["blood_pact", "bloodPact"];
+const ACCOUNT_MODE_CONTEXT_FIELDS = ["route", "account_id", "accountId"];
 const ACCOUNT_MODE_SIGNATURE_FIELDS = ["hardcore", "seasonal"];
 
 export interface ParsedEvent<T = unknown> {
@@ -181,7 +184,11 @@ function identifyEvents(msg: MessageObject): EventName[] {
   ) {
     events.push(EVENT_NAMES.account);
   }
-  if (hasMessageField(msg, ACCOUNT_MODE_HINT_FIELDS) && hasMessageField(msg, ACCOUNT_MODE_SIGNATURE_FIELDS)) {
+  if (
+    hasMessageField(msg, ACCOUNT_MODE_HINT_FIELDS) &&
+    hasMessageField(msg, ACCOUNT_MODE_CONTEXT_FIELDS) &&
+    hasMessageField(msg, ACCOUNT_MODE_SIGNATURE_FIELDS)
+  ) {
     events.push(EVENT_NAMES.accountMode);
   }
   if (hasMessageField(msg, XP_GAIN_FIELDS)) events.push(EVENT_NAMES.xp);
@@ -212,8 +219,10 @@ function isActiveAccountIdentityPayload(msg: MessageObject): boolean {
   return (
     hasMessageField(msg, ["name"]) &&
     hasMessageField(msg, ACTIVE_ACCOUNT_IDENTITY_FIELDS) &&
+    hasMessageField(msg, ACTIVE_ACCOUNT_OWNER_FIELDS) &&
     hasMessageField(msg, ["season"]) &&
-    hasMessageField(msg, ["hardcore"])
+    hasMessageField(msg, ["hardcore"]) &&
+    !hasMessageField(msg, NEARBY_PLAYER_LIST_FIELDS)
   );
 }
 

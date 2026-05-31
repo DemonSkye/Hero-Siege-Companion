@@ -1,8 +1,10 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
+import { MAGIC_FIND_FLAG_METRIC_LABEL } from "./format";
 import { TRACKED_RARITY_ORDER } from "./past-runs";
 
 export type ReportMetricId = "gold" | "xp" | "kills" | "keys" | "ores" | "materials" | "mfDrops";
 export type ReportResourceDrawerId = "materials" | "keys" | "ores";
+export type ReportSummaryItemId = string;
 
 export interface ReportItemGroup {
   id: string;
@@ -14,6 +16,7 @@ export interface ReportItemGroup {
 }
 
 export interface PostRunReportConfig {
+  summaryItems: ReportSummaryItemId[];
   summaryMetrics: ReportMetricId[];
   dropRarities: string[];
   resourceDrawers: ReportResourceDrawerId[];
@@ -23,6 +26,13 @@ export interface PostRunReportConfig {
   itemFilterGroupIds: string[];
 }
 
+export interface PostRunReportPreset {
+  id: string;
+  name: string;
+  description: string;
+  config: PostRunReportConfig;
+}
+
 export const REPORT_METRIC_OPTIONS: Array<{ id: ReportMetricId; label: string }> = [
   { id: "gold", label: "Gold" },
   { id: "xp", label: "XP" },
@@ -30,7 +40,7 @@ export const REPORT_METRIC_OPTIONS: Array<{ id: ReportMetricId; label: string }>
   { id: "keys", label: "Keys" },
   { id: "ores", label: "Ore" },
   { id: "materials", label: "Materials" },
-  { id: "mfDrops", label: "MF drops" },
+  { id: "mfDrops", label: MAGIC_FIND_FLAG_METRIC_LABEL },
 ];
 
 export const REPORT_RESOURCE_DRAWER_OPTIONS: Array<{ id: ReportResourceDrawerId; label: string }> = [
@@ -40,36 +50,199 @@ export const REPORT_RESOURCE_DRAWER_OPTIONS: Array<{ id: ReportResourceDrawerId;
 ];
 
 export const REPORT_TOP_DROP_LIMIT_OPTIONS = [3, 5, 8, 10, 15];
+export const REPORT_SUMMARY_ITEM_LIMIT = 8;
+const REPORT_RESOURCE_DRAWER_METRICS: Record<ReportResourceDrawerId, ReportMetricId> = {
+  materials: "materials",
+  keys: "keys",
+  ores: "ores",
+};
+const LEGACY_RARITY_SUMMARY_PRIORITY = ["Satanic", "Heroic", "Angelic", "Set"];
+
+export function reportMetricItemId(metric: ReportMetricId): ReportSummaryItemId {
+  return `metric:${metric}`;
+}
+
+export function reportRarityItemId(rarity: string): ReportSummaryItemId {
+  return `rarity:${rarity}`;
+}
+
+export function reportItemGroupItemId(groupId: string): ReportSummaryItemId {
+  return `group:${groupId}`;
+}
+
+export function reportItemFilterGroupItemId(groupId: string): ReportSummaryItemId {
+  return `filter:${groupId}`;
+}
+
+export function reportSummaryItemKind(itemId: ReportSummaryItemId): "metric" | "rarity" | "group" | "filter" | null {
+  if (itemId.startsWith("metric:")) return "metric";
+  if (itemId.startsWith("rarity:")) return "rarity";
+  if (itemId.startsWith("group:")) return "group";
+  if (itemId.startsWith("filter:")) return "filter";
+  return null;
+}
+
+export function reportSummaryItemValue(itemId: ReportSummaryItemId): string {
+  const separatorIndex = itemId.indexOf(":");
+  return separatorIndex >= 0 ? itemId.slice(separatorIndex + 1) : itemId;
+}
+
+export function reportSummaryItemsFromLegacy(
+  summaryMetrics: ReportMetricId[],
+  dropRarities: string[],
+  itemGroups: ReportItemGroup[] = [],
+  itemFilterGroupIds: string[] = [],
+  resourceDrawers: ReportResourceDrawerId[] = [],
+): ReportSummaryItemId[] {
+  const genericItems = uniqueSummaryItems([
+    ...summaryMetrics.map(reportMetricItemId),
+    ...resourceDrawers.map((drawer) => reportMetricItemId(REPORT_RESOURCE_DRAWER_METRICS[drawer])),
+    ...LEGACY_RARITY_SUMMARY_PRIORITY
+      .filter((rarity) => dropRarities.includes(rarity))
+      .map(reportRarityItemId),
+  ]);
+  const customItems = uniqueSummaryItems([
+    ...itemGroups.filter((group) => group.enabled).map((group) => reportItemGroupItemId(group.id)),
+    ...itemFilterGroupIds.map(reportItemFilterGroupItemId),
+  ]).slice(0, REPORT_SUMMARY_ITEM_LIMIT);
+  if (customItems.length === 0) return genericItems.slice(0, REPORT_SUMMARY_ITEM_LIMIT);
+
+  const genericLimit = Math.max(REPORT_SUMMARY_ITEM_LIMIT - customItems.length, 0);
+  return uniqueSummaryItems([...genericItems.slice(0, genericLimit), ...customItems]).slice(0, REPORT_SUMMARY_ITEM_LIMIT);
+}
 
 export const defaultPostRunReportConfig: PostRunReportConfig = {
+  summaryItems: [
+    reportMetricItemId("gold"),
+    reportMetricItemId("xp"),
+    reportMetricItemId("kills"),
+    reportMetricItemId("keys"),
+    reportMetricItemId("ores"),
+    reportMetricItemId("materials"),
+    reportMetricItemId("mfDrops"),
+    reportRarityItemId("Satanic"),
+  ],
   summaryMetrics: ["gold", "xp", "kills", "keys", "ores", "materials", "mfDrops"],
-  dropRarities: TRACKED_RARITY_ORDER,
-  resourceDrawers: ["materials", "keys", "ores"],
+  dropRarities: ["Satanic"],
+  resourceDrawers: ["keys", "ores", "materials"],
   topDropLimit: 8,
   trackedItems: [],
   itemGroups: [],
   itemFilterGroupIds: [],
 };
 
+export const POST_RUN_REPORT_PRESETS: PostRunReportPreset[] = [
+  {
+    id: "default",
+    name: "Default",
+    description: "Balanced run totals, resources, and tracked rarity drops.",
+    config: defaultPostRunReportConfig,
+  },
+  {
+    id: "gear-farming",
+    name: "Gear Farming",
+    description: "High-value rarity drops with longer top-drop recaps.",
+    config: reportPresetConfig(["gold", "xp", "kills", "mfDrops"], ["Satanic", "Heroic", "Angelic"], 10),
+  },
+  {
+    id: "materials-ore",
+    name: "Materials / Ore",
+    description: "Resources and material pace for crafting sessions.",
+    config: reportPresetConfig(["gold", "keys", "ores", "materials"], TRACKED_RARITY_ORDER, 5),
+  },
+  {
+    id: "keys",
+    name: "Keys",
+    description: "Key totals and supporting resources for key-farming routes.",
+    config: reportPresetConfig(["gold", "keys", "materials"], TRACKED_RARITY_ORDER, 5),
+  },
+  {
+    id: "magic-find",
+    name: "Magic-Find Focus",
+    description: "Magic-find flag counts first, with top drops expanded.",
+    config: reportPresetConfig(["mfDrops", "gold", "xp", "kills"], TRACKED_RARITY_ORDER, 15),
+  },
+  {
+    id: "satanic-zone",
+    name: "Satanic Zone",
+    description: "Zone strategy recap with pace, resources, and rare drops.",
+    config: reportPresetConfig(["gold", "xp", "kills", "keys", "materials", "mfDrops"], ["Satanic", "Heroic", "Angelic"], 10),
+  },
+];
+
 export function normalizePostRunReportConfig(value: unknown): PostRunReportConfig {
   const candidate = value && typeof value === "object" && !Array.isArray(value) ? (value as Partial<PostRunReportConfig>) : {};
   const legacyTrackedItems = normalizeTrackedItems(candidate.trackedItems);
   const itemGroups = normalizeReportItemGroups(candidate.itemGroups, legacyTrackedItems);
+  const legacySummaryMetrics = normalizeOptionList(candidate.summaryMetrics, REPORT_METRIC_OPTIONS.map((option) => option.id), defaultPostRunReportConfig.summaryMetrics, true);
+  const legacyDropRarities = normalizeOptionList(candidate.dropRarities, TRACKED_RARITY_ORDER, defaultPostRunReportConfig.dropRarities, true);
+  const legacyResourceDrawers = normalizeOptionList(candidate.resourceDrawers, REPORT_RESOURCE_DRAWER_OPTIONS.map((option) => option.id), defaultPostRunReportConfig.resourceDrawers, true);
+  const legacyItemFilterGroupIds = normalizeIdList(candidate.itemFilterGroupIds);
+  const hasCanonicalSummaryItems = Array.isArray(candidate.summaryItems);
+  const summaryItems = normalizeReportSummaryItems(
+    candidate.summaryItems,
+    reportSummaryItemsFromLegacy(legacySummaryMetrics, legacyDropRarities, itemGroups, legacyItemFilterGroupIds, legacyResourceDrawers),
+  );
   return {
-    summaryMetrics: normalizeOptionList(candidate.summaryMetrics, REPORT_METRIC_OPTIONS.map((option) => option.id), defaultPostRunReportConfig.summaryMetrics),
-    dropRarities: normalizeOptionList(candidate.dropRarities, TRACKED_RARITY_ORDER, defaultPostRunReportConfig.dropRarities),
-    resourceDrawers: normalizeOptionList(candidate.resourceDrawers, REPORT_RESOURCE_DRAWER_OPTIONS.map((option) => option.id), defaultPostRunReportConfig.resourceDrawers),
+    summaryItems,
+    summaryMetrics: hasCanonicalSummaryItems ? summaryMetricsFromSummaryItems(summaryItems) : legacySummaryMetrics,
+    dropRarities: hasCanonicalSummaryItems ? dropRaritiesFromSummaryItems(summaryItems) : legacyDropRarities,
+    resourceDrawers: hasCanonicalSummaryItems ? resourceDrawersFromSummaryItems(summaryItems) : legacyResourceDrawers,
     topDropLimit: REPORT_TOP_DROP_LIMIT_OPTIONS.includes(Number(candidate.topDropLimit))
       ? Number(candidate.topDropLimit)
       : defaultPostRunReportConfig.topDropLimit,
     trackedItems: itemGroups.length ? [] : legacyTrackedItems,
     itemGroups,
-    itemFilterGroupIds: normalizeIdList(candidate.itemFilterGroupIds),
+    itemFilterGroupIds: hasCanonicalSummaryItems ? itemFilterGroupIdsFromSummaryItems(summaryItems) : legacyItemFilterGroupIds,
+  };
+}
+
+export function clonePostRunReportConfig(config: PostRunReportConfig): PostRunReportConfig {
+  return {
+    summaryItems: [...config.summaryItems],
+    summaryMetrics: [...config.summaryMetrics],
+    dropRarities: [...config.dropRarities],
+    resourceDrawers: [...config.resourceDrawers],
+    topDropLimit: config.topDropLimit,
+    trackedItems: [...config.trackedItems],
+    itemGroups: config.itemGroups.map((group) => ({
+      ...group,
+      rarities: [...group.rarities],
+      types: [...group.types],
+      items: [...group.items],
+    })),
+    itemFilterGroupIds: [...config.itemFilterGroupIds],
+  };
+}
+
+export function withPostRunReportSummaryItems(config: PostRunReportConfig, summaryItems: ReportSummaryItemId[]): PostRunReportConfig {
+  const nextSummaryItems = normalizeReportSummaryItems(summaryItems, []);
+  return {
+    ...clonePostRunReportConfig(config),
+    summaryItems: nextSummaryItems,
+    summaryMetrics: summaryMetricsFromSummaryItems(nextSummaryItems),
+    dropRarities: dropRaritiesFromSummaryItems(nextSummaryItems),
+    resourceDrawers: resourceDrawersFromSummaryItems(nextSummaryItems),
+    itemFilterGroupIds: itemFilterGroupIdsFromSummaryItems(nextSummaryItems),
+  };
+}
+
+export function hasMeaningfulPostRunReportGroups(config: PostRunReportConfig): boolean {
+  return config.trackedItems.length > 0 || config.itemFilterGroupIds.length > 0 || config.itemGroups.length > 0;
+}
+
+export function withoutPostRunReportItemFilterGroup(config: PostRunReportConfig, groupId: string): PostRunReportConfig {
+  const removedItemId = reportItemFilterGroupItemId(groupId);
+  return {
+    ...clonePostRunReportConfig(config),
+    summaryItems: config.summaryItems.filter((itemId) => itemId !== removedItemId),
+    itemFilterGroupIds: config.itemFilterGroupIds.filter((id) => id !== groupId),
   };
 }
 
 export function isDefaultPostRunReportConfig(config: PostRunReportConfig): boolean {
   return (
+    sameStringList(config.summaryItems, defaultPostRunReportConfig.summaryItems) &&
     sameStringList(config.summaryMetrics, defaultPostRunReportConfig.summaryMetrics) &&
     sameStringList(config.dropRarities, defaultPostRunReportConfig.dropRarities) &&
     sameStringList(config.resourceDrawers, defaultPostRunReportConfig.resourceDrawers) &&
@@ -78,6 +251,24 @@ export function isDefaultPostRunReportConfig(config: PostRunReportConfig): boole
     config.itemGroups.length === 0 &&
     (config.itemFilterGroupIds?.length ?? 0) === 0
   );
+}
+
+function reportPresetConfig(
+  summaryMetrics: ReportMetricId[],
+  dropRarities: string[],
+  topDropLimit: number,
+): PostRunReportConfig {
+  const summaryItems = reportSummaryItemsFromLegacy(summaryMetrics, dropRarities);
+  return {
+    summaryItems,
+    summaryMetrics: summaryMetricsFromSummaryItems(summaryItems),
+    dropRarities: dropRaritiesFromSummaryItems(summaryItems),
+    resourceDrawers: resourceDrawersFromSummaryItems(summaryItems),
+    topDropLimit,
+    trackedItems: [],
+    itemGroups: [],
+    itemFilterGroupIds: [],
+  };
 }
 
 export function createReportItemGroup(name: string, index: number): ReportItemGroup {
@@ -108,12 +299,69 @@ export function normalizeReportItemGroups(value: unknown, legacyTrackedItems: st
   ];
 }
 
-function normalizeOptionList<T extends string>(value: unknown, allowed: readonly T[], fallback: readonly T[]): T[] {
-  const selected = Array.isArray(value) ? value.map((item) => String(item).trim()) : [];
+function normalizeOptionList<T extends string>(value: unknown, allowed: readonly T[], fallback: readonly T[], allowEmpty = false): T[] {
+  if (!Array.isArray(value)) return [...fallback];
+  const selected = value.map((item) => String(item).trim());
   const allowedSet = new Set<string>(allowed);
   const normalized = selected.filter((item): item is T => allowedSet.has(item));
   const unique = Array.from(new Set(normalized));
-  return unique.length ? unique : [...fallback];
+  return unique.length || allowEmpty ? unique : [...fallback];
+}
+
+function normalizeReportSummaryItems(value: unknown, fallback: ReportSummaryItemId[]): ReportSummaryItemId[] {
+  if (!Array.isArray(value)) return [...fallback];
+  const items = value.map((item) => String(item).trim()).filter(isAllowedSummaryItem);
+  return uniqueSummaryItems(items).slice(0, REPORT_SUMMARY_ITEM_LIMIT);
+}
+
+function isAllowedSummaryItem(itemId: string): boolean {
+  const kind = reportSummaryItemKind(itemId);
+  const value = reportSummaryItemValue(itemId);
+  if (!value) return false;
+  if (kind === "metric") return REPORT_METRIC_OPTIONS.some((option) => option.id === value);
+  if (kind === "rarity") return TRACKED_RARITY_ORDER.includes(value);
+  return kind === "group" || kind === "filter";
+}
+
+function uniqueSummaryItems(items: ReportSummaryItemId[]): ReportSummaryItemId[] {
+  const seen = new Set<string>();
+  const unique: ReportSummaryItemId[] = [];
+  for (const item of items) {
+    if (seen.has(item)) continue;
+    seen.add(item);
+    unique.push(item);
+  }
+  return unique;
+}
+
+function summaryMetricsFromSummaryItems(items: ReportSummaryItemId[]): ReportMetricId[] {
+  const allowed = new Set(REPORT_METRIC_OPTIONS.map((option) => option.id));
+  return items
+    .filter((itemId) => reportSummaryItemKind(itemId) === "metric")
+    .map(reportSummaryItemValue)
+    .filter((value): value is ReportMetricId => allowed.has(value));
+}
+
+function dropRaritiesFromSummaryItems(items: ReportSummaryItemId[]): string[] {
+  return items
+    .filter((itemId) => reportSummaryItemKind(itemId) === "rarity")
+    .map(reportSummaryItemValue)
+    .filter((rarity) => TRACKED_RARITY_ORDER.includes(rarity));
+}
+
+function resourceDrawersFromSummaryItems(items: ReportSummaryItemId[]): ReportResourceDrawerId[] {
+  const resourceMetrics = new Set<ReportResourceDrawerId>(["keys", "ores", "materials"]);
+  return items
+    .filter((itemId) => reportSummaryItemKind(itemId) === "metric")
+    .map(reportSummaryItemValue)
+    .filter((value): value is ReportResourceDrawerId => resourceMetrics.has(value as ReportResourceDrawerId));
+}
+
+function itemFilterGroupIdsFromSummaryItems(items: ReportSummaryItemId[]): string[] {
+  return items
+    .filter((itemId) => reportSummaryItemKind(itemId) === "filter")
+    .map(reportSummaryItemValue)
+    .filter(Boolean);
 }
 
 function normalizeTrackedItems(value: unknown): string[] {

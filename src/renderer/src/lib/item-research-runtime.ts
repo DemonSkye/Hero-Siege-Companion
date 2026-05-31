@@ -4,6 +4,7 @@ import { playItemFilterSound } from "./item-filter-sounds";
 import { itemTimelineKey } from "./item-filters";
 import {
   activeItemResearchEntries,
+  classifyItemResearchFields,
   isItemResearchCandidate,
   itemResearchSignature,
   normalizeItemResearchEntries,
@@ -36,7 +37,7 @@ export function useItemResearchRuntime(options: ItemResearchRuntimeOptions) {
       itemResearchSeenTimelineKeys.add(itemTimelineKey(item));
       if (!options.developerItemResearchEnabled.value || !isItemResearchCandidate(item)) continue;
       options.itemResearchEntries.value = upsertItemResearchEntry(options.itemResearchEntries.value, item);
-      maybePromptUnknownItem();
+      if (classifyItemResearchFields(item) !== "known-missing-icon") maybePromptUnknownItem();
     }
   }
 
@@ -67,6 +68,10 @@ export function useItemResearchRuntime(options: ItemResearchRuntimeOptions) {
   }
 
   function clearResolvedItemResearchEntries(): void {
+    options.itemResearchEntries.value = normalizeItemResearchEntries(options.itemResearchEntries.value.filter((entry) => !entry.resolvedName.trim()));
+  }
+
+  function clearIgnoredItemResearchEntries(): void {
     options.itemResearchEntries.value = normalizeItemResearchEntries(options.itemResearchEntries.value.filter((entry) => !entry.ignored));
   }
 
@@ -88,6 +93,7 @@ export function useItemResearchRuntime(options: ItemResearchRuntimeOptions) {
     ignoreItemResearchEntry,
     resetItemResearchEntry,
     clearResolvedItemResearchEntries,
+    clearIgnoredItemResearchEntries,
     identifyTimelineItem,
   };
 }

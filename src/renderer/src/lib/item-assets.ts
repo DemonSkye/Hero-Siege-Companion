@@ -1,6 +1,8 @@
 import { lookupItemIconFile } from "../../../shared/item-icons";
 import type { ResourceCounter } from "../../../shared/stats";
 
+export const TRANSPARENT_PIXEL_URL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
 const itemIconImages = import.meta.glob("../../../../img/items/*", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 
 const oreImages: Record<string, string> = {

@@ -10,10 +10,11 @@ import WhatsNewPrompt from "./components/WhatsNewPrompt.vue";
 import { useToast } from "./lib/app-toast";
 import { compactFilterGroupRecoveryOptions } from "./lib/compact-tiles";
 import { ITEM_TYPE_OPTIONS, shoppingAutocompleteNames } from "./lib/item-options";
-import { itemFilterIdFromTimelineValue } from "./lib/item-filters";
+import { itemFilterIdFromTimelineValue, type ItemFilterGroup } from "./lib/item-filters";
 import { useItemFilterRuntime } from "./lib/item-filter-runtime";
 import {
   createItemResearchExportPayload,
+  type ItemResearchExportScope,
 } from "./lib/item-research";
 import { useItemResearchRuntime } from "./lib/item-research-runtime";
 import { useAppPreferences } from "./lib/app-preferences";
@@ -26,10 +27,14 @@ import {
   savePreferences,
   type UiPreferences,
 } from "./lib/preferences";
+import { withoutPostRunReportItemFilterGroup } from "./lib/report-config";
 import {
   DEFAULT_THEME_ACCENTS,
   THEME_OPTIONS,
   createThemeExportPayload,
+  createThemeTemplatePayload,
+  effectiveThemeForegroundFill,
+  effectiveThemeTexture,
   importThemePayload,
 } from "./lib/themes";
 import { useThemeApplication } from "./lib/theme-application";
@@ -62,7 +67,7 @@ const activeTab = ref<"live" | "past" | "filter">("live");
 const appVersion = WHATS_NEW_RELEASE.version;
 const expandedLogIds = ref<Set<string>>(new Set());
 const expandedDropRarity = ref<string | null>(null);
-const expandedPastRunDropKey = ref<string | null>(null);
+const hideUnfilteredTimelineItems = ref(false);
 const itemTypeOptions = ITEM_TYPE_OPTIONS;
 const {
   logLimit,
@@ -77,6 +82,10 @@ const {
   themeId,
   compactThemeId,
   themeAccents,
+  themeTextures,
+  compactThemeTextures,
+  themeForegroundFills,
+  compactThemeForegroundFills,
   themeTokenMaps,
   itemFilterGroups,
   itemFilterMuted,
@@ -102,6 +111,10 @@ const {
   draftThemeId,
   draftCompactThemeId,
   draftThemeAccents,
+  draftThemeTextures,
+  draftCompactThemeTextures,
+  draftThemeForegroundFills,
+  draftCompactThemeForegroundFills,
   draftThemeTokenMaps,
   draftCreateDebugMode,
   draftSkipEmptyRuns,
@@ -144,31 +157,6 @@ const {
   clampActiveShoppingIndex,
 } = useShoppingListRuntime({ showToast });
 const {
-  captureStatusLabel,
-  compactRunTileDisplays,
-  runPausedLabel,
-  canToggleRunPaused,
-  zoneCountdown,
-  zoneResetLabel,
-  keyDropTotal,
-  oreDropTotal,
-  trackedItems,
-  visibleItemTimeline,
-  recentLogs,
-  pastRuns,
-} = useSessionDisplay({
-  state,
-  now,
-  compactRunTiles,
-  itemFilterGroups,
-  logLimit,
-  timelineLimit,
-  timelineType,
-  hideKeys,
-  hideMaterials,
-  hideSocketables,
-});
-const {
   compactMode,
   syncWindowMode,
   openCompactSettings,
@@ -180,10 +168,7 @@ const {
 const {
   itemFilterDraftItem,
   itemFilterDraftGroupName,
-  lastItemFilterMatch,
-  itemFilterMatchTotals,
-  activeItemFilterGroups,
-  watchedItemCount,
+  itemFilterMatchHistory,
   itemFilterSoundOptionsList,
   selectedItemFilterGroup,
   selectedItemFilterGroupedItems,
@@ -205,6 +190,34 @@ const {
   removeItemFilterSound,
 } = useItemFilterRuntime({ itemFilterGroups, itemFilterMuted, customItemFilterSounds, showToast });
 const {
+  captureStatusLabel,
+  compactRunTileDisplays,
+  runPausedLabel,
+  canToggleRunPaused,
+  zoneCountdown,
+  zoneResetLabel,
+  keyDropTotal,
+  oreDropTotal,
+  trackedItems,
+  itemTimelineSourceCount,
+  visibleItemTimeline,
+  recentLogs,
+  pastRuns,
+} = useSessionDisplay({
+  state,
+  now,
+  compactRunTiles,
+  itemFilterGroups,
+  itemFilterMatchHistory,
+  logLimit,
+  timelineLimit,
+  timelineType,
+  hideUnfilteredTimelineItems,
+  hideKeys,
+  hideMaterials,
+  hideSocketables,
+});
+const {
   unresolvedItemResearchEntries,
   initializeItemResearchSeenItems,
   processItemResearchTimeline,
@@ -212,6 +225,7 @@ const {
   ignoreItemResearchEntry,
   resetItemResearchEntry,
   clearResolvedItemResearchEntries,
+  clearIgnoredItemResearchEntries,
   identifyTimelineItem,
 } = useItemResearchRuntime({
   itemResearchEntries,
@@ -229,8 +243,23 @@ const { showWhatsNewPrompt, maybeShowWhatsNewPrompt, dismissWhatsNewPrompt, open
 );
 const effectiveThemeId = computed(() => (compactMode.value ? compactThemeId.value : themeId.value));
 const activeThemeAccent = computed(() => themeAccents.value[effectiveThemeId.value] ?? DEFAULT_THEME_ACCENTS[effectiveThemeId.value]);
+const activeBackgroundTexture = computed(() =>
+  compactMode.value
+    ? effectiveThemeTexture(compactThemeId.value, compactThemeTextures.value)
+    : effectiveThemeTexture(themeId.value, themeTextures.value),
+);
+const activeForegroundFill = computed(() =>
+  compactMode.value
+    ? effectiveThemeForegroundFill(compactThemeId.value, compactThemeForegroundFills.value)
+    : effectiveThemeForegroundFill(themeId.value, themeForegroundFills.value),
+);
 const recoverableCompactFilterGroups = computed(() => compactFilterGroupRecoveryOptions(compactRunTiles.value, itemFilterGroups.value));
-useThemeApplication(effectiveThemeId, activeThemeAccent, themeTokenMaps);
+const activeViewTitle = computed(() => {
+  if (activeTab.value === "filter") return "Item Filter";
+  if (activeTab.value === "past") return "Past Runs";
+  return "Live Session";
+});
+useThemeApplication(effectiveThemeId, activeThemeAccent, themeTokenMaps, activeBackgroundTexture, activeForegroundFill);
 
 onMounted(async () => {
   applyUiPreferences(loadPreferences());
@@ -313,9 +342,20 @@ async function updatePastRunTags(runId: string, tags: string[]) {
   state.value = await window.heroSiegeCompanion.setPastRunTags(runId, tags);
 }
 
-function openSettings(tab: SettingsTab = "general") {
+function removeItemFilterGroupAndReportRefs(group: ItemFilterGroup) {
+  removeItemFilterGroup(group);
+  updatePostRunReportConfig(withoutPostRunReportItemFilterGroup(postRunReport.value, group.id));
+}
+
+function openItemFilterGroup(groupId: string) {
+  const group = itemFilterGroups.value.find((candidate) => candidate.id === groupId);
+  if (group) selectItemFilterGroup(group);
+  activeTab.value = "filter";
+}
+
+function openSettings(tab?: SettingsTab) {
   loadCurrentDraftPreferences();
-  settingsInitialTab.value = tab;
+  if (tab) settingsInitialTab.value = tab;
   showSettings.value = true;
   void refreshSupportDiagnosticsInfo();
 }
@@ -379,11 +419,33 @@ async function importConfiguration() {
 
 async function exportTheme() {
   try {
-    const payload = createThemeExportPayload(draftThemeId.value, draftThemeAccents.value, draftThemeTokenMaps.value);
-    const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2));
+    const payload = createThemeExportPayload(
+      draftThemeId.value,
+      draftThemeAccents.value,
+      draftThemeTokenMaps.value,
+      draftThemeTextures.value,
+      draftThemeForegroundFills.value,
+    );
+    const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2), {
+      title: "Export Hero Siege theme",
+      defaultPath: "hero-siege-theme.json",
+    });
     if (exported) showToast("Theme exported");
   } catch {
     showToast("Theme export failed");
+  }
+}
+
+async function exportThemeTemplate() {
+  try {
+    const payload = createThemeTemplatePayload(draftThemeId.value);
+    const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2), {
+      title: "Export Hero Siege starter theme",
+      defaultPath: "hero-siege-theme-template.json",
+    });
+    if (exported) showToast("Starter theme exported");
+  } catch {
+    showToast("Starter theme export failed");
   }
 }
 
@@ -391,19 +453,28 @@ async function importTheme() {
   try {
     const contents = await window.heroSiegeCompanion.importConfiguration();
     if (!contents) return;
-    const imported = importThemePayload(contents, draftThemeId.value, draftThemeAccents.value, draftThemeTokenMaps.value);
+    const imported = importThemePayload(
+      contents,
+      draftThemeId.value,
+      draftThemeAccents.value,
+      draftThemeTokenMaps.value,
+      draftThemeTextures.value,
+      draftThemeForegroundFills.value,
+    );
     draftThemeId.value = imported.themeId;
     draftThemeAccents.value = imported.themeAccents;
     draftThemeTokenMaps.value = imported.themeTokenMaps;
+    draftThemeTextures.value = imported.themeTextureMaps;
+    draftThemeForegroundFills.value = imported.themeForegroundFillMaps;
     showToast("Theme imported");
   } catch {
     showToast("Theme import failed");
   }
 }
 
-async function exportItemResearch() {
+async function exportItemResearch(scope: ItemResearchExportScope = "all") {
   try {
-    const payload = createItemResearchExportPayload(itemResearchEntries.value);
+    const payload = createItemResearchExportPayload(itemResearchEntries.value, { scope });
     const exported = await window.heroSiegeCompanion.exportItemResearch(JSON.stringify(payload, null, 2));
     if (exported) showToast("Research JSON exported. Share a gist with sarevok9 on Reddit or Snyne on Discord.");
   } catch {
@@ -417,6 +488,24 @@ async function exportPastRunsJson(payload: PastRunsExportPayload) {
     if (exported) showToast("Past runs JSON exported");
   } catch {
     showToast("Past runs export failed");
+  }
+}
+
+async function exportPastRunsCsv(csv: string) {
+  try {
+    const exported = await window.heroSiegeCompanion.exportPastRunsCsv(csv);
+    if (exported) showToast("Past runs CSV exported");
+  } catch {
+    showToast("Past runs CSV export failed");
+  }
+}
+
+async function copyPastRunsSummary(summary: string) {
+  try {
+    await window.heroSiegeCompanion.writeClipboardText(summary);
+    showToast("Past runs summary copied");
+  } catch {
+    showToast("Past runs summary copy failed");
   }
 }
 
@@ -464,6 +553,7 @@ function toggleLog(log: LogEntry) {
       :capture-running="state.captureRunning"
       :run-status="state.runStatus"
       :can-toggle-run-paused="canToggleRunPaused"
+      :title="activeViewTitle"
       @open-settings="openSettings()"
       @toggle-run-paused="toggleRunPaused"
       @end-run="resetStats"
@@ -488,8 +578,8 @@ function toggleLog(log: LogEntry) {
         v-model:hide-socketables="hideSocketables"
         v-model:hide-keys="hideKeys"
         v-model:hide-materials="hideMaterials"
+        v-model:hide-unfiltered-items="hideUnfilteredTimelineItems"
         v-model:shopping-draft-item="shoppingDraftItem"
-        v-model:item-filter-muted="itemFilterMuted"
         v-model:log-limit="logLimit"
         :state="state"
         :capture-status-label="captureStatusLabel"
@@ -500,19 +590,14 @@ function toggleLog(log: LogEntry) {
         :key-drop-total="keyDropTotal"
         :ore-drop-total="oreDropTotal"
         :visible-item-timeline="visibleItemTimeline"
-        :item-timeline-count="state.stats.itemTimeline.length"
+        :item-timeline-count="itemTimelineSourceCount"
+        :item-filter-match-history="itemFilterMatchHistory"
         :log-limit-options="logLimitOptions"
         :item-type-options="itemTypeOptions"
         :item-filter-groups="itemFilterGroups"
         :shopping-list-items="shoppingListItems"
         :shopping-suggestions="shoppingSuggestions"
         :active-shopping-item="activeShoppingItem"
-        :active-item-filter-groups="activeItemFilterGroups"
-        :item-filter-sounds="itemFilterSoundOptionsList"
-        :item-filter-group-count="itemFilterGroups.length"
-        :watched-item-count="watchedItemCount"
-        :last-item-filter-match="lastItemFilterMatch"
-        :item-filter-match-totals="itemFilterMatchTotals"
         :developer-item-research-enabled="developerItemResearchEnabled"
         :recent-logs="recentLogs"
         :expanded-log-ids="expandedLogIds"
@@ -520,8 +605,7 @@ function toggleLog(log: LogEntry) {
         @add-shopping-item="addShoppingItem"
         @remove-shopping-item="removeShoppingItem"
         @open-npcap-guide="openNpcapGuide"
-        @test-item-filter-sound="testItemFilterSound"
-        @configure-filter="activeTab = 'filter'"
+        @open-item-filter-group="openItemFilterGroup"
         @identify-timeline-item="identifyTimelineItem"
         @toggle-log="toggleLog"
       />
@@ -543,7 +627,7 @@ function toggleLog(log: LogEntry) {
         :unresolved-item-research-count="unresolvedItemResearchEntries.length"
         @add-group="addItemFilterGroup"
         @select-group="selectItemFilterGroup"
-        @remove-group="removeItemFilterGroup"
+        @remove-group="removeItemFilterGroupAndReportRefs"
         @restore-missing-group="restoreMissingItemFilterGroup($event.id, $event.name)"
         @update-group="updateItemFilterGroup"
         @add-item-to-group="addItemToFilterGroup"
@@ -554,18 +638,19 @@ function toggleLog(log: LogEntry) {
         @ignore-item-research-entry="ignoreItemResearchEntry"
         @reset-item-research-entry="resetItemResearchEntry"
         @clear-resolved-item-research-entries="clearResolvedItemResearchEntries"
+        @clear-ignored-item-research-entries="clearIgnoredItemResearchEntries"
       />
 
       <PastRunsView
         v-else
-        :expanded-drop-key="expandedPastRunDropKey"
         :report-config="postRunReport"
         :past-runs="pastRuns"
         :item-filter-groups="itemFilterGroups"
-        @update:expanded-drop-key="expandedPastRunDropKey = $event"
         @update:report-config="updatePostRunReportConfig"
         @update-run-tags="updatePastRunTags"
         @export-runs-json="exportPastRunsJson"
+        @export-runs-csv="exportPastRunsCsv"
+        @copy-summary="copyPastRunsSummary"
       />
     </div>
     <SettingsModal
@@ -587,6 +672,10 @@ function toggleLog(log: LogEntry) {
       v-model:theme-id="draftThemeId"
       v-model:compact-theme-id="draftCompactThemeId"
       v-model:theme-accents="draftThemeAccents"
+      v-model:theme-textures="draftThemeTextures"
+      v-model:compact-theme-textures="draftCompactThemeTextures"
+      v-model:theme-foreground-fills="draftThemeForegroundFills"
+      v-model:compact-theme-foreground-fills="draftCompactThemeForegroundFills"
       v-model:skip-empty-runs="draftSkipEmptyRuns"
       v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
       v-model:config-include-app-settings="configIncludeAppSettings"
@@ -614,6 +703,7 @@ function toggleLog(log: LogEntry) {
       @update-theme-accent="updateDraftThemeAccent"
       @import-theme="importTheme"
       @export-theme="exportTheme"
+      @export-theme-template="exportThemeTemplate"
       @import-sounds="importItemFilterSounds"
       @export-sounds="exportItemFilterSoundPack"
       @remove-sound="removeItemFilterSound"
@@ -621,6 +711,7 @@ function toggleLog(log: LogEntry) {
       @copy-support-diagnostics-summary="copySupportDiagnosticsSummary"
       @export-configuration="exportConfiguration"
       @import-configuration="importConfiguration"
+      @settings-tab-change="settingsInitialTab = $event"
       @reset="resetDraftPreferences"
       @apply="applyDraftPreferences"
     />

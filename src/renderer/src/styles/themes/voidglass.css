@@ -1,0 +1,177 @@
+:root[data-theme="voidglass"] {
+  --app-text: #e8f2ef;
+  --app-heading: #f7fffc;
+  --app-muted: #98aaa6;
+  --app-muted-strong: #b8c8c4;
+  --app-bg: #050708;
+  --app-bg-gradient:
+    radial-gradient(circle at 5% 0%, rgba(105, 230, 208, 0.11), transparent 30rem),
+    radial-gradient(circle at 92% 8%, rgba(177, 147, 255, 0.1), transparent 30rem),
+    linear-gradient(135deg, #050708 0%, #0a1011 52%, #0f0b13 100%);
+  --surface: rgba(9, 13, 15, 0.91);
+  --surface-strong: #0a0f11;
+  --surface-soft: rgba(213, 255, 247, 0.044);
+  --surface-cell: rgba(213, 255, 247, 0.034);
+  --surface-hover: rgba(105, 230, 208, 0.082);
+  --surface-selected: rgba(105, 230, 208, 0.13);
+  --surface-input-hover: rgba(105, 230, 208, 0.08);
+  --border: rgba(105, 230, 208, 0.18);
+  --border-strong: rgba(105, 230, 208, 0.29);
+  --accent-border: rgba(105, 230, 208, 0.44);
+  --accent-warm: #b193ff;
+  --accent-warm-bg: rgba(177, 147, 255, 0.1);
+  --danger-bg: rgba(255, 77, 122, 0.13);
+  --input-bg: #05080a;
+  --button-primary: #69e6d0;
+  --button-primary-hover: #87f0de;
+  --button-primary-text: #06100f;
+  --danger: #ff5d87;
+  --warning: #d8c16b;
+  --scrollbar: #69e6d0;
+  --shadow: rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="voidglass"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto auto;
+  z-index: 0;
+  width: min(36vw, 500px);
+  height: min(56vh, 520px);
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(105, 230, 208, 0.11) 49%, transparent 51% 100%),
+    radial-gradient(circle at 70% 0%, rgba(177, 147, 255, 0.12), transparent 18rem),
+    radial-gradient(circle at 100% 22%, rgba(105, 230, 208, 0.1), transparent 16rem);
+  opacity: 0.76;
+  pointer-events: none;
+}
+
+:root[data-theme="voidglass"] .app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="voidglass"] .app-shell:not(.compact) {
+  isolation: isolate;
+}
+
+:root[data-theme="voidglass"] .app-shell:not(.compact)::before,
+:root[data-theme="voidglass"] .app-shell:not(.compact)::after {
+  content: "";
+  position: fixed;
+  inset: 36px 0 0 24px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+:root[data-theme="voidglass"] .app-shell:not(.compact)::before {
+  background:
+    repeating-linear-gradient(45deg, rgba(232, 255, 250, 0.028) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(135deg, rgba(105, 230, 208, 0.022) 0 1px, transparent 1px 7px),
+    linear-gradient(90deg, rgba(105, 230, 208, 0.042), transparent 38%, rgba(177, 147, 255, 0.036));
+  opacity: 0.78;
+}
+
+:root[data-theme="voidglass"] .app-shell:not(.compact)::after {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(105, 230, 208, 0.12), transparent 18rem),
+    radial-gradient(circle at 74% 18%, rgba(177, 147, 255, 0.09), transparent 24rem),
+    linear-gradient(115deg, transparent 0 47%, rgba(232, 255, 250, 0.035) 50%, transparent 53% 100%);
+  opacity: 0.68;
+}
+
+:root[data-theme="voidglass"] .topbar,
+:root[data-theme="voidglass"] .status-strip,
+:root[data-theme="voidglass"] .panel,
+:root[data-theme="voidglass"] .metric,
+:root[data-theme="voidglass"] .settings-panel {
+  position: relative;
+}
+
+:root[data-theme="voidglass"] .topbar,
+:root[data-theme="voidglass"] .status-strip,
+:root[data-theme="voidglass"] .panel,
+:root[data-theme="voidglass"] .metric,
+:root[data-theme="voidglass"] .settings-panel,
+:root[data-theme="voidglass"] .compact-zone-tray,
+:root[data-theme="voidglass"] .compact-cover,
+:root[data-theme="voidglass"] .compact-run-cover {
+  box-shadow:
+    0 20px 54px rgba(0, 0, 0, 0.52),
+    0 0 0 1px rgba(105, 230, 208, 0.045),
+    inset 0 1px 0 rgba(232, 255, 250, 0.05);
+}
+
+:root[data-theme="voidglass"] .topbar {
+  background:
+    radial-gradient(circle at 3% 50%, rgba(105, 230, 208, 0.08), transparent 18rem),
+    linear-gradient(90deg, rgba(177, 147, 255, 0.045), transparent 58%),
+    var(--surface);
+}
+
+:root[data-theme="voidglass"] .app-shell:not(.compact) .topbar {
+  background:
+    radial-gradient(circle at 3% 50%, rgba(105, 230, 208, 0.09), transparent 18rem),
+    linear-gradient(90deg, rgba(177, 147, 255, 0.05), transparent 58%),
+    repeating-linear-gradient(45deg, rgba(232, 255, 250, 0.018) 0 1px, transparent 1px 8px),
+    var(--surface);
+}
+
+:root[data-theme="voidglass"] .app-shell:not(.compact) .status-strip,
+:root[data-theme="voidglass"] .app-shell:not(.compact) .panel,
+:root[data-theme="voidglass"] .app-shell:not(.compact) .metric,
+:root[data-theme="voidglass"] .app-shell:not(.compact) .settings-panel {
+  background:
+    linear-gradient(180deg, rgba(18, 27, 29, 0.56), rgba(5, 8, 10, 0.34)),
+    repeating-linear-gradient(45deg, rgba(232, 255, 250, 0.018) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(135deg, rgba(105, 230, 208, 0.014) 0 1px, transparent 1px 8px),
+    var(--surface);
+  -webkit-backdrop-filter: blur(18px) saturate(1.18);
+  backdrop-filter: blur(18px) saturate(1.18);
+}
+
+:root[data-theme="voidglass"] .app-shell:not(.compact) .zone-panel {
+  background:
+    linear-gradient(180deg, rgba(18, 26, 29, 0.7), rgba(5, 8, 10, 0.42)),
+    repeating-linear-gradient(45deg, rgba(232, 255, 250, 0.034) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(135deg, rgba(105, 230, 208, 0.024) 0 1px, transparent 1px 6px),
+    var(--surface);
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.54),
+    0 0 0 1px rgba(105, 230, 208, 0.08),
+    inset 0 1px 0 rgba(232, 255, 250, 0.08),
+    inset 0 -18px 40px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="voidglass"] .panel::before,
+:root[data-theme="voidglass"] .metric::before,
+:root[data-theme="voidglass"] .status-strip::before,
+:root[data-theme="voidglass"] .settings-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(105, 230, 208, 0.5), rgba(177, 147, 255, 0.28), transparent);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+:root[data-theme="voidglass"] .icon-button.primary,
+:root[data-theme="voidglass"] .view-tabs button.active,
+:root[data-theme="voidglass"] .settings-tabs button.active,
+:root[data-theme="voidglass"] .shopping-item.active,
+:root[data-theme="voidglass"] .shopping-item-row.active .shopping-item {
+  box-shadow:
+    0 0 18px rgba(105, 230, 208, 0.13),
+    inset 0 0 0 1px rgba(177, 147, 255, 0.13);
+}
+
+:root[data-theme="voidglass"] .eyebrow,
+:root[data-theme="voidglass"] .app-mark,
+:root[data-theme="voidglass"] .info-bubble,
+:root[data-theme="voidglass"] .item-filter-specific-type h4,
+:root[data-theme="voidglass"] .log-event,
+:root[data-theme="voidglass"] .aggregate-duration-total strong {
+  text-shadow: 0 0 13px color-mix(in srgb, var(--user-accent) 32%, transparent);
+}

@@ -1,6 +1,6 @@
 import type { RunStatus } from "../../../shared/app-state";
 import type { CompanionStats, ItemTimelineEntry } from "../../../shared/stats";
-import { formatNumber } from "./format";
+import { formatMagicFindFlagCount, formatNumber } from "./format";
 import { matchItemFilter, type ItemFilterGroup } from "./item-filters";
 import { normalizeLookupText } from "./text";
 
@@ -10,6 +10,9 @@ export type CompactRunTileKind =
   | "xp"
   | "kills"
   | "sz"
+  | "keys"
+  | "ores"
+  | "materials"
   | "set"
   | "satanic"
   | "heroic"
@@ -53,6 +56,13 @@ export interface CompactFilterGroupRecoveryOption {
   tileCount: number;
 }
 
+export interface CompactRunTilePreset {
+  id: string;
+  name: string;
+  description: string;
+  tiles: CompactRunTileConfig[];
+}
+
 export const COMPACT_RUN_TILE_LIMIT = 8;
 
 export const STANDARD_COMPACT_RUN_TILE_OPTIONS: Array<{ kind: Exclude<CompactRunTileKind, "custom">; label: string }> = [
@@ -61,6 +71,9 @@ export const STANDARD_COMPACT_RUN_TILE_OPTIONS: Array<{ kind: Exclude<CompactRun
   { kind: "xp", label: "XP" },
   { kind: "kills", label: "Kills" },
   { kind: "sz", label: "SZ" },
+  { kind: "keys", label: "Keys" },
+  { kind: "ores", label: "Ore" },
+  { kind: "materials", label: "Materials" },
   { kind: "set", label: "Set" },
   { kind: "satanic", label: "Satanic" },
   { kind: "heroic", label: "Heroic" },
@@ -75,6 +88,33 @@ export const defaultCompactRunTiles: CompactRunTileConfig[] = [
   standardTile("sz"),
   standardTile("set"),
   standardTile("satanic"),
+];
+
+export const COMPACT_RUN_TILE_PRESETS: CompactRunTilePreset[] = [
+  {
+    id: "default-run",
+    name: "Default Run",
+    description: "Core run stats with zone and high-value drop counters.",
+    tiles: defaultCompactRunTiles,
+  },
+  {
+    id: "loot-focused",
+    name: "Loot Focused",
+    description: "Tracked rarity counters for gear farming sessions.",
+    tiles: [standardTile("duration"), standardTile("gold"), standardTile("sz"), standardTile("set"), standardTile("satanic"), standardTile("heroic"), standardTile("angelic")],
+  },
+  {
+    id: "resource-focused",
+    name: "Resource Focused",
+    description: "Keys, ore, materials, and gold in a compact farming view.",
+    tiles: [standardTile("duration"), standardTile("gold"), standardTile("keys"), standardTile("ores"), standardTile("materials"), standardTile("sz")],
+  },
+  {
+    id: "xp-kills-focused",
+    name: "XP / Kills",
+    description: "Progress and pace for leveling or density checks.",
+    tiles: [standardTile("duration"), standardTile("xp"), standardTile("kills"), standardTile("gold"), standardTile("sz")],
+  },
 ];
 
 export function standardTile(kind: Exclude<CompactRunTileKind, "custom">): CompactRunTileConfig {
@@ -114,6 +154,30 @@ export function normalizeCompactRunTiles(value: unknown): CompactRunTileConfig[]
 
 export function compactRunCustomTileCount(tiles: CompactRunTileConfig[]): number {
   return tiles.filter((tile) => tile.kind === "custom").length;
+}
+
+export function cloneCompactRunTiles(tiles: CompactRunTileConfig[]): CompactRunTileConfig[] {
+  return tiles.map((tile) => ({ ...tile }));
+}
+
+export function compactRunTilesEqual(left: CompactRunTileConfig[], right: CompactRunTileConfig[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((tile, index) => {
+    const other = right[index];
+    return (
+      other !== undefined &&
+      tile.id === other.id &&
+      tile.kind === other.kind &&
+      (tile.label ?? "") === (other.label ?? "") &&
+      (tile.source ?? "") === (other.source ?? "") &&
+      (tile.itemName ?? "") === (other.itemName ?? "") &&
+      (tile.groupId ?? "") === (other.groupId ?? "")
+    );
+  });
+}
+
+export function compactRunTilesHaveCustomSources(tiles: CompactRunTileConfig[]): boolean {
+  return tiles.some((tile) => tile.kind === "custom");
 }
 
 export function compactFilterGroupRecoveryOptions(tiles: CompactRunTileConfig[], itemFilterGroups: ItemFilterGroup[]): CompactFilterGroupRecoveryOption[] {
@@ -198,6 +262,33 @@ export function compactRunTileDisplay(tile: CompactRunTileConfig, context: Compa
         detail: stats.satanicZone?.zone ?? `Resets ${context.zoneResetLabel}`,
         title: "Satanic zone details",
       };
+    case "keys":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "Keys",
+        value: formatCompactNumber(compactResourceTotal(stats.keys)),
+        detail: "Non-basic keys",
+        title: `${formatNumber(compactResourceTotal(stats.keys))} non-basic keys`,
+      };
+    case "ores":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "Ore",
+        value: formatCompactNumber(compactResourceTotal(stats.ores)),
+        detail: "Ore mined",
+        title: `${formatNumber(compactResourceTotal(stats.ores))} ore mined`,
+      };
+    case "materials":
+      return {
+        id: tile.id,
+        kind: tile.kind,
+        label: "Materials",
+        value: formatCompactNumber(compactResourceTotal(stats.materials)),
+        detail: "Collected",
+        title: `${formatNumber(compactResourceTotal(stats.materials))} materials collected`,
+      };
     case "set":
     case "satanic":
     case "heroic":
@@ -208,7 +299,7 @@ export function compactRunTileDisplay(tile: CompactRunTileConfig, context: Compa
         kind: tile.kind,
         label,
         value: formatCompactNumber(stats.items[label]?.total ?? 0),
-        detail: `${formatNumber(stats.items[label]?.mf ?? 0)} MF - ${formatNumber(stats.itemsPerHour[label] ?? 0)}/h`,
+        detail: `${formatMagicFindFlagCount(stats.items[label]?.mf ?? 0, { short: true })} - ${formatNumber(stats.itemsPerHour[label] ?? 0)}/h`,
         title: `${label} drops`,
       };
     }
@@ -260,6 +351,10 @@ function cleanLabel(value: unknown): string {
 
 function itemAmount(item: ItemTimelineEntry): number {
   return Math.max(item.amount || 1, 1);
+}
+
+function compactResourceTotal(resources: CompanionStats["keys"]): number {
+  return Object.values(resources).reduce((total, resource) => total + resource.total, 0);
 }
 
 function trimCompact(value: number): string {

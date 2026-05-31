@@ -1,0 +1,163 @@
+:root[data-theme="demonsteel"] {
+  --app-text: #eee7e1;
+  --app-heading: #fff6ef;
+  --app-muted: #aaa0a0;
+  --app-muted-strong: #c5b7b1;
+  --app-bg: #080607;
+  --app-bg-gradient:
+    radial-gradient(circle at 4% 4%, rgba(255, 75, 53, 0.13), transparent 30rem),
+    radial-gradient(circle at 92% 10%, rgba(215, 166, 79, 0.095), transparent 28rem),
+    linear-gradient(135deg, #080607 0%, #101114 52%, #1b0a0b 100%);
+  --surface: rgba(16, 16, 19, 0.92);
+  --surface-strong: #111114;
+  --surface-soft: rgba(255, 236, 220, 0.046);
+  --surface-cell: rgba(255, 240, 230, 0.038);
+  --surface-hover: rgba(255, 78, 55, 0.083);
+  --surface-selected: rgba(255, 78, 55, 0.13);
+  --surface-input-hover: rgba(255, 78, 55, 0.08);
+  --border: rgba(255, 102, 76, 0.18);
+  --border-strong: rgba(255, 132, 98, 0.28);
+  --accent-border: rgba(255, 82, 56, 0.44);
+  --accent-warm: #d7a64f;
+  --accent-warm-bg: rgba(215, 166, 79, 0.1);
+  --danger-bg: rgba(255, 55, 55, 0.14);
+  --input-bg: #0b090a;
+  --button-primary: #cf563b;
+  --button-primary-hover: #e16848;
+  --button-primary-text: #fff7f1;
+  --danger: #ff5656;
+  --warning: #e0b866;
+  --scrollbar: #c4543d;
+  --shadow: rgba(0, 0, 0, 0.46);
+}
+
+:root[data-theme="demonsteel"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: min(28vw, 360px);
+  background:
+    linear-gradient(90deg, rgba(255, 75, 53, 0.12), transparent 2px) 22px 0 / 1px 100% no-repeat,
+    radial-gradient(circle at 0% 18%, rgba(255, 75, 53, 0.15), transparent 14rem),
+    radial-gradient(circle at 20% 84%, rgba(215, 166, 79, 0.08), transparent 18rem);
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+:root[data-theme="demonsteel"] .app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-theme="demonsteel"] .app-shell:not(.compact) {
+  isolation: isolate;
+}
+
+:root[data-theme="demonsteel"] .app-shell:not(.compact)::before,
+:root[data-theme="demonsteel"] .app-shell:not(.compact)::after {
+  content: "";
+  position: fixed;
+  inset: 36px 0 0 24px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+:root[data-theme="demonsteel"] .app-shell:not(.compact)::before {
+  background:
+    repeating-linear-gradient(102deg, rgba(255, 244, 232, 0.023) 0 1px, transparent 1px 9px),
+    repeating-linear-gradient(0deg, rgba(255, 75, 53, 0.025) 0 1px, transparent 1px 34px),
+    linear-gradient(90deg, rgba(255, 75, 53, 0.07), transparent 34%, rgba(215, 166, 79, 0.04));
+  opacity: 0.76;
+}
+
+:root[data-theme="demonsteel"] .app-shell:not(.compact)::after {
+  background:
+    radial-gradient(circle at 12% 72%, rgba(255, 75, 53, 0.12), transparent 18rem),
+    radial-gradient(circle at 78% 10%, rgba(215, 166, 79, 0.075), transparent 22rem),
+    linear-gradient(120deg, transparent 0 46%, rgba(255, 173, 104, 0.026) 48%, transparent 51% 100%);
+  opacity: 0.72;
+}
+
+:root[data-theme="demonsteel"] .topbar,
+:root[data-theme="demonsteel"] .status-strip,
+:root[data-theme="demonsteel"] .panel,
+:root[data-theme="demonsteel"] .metric,
+:root[data-theme="demonsteel"] .settings-panel {
+  position: relative;
+}
+
+:root[data-theme="demonsteel"] .topbar,
+:root[data-theme="demonsteel"] .status-strip,
+:root[data-theme="demonsteel"] .panel,
+:root[data-theme="demonsteel"] .metric,
+:root[data-theme="demonsteel"] .settings-panel,
+:root[data-theme="demonsteel"] .compact-zone-tray,
+:root[data-theme="demonsteel"] .compact-cover,
+:root[data-theme="demonsteel"] .compact-run-cover {
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 75, 53, 0.045),
+    inset 0 1px 0 rgba(255, 244, 232, 0.045);
+}
+
+:root[data-theme="demonsteel"] .topbar {
+  background:
+    radial-gradient(circle at 0% 44%, rgba(255, 75, 53, 0.09), transparent 16rem),
+    linear-gradient(90deg, rgba(215, 166, 79, 0.05), transparent 56%),
+    var(--surface);
+}
+
+:root[data-theme="demonsteel"] .app-shell:not(.compact) .topbar,
+:root[data-theme="demonsteel"] .app-shell:not(.compact) .status-strip,
+:root[data-theme="demonsteel"] .app-shell:not(.compact) .panel,
+:root[data-theme="demonsteel"] .app-shell:not(.compact) .metric,
+:root[data-theme="demonsteel"] .app-shell:not(.compact) .settings-panel {
+  background:
+    linear-gradient(180deg, rgba(33, 31, 32, 0.48), rgba(9, 8, 9, 0.3)),
+    repeating-linear-gradient(100deg, rgba(255, 244, 232, 0.02) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(0deg, rgba(255, 75, 53, 0.018) 0 1px, transparent 1px 24px),
+    var(--surface);
+}
+
+:root[data-theme="demonsteel"] .app-shell:not(.compact) .topbar,
+:root[data-theme="demonsteel"] .app-shell:not(.compact) .zone-panel {
+  background:
+    radial-gradient(circle at 0% 45%, rgba(255, 75, 53, 0.1), transparent 17rem),
+    linear-gradient(180deg, rgba(36, 34, 35, 0.58), rgba(11, 9, 10, 0.36)),
+    repeating-linear-gradient(100deg, rgba(255, 244, 232, 0.024) 0 1px, transparent 1px 7px),
+    var(--surface);
+}
+
+:root[data-theme="demonsteel"] .panel::before,
+:root[data-theme="demonsteel"] .metric::before,
+:root[data-theme="demonsteel"] .status-strip::before,
+:root[data-theme="demonsteel"] .settings-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 112, 82, 0.46), rgba(215, 166, 79, 0.28), transparent);
+  opacity: 0.44;
+  pointer-events: none;
+}
+
+:root[data-theme="demonsteel"] .icon-button.primary,
+:root[data-theme="demonsteel"] .view-tabs button.active,
+:root[data-theme="demonsteel"] .settings-tabs button.active,
+:root[data-theme="demonsteel"] .shopping-item.active,
+:root[data-theme="demonsteel"] .shopping-item-row.active .shopping-item {
+  box-shadow:
+    0 0 18px rgba(255, 75, 53, 0.12),
+    inset 0 0 0 1px rgba(255, 196, 116, 0.12);
+}
+
+:root[data-theme="demonsteel"] .eyebrow,
+:root[data-theme="demonsteel"] .app-mark,
+:root[data-theme="demonsteel"] .info-bubble,
+:root[data-theme="demonsteel"] .item-filter-specific-type h4,
+:root[data-theme="demonsteel"] .log-event,
+:root[data-theme="demonsteel"] .aggregate-duration-total strong {
+  text-shadow: 0 0 11px color-mix(in srgb, var(--user-accent) 30%, transparent);
+}

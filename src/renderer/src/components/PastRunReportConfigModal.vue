@@ -1,20 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { ITEM_FILTER_SUGGESTION_LIMIT, itemTypeLabelForName, type ItemFilterGroup } from "../lib/item-filters";
 import { ITEM_TYPE_OPTIONS, shoppingAutocompleteNames } from "../lib/item-options";
 import { TRACKED_RARITY_ORDER } from "../lib/past-runs";
 import { eventChecked, eventValue } from "../lib/dom-events";
+import { useModalFocus } from "../lib/modal-focus";
 import {
+  POST_RUN_REPORT_PRESETS,
+  clonePostRunReportConfig,
   createReportItemGroup,
   defaultPostRunReportConfig,
+  hasMeaningfulPostRunReportGroups,
   isDefaultPostRunReportConfig,
   REPORT_METRIC_OPTIONS,
-  REPORT_RESOURCE_DRAWER_OPTIONS,
+  REPORT_SUMMARY_ITEM_LIMIT,
   REPORT_TOP_DROP_LIMIT_OPTIONS,
+  reportItemFilterGroupItemId,
+  reportItemGroupItemId,
+  reportMetricItemId,
+  reportRarityItemId,
   type PostRunReportConfig,
+  type PostRunReportPreset,
   type ReportItemGroup,
-  type ReportMetricId,
-  type ReportResourceDrawerId,
+  type ReportSummaryItemId,
+  withPostRunReportSummaryItems,
 } from "../lib/report-config";
 
 const props = defineProps<{
@@ -31,12 +40,17 @@ const reportDraftItem = ref("");
 const reportDraftGroupName = ref("");
 const selectedReportGroupId = ref("");
 const reportDialog = ref<HTMLElement | null>(null);
+const pendingReportPresetId = ref<string | null>(null);
+const { handleModalFocusKeydown } = useModalFocus(reportDialog);
 
 const reportItemGroups = computed(() => props.reportConfig.itemGroups);
 const selectedReportGroup = computed(() => reportItemGroups.value.find((group) => group.id === selectedReportGroupId.value) ?? reportItemGroups.value[0] ?? null);
-const activeReportGroups = computed(() => reportItemGroups.value.filter((group) => group.enabled));
-const selectedItemFilterGroupIdSet = computed(() => new Set(props.reportConfig.itemFilterGroupIds));
-const selectedItemFilterGroupCount = computed(() => props.itemFilterGroups.filter((group) => selectedItemFilterGroupIdSet.value.has(group.id)).length);
+const availableSummaryItemIds = computed(() => new Set(reportSummaryOptions.value.map((option) => option.id)));
+const visibleSummaryItems = computed(() => props.reportConfig.summaryItems.filter((itemId) => availableSummaryItemIds.value.has(itemId)));
+const selectedSummaryItemSet = computed(() => new Set(visibleSummaryItems.value));
+const selectedSummaryItemCount = computed(() => visibleSummaryItems.value.length);
+const selectedItemFilterGroupCount = computed(() => props.itemFilterGroups.filter((group) => selectedSummaryItemSet.value.has(reportItemFilterGroupItemId(group.id))).length);
+const selectedCustomReportGroupCount = computed(() => reportItemGroups.value.filter((group) => selectedSummaryItemSet.value.has(reportItemGroupItemId(group.id))).length);
 const isDefaultReportConfig = computed(() => isDefaultPostRunReportConfig(props.reportConfig));
 const reportModeLabel = computed(() => (isDefaultReportConfig.value ? "Default report" : "Custom report"));
 const selectedReportGroupedItems = computed(() => groupedReportItems(selectedReportGroup.value));
@@ -49,44 +63,90 @@ const reportItemSuggestions = computed(() => {
     .slice(0, ITEM_FILTER_SUGGESTION_LIMIT);
 });
 const reportGroupHelp = computed(() => {
-  if (activeReportGroups.value.length > 0 || selectedItemFilterGroupCount.value > 0) {
-    return "Enabled groups are combined. Empty custom group rules include all tracked drops; linked Item Filter groups use their own rules.";
+  if (selectedCustomReportGroupCount.value > 0 || selectedItemFilterGroupCount.value > 0) {
+    return "Selected groups are combined. Empty custom group rules include all tracked drops; linked Item Filter groups use their own rules.";
   }
-  return "No enabled groups, so drop recaps include every saved drop from the default rarities.";
+  if (props.reportConfig.dropRarities.length === 0) return "No custom groups or rarity recaps are selected.";
+  return "No custom groups selected, so drop recaps use the selected rarity recaps.";
 });
 
 const reportMetricOptions = REPORT_METRIC_OPTIONS;
-const reportResourceDrawerOptions = REPORT_RESOURCE_DRAWER_OPTIONS;
 const reportTopDropLimitOptions = REPORT_TOP_DROP_LIMIT_OPTIONS;
+const reportPresets = POST_RUN_REPORT_PRESETS;
 const itemTypeOptions = ITEM_TYPE_OPTIONS;
-
-onMounted(() => {
-  reportDialog.value?.focus();
-});
-
-function toggleReportMetric(metric: ReportMetricId, enabled: boolean) {
-  emit("update:reportConfig", { ...props.reportConfig, summaryMetrics: toggledList(props.reportConfig.summaryMetrics, metric, enabled) });
-}
-
-function toggleReportResourceDrawer(drawer: ReportResourceDrawerId, enabled: boolean) {
-  emit("update:reportConfig", { ...props.reportConfig, resourceDrawers: toggledList(props.reportConfig.resourceDrawers, drawer, enabled) });
-}
+const pendingReportPreset = computed(() => reportPresets.find((preset) => preset.id === pendingReportPresetId.value) ?? null);
+const reportSummaryOptions = computed(() => [
+  ...reportMetricOptions.map((option) => ({
+    id: reportMetricItemId(option.id),
+    label: option.label,
+    detail: "Stat / resource",
+  })),
+  ...TRACKED_RARITY_ORDER.map((rarity) => ({
+    id: reportRarityItemId(rarity),
+    label: rarity,
+    detail: "Rarity group",
+  })),
+  ...props.itemFilterGroups.map((group) => ({
+    id: reportItemFilterGroupItemId(group.id),
+    label: group.name,
+    detail: "Item Filter group",
+  })),
+  ...reportItemGroups.value.map((group) => ({
+    id: reportItemGroupItemId(group.id),
+    label: group.name,
+    detail: "Custom group",
+  })),
+]);
 
 function updateTopDropLimit(event: Event) {
   const value = Number(eventValue(event));
   emit("update:reportConfig", { ...props.reportConfig, topDropLimit: value });
 }
 
-function resetReportConfig() {
-  emit("update:reportConfig", defaultPostRunReportConfig);
+function chooseReportPreset(preset: PostRunReportPreset) {
+  if (hasMeaningfulPostRunReportGroups(props.reportConfig)) {
+    pendingReportPresetId.value = preset.id;
+    return;
+  }
+  applyReportPreset(preset);
+}
+
+function confirmReportPreset() {
+  if (!pendingReportPreset.value) return;
+  applyReportPreset(pendingReportPreset.value);
+}
+
+function cancelReportPreset() {
+  pendingReportPresetId.value = null;
+}
+
+function applyReportPreset(preset: PostRunReportPreset) {
+  emit("update:reportConfig", clonePostRunReportConfig(preset.config));
   reportDraftItem.value = "";
   reportDraftGroupName.value = "";
   selectedReportGroupId.value = "";
+  pendingReportPresetId.value = null;
+}
+
+function resetReportConfig() {
+  emit("update:reportConfig", clonePostRunReportConfig(defaultPostRunReportConfig));
+  reportDraftItem.value = "";
+  reportDraftGroupName.value = "";
+  selectedReportGroupId.value = "";
+  pendingReportPresetId.value = null;
 }
 
 function addReportItemGroup() {
   const group = createReportItemGroup(reportDraftGroupName.value, reportItemGroups.value.length);
-  emit("update:reportConfig", { ...props.reportConfig, trackedItems: [], itemGroups: [...reportItemGroups.value, group] });
+  const nextConfig = {
+    ...props.reportConfig,
+    trackedItems: [],
+    itemGroups: [...reportItemGroups.value, group],
+  };
+  emit("update:reportConfig", withPostRunReportSummaryItems(
+    nextConfig,
+    withSummaryItem(visibleSummaryItems.value, reportItemGroupItemId(group.id), selectedSummaryItemCount.value < REPORT_SUMMARY_ITEM_LIMIT),
+  ));
   selectedReportGroupId.value = group.id;
   reportDraftGroupName.value = "";
   reportDraftItem.value = "";
@@ -99,7 +159,15 @@ function selectReportItemGroup(group: ReportItemGroup) {
 
 function removeReportItemGroup(group: ReportItemGroup) {
   const groups = reportItemGroups.value.filter((candidate) => candidate.id !== group.id);
-  emit("update:reportConfig", { ...props.reportConfig, trackedItems: [], itemGroups: groups });
+  const nextConfig = {
+    ...props.reportConfig,
+    trackedItems: [],
+    itemGroups: groups,
+  };
+  emit("update:reportConfig", withPostRunReportSummaryItems(
+    nextConfig,
+    props.reportConfig.summaryItems.filter((itemId) => itemId !== reportItemGroupItemId(group.id)),
+  ));
   if (selectedReportGroupId.value === group.id) selectedReportGroupId.value = groups[0]?.id ?? "";
   reportDraftItem.value = "";
 }
@@ -119,13 +187,6 @@ function toggleReportGroupRarity(group: ReportItemGroup, rarity: string, enabled
 
 function toggleReportGroupType(group: ReportItemGroup, type: number, enabled: boolean) {
   updateReportItemGroup(group, { types: toggledNumberList(group.types, type, enabled) });
-}
-
-function toggleLinkedItemFilterGroup(group: ItemFilterGroup, enabled: boolean) {
-  emit("update:reportConfig", {
-    ...props.reportConfig,
-    itemFilterGroupIds: toggledList(props.reportConfig.itemFilterGroupIds, group.id, enabled),
-  });
 }
 
 function addTrackedReportItem(group: ReportItemGroup, value = reportDraftItem.value) {
@@ -148,6 +209,26 @@ function toggledList<T extends string>(values: T[], value: T, enabled: boolean):
   if (enabled) next.add(value);
   else next.delete(value);
   return Array.from(next);
+}
+
+function isSummaryItemSelected(itemId: ReportSummaryItemId): boolean {
+  return selectedSummaryItemSet.value.has(itemId);
+}
+
+function isSummaryItemDisabled(itemId: ReportSummaryItemId): boolean {
+  return !isSummaryItemSelected(itemId) && selectedSummaryItemCount.value >= REPORT_SUMMARY_ITEM_LIMIT;
+}
+
+function toggleSummaryItem(itemId: ReportSummaryItemId, enabled: boolean): void {
+  emit("update:reportConfig", withPostRunReportSummaryItems(props.reportConfig, withSummaryItem(visibleSummaryItems.value, itemId, enabled)));
+}
+
+function withSummaryItem(items: ReportSummaryItemId[], itemId: ReportSummaryItemId, enabled: boolean): ReportSummaryItemId[] {
+  const next = items.filter((candidate) => candidate !== itemId);
+  if (!enabled) return next;
+  if (items.includes(itemId)) return items;
+  if (next.length >= REPORT_SUMMARY_ITEM_LIMIT) return items;
+  return [...next, itemId];
 }
 
 function toggledNumberList(values: number[], value: number, enabled: boolean): number[] {
@@ -181,7 +262,7 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
 
 <template>
   <Teleport to="body">
-    <div class="modal-backdrop" @click.self="$emit('close')" @keydown.esc="$emit('close')">
+    <div class="modal-backdrop" @click.self="$emit('close')" @keydown="handleModalFocusKeydown" @keydown.esc="$emit('close')">
       <section ref="reportDialog" class="settings-panel report-config-modal" role="dialog" aria-modal="true" aria-labelledby="report-config-title" tabindex="-1">
         <div class="settings-heading">
           <div>
@@ -193,15 +274,41 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
         </div>
 
         <div class="report-config-modal-body">
-          <section v-if="itemFilterGroups.length" class="item-filter-rule-section">
+          <section class="item-filter-rule-section report-preset-section">
             <div class="item-filter-rule-heading">
-              <strong>Item filter groups</strong>
-              <span>{{ selectedItemFilterGroupCount }} selected</span>
+              <strong>Report presets</strong>
+              <span>Replace the report items, custom groups, and top-drop limit.</span>
             </div>
-            <div class="item-filter-chip-grid">
-              <label v-for="group in itemFilterGroups" :key="group.id" class="filter-box">
-                <input :checked="selectedItemFilterGroupIdSet.has(group.id)" type="checkbox" @change="toggleLinkedItemFilterGroup(group, eventChecked($event))" />
-                <span>{{ group.name }}</span>
+            <div class="report-preset-grid">
+              <button v-for="preset in reportPresets" :key="preset.id" class="report-preset-button" type="button" @click="chooseReportPreset(preset)">
+                <strong>{{ preset.name }}</strong>
+                <span>{{ preset.description }}</span>
+              </button>
+            </div>
+            <div v-if="pendingReportPreset" class="report-preset-confirm" role="alert">
+              <span>{{ pendingReportPreset.name }} will replace existing recap groups and linked Item Filter groups.</span>
+              <button class="icon-button danger" type="button" @click="confirmReportPreset">Replace</button>
+              <button class="icon-button ghost" type="button" @click="cancelReportPreset">Keep Current</button>
+            </div>
+          </section>
+
+          <section class="item-filter-rule-section report-summary-row-section">
+            <div class="item-filter-rule-heading">
+              <strong>Report items</strong>
+              <span>{{ selectedSummaryItemCount }}/{{ REPORT_SUMMARY_ITEM_LIMIT }} selected</span>
+            </div>
+            <div class="report-summary-list">
+              <label v-for="option in reportSummaryOptions" :key="option.id" class="filter-box report-summary-item-option">
+                <input
+                  :checked="isSummaryItemSelected(option.id)"
+                  :disabled="isSummaryItemDisabled(option.id)"
+                  type="checkbox"
+                  @change="toggleSummaryItem(option.id, eventChecked($event))"
+                />
+                <span class="report-summary-item-text">
+                  <strong>{{ option.label }}</strong>
+                  <small>{{ option.detail }}</small>
+                </span>
               </label>
             </div>
           </section>
@@ -209,7 +316,7 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
           <section class="item-filter-rule-section">
             <div class="item-filter-rule-heading">
               <strong>Recap item groups</strong>
-              <span>Enabled groups include custom rarity, type, and exact item rules.</span>
+              <span>Custom groups include rarity, type, and exact item rules.</span>
             </div>
 
             <div class="report-item-group-layout">
@@ -223,11 +330,11 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
                     v-for="group in reportItemGroups"
                     :key="group.id"
                     type="button"
-                    :class="['item-filter-group-button', { active: selectedReportGroup?.id === group.id, disabled: !group.enabled }]"
+                    :class="['item-filter-group-button', { active: selectedReportGroup?.id === group.id }]"
                     @click="selectReportItemGroup(group)"
                   >
                     <strong>{{ group.name }}</strong>
-                    <span>{{ group.enabled ? "Included" : "Disabled" }} &middot; {{ reportGroupCriteriaSummary(group) }}</span>
+                    <span>{{ isSummaryItemSelected(reportItemGroupItemId(group.id)) ? "Selected" : "Not selected" }} &middot; {{ reportGroupCriteriaSummary(group) }}</span>
                   </button>
                 </div>
                 <p v-else class="empty-copy">Create a group when you want the report to focus on exact drops.</p>
@@ -235,10 +342,10 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
 
               <div v-if="selectedReportGroup" class="report-item-group-editor">
                 <div class="item-filter-editor-head">
-                  <label class="settings-check">
-                    <input :checked="selectedReportGroup.enabled" type="checkbox" @change="updateReportItemGroup(selectedReportGroup, { enabled: eventChecked($event) })" />
-                    <span>Enabled</span>
-                  </label>
+                  <div>
+                    <h3>{{ selectedReportGroup.name }}</h3>
+                    <span>{{ reportGroupCriteriaSummary(selectedReportGroup) }}</span>
+                  </div>
                   <button class="icon-button ghost" type="button" @click="removeReportItemGroup(selectedReportGroup)">Remove Group</button>
                 </div>
 
@@ -338,32 +445,6 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
           </section>
 
           <section class="report-config-modal-grid">
-            <div class="item-filter-rule-section">
-              <div class="item-filter-rule-heading">
-                <strong>Cards</strong>
-                <span>Summary cards shown in aggregate and run recaps.</span>
-              </div>
-              <div class="item-filter-chip-grid">
-                <label v-for="option in reportMetricOptions" :key="option.id" class="filter-box">
-                  <input :checked="reportConfig.summaryMetrics.includes(option.id)" type="checkbox" @change="toggleReportMetric(option.id, eventChecked($event))" />
-                  <span>{{ option.label }}</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="item-filter-rule-section">
-              <div class="item-filter-rule-heading">
-                <strong>Drawers</strong>
-                <span>Resource drawers under each run.</span>
-              </div>
-              <div class="item-filter-chip-grid">
-                <label v-for="option in reportResourceDrawerOptions" :key="option.id" class="filter-box">
-                  <input :checked="reportConfig.resourceDrawers.includes(option.id)" type="checkbox" @change="toggleReportResourceDrawer(option.id, eventChecked($event))" />
-                  <span>{{ option.label }}</span>
-                </label>
-              </div>
-            </div>
-
             <label class="settings-row">
               <span>Top drops</span>
               <select :value="reportConfig.topDropLimit" @change="updateTopDropLimit">

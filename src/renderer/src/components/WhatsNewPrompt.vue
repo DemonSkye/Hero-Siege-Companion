@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { ref } from "vue";
+import { useModalFocus } from "../lib/modal-focus";
 
 defineProps<{
   version: string;
@@ -11,14 +12,11 @@ const emit = defineEmits<{
 }>();
 
 const promptDialog = ref<HTMLElement | null>(null);
-
-onMounted(() => {
-  promptDialog.value?.focus();
-});
+const { handleModalFocusKeydown } = useModalFocus(promptDialog);
 </script>
 
 <template>
-  <div class="modal-backdrop" @keydown.esc="emit('dismiss')">
+  <div class="modal-backdrop" @keydown="handleModalFocusKeydown" @keydown.esc="emit('dismiss')">
     <section ref="promptDialog" class="settings-panel whats-new-prompt" role="dialog" aria-modal="true" aria-labelledby="whats-new-title" tabindex="-1">
       <div class="settings-heading">
         <div>

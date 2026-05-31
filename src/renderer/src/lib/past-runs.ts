@@ -1,6 +1,14 @@
 import type { ItemDropCounter, PastRunSummary, ResourceCounter } from "../../../shared/stats";
-import { itemMatchesItemFilterCriteria, type ItemFilterCriteriaGroup } from "./item-filters";
+import {
+  MAGIC_FIND_FLAG_METRIC_LABEL,
+  formatDateTime,
+  formatDuration,
+  formatMagicFindFlagCount,
+  formatNumber,
+} from "./format";
+import { itemFilterHasTimelineCriteria, itemMatchesItemFilterCriteria, type ItemFilterCriteriaGroup, type ItemFilterGroup } from "./item-filters";
 import { itemTypeValueForName } from "./item-options";
+import type { PostRunReportConfig, ReportMetricId, ReportSummaryItemId } from "./report-config";
 
 export const TRACKED_RARITY_ORDER = ["Set", "Satanic", "Heroic", "Angelic"];
 
@@ -46,15 +54,47 @@ export interface PastRunsExportPayload {
   runs: PastRunSummary[];
 }
 
-export interface PastRunComparisonMetric {
-  id: string;
+export interface PastRunMetricRow {
+  id: ReportMetricId;
   label: string;
-  format: "duration" | "number";
-  primary: number;
-  baseline: number;
-  delta: number;
-  deltaPercent: number | null;
-  direction: "up" | "down" | "flat";
+  value: number;
+  detail: string;
+}
+
+export type PastRunReportItemDetail =
+  | { kind: "drops"; drops: ItemDropCounter[]; empty: string }
+  | { kind: "resources"; resources: ResourceCounter[]; imageKind: "key" | "ore" | "material"; empty: string };
+
+export interface PastRunReportItemRow {
+  id: ReportSummaryItemId;
+  label: string;
+  value: number;
+  detail: string;
+  detailPanel?: PastRunReportItemDetail;
+}
+
+export function hasReportItemDetailEntries(detail: PastRunReportItemDetail | undefined): boolean {
+  if (!detail) return false;
+  return detail.kind === "drops" ? detail.drops.length > 0 : detail.resources.length > 0;
+}
+
+export interface PastRunShareOptions {
+  reportConfig?: PostRunReportConfig;
+  itemFilterGroups?: ItemFilterGroup[];
+  summaryMetrics?: ReportMetricId[];
+  dropRarities?: string[];
+  topDropLimit?: number;
+  activeReportGroups?: PastRunDropFilterGroup[];
+}
+
+export interface PastRunsAggregateShareOptions {
+  title: string;
+  query: string;
+  runs?: PastRunSummary[];
+  aggregate: PastRunAggregate;
+  reportConfig?: PostRunReportConfig;
+  itemFilterGroups?: ItemFilterGroup[];
+  summaryMetrics?: ReportMetricId[];
 }
 
 export function runTrackedItems(run: PastRunSummary, rarities = TRACKED_RARITY_ORDER, trackedItems: string[] = [], groups: PastRunDropFilterGroup[] = []) {
@@ -64,6 +104,250 @@ export function runTrackedItems(run: PastRunSummary, rarities = TRACKED_RARITY_O
     mf: runDropMf(run, rarity, trackedItems, groups),
     drops: runDropBreakdown(run, rarity, trackedItems, groups),
   }));
+}
+
+export function aggregateMetricRows(aggregate: PastRunAggregate, summaryMetrics: ReportMetricId[]): PastRunMetricRow[] {
+  const rows: Record<ReportMetricId, PastRunMetricRow> = {
+    gold: { id: "gold", label: "Gold/h", value: aggregate.goldPerHour, detail: `Best per hour ${formatNumber(aggregate.bestGoldPerHour)}` },
+    xp: { id: "xp", label: "XP/h", value: aggregate.xpPerHour, detail: `Best per hour ${formatNumber(aggregate.bestXpPerHour)}` },
+    kills: { id: "kills", label: "Kills/h", value: aggregate.killsPerHour, detail: `Best per hour ${formatNumber(aggregate.bestKillsPerHour)}` },
+    keys: { id: "keys", label: "Keys", value: aggregate.totalKeys, detail: `Average per run ${formatNumber(averagePerRun(aggregate.totalKeys, aggregate.runCount))}` },
+    ores: { id: "ores", label: "Ore", value: aggregate.totalOres, detail: `Average per run ${formatNumber(averagePerRun(aggregate.totalOres, aggregate.runCount))}` },
+    materials: { id: "materials", label: "Materials", value: aggregate.totalMaterials, detail: `Average per run ${formatNumber(averagePerRun(aggregate.totalMaterials, aggregate.runCount))}` },
+    mfDrops: { id: "mfDrops", label: MAGIC_FIND_FLAG_METRIC_LABEL, value: aggregate.totalMfDrops, detail: `Total gold ${formatNumber(aggregate.totalGold)}` },
+  };
+  return summaryMetrics.map((metric) => rows[metric]).filter(Boolean);
+}
+
+export function runMetricRows(
+  run: PastRunSummary,
+  summaryMetrics: ReportMetricId[],
+  rarities = TRACKED_RARITY_ORDER,
+  groups: PastRunDropFilterGroup[] = [],
+): PastRunMetricRow[] {
+  const drops = runTrackedItems(run, rarities, [], groups);
+  const totalDrops = drops.reduce((total, item) => total + item.total, 0);
+  const totalMfDrops = drops.reduce((total, item) => total + item.mf, 0);
+  const rows: Record<ReportMetricId, PastRunMetricRow> = {
+    gold: { id: "gold", label: "Gold", value: run.totalGoldGained, detail: `${formatNumber(ratePerHour(run.totalGoldGained, run.durationMs))}/h` },
+    xp: { id: "xp", label: "XP", value: run.totalXpGained, detail: `${formatNumber(ratePerHour(run.totalXpGained, run.durationMs))}/h` },
+    kills: { id: "kills", label: "Kills", value: run.totalKillsGained ?? 0, detail: `${formatNumber(ratePerHour(run.totalKillsGained ?? 0, run.durationMs))}/h` },
+    keys: { id: "keys", label: "Keys", value: runResourceTotal(run.keys), detail: `${runResourceTypeCount(run.keys)} types` },
+    ores: { id: "ores", label: "Ore", value: runResourceTotal(run.ores), detail: `${runResourceTypeCount(run.ores)} types` },
+    materials: { id: "materials", label: "Materials", value: runResourceTotal(run.materials ?? []), detail: `${runResourceTypeCount(run.materials)} types` },
+    mfDrops: { id: "mfDrops", label: MAGIC_FIND_FLAG_METRIC_LABEL, value: totalMfDrops, detail: `${totalDrops} tracked drops` },
+  };
+  return summaryMetrics.map((metric) => rows[metric]).filter(Boolean);
+}
+
+export function runReportItemRows(run: PastRunSummary, config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[] = []): PastRunReportItemRow[] {
+  return config.summaryItems.map((itemId) => runReportItemRow(run, config, itemFilterGroups, itemId)).filter(Boolean) as PastRunReportItemRow[];
+}
+
+export function aggregateReportItemRows(runs: PastRunSummary[], aggregate: PastRunAggregate, config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[] = []): PastRunReportItemRow[] {
+  return config.summaryItems.map((itemId) => aggregateReportItemRow(runs, aggregate, config, itemFilterGroups, itemId)).filter(Boolean) as PastRunReportItemRow[];
+}
+
+function runReportItemRow(run: PastRunSummary, config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[], itemId: ReportSummaryItemId): PastRunReportItemRow | null {
+  const kind = reportItemKind(itemId);
+  const value = reportItemValue(itemId);
+  if (kind === "metric") return runMetricReportItemRow(run, value as ReportMetricId, config, itemFilterGroups);
+  if (kind === "rarity") return runDropReportItemRow(value, runDropTotal(run, value), runDropMf(run, value), runDropBreakdown(run, value), itemId);
+  const group = reportGroupForItem(config, itemFilterGroups, itemId);
+  if (!group) return null;
+  const drops = runGroupedDropBreakdown(run, group.criteria);
+  return runDropReportItemRow(group.label, breakdownItemTotal(drops), breakdownItemMf(drops), drops, itemId);
+}
+
+function aggregateReportItemRow(
+  runs: PastRunSummary[],
+  aggregate: PastRunAggregate,
+  config: PostRunReportConfig,
+  itemFilterGroups: ItemFilterGroup[],
+  itemId: ReportSummaryItemId,
+): PastRunReportItemRow | null {
+  const kind = reportItemKind(itemId);
+  const value = reportItemValue(itemId);
+  if (kind === "metric") return aggregateMetricReportItemRow(runs, aggregate, value as ReportMetricId, itemId);
+  if (kind === "rarity") {
+    const drops = aggregateGroupedDropBreakdown(runs, { enabled: true, rarities: [value], types: [], items: [], emptyCriteriaMatchesAll: false });
+    return runDropReportItemRow(value, breakdownItemTotal(drops), breakdownItemMf(drops), drops, itemId);
+  }
+  const group = reportGroupForItem(config, itemFilterGroups, itemId);
+  if (!group) return null;
+  const drops = aggregateGroupedDropBreakdown(runs, group.criteria);
+  return runDropReportItemRow(group.label, breakdownItemTotal(drops), breakdownItemMf(drops), drops, itemId);
+}
+
+function runMetricReportItemRow(run: PastRunSummary, metric: ReportMetricId, config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[]): PastRunReportItemRow | null {
+  const drops = runTrackedItems(run, config.dropRarities, [], reportGroupsFromConfig(config, itemFilterGroups));
+  const totalDrops = drops.reduce((total, item) => total + item.total, 0);
+  const totalMfDrops = drops.reduce((total, item) => total + item.mf, 0);
+  const rows: Record<ReportMetricId, PastRunReportItemRow> = {
+    gold: { id: "metric:gold", label: "Gold", value: run.totalGoldGained, detail: `${formatNumber(ratePerHour(run.totalGoldGained, run.durationMs))}/h` },
+    xp: { id: "metric:xp", label: "XP", value: run.totalXpGained, detail: `${formatNumber(ratePerHour(run.totalXpGained, run.durationMs))}/h` },
+    kills: { id: "metric:kills", label: "Kills", value: run.totalKillsGained ?? 0, detail: `${formatNumber(ratePerHour(run.totalKillsGained ?? 0, run.durationMs))}/h` },
+    keys: metricResourceRow("metric:keys", "Keys", run.keys, "key", "No non-basic keys logged."),
+    ores: metricResourceRow("metric:ores", "Ore", run.ores, "ore", "No ore logged."),
+    materials: metricResourceRow("metric:materials", "Materials", run.materials ?? [], "material", "No materials logged."),
+    mfDrops: { id: "metric:mfDrops", label: MAGIC_FIND_FLAG_METRIC_LABEL, value: totalMfDrops, detail: `${totalDrops} tracked drops` },
+  };
+  return rows[metric] ?? null;
+}
+
+function aggregateMetricReportItemRow(runs: PastRunSummary[], aggregate: PastRunAggregate, metric: ReportMetricId, itemId: ReportSummaryItemId): PastRunReportItemRow | null {
+  const rows: Record<ReportMetricId, PastRunReportItemRow> = {
+    gold: { id: itemId, label: "Gold/h", value: aggregate.goldPerHour, detail: `Best per hour ${formatNumber(aggregate.bestGoldPerHour)}` },
+    xp: { id: itemId, label: "XP/h", value: aggregate.xpPerHour, detail: `Best per hour ${formatNumber(aggregate.bestXpPerHour)}` },
+    kills: { id: itemId, label: "Kills/h", value: aggregate.killsPerHour, detail: `Best per hour ${formatNumber(aggregate.bestKillsPerHour)}` },
+    keys: aggregateResourceRow(itemId, "Keys", aggregateResources(runs, "keys"), "key", "No non-basic keys logged.", aggregate.runCount),
+    ores: aggregateResourceRow(itemId, "Ore", aggregateResources(runs, "ores"), "ore", "No ore logged.", aggregate.runCount),
+    materials: aggregateResourceRow(itemId, "Materials", aggregateResources(runs, "materials"), "material", "No materials logged.", aggregate.runCount),
+    mfDrops: { id: itemId, label: MAGIC_FIND_FLAG_METRIC_LABEL, value: aggregate.totalMfDrops, detail: `Total gold ${formatNumber(aggregate.totalGold)}` },
+  };
+  return rows[metric] ?? null;
+}
+
+function metricResourceRow(
+  id: ReportSummaryItemId,
+  label: string,
+  resources: ResourceCounter[],
+  imageKind: "key" | "ore" | "material",
+  empty: string,
+): PastRunReportItemRow {
+  return {
+    id,
+    label,
+    value: runResourceTotal(resources),
+    detail: `${runResourceTypeCount(resources)} types`,
+    detailPanel: { kind: "resources", resources, imageKind, empty },
+  };
+}
+
+function aggregateResourceRow(
+  id: ReportSummaryItemId,
+  label: string,
+  resources: ResourceCounter[],
+  imageKind: "key" | "ore" | "material",
+  empty: string,
+  runCount: number,
+): PastRunReportItemRow {
+  return {
+    id,
+    label,
+    value: runResourceTotal(resources),
+    detail: `Average per run ${formatNumber(averagePerRun(runResourceTotal(resources), runCount))}`,
+    detailPanel: { kind: "resources", resources, imageKind, empty },
+  };
+}
+
+function runDropReportItemRow(label: string, value: number, mf: number, drops: ItemDropCounter[], id: ReportSummaryItemId): PastRunReportItemRow {
+  return {
+    id,
+    label,
+    value,
+    detail: `${formatMagicFindFlagCount(mf, { short: true })} - ${drops.length} unique`,
+    detailPanel: { kind: "drops", drops, empty: `No saved ${label.toLowerCase()} item detail for this run.` },
+  };
+}
+
+function reportItemKind(itemId: ReportSummaryItemId): "metric" | "rarity" | "group" | "filter" | null {
+  if (itemId.startsWith("metric:")) return "metric";
+  if (itemId.startsWith("rarity:")) return "rarity";
+  if (itemId.startsWith("group:")) return "group";
+  if (itemId.startsWith("filter:")) return "filter";
+  return null;
+}
+
+function reportItemValue(itemId: ReportSummaryItemId): string {
+  const separatorIndex = itemId.indexOf(":");
+  return separatorIndex >= 0 ? itemId.slice(separatorIndex + 1) : itemId;
+}
+
+function reportGroupsFromConfig(config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[]): PastRunDropFilterGroup[] {
+  return [
+    ...config.itemGroups
+      .filter((group) => config.summaryItems.includes(`group:${group.id}`))
+      .map((group) => ({ ...group, enabled: true, emptyCriteriaMatchesAll: true })),
+    ...itemFilterGroups
+      .filter((group) => config.summaryItems.includes(`filter:${group.id}`) && itemFilterHasTimelineCriteria(group))
+      .map((group) => ({
+        enabled: true,
+        rarities: group.rarities,
+        types: group.types,
+        items: group.items,
+        emptyCriteriaMatchesAll: false,
+      })),
+  ];
+}
+
+function reportGroupForItem(config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[], itemId: ReportSummaryItemId): { label: string; criteria: PastRunDropFilterGroup } | null {
+  const kind = reportItemKind(itemId);
+  const id = reportItemValue(itemId);
+  if (kind === "group") {
+    const group = config.itemGroups.find((candidate) => candidate.id === id);
+    if (!group) return null;
+    return { label: group.name, criteria: { ...group, enabled: true, emptyCriteriaMatchesAll: true } };
+  }
+  if (kind === "filter") {
+    const group = itemFilterGroups.find((candidate) => candidate.id === id);
+    if (!group || !itemFilterHasTimelineCriteria(group)) return null;
+    return {
+      label: group.name,
+      criteria: {
+        enabled: true,
+        rarities: group.rarities,
+        types: group.types,
+        items: group.items,
+        emptyCriteriaMatchesAll: false,
+      },
+    };
+  }
+  return null;
+}
+
+function runGroupedDropBreakdown(run: PastRunSummary, group: PastRunDropFilterGroup): ItemDropCounter[] {
+  const drops: Record<string, ItemDropCounter> = {};
+  for (const rarity of effectiveRarities(TRACKED_RARITY_ORDER, [group])) {
+    for (const drop of runDropBreakdown(run, rarity, [], [group])) {
+      drops[drop.name] = drops[drop.name] ?? { name: drop.name, total: 0, mf: 0 };
+      drops[drop.name].total += drop.total;
+      drops[drop.name].mf += drop.mf;
+    }
+  }
+  return sortedDropBreakdown(drops);
+}
+
+function aggregateGroupedDropBreakdown(runs: PastRunSummary[], group: PastRunDropFilterGroup): ItemDropCounter[] {
+  const drops: Record<string, ItemDropCounter> = {};
+  for (const run of runs) {
+    for (const drop of runGroupedDropBreakdown(run, group)) {
+      drops[drop.name] = drops[drop.name] ?? { name: drop.name, total: 0, mf: 0 };
+      drops[drop.name].total += drop.total;
+      drops[drop.name].mf += drop.mf;
+    }
+  }
+  return sortedDropBreakdown(drops);
+}
+
+function breakdownItemTotal(drops: ItemDropCounter[]): number {
+  return drops.reduce((total, drop) => total + drop.total, 0);
+}
+
+function breakdownItemMf(drops: ItemDropCounter[]): number {
+  return drops.reduce((total, drop) => total + drop.mf, 0);
+}
+
+function aggregateResources(runs: PastRunSummary[], key: "keys" | "ores" | "materials"): ResourceCounter[] {
+  const resources = new Map<string, ResourceCounter>();
+  for (const run of runs) {
+    for (const resource of (key === "materials" ? run.materials ?? [] : run[key])) {
+      const existing = resources.get(resource.name) ?? { id: resource.id, name: resource.name, total: 0 };
+      existing.total += resource.total;
+      resources.set(resource.name, existing);
+    }
+  }
+  return Array.from(resources.values()).sort((left, right) => right.total - left.total || left.name.localeCompare(right.name));
 }
 
 function runDropTotal(run: PastRunSummary, rarity: string, trackedItems: string[] = [], groups: PastRunDropFilterGroup[] = []): number {
@@ -146,16 +430,83 @@ export function createPastRunsExportPayload(runs: PastRunSummary[], query: strin
   };
 }
 
-export function comparePastRunAggregates(primary: PastRunAggregate, baseline: PastRunAggregate): PastRunComparisonMetric[] {
-  return [
-    comparisonMetric("averageDuration", "Avg duration", "duration", primary.averageDurationMs, baseline.averageDurationMs),
-    comparisonMetric("goldPerHour", "Gold/h", "number", primary.goldPerHour, baseline.goldPerHour),
-    comparisonMetric("xpPerHour", "XP/h", "number", primary.xpPerHour, baseline.xpPerHour),
-    comparisonMetric("killsPerHour", "Kills/h", "number", primary.killsPerHour, baseline.killsPerHour),
-    comparisonMetric("keysPerRun", "Keys/run", "number", averagePerRun(primary.totalKeys, primary.runCount), averagePerRun(baseline.totalKeys, baseline.runCount)),
-    comparisonMetric("materialsPerRun", "Materials/run", "number", averagePerRun(primary.totalMaterials, primary.runCount), averagePerRun(baseline.totalMaterials, baseline.runCount)),
-    comparisonMetric("mfDropsPerRun", "MF drops/run", "number", averagePerRun(primary.totalMfDrops, primary.runCount), averagePerRun(baseline.totalMfDrops, baseline.runCount)),
+export function createPastRunsAggregateCsv(options: PastRunsAggregateShareOptions): string {
+  const reportRows = aggregateShareReportRows(options);
+  const rows = [
+    ["section", "label", "value", "mf_flagged", "unique", "detail"],
+    ["summary", "Title", options.title, "", "", filterSummaryDetail(options.query, options.aggregate.runCount)],
+    ["summary", "Run count", String(options.aggregate.runCount), "", "", ""],
+    ["summary", "Average duration", formatDuration(options.aggregate.averageDurationMs), "", "", ""],
+    ["summary", "Total duration", formatDuration(options.aggregate.totalDurationMs), "", "", ""],
+    ...(options.reportConfig
+      ? reportRows.map(reportItemCsvRow)
+      : aggregateMetricRows(options.aggregate, options.summaryMetrics ?? []).map((metric) => ["metric", metric.label, String(Math.trunc(metric.value)), "", "", metric.detail])),
+    ...options.aggregate.drops.map((drop) => ["rarity", drop.rarity, String(drop.total), String(drop.mf), String(drop.unique), "tracked drops"]),
+    ...options.aggregate.topDrops.map((drop, index) => ["top_drop", drop.name, String(drop.total), String(drop.mf), "", `rank ${index + 1}`]),
   ];
+  return rows.map(csvRow).join("\n");
+}
+
+export function createPastRunsDiscordSummary(options: PastRunsAggregateShareOptions): string {
+  const reportRows = aggregateShareReportRows(options);
+  const metrics = (options.reportConfig ? reportRows : aggregateMetricRows(options.aggregate, options.summaryMetrics ?? []))
+    .map((row) => `${row.label}: ${formatNumber(row.value)} (${row.detail})`)
+    .join(" | ");
+  const drops = options.reportConfig ? "" : options.aggregate.drops
+    .map((drop) => `${drop.rarity} ${formatNumber(drop.total)} (${formatMagicFindFlagCount(drop.mf, { short: true })}, ${formatNumber(drop.unique)} unique)`)
+    .join(" | ");
+  const topDrops = formatTopDrops(options.aggregate.topDrops, options.aggregate.topDrops.length);
+  const lines = [
+    `**Hero Siege Past Runs - ${options.title}**`,
+    `Runs: ${formatNumber(options.aggregate.runCount)} | Avg: ${formatDuration(options.aggregate.averageDurationMs)} | Total: ${formatDuration(options.aggregate.totalDurationMs)}`,
+    metrics ? `${options.reportConfig ? "Report" : "Stats"}: ${metrics}` : "",
+    drops ? `Drops: ${drops}` : "",
+    topDrops ? `Top drops: ${topDrops}` : "Top drops: none",
+    options.query.trim() ? `Filter: ${options.query.trim()}` : "",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+export function createPastRunDiscordSummary(run: PastRunSummary, options: PastRunShareOptions): string {
+  const activeGroups = options.activeReportGroups ?? [];
+  const rarities = options.dropRarities ?? TRACKED_RARITY_ORDER;
+  const reportRows = options.reportConfig ? runReportItemRows(run, options.reportConfig, options.itemFilterGroups ?? []) : [];
+  const metrics = (options.reportConfig ? reportRows : runMetricRows(run, options.summaryMetrics ?? [], rarities, activeGroups))
+    .map((row) => `${row.label}: ${formatNumber(row.value)} (${row.detail})`)
+    .join(" | ");
+  const drops = options.reportConfig ? "" : runTrackedItems(run, rarities, [], activeGroups)
+    .map((drop) => `${drop.rarity} ${formatNumber(drop.total)} (${formatMagicFindFlagCount(drop.mf, { short: true })}, ${formatNumber(drop.drops.length)} unique)`)
+    .join(" | ");
+  const topDrops = formatTopDrops(topDropsForRun(run, rarities, activeGroups), options.topDropLimit ?? 5);
+  const resources = [
+    `${formatNumber(runResourceTotal(run.keys))} keys`,
+    `${formatNumber(runResourceTotal(run.ores))} ore`,
+    `${formatNumber(runResourceTotal(run.materials ?? []))} materials`,
+  ].join(" | ");
+  const tags = run.tags?.length ? run.tags.map((tag) => `#${tag}`).join(" ") : "";
+  const lines = [
+    `**Hero Siege Run - ${run.accountName?.trim() || "Unknown Hero"}**`,
+    `Duration: ${formatDuration(run.durationMs)} | Ended: ${formatDateTime(run.sessionEndedAt)}`,
+    metrics ? `${options.reportConfig ? "Report" : "Stats"}: ${metrics}` : "",
+    options.reportConfig ? "" : `Resources: ${resources}`,
+    drops ? `Drops: ${drops}` : "",
+    topDrops ? `Top drops: ${topDrops}` : "Top drops: none",
+    tags ? `Tags: ${tags}` : "",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+function aggregateShareReportRows(options: PastRunsAggregateShareOptions): PastRunReportItemRow[] {
+  if (!options.reportConfig || !options.runs) return [];
+  return aggregateReportItemRows(options.runs, options.aggregate, options.reportConfig, options.itemFilterGroups ?? []);
+}
+
+function reportItemCsvRow(row: PastRunReportItemRow): string[] {
+  const mf = row.detailPanel?.kind === "drops" ? String(breakdownItemMf(row.detailPanel.drops)) : "";
+  const unique = row.detailPanel
+    ? String(row.detailPanel.kind === "drops" ? row.detailPanel.drops.length : row.detailPanel.resources.length)
+    : "";
+  return ["report_item", row.label, String(Math.trunc(row.value)), mf, unique, row.detail];
 }
 
 function ratePerHour(value: number, durationMs: number): number {
@@ -165,30 +516,6 @@ function ratePerHour(value: number, durationMs: number): number {
 
 function averagePerRun(value: number, runCount: number): number {
   return runCount ? Math.trunc(value / runCount) : 0;
-}
-
-function comparisonMetric(
-  id: string,
-  label: string,
-  format: PastRunComparisonMetric["format"],
-  primary: number,
-  baseline: number,
-): PastRunComparisonMetric {
-  const delta = Math.trunc(primary - baseline);
-  return {
-    id,
-    label,
-    format,
-    primary: Math.trunc(primary),
-    baseline: Math.trunc(baseline),
-    delta,
-    deltaPercent: baseline ? delta / baseline : null,
-    direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
-  };
-}
-
-export function pastRunDropKey(run: PastRunSummary, rarity: string): string {
-  return `${run.id}:${rarity}`;
 }
 
 export function sortedDropBreakdown(breakdown: Record<string, ItemDropCounter>): ItemDropCounter[] {
@@ -242,6 +569,41 @@ function pastRunDropMatchesGroup(name: string, rarity: string, group: PastRunDro
 
 function normalizeDropName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function topDropsForRun(run: PastRunSummary, rarities: string[], groups: PastRunDropFilterGroup[]): ItemDropCounter[] {
+  const drops: Record<string, ItemDropCounter> = {};
+  for (const rarity of runTrackedItems(run, rarities, [], groups)) {
+    for (const drop of rarity.drops) {
+      drops[drop.name] = drops[drop.name] ?? { name: drop.name, total: 0, mf: 0 };
+      drops[drop.name].total += drop.total;
+      drops[drop.name].mf += drop.mf;
+    }
+  }
+  return sortedDropBreakdown(drops);
+}
+
+function formatTopDrops(drops: ItemDropCounter[], limit: number): string {
+  if (!drops.length) return "";
+  const visibleDrops = drops.slice(0, Math.max(0, limit));
+  if (!visibleDrops.length) return "";
+  const hiddenCount = Math.max(0, drops.length - visibleDrops.length);
+  const suffix = hiddenCount ? `, +${hiddenCount} more` : "";
+  return `${visibleDrops.map((drop) => `${drop.name} x${formatNumber(drop.total)}`).join(", ")}${suffix}`;
+}
+
+function filterSummaryDetail(query: string, runCount: number): string {
+  const trimmedQuery = query.trim();
+  return trimmedQuery ? `query: ${trimmedQuery}; runs: ${runCount}` : `all saved runs: ${runCount}`;
+}
+
+function csvRow(values: string[]): string {
+  return values.map(csvCell).join(",");
+}
+
+function csvCell(value: string): string {
+  if (!/[",\r\n]/.test(value)) return value;
+  return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
 export function runResourceTotal(resources: ResourceCounter[]): number {

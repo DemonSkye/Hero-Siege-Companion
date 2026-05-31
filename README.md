@@ -16,7 +16,7 @@ Download the latest Windows build from the GitHub Releases page:
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
 
-Current release target: `v0.2.2`.
+Current release target: `v0.2.5`.
 
 ## Quick Start
 
@@ -36,10 +36,10 @@ Most data appears after Hero Siege sends the relevant packet. For example, gold 
 - Satanic Zone name, reset countdown, pros, and cons in both full and compact views.
 - Loot audio filters with custom groups, rarity/type rules, exact watched items, sound selection, volume, cooldown, and mute controls.
 - Imported loot alert sounds from local audio files or zip soundpacks, plus soundpack ZIP export.
-- Dark, Cyberpunk, and Light themes with separate full-app and compact choices, accent colors, and theme import/export.
+- Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes with separate full-app and compact choices, accent colors, and theme import/export.
 - Developer item research for resolving unknown item signatures into a shareable JSON lookup contribution.
 - Shopping list for quickly saving and copying marketplace searches.
-- Past Runs explorer with search, compare mode, JSON export, per-run tags, configurable report cards, tracked item groups, top drops, and resource drawers.
+- Past Runs explorer with search, compact run rows, expandable details, JSON/CSV export, Discord-friendly summary copy, report presets, per-run tags, configurable report cards, tracked item groups, top drops, and resource drawers.
 - Settings import/export for app settings, Past Run settings, report tracking, loot filters, sounds, and optional research data.
 - Support diagnostics summary copy and ZIP export for troubleshooting capture/setup issues.
 - Local-only desktop app: no account login, no cloud service, and no packet capture files are written by the app.
@@ -56,15 +56,15 @@ Compact mode is designed for playing with the companion on top of the game. It k
 
 ![Hero Siege Companion compact overlay](docs/assets/compact.png)
 
-Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view.
+Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. Dashboard tile presets can switch the compact run view between default, loot, resource, and XP/kills layouts.
 
 ## Past Runs
 
-Past Runs stores local run summaries so you can compare farming strategies over time. The aggregate cards show all saved runs and the most recent runs, including total duration and average duration.
+Past Runs stores local run summaries so you can review farming strategies over time. The aggregate card follows the current search/tag filter and uses the report sections you choose, including total duration and average duration. Drop totals are tracked item drops, magic-find flagged counts are server-provided flags, and unique counts distinct item names.
 
 ![Hero Siege Companion Past Runs](docs/assets/past-runs.png)
 
-Use search and tags to narrow saved history by strategy, character, resource, drop, or stat. Compare mode shows the recent matching slice against the full matching set, and Export JSON writes the current matching runs plus their aggregate summary. Use `Configure Report` to choose which summary cards, rarity groups, tracked item groups, drawers, and top-drop counts appear in run recaps. Empty tracked item groups use the default rarity-based report; enabled groups focus the report on exact drops or strategies you care about.
+Use search and tags to narrow saved history by strategy, character, resource, drop, or stat. Export JSON writes the current matching runs plus their aggregate summary, and Export CSV writes the current aggregate rows for spreadsheet sharing. Copy Summary creates Discord-friendly text for the current filtered result set or a single saved run. Use `Configure Report` presets or manual controls to choose which summary cards, rarity recaps, tracked item groups, drawers, and top-drop counts appear in run recaps. Empty tracked item groups use the selected rarity recaps; enabled groups focus the report on exact drops or strategies you care about.
 
 ## Loot Audio And Item Research
 
@@ -72,11 +72,13 @@ The Item Filter tab lets you create loot alert groups. Groups can match by rarit
 
 ![Hero Siege Companion item filters](docs/assets/item-filters.png)
 
-Developer item research is opt-in. When enabled, unknown item signatures appear in the Item Filter tab so they can be identified, saved, and exported. Research exports are case-normalized and designed to be shared as a [GitHub Gist](https://gist.github.com/) with `sarevok9` on Reddit or `Snyne` on the Hero Siege Discord.
+Developer item research is opt-in. When enabled, unknown item signatures appear in the Item Filter tab so they can be identified, saved, filtered by status/type/rarity, and exported. Research rows label whether an entry looks like an unknown normal item, stack item, material/collectible, generated placeholder, or known item missing an icon. Research exports are case-normalized and can be scoped to resolved or unresolved rows for sharing as a [GitHub Gist](https://gist.github.com/) with `sarevok9` on Reddit or `Snyne` on the Hero Siege Discord.
 
 ## Settings And Configuration
 
-Settings are saved locally on the device and restored between sessions. Appearance settings include Dark, Cyberpunk, and Light themes, separate full/compact theme choices, accent colors, and theme JSON import/export.
+Settings are saved locally on the device and restored between sessions. Appearance settings include Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes, separate full/compact theme choices, accent colors, and theme JSON import/export.
+
+Settings, What's New, Item Filter confirmation, and Past Runs report dialogs keep keyboard focus inside the open dialog and return focus to the invoking control when closed.
 
 The configuration JSON import/export flow can include:
 

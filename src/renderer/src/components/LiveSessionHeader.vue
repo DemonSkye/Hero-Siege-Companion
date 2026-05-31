@@ -5,6 +5,7 @@ defineProps<{
   captureRunning: boolean;
   runStatus: RunStatus;
   canToggleRunPaused: boolean;
+  title?: string;
 }>();
 
 const emit = defineEmits<{
@@ -19,7 +20,7 @@ const emit = defineEmits<{
   <section class="topbar">
     <div class="topbar-title">
       <p class="eyebrow">Hero Siege Companion</p>
-      <h1>Live Session</h1>
+      <h1>{{ title ?? "Live Session" }}</h1>
     </div>
     <div class="actions">
       <button class="icon-button ghost" type="button" @click="emit('open-settings')" title="Settings" aria-label="Settings">⚙</button>

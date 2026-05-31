@@ -21,6 +21,9 @@
   --accent-warm: #ffd38a;
   --accent-warm-bg: rgba(255, 211, 138, 0.1);
   --danger-bg: rgba(255, 93, 93, 0.12);
+  --effect-benefit: #8ee6ad;
+  --effect-benefit-bg: rgba(95, 211, 128, 0.1);
+  --effect-benefit-border: rgba(95, 211, 128, 0.3);
   --input-bg: #181b22;
   --button-primary: #d8643f;
   --button-primary-hover: #e3714d;
@@ -59,7 +62,7 @@ button {
   height: 100vh;
   min-height: 100vh;
   flex-direction: column;
-  padding: 0 24px 24px;
+  padding: 0 0 0 24px;
   overflow: hidden;
 }
 
