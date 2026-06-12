@@ -56,9 +56,10 @@ test("builds, exercises, and removes an item filter group against mocked drop tr
     );
 
     const timelineCard = page.locator(".timeline-panel.live-dashboard-card");
+    await timelineCard.locator('select[title="Filter item timeline by type or item filter"]').selectOption({ label: "Filter: E2E Loot Alerts" });
     await timelineCard.getByLabel("Hide unfiltered").setChecked(true);
     await expect(timelineCard.locator(".timeline-row", { hasText: "E2E Loot Alerts" }).filter({ hasText: "Aurelion Fury" })).toBeVisible();
-    await expect(timelineCard.locator(".timeline-row", { hasText: "E2E Loot Alerts" }).filter({ hasText: "Fumacinha's Favela Flipflop" })).toBeVisible();
+    await expect(timelineCard.locator(".timeline-row", { hasText: "Fumacinha's Favela Flipflop" })).toHaveCount(0);
     await timelineCard.getByRole("button", { name: "Open E2E Loot Alerts item filter" }).first().click();
     await expect(page.getByRole("heading", { name: "Item Filter", level: 1 })).toBeVisible();
 

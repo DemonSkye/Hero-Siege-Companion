@@ -370,8 +370,9 @@ export class CaptureService {
     const completedPayloads = this.packetBuffers.push(parsedPacket);
     const events: ParsedEvent[] = [];
 
-    for (const payloadText of completedPayloads) {
-      this.writeWidePayloadLog(parsedPacket, payloadText);
+    for (const completedPayload of completedPayloads) {
+      const { packet, text: payloadText } = completedPayload;
+      this.writeWidePayloadLog(packet, payloadText);
       if (!isLikelyParseablePayload(payloadText)) continue;
       if (payloadText.length > MAX_PARSE_PAYLOAD_CHARS) {
         this.recordParserFailure("payload-size", new Error(`Payload exceeded ${MAX_PARSE_PAYLOAD_CHARS} characters.`), payloadText);
@@ -382,7 +383,7 @@ export class CaptureService {
       this.lastPayloadAt = Date.now();
       const messages = this.captureMessagesSafely(payloadText);
       if (!messages) continue;
-      this.generatedDropCorrelator.markTrustedResponses(parsedPacket, messages, this.activeLocalAddress, (type, data) =>
+      this.generatedDropCorrelator.markTrustedResponses(packet, messages, this.activeLocalAddress, (type, data) =>
         this.writeDebugLog(type, data),
       );
       this.messagesDecoded += messages.length;

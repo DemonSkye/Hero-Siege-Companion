@@ -66,6 +66,101 @@ describe("App orchestration", () => {
     }
   });
 
+  test("applies imported configuration to UI preferences and main-process preference scopes", async () => {
+    const api = installHeroSiegeCompanionApi();
+    const importedRunArchivePreferences = { skipEmptyRuns: true, minDurationMinutes: 9 };
+    const importedCapturePreferences = { createDebugMode: true };
+    vi.mocked(api.importConfiguration).mockResolvedValue(JSON.stringify({
+      app: "hero-siege-companion",
+      kind: "configuration",
+      version: 1,
+      includes: {
+        appSettings: true,
+        runSaving: true,
+        reportTracking: true,
+        lootFilters: true,
+        sounds: true,
+        itemResearch: false,
+      },
+      uiPreferences: {
+        logLimit: 50,
+        alwaysOnTop: false,
+        lockCompactLocation: true,
+        themeId: "cyberpunk",
+        compactThemeId: "light",
+        themeTextures: { cyberpunk: "neon-grid" },
+        compactThemeTextures: { light: "brushed-metal" },
+      },
+      runArchivePreferences: importedRunArchivePreferences,
+      capturePreferences: importedCapturePreferences,
+    }));
+    vi.mocked(api.setRunArchivePreferences).mockResolvedValue(companionState({ runArchivePreferences: importedRunArchivePreferences }));
+    vi.mocked(api.setCapturePreferences).mockResolvedValue(companionState({
+      runArchivePreferences: importedRunArchivePreferences,
+      capturePreferences: importedCapturePreferences,
+    }));
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          AppTitlebar: { template: "<div />" },
+          CompactView: { template: "<div />" },
+          LiveSessionHeader: {
+            emits: ["open-settings"],
+            template: '<button data-test="open-settings" type="button" @click="$emit(\'open-settings\')">Settings</button>',
+          },
+          LiveView: { template: "<div />" },
+          SettingsModal: {
+            props: ["logLimit", "themeId", "compactThemeId", "skipEmptyRuns", "minRunDurationMinutes", "createDebugMode"],
+            emits: ["importConfiguration"],
+            template: `
+              <section data-test="settings-modal">
+                <span data-test="draft-log-limit">{{ logLimit }}</span>
+                <span data-test="draft-theme">{{ themeId }}/{{ compactThemeId }}</span>
+                <span data-test="draft-run-saving">{{ skipEmptyRuns }}:{{ minRunDurationMinutes }}</span>
+                <span data-test="draft-capture">{{ createDebugMode }}</span>
+                <button data-test="import-configuration" type="button" @click="$emit('importConfiguration')">Import JSON</button>
+              </section>
+            `,
+          },
+          UpdateBanner: { template: "<div />" },
+          WhatsNewPrompt: { template: "<div />" },
+        },
+      },
+    });
+
+    try {
+      await flushPromises();
+      vi.mocked(api.setAlwaysOnTop).mockClear();
+      vi.mocked(api.setCompactMode).mockClear();
+
+      await wrapper.get('[data-test="open-settings"]').trigger("click");
+      await flushPromises();
+      await wrapper.get('[data-test="import-configuration"]').trigger("click");
+      await flushPromises();
+
+      expect(api.importConfiguration).toHaveBeenCalledWith(true);
+      expect(api.setRunArchivePreferences).toHaveBeenCalledWith(importedRunArchivePreferences);
+      expect(api.setCapturePreferences).toHaveBeenCalledWith(importedCapturePreferences);
+      expect(api.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+      expect(api.setCompactMode).toHaveBeenLastCalledWith(false, true);
+      expect(JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}")).toMatchObject({
+        logLimit: 50,
+        alwaysOnTop: false,
+        lockCompactLocation: true,
+        themeId: "cyberpunk",
+        compactThemeId: "light",
+        themeTextures: { cyberpunk: "neon-grid" },
+        compactThemeTextures: { light: "brushed-metal" },
+      });
+      expect(wrapper.get('[data-test="draft-log-limit"]').text()).toBe("50");
+      expect(wrapper.get('[data-test="draft-theme"]').text()).toBe("cyberpunk/light");
+      expect(wrapper.get('[data-test="draft-run-saving"]').text()).toBe("true:9");
+      expect(wrapper.get('[data-test="draft-capture"]').text()).toBe("true");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   test("reopens settings on the last selected settings tab", async () => {
     installHeroSiegeCompanionApi();
     const wrapper = mount(App, {
@@ -151,7 +246,7 @@ describe("App orchestration", () => {
       expect(JSON.parse(vi.mocked(api.exportConfiguration).mock.calls[0][0])).toMatchObject({
         kind: "theme",
         template: true,
-        themeId: "dark",
+        themeId: "voidglass",
       });
     } finally {
       wrapper.unmount();
@@ -235,6 +330,47 @@ describe("App orchestration", () => {
       wrapper.unmount();
     }
   });
+
+  test("routes Past Runs delete actions through preload", async () => {
+    const api = installHeroSiegeCompanionApi();
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          AppTitlebar: { template: "<div />" },
+          CompactView: { template: "<div />" },
+          ItemFilterView: { template: "<section />" },
+          LiveSessionHeader: { template: "<section />" },
+          LiveView: { template: "<section />" },
+          PastRunsView: {
+            emits: ["delete-run", "delete-all-runs"],
+            template: `
+              <section data-test="past-runs-view">
+                <button data-test="delete-run" type="button" @click="$emit('delete-run', 'run-to-delete')">Delete Run</button>
+                <button data-test="delete-all-runs" type="button" @click="$emit('delete-all-runs')">Delete All</button>
+              </section>
+            `,
+          },
+          SettingsModal: { template: "<section />" },
+          UpdateBanner: { template: "<div />" },
+          WhatsNewPrompt: { template: "<div />" },
+        },
+      },
+    });
+
+    try {
+      await flushPromises();
+      await buttonByText(wrapper, "Past Runs").trigger("click");
+      await flushPromises();
+      await wrapper.get('[data-test="delete-run"]').trigger("click");
+      await wrapper.get('[data-test="delete-all-runs"]').trigger("click");
+      await flushPromises();
+
+      expect(api.deletePastRun).toHaveBeenCalledWith("run-to-delete");
+      expect(api.deleteAllPastRuns).toHaveBeenCalledTimes(1);
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });
 
 function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
@@ -249,6 +385,8 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     pauseRun: vi.fn().mockResolvedValue(state),
     resumeRun: vi.fn().mockResolvedValue(state),
     setPastRunTags: vi.fn().mockResolvedValue(state),
+    deletePastRun: vi.fn().mockResolvedValue(state),
+    deleteAllPastRuns: vi.fn().mockResolvedValue(state),
     setRunArchivePreferences: vi.fn().mockResolvedValue(state),
     setCapturePreferences: vi.fn().mockResolvedValue(state),
     exportConfiguration: vi.fn().mockResolvedValue(true),

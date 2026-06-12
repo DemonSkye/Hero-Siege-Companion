@@ -247,11 +247,6 @@ input[type="checkbox"] {
   max-width: none;
 }
 
-.settings-import-sounds {
-  width: fit-content;
-  margin-top: 12px;
-}
-
 .settings-theme-actions {
   display: flex;
   flex-wrap: wrap;
@@ -400,6 +395,11 @@ input[type="checkbox"] {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.settings-sound-button {
+  justify-content: center;
+  width: 170px;
 }
 
 .settings-support-bundle {

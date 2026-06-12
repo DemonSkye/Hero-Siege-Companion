@@ -13,6 +13,8 @@ const EXPECTED_PRELOAD_API = [
   "checkForUpdate",
   "chooseGameExecutable",
   "closeWindow",
+  "deleteAllPastRuns",
+  "deletePastRun",
   "exportConfiguration",
   "exportItemResearch",
   "exportPastRunsCsv",

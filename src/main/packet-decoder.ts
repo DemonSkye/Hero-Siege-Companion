@@ -8,26 +8,33 @@ export interface ParsedPayload {
   text: string;
 }
 
+export interface CompletedPayload {
+  packet: ParsedPayload;
+  text: string;
+}
+
 const IPV4_PROTOCOL_TCP = 6;
 const ETHERNET_IPV4_ETHER_TYPE = 0x0800;
 
+interface BufferedPayloadChunks {
+  packet: ParsedPayload;
+  chunks: string[];
+}
+
 export class PacketBuffers {
   private lastAckBySource = new Map<string, string>();
-  private chunksByAck = new Map<string, string[]>();
+  private chunksByAck = new Map<string, BufferedPayloadChunks>();
 
-  push(packet: ParsedPayload): string[] {
+  push(packet: ParsedPayload): CompletedPayload[] {
     const sourceKey = `${packet.src}:${packet.srcPort}->${packet.dst}:${packet.dstPort}`;
     const ackKey = `${sourceKey}:${packet.ack ?? "noack"}`;
     const previousAck = this.lastAckBySource.get(sourceKey);
-    const completed: string[] = [];
-
-    if (!this.chunksByAck.has(ackKey)) this.chunksByAck.set(ackKey, []);
-    this.chunksByAck.get(ackKey)?.push(packet.text);
+    const completed: CompletedPayload[] = [];
 
     if (previousAck && previousAck !== ackKey) {
-      const chunks = this.chunksByAck.get(previousAck);
-      if (chunks?.length) {
-        completed.push(chunks.join(""));
+      const buffered = this.chunksByAck.get(previousAck);
+      if (buffered?.chunks.length) {
+        completed.push({ packet: buffered.packet, text: buffered.chunks.join("") });
         this.chunksByAck.delete(previousAck);
       }
     }
@@ -35,7 +42,17 @@ export class PacketBuffers {
     this.lastAckBySource.set(sourceKey, ackKey);
 
     if (packet.text.includes("{") || packet.text.includes("[") || packet.text.includes("&") || looksLikeSpecialProtocol(packet.text)) {
-      completed.push(packet.text);
+      const buffered = this.chunksByAck.get(ackKey);
+      if (buffered?.chunks.length) {
+        completed.push({ packet: buffered.packet, text: [...buffered.chunks, packet.text].join("") });
+        this.chunksByAck.delete(ackKey);
+      } else {
+        completed.push({ packet, text: packet.text });
+      }
+    } else {
+      const buffered = this.chunksByAck.get(ackKey);
+      if (buffered) buffered.chunks.push(packet.text);
+      else this.chunksByAck.set(ackKey, { packet, chunks: [packet.text] });
     }
 
     if (this.chunksByAck.size > 300) this.clear();
@@ -49,7 +66,7 @@ export class PacketBuffers {
 
   stats(): { sources: number; ackBuffers: number; bufferedChunks: number } {
     let bufferedChunks = 0;
-    for (const chunks of this.chunksByAck.values()) bufferedChunks += chunks.length;
+    for (const buffered of this.chunksByAck.values()) bufferedChunks += buffered.chunks.length;
     return {
       sources: this.lastAckBySource.size,
       ackBuffers: this.chunksByAck.size,

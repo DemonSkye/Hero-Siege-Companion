@@ -12,6 +12,8 @@ export const IPC_CHANNELS = {
   runPause: "run:pause",
   runResume: "run:resume",
   pastRunsSetTags: "past-runs:set-tags",
+  pastRunsDelete: "past-runs:delete",
+  pastRunsDeleteAll: "past-runs:delete-all",
   preferencesSetRunArchive: "preferences:set-run-archive",
   preferencesSetCapture: "preferences:set-capture",
   configurationExport: "configuration:export",
@@ -74,6 +76,8 @@ export interface HeroSiegeCompanionApi {
   pauseRun: () => Promise<CompanionState>;
   resumeRun: () => Promise<CompanionState>;
   setPastRunTags: (runId: string, tags: string[]) => Promise<CompanionState>;
+  deletePastRun: (runId: string) => Promise<CompanionState>;
+  deleteAllPastRuns: () => Promise<CompanionState>;
   setRunArchivePreferences: (preferences: RunArchivePreferences) => Promise<CompanionState>;
   setCapturePreferences: (preferences: CapturePreferences) => Promise<CompanionState>;
   exportConfiguration: (json: string, options?: ConfigurationExportOptions) => Promise<boolean>;

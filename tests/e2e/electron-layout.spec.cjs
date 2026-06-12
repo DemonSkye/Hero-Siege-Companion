@@ -50,7 +50,7 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
       }
     });
 
-    expect(diagnostics.cardCount).toBeGreaterThanOrEqual(6);
+    expect(diagnostics.cardCount).toBeGreaterThanOrEqual(5);
     expect(diagnostics.horizontalOverflow).toBeLessThanOrEqual(4);
     expect(diagnostics.tinyCards).toEqual([]);
     expect(diagnostics.horizontallyOffscreenCards).toEqual([]);

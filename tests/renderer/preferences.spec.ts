@@ -22,6 +22,7 @@ import {
   normalizeRunDurationMinutes,
   normalizeShoppingList,
   savePreferences,
+  type UiPreferences,
 } from "../../src/renderer/src/lib/preferences";
 import { defaultPostRunReportConfig, withPostRunReportSummaryItems, withoutPostRunReportItemFilterGroup } from "../../src/renderer/src/lib/report-config";
 import {
@@ -57,6 +58,19 @@ describe("renderer preferences persistence", () => {
   test("loads defaults when local storage is missing or corrupt", () => {
     expect(loadPreferences()).toMatchObject(defaultPreferences);
     expect(loadPreferences().schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
+    expect(defaultPreferences).toMatchObject({
+      alwaysOnTop: true,
+      lockCompactLocation: true,
+      hideSocketables: true,
+      hideKeys: true,
+      hideMaterials: true,
+      themeId: "voidglass",
+      compactThemeId: "demonsteel",
+      themeTextures: { voidglass: "starfield-dust", light: "neon-grid" },
+      compactThemeTextures: { cyberpunk: "brimstone" },
+      themeForegroundFills: { voidglass: 64 },
+      postRunReport: defaultPostRunReportConfig,
+    });
 
     window.localStorage.setItem("hero-siege-companion:preferences:v1", "{not-json");
     expect(loadPreferences()).toMatchObject(defaultPreferences);
@@ -64,11 +78,44 @@ describe("renderer preferences persistence", () => {
 
   test("watches persisted current-setting refs for automatic saves", () => {
     const preferences = useAppPreferences();
+    const persistedPreferenceRefs = {
+      logLimit: preferences.logLimit,
+      timelineLimit: preferences.timelineLimit,
+      showCaptureDetails: preferences.showCaptureDetails,
+      alwaysOnTop: preferences.alwaysOnTop,
+      lockCompactLocation: preferences.lockCompactLocation,
+      hideSocketables: preferences.hideSocketables,
+      hideKeys: preferences.hideKeys,
+      hideMaterials: preferences.hideMaterials,
+      timelineType: preferences.timelineType,
+      gameExecutablePath: preferences.gameExecutablePath,
+      launchThroughSteam: preferences.launchThroughSteam,
+      themeId: preferences.themeId,
+      compactThemeId: preferences.compactThemeId,
+      themeAccents: preferences.themeAccents,
+      themeTextures: preferences.themeTextures,
+      compactThemeTextures: preferences.compactThemeTextures,
+      themeForegroundFills: preferences.themeForegroundFills,
+      compactThemeForegroundFills: preferences.compactThemeForegroundFills,
+      themeTokenMaps: preferences.themeTokenMaps,
+      itemFilterGroups: preferences.itemFilterGroups,
+      itemFilterMuted: preferences.itemFilterMuted,
+      customItemFilterSounds: preferences.customItemFilterSounds,
+      postRunReport: preferences.postRunReport,
+      compactRunTiles: preferences.compactRunTiles,
+      developerItemResearchEnabled: preferences.developerItemResearchEnabled,
+      unknownItemAudioPrompt: preferences.unknownItemAudioPrompt,
+      itemResearchEntries: preferences.itemResearchEntries,
+    } satisfies Record<Exclude<keyof UiPreferences, "schemaVersion" | "shoppingListItems">, unknown>;
+    const watchedRefs = new Set(preferences.preferenceWatchSources);
 
     expect(preferences.preferenceWatchSources).toContain(preferences.alwaysOnTop);
     expect(preferences.preferenceWatchSources).toContain(preferences.lockCompactLocation);
     expect(preferences.preferenceWatchSources).toContain(preferences.gameExecutablePath);
     expect(preferences.preferenceWatchSources).toContain(preferences.launchThroughSteam);
+    expect(watchedRefs.size).toBe(preferences.preferenceWatchSources.length);
+    expect(preferences.preferenceWatchSources).toHaveLength(Object.keys(persistedPreferenceRefs).length);
+    for (const ref of Object.values(persistedPreferenceRefs)) expect(watchedRefs.has(ref)).toBe(true);
   });
 
   test("normalizes old or hostile preference values before the UI consumes them", () => {
@@ -463,6 +510,7 @@ describe("renderer preferences persistence", () => {
     expect(normalizeThemeId("demonsteel")).toBe("demonsteel");
     expect(normalizeThemeId("voidglass")).toBe("voidglass");
     expect(normalizeThemeId("reliquary")).toBe("reliquary");
+    expect(normalizeThemeId("lost")).toBe("voidglass");
   });
 
   test("exports and imports configuration sections according to checkbox scope", () => {

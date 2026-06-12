@@ -70,10 +70,10 @@ test("searches, tags, and persists seeded Past Runs through the app UI", async (
     await expect(page.getByRole("heading", { name: "Past Runs", level: 1 })).toBeVisible();
     await expect(page.getByText("E2E Paladin")).toBeVisible();
 
-    await page.getByPlaceholder("Tags, drops, resources, character, stats").fill("ruby");
+    await page.getByPlaceholder("Tags, drops, resources, character, stats").fill("copper");
     await expect(page.getByText("1/2 shown")).toBeVisible();
     await page.getByRole("button", { name: "Details" }).click();
-    await expect(page.locator("#past-run-details-e2e-run-alpha").getByText("Ruby Key")).toBeVisible();
+    await expect(page.locator("#past-run-details-e2e-run-alpha").getByText("Copper Ore")).toBeVisible();
 
     await page.getByRole("button", { name: "Clear" }).click();
     await page.locator(".tag-selector-button").first().click();
@@ -84,5 +84,15 @@ test("searches, tags, and persists seeded Past Runs through the app UI", async (
     const state = await getRendererState(page);
     const updatedRun = state.pastRuns.find((run) => run.id === "e2e-run-alpha");
     expect(updatedRun.tags).toContain("e2e reviewed");
+
+    await page.getByRole("button", { name: "Delete E2E Nomad" }).click();
+    await page.locator(".past-run-card").filter({ hasText: "E2E Nomad" }).getByRole("button", { name: "Confirm" }).click();
+    await expect.poll(async () => (await getRendererState(page)).pastRuns.map((run) => run.id)).toEqual(["e2e-run-alpha"]);
+    await expect(page.getByText("E2E Nomad")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Delete all past runs" }).click();
+    await page.getByLabel("Confirm delete all past runs").getByRole("button", { name: "Confirm" }).click();
+    await expect.poll(async () => (await getRendererState(page)).pastRuns).toEqual([]);
+    await expect(page.getByText("Click End Run to save the current session here.")).toBeVisible();
   });
 });

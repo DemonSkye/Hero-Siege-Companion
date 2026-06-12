@@ -25,6 +25,49 @@
   gap: 8px;
 }
 
+.past-runs-heading-actions .icon-only,
+.past-run-header-actions .icon-only {
+  display: grid;
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+  place-items: center;
+}
+
+.trash-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.past-run-delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(255, 93, 93, 0.26);
+  border-radius: 8px;
+  background: rgba(255, 93, 93, 0.08);
+}
+
+.past-run-delete-confirm span {
+  color: var(--app-heading);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.past-run-delete-all-confirm span {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .past-run-toolbar {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto;

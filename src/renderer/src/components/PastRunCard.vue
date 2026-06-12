@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import type { PastRunSummary } from "../../../shared/stats";
 import { formatDateTime, formatDuration, formatNumber } from "../lib/format";
 import { itemIconUrl, resourceImage } from "../lib/item-assets";
@@ -13,6 +13,7 @@ import {
 import type { ItemFilterGroup } from "../lib/item-filters";
 import type { PostRunReportConfig } from "../lib/report-config";
 import RunTagMenu from "./RunTagMenu.vue";
+import TrashIcon from "./TrashIcon.vue";
 
 const props = defineProps<{
   run: PastRunSummary;
@@ -30,11 +31,17 @@ const emit = defineEmits<{
   "close-tag-menu": [];
   "update-run-tags": [runId: string, tags: string[]];
   "copy-run-summary": [summary: string];
+  "delete-run": [runId: string];
 }>();
 
+const deleteConfirmOpen = ref(false);
 const reportRows = computed(() => runReportItemRows(props.run, props.reportConfig, props.itemFilterGroups));
 const detailRows = computed(() => reportRows.value.filter((row) => hasReportItemDetailEntries(row.detailPanel)));
 const hasRunDetails = computed(() => detailRows.value.length > 0);
+
+watch(() => props.run.id, () => {
+  deleteConfirmOpen.value = false;
+});
 
 function addTagToRun(tag: string) {
   const nextTags = addTag(props.run, tag);
@@ -54,6 +61,19 @@ function copyRunSummary() {
     topDropLimit: props.reportConfig.topDropLimit,
     activeReportGroups: props.activeReportGroups,
   }));
+}
+
+function requestDeleteRun() {
+  deleteConfirmOpen.value = true;
+}
+
+function cancelDeleteRun() {
+  deleteConfirmOpen.value = false;
+}
+
+function confirmDeleteRun() {
+  deleteConfirmOpen.value = false;
+  emit("delete-run", props.run.id);
 }
 </script>
 
@@ -90,6 +110,21 @@ function copyRunSummary() {
         >
           {{ expanded ? "Hide Details" : "Details" }}
         </button>
+        <button
+          v-if="!deleteConfirmOpen"
+          class="icon-button danger icon-only past-run-delete"
+          type="button"
+          :title="`Delete ${pastRunTitle(run)}`"
+          :aria-label="`Delete ${pastRunTitle(run)}`"
+          @click="requestDeleteRun"
+        >
+          <TrashIcon />
+        </button>
+        <div v-else class="past-run-delete-confirm" role="group" :aria-label="`Confirm delete ${pastRunTitle(run)}`">
+          <span>Delete?</span>
+          <button class="icon-button danger past-run-confirm-delete" type="button" @click="confirmDeleteRun">Confirm</button>
+          <button class="icon-button ghost past-run-cancel-delete" type="button" @click="cancelDeleteRun">Cancel</button>
+        </div>
       </div>
     </div>
 

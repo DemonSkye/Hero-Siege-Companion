@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CompanionState, LogEntry } from "../../shared/app-state";
-import { createInitialCompanionState } from "../../shared/initial-state";
+import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES, createInitialCompanionState } from "../../shared/initial-state";
 import AppTitlebar from "./components/AppTitlebar.vue";
 import CompactView from "./components/CompactView.vue";
 import LiveSessionHeader from "./components/LiveSessionHeader.vue";
@@ -342,6 +342,24 @@ async function updatePastRunTags(runId: string, tags: string[]) {
   state.value = await window.heroSiegeCompanion.setPastRunTags(runId, tags);
 }
 
+async function deletePastRun(runId: string) {
+  try {
+    state.value = await window.heroSiegeCompanion.deletePastRun(runId);
+    showToast("Past run deleted");
+  } catch {
+    showToast("Past run delete failed");
+  }
+}
+
+async function deleteAllPastRuns() {
+  try {
+    state.value = await window.heroSiegeCompanion.deleteAllPastRuns();
+    showToast("Past runs deleted");
+  } catch {
+    showToast("Past runs delete failed");
+  }
+}
+
 function removeItemFilterGroupAndReportRefs(group: ItemFilterGroup) {
   removeItemFilterGroup(group);
   updatePostRunReportConfig(withoutPostRunReportItemFilterGroup(postRunReport.value, group.id));
@@ -365,7 +383,7 @@ function closeSettings() {
 }
 
 function resetDraftPreferences() {
-  loadDraftPreferences(defaultPreferences, { skipEmptyRuns: false, minDurationMinutes: 0 }, { createDebugMode: false });
+  loadDraftPreferences(defaultPreferences, DEFAULT_RUN_ARCHIVE_PREFERENCES, DEFAULT_CAPTURE_PREFERENCES);
 }
 
 async function applyDraftPreferences() {
@@ -651,6 +669,8 @@ function toggleLog(log: LogEntry) {
         @export-runs-json="exportPastRunsJson"
         @export-runs-csv="exportPastRunsCsv"
         @copy-summary="copyPastRunsSummary"
+        @delete-run="deletePastRun"
+        @delete-all-runs="deleteAllPastRuns"
       />
     </div>
     <SettingsModal

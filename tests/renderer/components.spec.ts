@@ -628,7 +628,7 @@ describe("Vue component contracts", () => {
   test("PastRunsView aggregates saved runs and expands selected report item details", async () => {
     const missingIconDrop = "A Missing Icon Regression Item";
     const run = pastRun({ tags: ["Dungeons"] });
-    run.itemBreakdown.Satanic[missingIconDrop] = { name: missingIconDrop, total: 1, mf: 0 };
+    run.itemBreakdown.Heroic[missingIconDrop] = { name: missingIconDrop, total: 1, mf: 0 };
     const wrapper = mount(PastRunsView, {
       props: {
         pastRuns: [run, pastRun({ id: "run-2", accountName: "ForgeHero", tags: ["Codex"], totalGoldGained: 50_000, durationMs: 300_000 })],
@@ -640,8 +640,9 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("2/100 saved");
     expect(wrapper.text()).toContain("All Runs");
     expect(wrapper.text()).toContain("magic-find flagged is the server flag count");
-    expect(wrapper.text()).toContain("Magic-find flagged");
-    expect(wrapper.text()).toContain("150,000");
+    expect(wrapper.text()).toContain("Heroic");
+    expect(wrapper.text()).toContain("Gold/h");
+    expect(wrapper.text()).toContain("600,000");
     const missingAggregateDrop = wrapper.findAll(".aggregate-detail-panel .aggregate-top-list > div").find((row) => row.text().includes(missingIconDrop));
     if (!missingAggregateDrop) throw new Error("Expected aggregate drop row without a known icon");
     const placeholderIcon = missingAggregateDrop.get("img.drop-breakdown-icon");
@@ -651,9 +652,8 @@ describe("Vue component contracts", () => {
 
     await buttonByText(wrapper, "Details").trigger("click");
     expect(buttonByText(wrapper, "Hide Details").attributes("aria-controls")).toContain("past-run-details-");
-    expect(wrapper.text()).toContain("Crystal Key");
-    expect(wrapper.text()).toContain("Battle Fragment");
-    expect(wrapper.text()).toContain("Sash of the Magi");
+    expect(wrapper.text()).toContain("Copper Ore");
+    expect(wrapper.text()).toContain("Scourge Loop");
 
     await wrapper.get(".past-run-copy-filtered-summary").trigger("click");
     await wrapper.get(".past-run-export-csv").trigger("click");
@@ -682,7 +682,7 @@ describe("Vue component contracts", () => {
       filter: { runCount: 2 },
     });
     expect(wrapper.emitted("export-runs-csv")?.[0]?.[0]).toContain("section,label,value,mf_flagged,unique,detail");
-    expect(wrapper.emitted("export-runs-csv")?.[0]?.[0]).toContain("rarity,Satanic");
+    expect(wrapper.emitted("export-runs-csv")?.[0]?.[0]).toContain("rarity,Heroic");
     expect(wrapper.emitted("copy-summary")?.[0]?.[0]).toContain("**Hero Siege Past Runs - All Runs**");
     expect(wrapper.emitted("copy-summary")?.[1]?.[0]).toContain("**Hero Siege Run - TestHero**");
   });
@@ -712,6 +712,43 @@ describe("Vue component contracts", () => {
     expect(details.text()).toContain("Satanic");
     expect(details.text()).not.toContain("Merc Items");
     expect(wrapper.findAll(".past-run-detail-panel")).toHaveLength(1);
+  });
+
+  test("PastRunsView confirms deleting all runs and individual saved runs", async () => {
+    const wrapper = mount(PastRunsView, {
+      props: {
+        pastRuns: [
+          pastRun({ id: "run-alpha", accountName: "Run Alpha" }),
+          pastRun({ id: "run-beta", accountName: "Run Beta" }),
+        ],
+        reportConfig: defaultPostRunReportConfig,
+        itemFilterGroups: [],
+      },
+    });
+
+    const deleteAllButton = wrapper.get('button[aria-label="Delete all past runs"]');
+    expect(deleteAllButton.find(".trash-icon").exists()).toBe(true);
+
+    await deleteAllButton.trigger("click");
+    expect(wrapper.emitted("delete-all-runs")).toBeUndefined();
+    expect(wrapper.get('[aria-label="Confirm delete all past runs"]').text()).toContain("Delete 2 saved runs?");
+
+    await wrapper.get(".past-run-cancel-delete-all").trigger("click");
+    expect(wrapper.find('[aria-label="Confirm delete all past runs"]').exists()).toBe(false);
+
+    await wrapper.get('button[aria-label="Delete all past runs"]').trigger("click");
+    await wrapper.get(".past-run-confirm-delete-all").trigger("click");
+    expect(wrapper.emitted("delete-all-runs")).toEqual([[]]);
+
+    const deleteRunButton = wrapper.get('button[aria-label="Delete Run Alpha"]');
+    expect(deleteRunButton.find(".trash-icon").exists()).toBe(true);
+
+    await deleteRunButton.trigger("click");
+    expect(wrapper.emitted("delete-run")).toBeUndefined();
+    expect(wrapper.get('[aria-label="Confirm delete Run Alpha"]').text()).toContain("Delete?");
+
+    await wrapper.get(".past-run-confirm-delete").trigger("click");
+    expect(wrapper.emitted("delete-run")).toEqual([["run-alpha"]]);
   });
 
   test("PastRunReportConfigModal owns report editing events", async () => {

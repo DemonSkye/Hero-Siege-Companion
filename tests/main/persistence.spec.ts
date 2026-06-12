@@ -14,6 +14,7 @@ import {
   saveRunArchivePreferences,
   withMinimumBounds,
 } from "../../src/main/persistence";
+import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../../src/shared/initial-state";
 import { PAST_RUN_SCHEMA_VERSION } from "../../src/shared/stats";
 import { pastRun } from "../renderer/fixtures";
 
@@ -76,6 +77,17 @@ describe("main process persistence helpers", () => {
       runArchive: { skipEmptyRuns: false, minDurationMinutes: 15 },
       capture: { createDebugMode: false },
     });
+  });
+
+  test("loads default main-process preferences when files or sections are missing", () => {
+    expect(loadRunArchivePreferences(tempFile("missing.json"))).toEqual(DEFAULT_RUN_ARCHIVE_PREFERENCES);
+    expect(loadCapturePreferences(tempFile("missing.json"))).toEqual(DEFAULT_CAPTURE_PREFERENCES);
+
+    const preferencesPath = tempFile("partial-preferences.json");
+    fs.writeFileSync(preferencesPath, `${JSON.stringify({ untouched: { value: 42 } })}\n`, "utf8");
+
+    expect(loadRunArchivePreferences(preferencesPath)).toEqual(DEFAULT_RUN_ARCHIVE_PREFERENCES);
+    expect(loadCapturePreferences(preferencesPath)).toEqual(DEFAULT_CAPTURE_PREFERENCES);
   });
 
   test("loads past runs defensively and migrates additive fields", () => {

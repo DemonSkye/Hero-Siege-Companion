@@ -80,6 +80,7 @@ export class GeneratedDropCorrelator {
     }
 
     if (marked > 0) {
+      this.pendingGeneratedDropRequests.delete(endpointKey(packet.src, packet.srcPort));
       log("generated-drop-correlated", {
         server: endpointKey(packet.src, packet.srcPort),
         messages: marked,

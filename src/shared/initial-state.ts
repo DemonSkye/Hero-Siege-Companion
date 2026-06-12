@@ -2,12 +2,12 @@ import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreference
 import { createInitialStats } from "./stats";
 
 export const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
-  skipEmptyRuns: false,
-  minDurationMinutes: 0,
+  skipEmptyRuns: true,
+  minDurationMinutes: 5,
 };
 
 export const DEFAULT_CAPTURE_PREFERENCES: CapturePreferences = {
-  createDebugMode: false,
+  createDebugMode: true,
 };
 
 export function createInitialCompanionState(logs: LogEntry[] = []): CompanionState {

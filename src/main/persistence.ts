@@ -101,7 +101,7 @@ export function loadRunArchivePreferences(filePath: string, log: StorageLog = no
   try {
     if (!filePath || !fs.existsSync(filePath)) return DEFAULT_RUN_ARCHIVE_PREFERENCES;
     const parsed = loadPreferencesFile(filePath) as { runArchive?: Partial<RunArchivePreferences> };
-    return normalizeRunArchivePreferences(parsed.runArchive ?? {});
+    return parsed.runArchive === undefined ? DEFAULT_RUN_ARCHIVE_PREFERENCES : normalizeRunArchivePreferences(parsed.runArchive);
   } catch (error) {
     logStorageError(log, "preferences-load-error", error);
     return DEFAULT_RUN_ARCHIVE_PREFERENCES;
@@ -130,7 +130,7 @@ export function loadCapturePreferences(filePath: string, log: StorageLog = noopL
   try {
     if (!filePath || !fs.existsSync(filePath)) return DEFAULT_CAPTURE_PREFERENCES;
     const parsed = loadPreferencesFile(filePath) as { capture?: Partial<CapturePreferences> };
-    return normalizeCapturePreferences(parsed.capture ?? {});
+    return parsed.capture === undefined ? DEFAULT_CAPTURE_PREFERENCES : normalizeCapturePreferences(parsed.capture);
   } catch (error) {
     logStorageError(log, "preferences-load-error", error);
     return DEFAULT_CAPTURE_PREFERENCES;

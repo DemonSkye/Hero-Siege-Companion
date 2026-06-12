@@ -13,6 +13,10 @@ const api: HeroSiegeCompanionApi = {
   resumeRun: () => ipcRenderer.invoke(IPC_CHANNELS.runResume),
   setPastRunTags: (runId: string, tags: string[]): Promise<CompanionState> =>
     ipcRenderer.invoke(IPC_CHANNELS.pastRunsSetTags, runId, tags),
+  deletePastRun: (runId: string): Promise<CompanionState> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pastRunsDelete, runId),
+  deleteAllPastRuns: (): Promise<CompanionState> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pastRunsDeleteAll),
   setRunArchivePreferences: (preferences) => ipcRenderer.invoke(IPC_CHANNELS.preferencesSetRunArchive, preferences),
   setCapturePreferences: (preferences) => ipcRenderer.invoke(IPC_CHANNELS.preferencesSetCapture, preferences),
   exportConfiguration: (json, options) => ipcRenderer.invoke(IPC_CHANNELS.configurationExport, json, options),

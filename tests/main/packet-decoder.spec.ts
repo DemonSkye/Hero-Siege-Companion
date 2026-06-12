@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getPayload, isLikelyParseablePayload, PacketBuffers } from "../../src/main/packet-decoder";
+import { getPayload, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "../../src/main/packet-decoder";
 
 function tcpPacket(payloadText: string, linkType: "RAW" | "ETHERNET" | "NULL" | "LINKTYPE_LINUX_SLL" = "RAW"): Buffer {
   const payload = Buffer.from(payloadText, "utf8");
@@ -39,6 +39,19 @@ function linkPrefix(linkType: string): Buffer {
   return Buffer.alloc(0);
 }
 
+function parsedPayload(text: string, overrides: Partial<ParsedPayload> = {}): ParsedPayload {
+  return {
+    src: "10.0.0.1",
+    dst: "10.0.0.2",
+    srcPort: 1234,
+    dstPort: 26921,
+    ack: 1,
+    payloadLength: text.length,
+    text,
+    ...overrides,
+  };
+}
+
 describe("packet decoder", () => {
   test("decodes TCP payloads for supported link types", () => {
     for (const linkType of ["RAW", "ETHERNET", "NULL", "LINKTYPE_LINUX_SLL"] as const) {
@@ -72,7 +85,42 @@ describe("packet decoder", () => {
     second.ack = 2;
 
     expect(buffers.push(first)).toEqual([]);
-    expect(buffers.push(second)).toEqual(["prefix ", '{"gold":100}']);
+    expect(buffers.push(second).map((payload) => payload.text)).toEqual(["prefix ", '{"gold":100}']);
+    expect(buffers.stats()).toEqual({ sources: 1, ackBuffers: 0, bufferedChunks: 0 });
+  });
+
+  test("returns assembled payload metadata from the original ack buffer", () => {
+    const buffers = new PacketBuffers();
+    const firstAckPrefix = parsedPayload("prefix ", {
+      src: "203.0.113.8",
+      dst: "10.0.0.2",
+      srcPort: 26921,
+      dstPort: 54000,
+      ack: 1,
+    });
+    const secondAckPayload = parsedPayload('{"gold":100}', {
+      src: "203.0.113.8",
+      dst: "10.0.0.2",
+      srcPort: 26921,
+      dstPort: 54000,
+      ack: 2,
+    });
+
+    expect(buffers.push(firstAckPrefix)).toEqual([]);
+    const completed = buffers.push(secondAckPayload);
+
+    expect(completed.map((payload) => payload.text)).toEqual(["prefix ", '{"gold":100}']);
+    expect(completed[0].packet).toMatchObject({ ack: 1, payloadLength: "prefix ".length });
+    expect(completed[1].packet).toMatchObject({ ack: 2, payloadLength: '{"gold":100}'.length });
+  });
+
+  test("does not replay immediately parseable payloads when the ack changes later", () => {
+    const buffers = new PacketBuffers();
+
+    expect(buffers.push(parsedPayload('{"message":"just found","item":"Angel"}', { ack: 1 })).map((payload) => payload.text)).toEqual([
+      '{"message":"just found","item":"Angel"}',
+    ]);
+    expect(buffers.push(parsedPayload("padding", { ack: 2 }))).toEqual([]);
     expect(buffers.stats()).toEqual({ sources: 1, ackBuffers: 1, bufferedChunks: 1 });
   });
 

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { PastRunSummary } from "../../../shared/stats";
 import PastRunAggregatePanel from "./PastRunAggregatePanel.vue";
 import PastRunCard from "./PastRunCard.vue";
 import PastRunReportConfigModal from "./PastRunReportConfigModal.vue";
+import TrashIcon from "./TrashIcon.vue";
 import {
   appendSearchTag,
   filterPastRunsBySearch,
@@ -33,12 +34,15 @@ const emit = defineEmits<{
   "export-runs-json": [payload: PastRunsExportPayload];
   "export-runs-csv": [csv: string];
   "copy-summary": [summary: string];
+  "delete-run": [runId: string];
+  "delete-all-runs": [];
 }>();
 
 const showReportConfig = ref(false);
 const runSearchQuery = ref("");
 const activeTagRunId = ref<string | null>(null);
 const expandedRunId = ref<string | null>(null);
+const deleteAllConfirmOpen = ref(false);
 
 const activeReportGroups = computed<PastRunDropFilterGroup[]>(() => [
   ...props.reportConfig.itemGroups
@@ -64,6 +68,11 @@ const pastRunCountLabel = computed(() => {
   if (!searchTerms.value.length) return `${props.pastRuns.length}/100 saved`;
   return `${filteredPastRuns.value.length}/${props.pastRuns.length} shown`;
 });
+const deleteAllRunLabel = computed(() => `${props.pastRuns.length} saved ${props.pastRuns.length === 1 ? "run" : "runs"}`);
+
+watch(() => props.pastRuns.length, (runCount) => {
+  if (!runCount) deleteAllConfirmOpen.value = false;
+});
 
 function toggleTagMenu(run: PastRunSummary) {
   activeTagRunId.value = activeTagRunId.value === run.id ? null : run.id;
@@ -81,8 +90,34 @@ function forwardRunTags(runId: string, tags: string[]) {
   emit("update-run-tags", runId, tags);
 }
 
+function forwardDeleteRun(runId: string) {
+  if (activeTagRunId.value === runId) activeTagRunId.value = null;
+  if (expandedRunId.value === runId) expandedRunId.value = null;
+  emit("delete-run", runId);
+}
+
 function toggleExpandedRun(runId: string) {
   expandedRunId.value = expandedRunId.value === runId ? null : runId;
+}
+
+function requestDeleteAllRuns() {
+  if (!props.pastRuns.length) return;
+  deleteAllConfirmOpen.value = true;
+}
+
+function cancelDeleteAllRuns() {
+  deleteAllConfirmOpen.value = false;
+}
+
+function confirmDeleteAllRuns() {
+  if (!props.pastRuns.length) {
+    deleteAllConfirmOpen.value = false;
+    return;
+  }
+  activeTagRunId.value = null;
+  expandedRunId.value = null;
+  deleteAllConfirmOpen.value = false;
+  emit("delete-all-runs");
 }
 
 function exportMatchingRuns() {
@@ -123,6 +158,22 @@ function copyMatchingRunsSummary() {
           <button class="icon-button ghost past-run-copy-filtered-summary" type="button" :disabled="!filteredPastRuns.length" @click="copyMatchingRunsSummary">Copy Summary</button>
           <button class="icon-button ghost past-run-export-csv" type="button" :disabled="!filteredPastRuns.length" @click="exportMatchingRunsCsv">Export CSV</button>
           <button class="icon-button ghost" type="button" :disabled="!filteredPastRuns.length" @click="exportMatchingRuns">Export JSON</button>
+          <button
+            v-if="!deleteAllConfirmOpen"
+            class="icon-button danger icon-only past-run-delete-all"
+            type="button"
+            title="Delete all past runs"
+            aria-label="Delete all past runs"
+            :disabled="!pastRuns.length"
+            @click="requestDeleteAllRuns"
+          >
+            <TrashIcon />
+          </button>
+          <div v-else class="past-run-delete-confirm past-run-delete-all-confirm" role="group" aria-label="Confirm delete all past runs">
+            <span>Delete {{ deleteAllRunLabel }}?</span>
+            <button class="icon-button danger past-run-confirm-delete-all" type="button" @click="confirmDeleteAllRuns">Confirm</button>
+            <button class="icon-button ghost past-run-cancel-delete-all" type="button" @click="cancelDeleteAllRuns">Cancel</button>
+          </div>
           <span class="info-bubble" data-tip="The default report shows all saved drops from the selected rarities. Configure Report changes the view only, not saved run data.">i</span>
           <span class="past-run-count">{{ pastRunCountLabel }}</span>
         </div>
@@ -178,6 +229,7 @@ function copyMatchingRunsSummary() {
           @close-tag-menu="closeTagMenu"
           @update-run-tags="forwardRunTags"
           @copy-run-summary="$emit('copy-summary', $event)"
+          @delete-run="forwardDeleteRun"
         />
       </div>
       <p v-else-if="pastRuns.length" class="empty-copy past-run-filter-empty">No saved runs match this search.</p>

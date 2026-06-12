@@ -55,4 +55,37 @@ describe("capture event state", () => {
     expect(response).toMatchObject({ __hscTrustedGeneratedDrop: true });
     expect(log).toHaveBeenCalledWith("generated-drop-correlated", { server: "203.0.113.8:26921", messages: 1 });
   });
+
+  test("consumes generated-drop trust after the first matching response", () => {
+    const correlator = new GeneratedDropCorrelator(3000);
+    const log = vi.fn();
+    const firstResponse: MessageValue = { message: "OK", itemGenHash: "abc", itemData: { id: 123 } };
+    const secondResponse: MessageValue = { message: "OK", itemGenHash: "def", itemData: { id: 456 } };
+
+    correlator.markTrustedResponses(
+      packet({ src: "10.0.0.2", dst: "203.0.113.8", srcPort: 54000, dstPort: 26921 }),
+      [{ route: "inventory/item_generate/v1" }],
+      "10.0.0.2",
+      log,
+      1000,
+    );
+    correlator.markTrustedResponses(
+      packet({ src: "203.0.113.8", dst: "10.0.0.2", srcPort: 26921, dstPort: 54000 }),
+      [firstResponse],
+      "10.0.0.2",
+      log,
+      1500,
+    );
+    correlator.markTrustedResponses(
+      packet({ src: "203.0.113.8", dst: "10.0.0.2", srcPort: 26921, dstPort: 54000 }),
+      [secondResponse],
+      "10.0.0.2",
+      log,
+      2000,
+    );
+
+    expect(firstResponse).toMatchObject({ __hscTrustedGeneratedDrop: true });
+    expect(secondResponse).not.toHaveProperty("__hscTrustedGeneratedDrop");
+    expect(log).toHaveBeenCalledTimes(1);
+  });
 });

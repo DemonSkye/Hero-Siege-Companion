@@ -94,7 +94,7 @@ export interface ThemeTemplatePayload extends ThemeExportPayload {
   tokenReference: Array<{ key: ThemeTokenKey; cssVar: string; label: string }>;
 }
 
-export const DEFAULT_THEME_ID: ThemeId = "dark";
+export const DEFAULT_THEME_ID: ThemeId = "voidglass";
 export const DEFAULT_THEME_ACCENTS: ThemeAccentMap = Object.fromEntries(
   THEME_OPTIONS.map((theme) => [theme.id, theme.defaultAccent]),
 ) as ThemeAccentMap;

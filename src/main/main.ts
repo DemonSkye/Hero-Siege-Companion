@@ -331,6 +331,28 @@ ipcMain.handle(IPC_CHANNELS.pastRunsSetTags, (_event, runId: string, tags: unkno
   publishState();
   return state;
 });
+ipcMain.handle(IPC_CHANNELS.pastRunsDelete, (_event, runId: string) => {
+  const normalizedRunId = String(runId ?? "");
+  if (!normalizedRunId) return state;
+
+  const previousRunCount = state.pastRuns.length;
+  state.pastRuns = state.pastRuns.filter((run) => run.id !== normalizedRunId);
+  if (state.pastRuns.length === previousRunCount) return state;
+
+  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
+  addLog("info", "Past run deleted.");
+  publishState();
+  return state;
+});
+ipcMain.handle(IPC_CHANNELS.pastRunsDeleteAll, () => {
+  if (!state.pastRuns.length) return state;
+
+  state.pastRuns = [];
+  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
+  addLog("info", "All past runs deleted.");
+  publishState();
+  return state;
+});
 ipcMain.handle(IPC_CHANNELS.preferencesSetRunArchive, (_event, preferences: Partial<RunArchivePreferences>) => {
   state.runArchivePreferences = normalizeRunArchivePreferences(preferences);
   saveRunArchivePreferences(preferencesPath, state.runArchivePreferences, writeAppLog);
