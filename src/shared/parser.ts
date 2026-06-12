@@ -29,6 +29,20 @@ const ITEM_SIGNATURE_FIELDS = ["seed", "a", "itemId", "item_id", "gid"];
 const ITEM_RARITY_FIELDS = ["rarity", "itemRarity", "item_rarity", "d"];
 const GOLD_DELTA_FIELDS = ["goldAmount", "gold_amount"];
 const SATANIC_ZONE_FIELDS = ["satanicZoneName", "satanic_zone_name"];
+const SATANIC_ZONE_BUFF_FIELDS = ["buffs", "satanicZoneBuffs", "satanic_zone_buffs", "zoneBuffs", "zone_buffs"];
+const SATANIC_ZONE_DEBUFF_FIELDS = ["debuffs", "satanicZoneDebuffs", "satanic_zone_debuffs", "zoneDebuffs", "zone_debuffs"];
+const SATANIC_ZONE_QUERY_START_FIELDS = [
+  ...SATANIC_ZONE_FIELDS,
+  "satanicZoneBuffs",
+  "satanic_zone_buffs",
+  "zoneBuffs",
+  "zone_buffs",
+  "satanicZoneDebuffs",
+  "satanic_zone_debuffs",
+  "zoneDebuffs",
+  "zone_debuffs",
+];
+const COMPACT_QUERY_ROUTES = ["satanic_zone_get"];
 const ACCOUNT_SIGNATURE_FIELDS = ["name", "class", "class_id", "heroLevel", "herolevel", "season", "hardcore"];
 const ACTIVE_ACCOUNT_IDENTITY_FIELDS = ["accountUID", "accountUid", "unique_id", "uniqueId"];
 const ACTIVE_ACCOUNT_OWNER_FIELDS = ["cross_region_identifier", "crossRegionIdentifier", "cross_region_id", "crossRegionId"];
@@ -669,13 +683,13 @@ function parseFingerprintType(fingerprint?: string): number | null {
 function parseSatanicZone(msg: MessageObject): SatanicZoneInfo {
   const rawZone = String(getMessageField(msg, ["satanicZoneName", "satanic_zone_name"], ""));
   const buffs = parseSatanicEffects(
-    getMessageField(msg, ["buffs", "satanicZoneBuffs", "satanic_zone_buffs", "zoneBuffs", "zone_buffs"], ""),
+    getMessageField(msg, SATANIC_ZONE_BUFF_FIELDS, ""),
     SATANIC_BUFFS,
     "Buff",
     1,
   );
   const cons = parseSatanicEffects(
-    getMessageField(msg, ["debuffs", "satanicZoneDebuffs", "satanic_zone_debuffs", "zoneDebuffs", "zone_debuffs"], ""),
+    getMessageField(msg, SATANIC_ZONE_DEBUFF_FIELDS, ""),
     SATANIC_DEBUFFS,
     "Debuff",
     2,
@@ -752,6 +766,7 @@ function findQueryStart(text: string): number {
     "hardcore",
     "beta",
     "checksum",
+    ...SATANIC_ZONE_QUERY_START_FIELDS,
   ];
   const starts = commonFirstKeys.map((key) => text.indexOf(`${key}=`)).filter((index) => index !== -1);
   if (starts.length > 0) return Math.min(...starts);
@@ -759,6 +774,9 @@ function findQueryStart(text: string): number {
 }
 
 function inferRoute(text: string): string {
+  const compactRoute = inferCompactRoute(text);
+  if (compactRoute) return compactRoute;
+
   const marketStart = text.lastIndexOf("market/");
   if (marketStart !== -1) {
     return text.slice(marketStart).match(/^market\/[a-z0-9_]+/)?.[0] ?? "";
@@ -766,6 +784,16 @@ function inferRoute(text: string): string {
 
   const matches = Array.from(text.matchAll(/(?:^|[^a-z0-9_])([a-z][a-z0-9_]*\/[a-z0-9_]+)/g));
   return matches.at(-1)?.[1] ?? "";
+}
+
+function inferCompactRoute(text: string): string {
+  for (const route of COMPACT_QUERY_ROUTES) {
+    const routeStart = text.lastIndexOf(route);
+    if (routeStart === -1) continue;
+    const suffix = text.slice(routeStart + route.length).trim();
+    if (/^[A-Z]?$/.test(suffix)) return route;
+  }
+  return "";
 }
 
 function parseQueryValue(value: string): MessageValue {

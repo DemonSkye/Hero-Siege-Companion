@@ -2,6 +2,7 @@ import { findNpcapDevice, listNpcapDevices, openPacketCapture, type PacketCaptur
 import { appendJsonLog, sanitizeDebugSnippet } from "./capture-debug";
 import {
   isOnlyItemEvents,
+  messageHasRoute,
   messageKeySummary,
   shouldDebugPayload,
   shouldLogEvent,
@@ -35,7 +36,10 @@ const PARSER_FAILURE_RESTART_THRESHOLD = 3;
 const PARSER_RECOVERY_DELAY_MS = 750;
 const PARSER_ERROR_LOG_INTERVAL_MS = 5000;
 const ITEM_DEBUG_PAYLOAD_INTERVAL_MS = 10_000;
+const SATANIC_ZONE_RESPONSE_TIMEOUT_MS = 10_000;
+const MAX_PENDING_SATANIC_ZONE_REQUESTS = 100;
 const SUPPORTED_LINK_TYPES = new Set(["ETHERNET", "RAW", "NULL", "LINKTYPE_LINUX_SLL"]);
+const SATANIC_ZONE_REQUEST_ROUTE = "satanic_zone_get";
 
 export interface CaptureUpdate {
   connections?: CaptureConnection[];
@@ -46,6 +50,35 @@ export interface CaptureUpdate {
   running?: boolean;
   status?: "idle" | "waiting" | "running" | "error";
   error?: string | null;
+}
+
+interface EndpointIdentity {
+  direction: "inbound" | "outbound";
+  localAddress: string;
+  localPort: number;
+  remoteAddress: string;
+  remotePort: number;
+}
+
+interface EndpointTrafficStats {
+  remoteAddress: string;
+  remotePort: number;
+  inboundPackets: number;
+  outboundPackets: number;
+  inboundPayloads: number;
+  outboundPayloads: number;
+  lastInboundAt: number;
+  lastOutboundAt: number;
+}
+
+interface PendingSatanicZoneRequest {
+  id: number;
+  requestIndex: number;
+  requestCount: number;
+  requestedAt: number;
+  endpoint: EndpointIdentity;
+  snippet: string;
+  timeout: NodeJS.Timeout;
 }
 
 export class CaptureService {
@@ -77,6 +110,9 @@ export class CaptureService {
   private widePacketSequence = 0;
   private widePayloadSequence = 0;
   private captureRequested = false;
+  private satanicZoneRequestSequence = 0;
+  private readonly endpointTrafficStats = new Map<string, EndpointTrafficStats>();
+  private readonly pendingSatanicZoneRequests = new Map<number, PendingSatanicZoneRequest>();
   private readonly eventDeduplicator = new RecentEventDeduplicator();
   private readonly generatedDropCorrelator = new GeneratedDropCorrelator();
 
@@ -182,6 +218,8 @@ export class CaptureService {
     this.packetBuffers.clear();
     this.eventDeduplicator.clear();
     this.generatedDropCorrelator.clear();
+    this.endpointTrafficStats.clear();
+    this.clearPendingSatanicZoneRequests();
   }
 
   private async refreshCaptureSafely(source: string): Promise<void> {
@@ -366,12 +404,14 @@ export class CaptureService {
 
     this.lastPacketAt = Date.now();
     this.packetsSeen += 1;
+    this.recordEndpointTraffic(parsedPacket, "packet");
     this.writeWidePacketLog(parsedPacket, nbytes, truncated);
     const completedPayloads = this.packetBuffers.push(parsedPacket);
     const events: ParsedEvent[] = [];
 
     for (const completedPayload of completedPayloads) {
       const { packet, text: payloadText } = completedPayload;
+      this.recordEndpointTraffic(packet, "payload");
       this.writeWidePayloadLog(packet, payloadText);
       if (!isLikelyParseablePayload(payloadText)) continue;
       if (payloadText.length > MAX_PARSE_PAYLOAD_CHARS) {
@@ -389,6 +429,7 @@ export class CaptureService {
       this.messagesDecoded += messages.length;
       const nextEvents = this.messageToEventsSafely(messages, payloadText);
       if (!nextEvents) continue;
+      this.runParserProbeSafely("satanic-zone-payload", () => this.probeSatanicZonePayload(packet, payloadText, messages, nextEvents), payloadText);
       const usefulEvents = this.filterEventsSafely(nextEvents, payloadText);
       if (!usefulEvents) continue;
       events.push(...usefulEvents);
@@ -570,6 +611,124 @@ export class CaptureService {
     });
   }
 
+  private probeSatanicZonePayload(packet: ParsedPayload, payloadText: string, messages: MessageValue[], events: ParsedEvent[]): void {
+    const requestCount = countSatanicZoneRequests(payloadText, messages);
+    if (requestCount > 0) this.recordSatanicZoneRequests(packet, payloadText, requestCount);
+    if (events.some((event) => event.name === EVENT_NAMES.satanicZone)) this.resolvePendingSatanicZoneRequests(events);
+  }
+
+  private recordEndpointTraffic(packet: ParsedPayload, kind: "packet" | "payload"): void {
+    const endpoint = endpointIdentity(packet, this.activeLocalAddress);
+    if (!endpoint) return;
+
+    const key = endpointKey(endpoint);
+    const now = Date.now();
+    const stats =
+      this.endpointTrafficStats.get(key) ??
+      {
+        remoteAddress: endpoint.remoteAddress,
+        remotePort: endpoint.remotePort,
+        inboundPackets: 0,
+        outboundPackets: 0,
+        inboundPayloads: 0,
+        outboundPayloads: 0,
+        lastInboundAt: 0,
+        lastOutboundAt: 0,
+      };
+
+    if (endpoint.direction === "outbound") {
+      if (kind === "packet") stats.outboundPackets += 1;
+      else stats.outboundPayloads += 1;
+      stats.lastOutboundAt = now;
+    } else {
+      if (kind === "packet") stats.inboundPackets += 1;
+      else stats.inboundPayloads += 1;
+      stats.lastInboundAt = now;
+    }
+    this.endpointTrafficStats.set(key, stats);
+  }
+
+  private recordSatanicZoneRequests(packet: ParsedPayload, payloadText: string, requestCount: number): void {
+    const endpoint = endpointIdentity(packet, this.activeLocalAddress);
+    if (!endpoint || endpoint.direction !== "outbound") return;
+
+    for (let requestIndex = 1; requestIndex <= requestCount; requestIndex += 1) {
+      const id = ++this.satanicZoneRequestSequence;
+      const requestedAt = Date.now();
+      const timeout = setTimeout(() => this.expireSatanicZoneRequest(id), SATANIC_ZONE_RESPONSE_TIMEOUT_MS);
+      timeout.unref();
+      const pending: PendingSatanicZoneRequest = {
+        id,
+        requestIndex,
+        requestCount,
+        requestedAt,
+        endpoint,
+        snippet: sanitizeDebugSnippet(payloadText),
+        timeout,
+      };
+      this.pendingSatanicZoneRequests.set(id, pending);
+      this.writeDebugLog("satanic-zone-request", this.satanicZoneRequestLogData(pending));
+      this.trimPendingSatanicZoneRequests();
+    }
+  }
+
+  private expireSatanicZoneRequest(id: number): void {
+    const pending = this.pendingSatanicZoneRequests.get(id);
+    if (!pending) return;
+
+    this.pendingSatanicZoneRequests.delete(id);
+    this.writeDebugLog("satanic-zone-request-timeout", {
+      ...this.satanicZoneRequestLogData(pending),
+      timedOutAt: new Date().toISOString(),
+      waitMs: Date.now() - pending.requestedAt,
+      pendingRequests: this.pendingSatanicZoneRequests.size,
+      diagnostic:
+        "Observed a satanic_zone_get request, but no updateSatanicZone event was parsed before the timeout. If inbound counts stay at zero for this endpoint, capture may be missing the backend response path.",
+    });
+  }
+
+  private resolvePendingSatanicZoneRequests(events: ParsedEvent[]): void {
+    if (this.pendingSatanicZoneRequests.size === 0) return;
+
+    const pending = Array.from(this.pendingSatanicZoneRequests.values());
+    this.clearPendingSatanicZoneRequests();
+    this.writeDebugLog("satanic-zone-request-resolved", {
+      requestIds: pending.map((request) => request.id),
+      resolvedAt: new Date().toISOString(),
+      waitMs: pending.map((request) => Date.now() - request.requestedAt),
+      zoneEvents: events.filter((event) => event.name === EVENT_NAMES.satanicZone).map((event) => event.value),
+    });
+  }
+
+  private trimPendingSatanicZoneRequests(): void {
+    while (this.pendingSatanicZoneRequests.size > MAX_PENDING_SATANIC_ZONE_REQUESTS) {
+      const oldest = this.pendingSatanicZoneRequests.values().next().value as PendingSatanicZoneRequest | undefined;
+      if (!oldest) return;
+      clearTimeout(oldest.timeout);
+      this.pendingSatanicZoneRequests.delete(oldest.id);
+    }
+  }
+
+  private clearPendingSatanicZoneRequests(): void {
+    for (const pending of this.pendingSatanicZoneRequests.values()) clearTimeout(pending.timeout);
+    this.pendingSatanicZoneRequests.clear();
+  }
+
+  private satanicZoneRequestLogData(pending: PendingSatanicZoneRequest): Record<string, unknown> {
+    return {
+      requestId: pending.id,
+      requestIndex: pending.requestIndex,
+      requestCount: pending.requestCount,
+      requestedAt: new Date(pending.requestedAt).toISOString(),
+      activeSignature: this.activeSignature || null,
+      activeLocalAddress: this.activeLocalAddress || null,
+      endpoint: pending.endpoint,
+      endpointTraffic: endpointTrafficLogData(this.endpointTrafficStats.get(endpointKey(pending.endpoint))),
+      timeoutMs: SATANIC_ZONE_RESPONSE_TIMEOUT_MS,
+      snippet: pending.snippet,
+    };
+  }
+
   private writeDebugLog(type: string, data: Record<string, unknown>): void {
     appendJsonLog(this.debugLogPath, MAX_DEBUG_LOG_BYTES, type, data);
   }
@@ -654,6 +813,53 @@ export class CaptureService {
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function countSatanicZoneRequests(payloadText: string, messages: MessageValue[]): number {
+  const textMatches = payloadText.match(/\bsatanic_zone_get[A-Z]?(?=[A-Za-z_]+=|\s|$)/gi)?.length ?? 0;
+  const messageMatches = messages.filter((message) => messageHasRoute(message, new RegExp(`^${SATANIC_ZONE_REQUEST_ROUTE}$`, "i"))).length;
+  return Math.max(textMatches, messageMatches);
+}
+
+function endpointIdentity(packet: ParsedPayload, activeLocalAddress: string): EndpointIdentity | null {
+  if (!activeLocalAddress) return null;
+  if (packet.src === activeLocalAddress) {
+    return {
+      direction: "outbound",
+      localAddress: packet.src,
+      localPort: packet.srcPort,
+      remoteAddress: packet.dst,
+      remotePort: packet.dstPort,
+    };
+  }
+  if (packet.dst === activeLocalAddress) {
+    return {
+      direction: "inbound",
+      localAddress: packet.dst,
+      localPort: packet.dstPort,
+      remoteAddress: packet.src,
+      remotePort: packet.srcPort,
+    };
+  }
+  return null;
+}
+
+function endpointKey(endpoint: EndpointIdentity | EndpointTrafficStats): string {
+  return `${endpoint.remoteAddress}:${endpoint.remotePort}`;
+}
+
+function endpointTrafficLogData(stats: EndpointTrafficStats | undefined): Record<string, unknown> | null {
+  if (!stats) return null;
+  return {
+    remoteAddress: stats.remoteAddress,
+    remotePort: stats.remotePort,
+    inboundPackets: stats.inboundPackets,
+    outboundPackets: stats.outboundPackets,
+    inboundPayloads: stats.inboundPayloads,
+    outboundPayloads: stats.outboundPayloads,
+    lastInboundAt: toIsoOrNull(stats.lastInboundAt),
+    lastOutboundAt: toIsoOrNull(stats.lastOutboundAt),
+  };
 }
 
 function toIsoOrNull(timestamp: number): string | null {

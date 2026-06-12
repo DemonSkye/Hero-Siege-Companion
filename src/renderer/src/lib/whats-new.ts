@@ -1,3 +1,5 @@
+import { APP_VERSION } from "./app-version";
+
 export interface WhatsNewRelease {
   version: string;
   title: string;
@@ -12,11 +14,11 @@ export interface WhatsNewSection {
 }
 
 export const WHATS_NEW_RELEASE: WhatsNewRelease = {
-  version: "0.2.5",
-  title: "Hero Siege Companion v0.2.5",
+  version: APP_VERSION,
+  title: `Hero Siege Companion v${APP_VERSION}`,
   intro: "Npcap is still required for capture. Install it from https://npcap.com/#download and enable WinPcap API-compatible mode during setup.",
   items: [
-    "Past Runs now has CSV export, Discord-friendly summary copy, per-run tags, expanded detail rows, report presets, linked Item Filter groups, top-drop limits, and resource drawers.",
+    "Past Runs now has CSV export, Discord-friendly summary copy, per-run tags, delete controls with confirmations, expanded detail rows, report presets, linked Item Filter groups, top-drop limits, and resource drawers.",
     "Appearance settings now include Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes with separate full/compact choices, accent colors, texture controls, foreground fill, and theme import/export.",
     "Item Research can filter, classify, export scoped review data, clear resolved or ignored rows, and separate generated placeholders from missing-icon follow-up work.",
     "Capture startup now keeps the app open with a clear Npcap/native-capture error when the native capture module cannot load.",
@@ -31,6 +33,7 @@ export const WHATS_NEW_RELEASE: WhatsNewRelease = {
         "Copy Discord-friendly summaries for filtered aggregates or individual saved runs.",
         "Use report presets, linked Item Filter groups, custom recap groups, top-drop limits, and resource drawers to shape run recaps.",
         "Tag saved runs and expand a run row to inspect matching drops or resources without leaving Past Runs.",
+        "Delete one saved run or clear the full Past Runs archive from the history view after confirmation.",
       ],
     },
     {

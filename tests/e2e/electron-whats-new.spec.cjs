@@ -6,9 +6,10 @@ const {
   getStoredWhatsNewVersion,
   launchCompanionApp,
 } = require("./support/companion-app.cjs");
+const { version: appVersion } = require("../../package.json");
 
-const EXPECTED_WHATS_NEW_VERSION = "0.2.5";
-const EXPECTED_WHATS_NEW_TITLE = "Hero Siege Companion v0.2.5";
+const EXPECTED_WHATS_NEW_VERSION = appVersion;
+const EXPECTED_WHATS_NEW_TITLE = `Hero Siege Companion v${appVersion}`;
 
 test("dismisses What's New with No Thanks and does not prompt again", async () => {
   const userDataDir = createUserDataDir();

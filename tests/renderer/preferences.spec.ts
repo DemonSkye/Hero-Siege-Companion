@@ -475,7 +475,7 @@ describe("renderer preferences persistence", () => {
     expect(imported.themeTokenMaps.cyberpunk).toBeUndefined();
   });
 
-  test("exposes the 0.2.5 theme set to theme normalization", () => {
+  test("exposes the current theme set to theme normalization", () => {
     expect(THEME_OPTIONS.map((theme) => theme.id)).toEqual(["dark", "demonsteel", "voidglass", "reliquary", "cyberpunk", "light"]);
     expect(THEME_OPTIONS.find((theme) => theme.id === "light")?.label).toBe("Quicksilver");
     expect(DEFAULT_THEME_ACCENTS).toMatchObject({

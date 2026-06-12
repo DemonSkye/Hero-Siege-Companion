@@ -30,8 +30,8 @@ export function shouldDebugPayload(payloadText: string, messages: MessageValue[]
   }
 
   return (
-    /\b(?:addeditem|rarity|gold|currency|gss|gsh|gns|gnh|gbp|mail)\b/i.test(payloadText) ||
-    messages.some((message) => messageHasRoute(message, /^(?:mailbox|satanic_zone)\//i))
+    /(?:\b(?:addeditem|rarity|gold|currency|gss|gsh|gns|gnh|gbp|mail)\b|satanic_zone)/i.test(payloadText) ||
+    messages.some((message) => messageHasRoute(message, /^(?:mailbox\/|satanic_zone(?:\/|_))/i))
   );
 }
 

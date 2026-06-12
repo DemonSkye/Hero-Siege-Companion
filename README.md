@@ -16,7 +16,7 @@ Download the latest Windows build from the GitHub Releases page:
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
 
-Current release target: `v0.2.5`.
+Current release target follows the `version` field in `package.json`.
 
 ## Quick Start
 
@@ -39,7 +39,7 @@ Most data appears after Hero Siege sends the relevant packet. For example, gold 
 - Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes with separate full-app and compact choices, accent colors, and theme import/export.
 - Developer item research for resolving unknown item signatures into a shareable JSON lookup contribution.
 - Shopping list for quickly saving and copying marketplace searches.
-- Past Runs explorer with search, compact run rows, expandable details, JSON/CSV export, Discord-friendly summary copy, report presets, per-run tags, configurable report cards, tracked item groups, top drops, and resource drawers.
+- Past Runs explorer with search, compact run rows, expandable details, JSON/CSV export, Discord-friendly summary copy, report presets, per-run tags, delete controls, configurable report cards, tracked item groups, top drops, and resource drawers.
 - Settings import/export for app settings, Past Run settings, report tracking, loot filters, sounds, and optional research data.
 - Support diagnostics summary copy and ZIP export for troubleshooting capture/setup issues.
 - Local-only desktop app: no account login, no cloud service, and no packet capture files are written by the app.

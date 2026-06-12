@@ -49,6 +49,27 @@ test("query string nested JSON values are deserialized", () => {
   assert.equal(events[0].value.GSS, 321);
 });
 
+test("satanic zone request route is recovered from compact protocol framing", () => {
+  const messages = captureMessages("f0a2c3e4f843R satanic_zone_getRunique_account_id=3437205&crossregion_identifier=abc");
+  const message = messages[0] as Record<string, unknown>;
+
+  assert.equal(message.route, "satanic_zone_get");
+  assert.equal(message.unique_account_id, "3437205");
+  assert.equal(message.crossregion_identifier, "abc");
+});
+
+test("satanic zone query payloads load zone effects from compact framing", () => {
+  const messages = captureMessages("f0a2c3e4f843R satanic_zone_getRsatanic_zone_name=Act_06_02&zone_buffs=17|14|9&zone_debuffs=15|18");
+  const events = messageToEvents(messages);
+  const zone = events[0].value;
+
+  assert.equal(events[0].name, "updateSatanicZone");
+  assert.equal(zone.rawZone, "Act_06_02");
+  assert.equal(zone.zone, "Act 6: The Cathedral");
+  assert.deepEqual(zone.pros.map((effect) => effect.name), ["Recruit", "Artifact Digger", "Rapid Casting"]);
+  assert.deepEqual(zone.cons.map((effect) => effect.name), ["Lingering Evil", "Abnormal Dwelling"]);
+});
+
 test("bare currency snapshots update gold after account mode is known", () => {
   const events = messageToEvents([{ gss: 400, gsh: 0, gns: 0, gnh: 0, gbp: 0 }]);
   const stats = new StatsEngine();

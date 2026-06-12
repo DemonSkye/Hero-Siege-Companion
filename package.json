@@ -1,7 +1,7 @@
 {
   "name": "hero-siege-companion",
   "productName": "Hero Siege Companion",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "description": "Electron + Vue companion app for passive Hero Siege stat tracking.",
   "main": "dist/main/main/main.js",

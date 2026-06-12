@@ -528,7 +528,7 @@ describe("Vue component contracts", () => {
 
     await buttonByText(wrapper, "What's New").trigger("click");
     expect(wrapper.text()).toContain(`What's New in ${WHATS_NEW_RELEASE.version}`);
-    expect(wrapper.text()).toContain("Hero Siege Companion v0.2.5");
+    expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.title);
     expect(wrapper.text()).toContain("Npcap is still required for capture.");
     expect(wrapper.text()).toContain("Highlights");
     expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.items[0]);

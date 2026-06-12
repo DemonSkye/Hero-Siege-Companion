@@ -19,6 +19,8 @@ describe("capture event helpers", () => {
     expect(shouldDebugPayload("ordinary heartbeat", [], [])).toBe(false);
     expect(shouldDebugPayload("ordinary heartbeat", [], [event(EVENT_NAMES.gold)])).toBe(true);
     expect(shouldDebugPayload("status", [{ route: "mailbox/list" }], [])).toBe(true);
+    expect(shouldDebugPayload("status", [{ route: "satanic_zone_get" }], [])).toBe(true);
+    expect(shouldDebugPayload("f0a2 satanic_zone_getRunique_account_id=3437205", [], [])).toBe(true);
   });
 
   test("recognizes trusted generated item responses", () => {
