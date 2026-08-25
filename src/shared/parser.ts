@@ -11,8 +11,16 @@ import {
   WEAPON_TYPE_NAMES,
 } from "./constants";
 import { asMessageObject, getMessageField, hasMessageField, intMessageField, messageEntries, type MessageObject, type MessageValue } from "./fields";
-import { isTrustedInventoryItemTranslation, lookupItemTranslation, lookupItemTranslationByName, type ItemTranslation } from "./item-lookup";
+import {
+  isTrustedInventoryItemTranslation,
+  lookupItemTranslation,
+  lookupItemTranslationByName,
+  lookupSharedItemTranslationByName,
+  type ItemRepository,
+  type ItemTranslation,
+} from "./item-lookup";
 import { lookupKnownItemRarity } from "./item-rarity";
+import { lookupGeneratedNormalItemBase } from "./normal-item-name";
 import { isSetItemName } from "./set-item-names";
 import { lookupStackItemTranslation } from "./stack-item-lookup";
 
@@ -50,6 +58,7 @@ const NEARBY_PLAYER_LIST_FIELDS = ["platformUserName", "platform_user_name", "na
 const ACCOUNT_MODE_HINT_FIELDS = ["blood_pact", "bloodPact"];
 const ACCOUNT_MODE_CONTEXT_FIELDS = ["route", "account_id", "accountId"];
 const ACCOUNT_MODE_SIGNATURE_FIELDS = ["hardcore", "seasonal"];
+const STACKABLE_ITEM_TYPES = new Set([12, 13, 14, 15]);
 
 export interface ParsedEvent<T = unknown> {
   name: EventName;
@@ -70,6 +79,7 @@ export interface CurrencyData {
 
 export interface AddedItemObject {
   source: "inventory" | "server";
+  repository: ItemRepository | "unknown";
   fingerprint?: string;
   label: string;
   localizationId?: string;
@@ -376,8 +386,14 @@ function extractItemSources(msg: MessageObject, eventName: EventName): ItemSourc
   if (operationStack) {
     return messageEntries(operationStack)
       .flatMap(([fingerprint, value]) => {
-        const item = asMessageObject(getMessageField(asMessageObject(value as MessageValue), ["pickup_add_data", "pickupAddData"], undefined));
-        return item ? [{ fingerprint, item, source: "inventory" as const, trustNamedIdentity: true, trustServerAnnouncedRarity: false }] : [];
+        const stackOperation = asMessageObject(value as MessageValue);
+        const item = asMessageObject(getMessageField(stackOperation, ["pickup_add_data", "pickupAddData"], undefined));
+        if (!item) return [];
+        const outerAmount = intMessageField(stackOperation, ["amount"]);
+        const itemWithAmount = outerAmount > 0 && !hasMessageField(item, ["amount", "o"])
+          ? { ...item, amount: outerAmount }
+          : item;
+        return [{ fingerprint, item: itemWithAmount, source: "inventory" as const, trustNamedIdentity: true, trustServerAnnouncedRarity: false }];
       });
   }
 
@@ -413,6 +429,13 @@ function isInventoryItemDataPayload(msg: MessageObject): boolean {
   const itemData = asMessageObject(getMessageField(msg, ITEM_DATA_FIELDS, undefined));
   if (!itemData) return false;
   if (hasMessageField(itemData, ["pickup_add_data", "pickupAddData"])) return true;
+  if (
+    messageEntries(itemData).some(([, value]) =>
+      hasMessageField(asMessageObject(value as MessageValue), ["pickup_add_data", "pickupAddData"]),
+    )
+  ) {
+    return true;
+  }
 
   const route = String(getMessageField(msg, ["route", "__route"], ""));
   const message = String(getMessageField(msg, ["message"], ""));
@@ -472,11 +495,16 @@ function trustedGeneratedItemDataSources(itemData: MessageObject, allowGenerated
     ? [{ item: itemData, source: "server" as const, trustNamedIdentity: true, trustServerAnnouncedRarity: false }]
     : objectValuesAsItems(itemData, "server", true, false);
 
-  return itemSources.filter(({ item }) => isTrustedGeneratedItem(item, allowGeneratedC0));
-}
+  return itemSources.flatMap((source) => {
+    if (nonNegativeIntegerMessageField(source.item, ["c"]) === 1) return [source];
 
-function isTrustedGeneratedItem(item: MessageObject, allowGeneratedC0 = false): boolean {
-  return intMessageField(item, ["c"]) === 1 || (allowGeneratedC0 && isItemLikeObject(item));
+    const type = parseFingerprintType(source.fingerprint);
+    if (!allowGeneratedC0 || !isItemLikeObject(source.item) || type === null || !STACKABLE_ITEM_TYPES.has(type)) return [];
+
+    // Correlation proves this stack/material was generated, but c=0 equipment
+    // still does not carry a stable named identity.
+    return [{ ...source, trustNamedIdentity: false }];
+  });
 }
 
 function isItemLikeObject(item: MessageObject): boolean {
@@ -503,28 +531,111 @@ function parseAddedItemObject(
   const mappedRarity = ITEM_RARITY[String(rarity)];
   const sockets = [1, 2, 3, 4, 5, 6].filter((slot) => getMessageField(item, [`socket_${slot}`], undefined) !== undefined).length;
   const explicitName = String(getMessageField(item, ITEM_NAME_FIELDS, "")).trim();
-  const namedTranslationCandidate = explicitName ? lookupItemTranslationByName(explicitName) : null;
-  const namedTranslation = trustTranslationForRarity(options, namedTranslationCandidate, mappedRarity) ? namedTranslationCandidate : null;
-  const trustedExplicitName = namedTranslation || trustExplicitNameForRarity(options, explicitName, mappedRarity) ? explicitName : "";
-  const seed = intMessageField(item, ["seed", "a"]);
   const fingerprintType = parseFingerprintType(fingerprint);
   const hasFingerprintType = fingerprintType !== null;
-  const fingerprintItemType = fingerprintType ?? 0;
-  const hasExplicitId = hasMessageField(item, ["id", "itemId", "item_id"]);
-  const shortGameId = intMessageField(item, ["b"]);
-  const type =
-    namedTranslation?.type ?? (intMessageField(item, ["type", "itemType", "item_type"]) || (hasFingerprintType ? fingerprintItemType : shortGameId));
-  const id = namedTranslation?.gameId ?? resolvedItemId(options, type, shortGameId, hasFingerprintType, hasExplicitId, item);
-  const weaponType = intMessageField(item, ["weapon_type", "weaponType"]) || (type === 3 ? intMessageField(item, ["j"]) : 0);
+  const typeFields = ["type", "itemType", "item_type"];
+  const explicitType = nonNegativeIntegerMessageField(item, typeFields);
+  const explicitId = nonNegativeIntegerMessageField(item, ["id", "itemId", "item_id"]);
+  const shortGameId = nonNegativeIntegerMessageField(item, ["b"]);
+  const hasExplicitType = explicitType !== null;
+  const hasExplicitId = explicitId !== null;
+  const hasShortGameId = shortGameId !== null;
+  const packetRepository = itemRepository(item);
+  const isDefinitionShaped = hasShortGameId || hasExplicitId || hasExplicitType || hasFingerprintType;
+  const identityRepository = !options.trustNamedIdentity
+    ? "normal"
+    : packetRepository === "unknown" && !hasMessageField(item, ["c"]) && isDefinitionShaped
+      ? "normal"
+      : packetRepository;
+  const namedTranslationCandidate = options.trustNamedIdentity && explicitName
+    ? lookupItemTranslationByName(explicitName, identityRepository === "unknown" ? undefined : identityRepository)
+    : null;
+  const sharedNamedTranslationCandidate = options.trustNamedIdentity
+    && explicitName
+    && identityRepository === "unknown"
+    && !namedTranslationCandidate
+    ? lookupSharedItemTranslationByName(explicitName)
+    : null;
+  const explicitNameConflictsWithRepository = options.trustNamedIdentity
+    && Boolean(explicitName)
+    && identityRepository !== "unknown"
+    && !namedTranslationCandidate
+    && (["normal", "unique", "runeword"] as ItemRepository[])
+      .some((repository) => repository !== identityRepository && Boolean(lookupItemTranslationByName(explicitName, repository)));
+  const repositoryCompatibleNamedTranslation =
+    (namedTranslationCandidate ?? sharedNamedTranslationCandidate)
+      && (identityRepository === "unknown" || namedTranslationCandidate?.repository === identityRepository)
+      ? (namedTranslationCandidate ?? sharedNamedTranslationCandidate)
+      : null;
+  const namedTranslation = trustTranslationForRarity(options, repositoryCompatibleNamedTranslation, mappedRarity)
+    ? repositoryCompatibleNamedTranslation
+    : null;
+  const trustedExplicitName = options.trustNamedIdentity
+    && !explicitNameConflictsWithRepository
+    && (namedTranslation || trustExplicitNameForRarity(options, explicitName, mappedRarity))
+    ? explicitName
+    : "";
+  const seed = intMessageField(item, ["seed", "a"]);
+  // A correlated c=0 generation response is admitted only because its native
+  // fingerprint proves a stack/material type. Do not let contradictory payload
+  // fields retype or rename that narrowly trusted identity.
+  const type = namedTranslation?.type
+    ?? (!options.trustNamedIdentity && fingerprintType !== null
+      ? fingerprintType
+      : (explicitType ?? fingerprintType ?? -1));
+  const hasCanonicalType = Boolean(namedTranslation) || hasExplicitType || hasFingerprintType;
+  const trustedExplicitId = options.trustNamedIdentity && hasExplicitId;
+  const hasItemOrdinal = hasShortGameId || trustedExplicitId;
+  const hasResolvedItemOrdinal = hasItemOrdinal && hasCanonicalType;
+  const id = namedTranslation?.gameId
+    ?? resolvedItemId(shortGameId, hasCanonicalType, trustedExplicitId ? explicitId : null);
+  // Game save/load treats an omitted `c` as the normal repository. Preserve an
+  // explicit-name-only server announcement as unknown/derived instead of
+  // pretending that announcement was an item-definition struct.
+  const repository = sharedNamedTranslationCandidate
+    ? "unknown"
+    : identityRepository === "unknown"
+    ? (namedTranslation?.repository ?? "unknown")
+    : identityRepository;
+  // The binary schema uses weapon subtype only for type 3. Ignore stray
+  // long-form weapon_type fields on armor/material records so they cannot split
+  // one catalog identity into impossible variants.
+  const weaponType = namedTranslation?.weaponType ?? (type === 3
+    ? intMessageField(item, ["weapon_type", "weaponType"]) || intMessageField(item, ["j"])
+    : 0);
   const dropQuality = intMessageField(item, ["drop_quality", "dropQuality"]) || (type === 3 ? 0 : intMessageField(item, ["j"]));
-  const translationCandidate = namedTranslation ?? itemTranslationForSource(options, type, id, weaponType, hasExplicitId, hasFingerprintType);
+  const translationCandidate =
+    namedTranslation ??
+    itemTranslationForSource(options, type, id, weaponType, repository, hasItemOrdinal, hasCanonicalType);
   const translation = trustTranslationForRarity(options, translationCandidate, mappedRarity) ? translationCandidate : null;
-  const rarityName = inferItemRarityName(rarity, item, type, translation, options.trustNamedIdentity, options.trustServerAnnouncedRarity);
+  const generatedNormalBase = !translation && repository === "normal" && hasResolvedItemOrdinal
+    ? lookupGeneratedNormalItemBase(type, id)
+    : null;
+  const rarityName = inferItemRarityName(
+    rarity,
+    item,
+    type,
+    translation,
+    trustedExplicitName,
+    options.trustNamedIdentity,
+    options.trustServerAnnouncedRarity,
+    Boolean(generatedNormalBase),
+  );
 
   return {
     source: options.source,
+    repository,
     fingerprint,
-    label: itemDisplayLabel({ id, type, weaponType, dropQuality, seed, fingerprint, translationName: translation?.name ?? trustedExplicitName }),
+    label: itemDisplayLabel({
+      id,
+      hasItemOrdinal: hasResolvedItemOrdinal,
+      type,
+      weaponType,
+      dropQuality,
+      seed,
+      fingerprint,
+      translationName: translation?.name || trustedExplicitName || generatedNormalBase?.baseName,
+    }),
     localizationId: translation?.localizationId,
     seed,
     id,
@@ -544,20 +655,33 @@ function parseAddedItemObject(
   };
 }
 
+function isGeneratedShortNormalCharm(item: MessageObject, type: number): boolean {
+  return (
+    type === 10 &&
+    !hasMessageField(item, ["id", "itemId", "item_id"]) &&
+    nonNegativeIntegerMessageField(item, ["c"]) === 0
+  );
+}
+
 function resolvedItemId(
-  options: { trustNamedIdentity: boolean },
-  type: number,
-  shortGameId: number,
-  hasFingerprintType: boolean,
-  hasExplicitId: boolean,
-  item: MessageObject,
+  shortGameId: number | null,
+  hasCanonicalType: boolean,
+  explicitId: number | null,
 ): number {
-  if (options.trustNamedIdentity) {
-    return intMessageField(item, ["id", "itemId", "item_id"]) || (hasFingerprintType ? shortGameId : intMessageField(item, ["gid"]));
-  }
-  if ([12, 13, 14, 15].includes(type)) return shortGameId;
-  if (hasExplicitId) return intMessageField(item, ["id", "itemId", "item_id"]);
+  if (explicitId !== null) return explicitId;
+  if (hasCanonicalType && shortGameId !== null) return shortGameId;
   return 0;
+}
+
+function nonNegativeIntegerMessageField(item: MessageObject, names: string[]): number | null {
+  if (!hasMessageField(item, names)) return null;
+  const raw = getMessageField<MessageValue>(item, names);
+  if (typeof raw === "number") {
+    return Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+  }
+  if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return null;
+  const parsed = Number(raw.trim());
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 function itemTranslationForSource(
@@ -565,13 +689,21 @@ function itemTranslationForSource(
   type: number,
   id: number,
   weaponType: number,
-  hasExplicitId: boolean,
-  hasFingerprintType: boolean,
+  repository: ItemRepository | "unknown",
+  hasItemOrdinal: boolean,
+  hasCanonicalType: boolean,
 ): ItemTranslation | null {
-  if (options.trustNamedIdentity && (hasExplicitId || hasFingerprintType)) {
-    return lookupItemTranslation(type, id, weaponType) ?? lookupStackItemTranslation(type, id);
+  if (!hasItemOrdinal) return null;
+  if (options.trustNamedIdentity && hasCanonicalType) {
+    if (repository === "unique") return lookupItemTranslation(type, id, weaponType, repository);
+    if (repository === "normal") {
+      return lookupItemTranslation(type, id, weaponType, repository)
+        ?? (STACKABLE_ITEM_TYPES.has(type) ? lookupStackItemTranslation(type, id) : null);
+    }
   }
-  if (!options.trustNamedIdentity && [12, 13, 14, 15].includes(type)) return lookupStackItemTranslation(type, id);
+  if (!options.trustNamedIdentity && repository === "normal" && STACKABLE_ITEM_TYPES.has(type)) {
+    return lookupStackItemTranslation(type, id);
+  }
   return null;
 }
 
@@ -580,20 +712,30 @@ function inferItemRarityName(
   item: MessageObject,
   type: number,
   translation: ItemTranslation | null,
+  trustedExplicitName = "",
   trustNamedIdentity = true,
   trustServerAnnouncedRarity = false,
+  hasGeneratedNormalBase = false,
 ): string {
   const mappedRarity = ITEM_RARITY[String(rawRarity)];
   const explicitRarity = typeof rawRarity === "string" ? rawRarity.replace(/^\w/, (char) => char.toUpperCase()) : undefined;
 
   const identity = `${translation?.localizationId ?? ""} ${translation?.name ?? ""}`.toLowerCase();
-  const knownRarity = trustNamedIdentity ? lookupKnownItemRarity(type, translation?.name) : null;
+  const knownRarity = trustNamedIdentity ? lookupKnownItemRarity(type, translation?.name ?? trustedExplicitName) : null;
   if (
     !trustServerAnnouncedRarity &&
     (isServerAnnouncedRarity(mappedRarity) || isServerAnnouncedRarity(explicitRarity) || isServerAnnouncedRarity(knownRarity))
   ) {
     return "Unknown";
   }
+  // Generated normal charms overload short code d=4 across at least Superior
+  // and Rare tooltips. It is therefore neither a trustworthy Set marker nor an
+  // exact generated rarity without replaying the seed-driven item rules.
+  if (
+    !translation
+    && (hasGeneratedNormalBase || isGeneratedShortNormalCharm(item, type))
+    && String(rawRarity) === "4"
+  ) return "Unknown";
   if (knownRarity && shouldKnownRarityOverridePacket(mappedRarity)) return knownRarity;
   if (mappedRarity && mappedRarity !== "Common") return mappedRarity;
   if (knownRarity) return knownRarity;
@@ -604,7 +746,9 @@ function inferItemRarityName(
   if (identity.includes("unholy")) return "Unholy";
   if (identity.includes("satan")) return "Satanic";
 
-  const isSpecialEquipment = Boolean(translation) && intMessageField(item, ["c"]) === 1 && [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 18].includes(type);
+  const isSpecialEquipment = Boolean(translation)
+    && nonNegativeIntegerMessageField(item, ["c"]) === 1
+    && [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 18].includes(type);
   if (isSpecialEquipment) return "Satanic";
   if (mappedRarity) return mappedRarity;
 
@@ -645,11 +789,12 @@ function extractServerFoundItemName(msg: MessageObject): string | null {
 }
 
 function shouldKnownRarityOverridePacket(mappedRarity: string | undefined): boolean {
-  return mappedRarity === undefined || ["Common", "Superior", "Rare", "Mythic"].includes(mappedRarity);
+  return mappedRarity === undefined || ["Common", "Superior", "Rare", "Set", "Mythic"].includes(mappedRarity);
 }
 
 function itemDisplayLabel(item: {
   id: number;
+  hasItemOrdinal: boolean;
   type: number;
   weaponType: number;
   dropQuality: number;
@@ -658,7 +803,7 @@ function itemDisplayLabel(item: {
   translationName?: string;
 }): string {
   if (item.translationName) return item.translationName;
-  if (item.id > 0) return `${itemTypeLabel(item.type, item.weaponType)} #${item.id}`;
+  if (item.hasItemOrdinal) return `${itemTypeLabel(item.type, item.weaponType)} #${item.id}`;
 
   const parts: string[] = [];
   if (item.type > 0) parts.push(itemTypeLabel(item.type, item.weaponType));
@@ -670,17 +815,44 @@ function itemDisplayLabel(item: {
 }
 
 function itemTypeLabel(type: number, weaponType: number): string {
+  if (type < 0) return "Item";
   if (type === 3 && weaponType > 0) return WEAPON_TYPE_NAMES[weaponType] ?? `Weapon Type ${weaponType}`;
   return ITEM_TYPE_NAMES[type] ?? `Type ${type}`;
 }
 
-function parseFingerprintType(fingerprint?: string): number | null {
-  if (!fingerprint) return null;
-  const match = fingerprint.match(/-(\d+)$/);
-  return match ? Number.parseInt(match[1], 10) : null;
+function itemRepository(item: MessageObject): ItemRepository | "unknown" {
+  if (hasMessageField(item, ["c"])) {
+    const repositoryFlag = nonNegativeIntegerMessageField(item, ["c"]);
+    if (repositoryFlag === 0) return "normal";
+    if (repositoryFlag === 1) return "unique";
+    return "unknown";
+  }
+  const explicit = String(getMessageField(item, ["repository", "itemRepository", "item_repository"], "")).trim().toLowerCase();
+  if (explicit === "normal" || explicit === "unique" || explicit === "runeword") return explicit;
+  return "unknown";
 }
 
-function parseSatanicZone(msg: MessageObject): SatanicZoneInfo {
+function parseFingerprintType(fingerprint?: string): number | null {
+  if (!fingerprint) return null;
+  const parts = fingerprint.split("-");
+  if (parts.length !== 4 || !/^\d+$/.test(parts[3])) return null;
+  return Number.parseInt(parts[3], 10);
+}
+
+export function createSatanicZoneInfo(
+  rawZone: string,
+  buffIds: readonly number[],
+  debuffIds: readonly number[],
+  updatedAt: number,
+): SatanicZoneInfo {
+  return parseSatanicZone({
+    satanicZoneName: rawZone,
+    buffs: [...buffIds],
+    debuffs: [...debuffIds],
+  }, updatedAt);
+}
+
+function parseSatanicZone(msg: MessageObject, updatedAt = Date.now()): SatanicZoneInfo {
   const rawZone = String(getMessageField(msg, ["satanicZoneName", "satanic_zone_name"], ""));
   const buffs = parseSatanicEffects(
     getMessageField(msg, SATANIC_ZONE_BUFF_FIELDS, ""),
@@ -698,7 +870,7 @@ function parseSatanicZone(msg: MessageObject): SatanicZoneInfo {
 
   const match = rawZone.match(/_(\d+)_(\d+)/);
 
-  if (!match) return { rawZone, zone: rawZone || "Unknown Satanic Zone", pros: buffs, cons, buffs, updatedAt: Date.now() };
+  if (!match) return { rawZone, zone: rawZone || "Unknown Satanic Zone", pros: buffs, cons, buffs, updatedAt };
 
   const act = Number.parseInt(match[1], 10);
   const area = Number.parseInt(match[2], 10);
@@ -712,7 +884,7 @@ function parseSatanicZone(msg: MessageObject): SatanicZoneInfo {
     pros: buffs,
     cons,
     buffs,
-    updatedAt: Date.now(),
+    updatedAt,
   };
 }
 
@@ -779,10 +951,10 @@ function inferRoute(text: string): string {
 
   const marketStart = text.lastIndexOf("market/");
   if (marketStart !== -1) {
-    return text.slice(marketStart).match(/^market\/[a-z0-9_]+/)?.[0] ?? "";
+    return text.slice(marketStart).match(/^market\/[a-z0-9_]+(?:\/[a-z0-9_]+)*/)?.[0] ?? "";
   }
 
-  const matches = Array.from(text.matchAll(/(?:^|[^a-z0-9_])([a-z][a-z0-9_]*\/[a-z0-9_]+)/g));
+  const matches = Array.from(text.matchAll(/(?:^|[^a-z0-9_])([a-z][a-z0-9_]*(?:\/[a-z0-9_]+)+)/g));
   return matches.at(-1)?.[1] ?? "";
 }
 
@@ -829,7 +1001,8 @@ function parseSpecialPayload(text: string): MessageValue | null {
   if (encoded.includes("&")) return parseQueryPayload(truncated);
 
   try {
-    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    const binary = globalThis.atob(encoded);
+    const decoded = new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
     return JSON.parse(decoded) as MessageValue;
   } catch {
     return null;

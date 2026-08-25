@@ -69,7 +69,12 @@ describe("App orchestration", () => {
   test("applies imported configuration to UI preferences and main-process preference scopes", async () => {
     const api = installHeroSiegeCompanionApi();
     const importedRunArchivePreferences = { skipEmptyRuns: true, minDurationMinutes: 9 };
-    const importedCapturePreferences = { createDebugMode: true };
+    const importedCapturePreferences = {
+      captureDebugLogging: true,
+      capturePayloadLogging: true,
+      captureWideLogging: true,
+      satanicZoneDebugLogging: true,
+    };
     vi.mocked(api.importConfiguration).mockResolvedValue(JSON.stringify({
       app: "hero-siege-companion",
       kind: "configuration",
@@ -110,14 +115,14 @@ describe("App orchestration", () => {
           },
           LiveView: { template: "<div />" },
           SettingsModal: {
-            props: ["logLimit", "themeId", "compactThemeId", "skipEmptyRuns", "minRunDurationMinutes", "createDebugMode"],
+            props: ["logLimit", "themeId", "compactThemeId", "skipEmptyRuns", "minRunDurationMinutes", "captureWideLogging"],
             emits: ["importConfiguration"],
             template: `
               <section data-test="settings-modal">
                 <span data-test="draft-log-limit">{{ logLimit }}</span>
                 <span data-test="draft-theme">{{ themeId }}/{{ compactThemeId }}</span>
                 <span data-test="draft-run-saving">{{ skipEmptyRuns }}:{{ minRunDurationMinutes }}</span>
-                <span data-test="draft-capture">{{ createDebugMode }}</span>
+                <span data-test="draft-capture">{{ captureWideLogging }}</span>
                 <button data-test="import-configuration" type="button" @click="$emit('importConfiguration')">Import JSON</button>
               </section>
             `,
@@ -141,6 +146,7 @@ describe("App orchestration", () => {
       expect(api.importConfiguration).toHaveBeenCalledWith(true);
       expect(api.setRunArchivePreferences).toHaveBeenCalledWith(importedRunArchivePreferences);
       expect(api.setCapturePreferences).toHaveBeenCalledWith(importedCapturePreferences);
+      expect(api.setSatanicZoneRefreshEnabled).not.toHaveBeenCalled();
       expect(api.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
       expect(api.setCompactMode).toHaveBeenLastCalledWith(false, true);
       expect(JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}")).toMatchObject({
@@ -371,6 +377,116 @@ describe("App orchestration", () => {
       wrapper.unmount();
     }
   });
+
+  test("routes full and compact Satanic Zone refresh actions through the preload bridge", async () => {
+    const api = installHeroSiegeCompanionApi();
+    const refreshingState = companionState({
+      satanicZone: { ...companionState().satanicZone, phase: "refreshing", refreshAvailable: true, refreshExperimental: true },
+    });
+    let resolveRefresh!: (state: ReturnType<typeof companionState>) => void;
+    vi.mocked(api.refreshSatanicZone).mockReturnValue(new Promise((resolve) => {
+      resolveRefresh = resolve;
+    }));
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          AppTitlebar: {
+            emits: ["toggleCompactMode"],
+            template: '<button data-test="enter-compact" type="button" @click="$emit(\'toggleCompactMode\')">Compact</button>',
+          },
+          CompactView: {
+            props: ["satanicZoneRefreshSubmitting"],
+            emits: ["refreshSatanicZone"],
+            template: '<button data-test="compact-refresh-sz" type="button" :disabled="satanicZoneRefreshSubmitting" @click="$emit(\'refreshSatanicZone\')">Refresh</button>',
+          },
+          LiveSessionHeader: { template: "<section />" },
+          LiveView: {
+            props: ["satanicZoneRefreshSubmitting"],
+            emits: ["refreshSatanicZone"],
+            template: '<button data-test="refresh-sz" type="button" :disabled="satanicZoneRefreshSubmitting" @click="$emit(\'refreshSatanicZone\')">Refresh</button>',
+          },
+          SettingsModal: { template: "<section />" },
+          UpdateBanner: { template: "<div />" },
+          WhatsNewPrompt: { template: "<div />" },
+        },
+      },
+    });
+
+    try {
+      await flushPromises();
+      const refreshButton = wrapper.get('[data-test="refresh-sz"]');
+      const firstClick = refreshButton.trigger("click");
+      const secondClick = refreshButton.trigger("click");
+      await Promise.all([firstClick, secondClick]);
+
+      expect(api.refreshSatanicZone).toHaveBeenCalledTimes(1);
+      expect(refreshButton.attributes("disabled")).toBeDefined();
+      expect(wrapper.find(".toast-bubble").exists()).toBe(false);
+
+      resolveRefresh(refreshingState);
+      await flushPromises();
+
+      expect(api.refreshSatanicZone).toHaveBeenCalledTimes(1);
+      expect(refreshButton.attributes("disabled")).toBeUndefined();
+      expect(wrapper.get(".toast-bubble").text()).toBe("Satanic Zone refresh requested");
+
+      await wrapper.get('[data-test="enter-compact"]').trigger("click");
+      await flushPromises();
+      await wrapper.get('[data-test="compact-refresh-sz"]').trigger("click");
+      await flushPromises();
+
+      expect(api.refreshSatanicZone).toHaveBeenCalledTimes(2);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  test("applies the manual-refresh opt-in through the main-process preference bridge", async () => {
+    const api = installHeroSiegeCompanionApi();
+    const enabledState = companionState({
+      satanicZone: { ...companionState().satanicZone, refreshEnabled: true },
+    });
+    vi.mocked(api.setSatanicZoneRefreshEnabled).mockResolvedValue(enabledState);
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          AppTitlebar: { template: "<div />" },
+          CompactView: { template: "<div />" },
+          LiveSessionHeader: {
+            emits: ["open-settings"],
+            template: '<button data-test="open-settings" type="button" @click="$emit(\'open-settings\')">Settings</button>',
+          },
+          LiveView: { template: "<div />" },
+          SettingsModal: {
+            props: ["satanicZoneRefreshEnabled"],
+            emits: ["update:satanicZoneRefreshEnabled", "apply"],
+            template: `
+              <section data-test="settings-modal">
+                <span data-test="draft-sz-refresh">{{ satanicZoneRefreshEnabled }}</span>
+                <button data-test="enable-sz-refresh" type="button" @click="$emit('update:satanicZoneRefreshEnabled', true)">Enable</button>
+                <button data-test="apply-settings" type="button" @click="$emit('apply')">Done</button>
+              </section>
+            `,
+          },
+          UpdateBanner: { template: "<div />" },
+          WhatsNewPrompt: { template: "<div />" },
+        },
+      },
+    });
+
+    try {
+      await flushPromises();
+      await wrapper.get('[data-test="open-settings"]').trigger("click");
+      expect(wrapper.get('[data-test="draft-sz-refresh"]').text()).toBe("false");
+      await wrapper.get('[data-test="enable-sz-refresh"]').trigger("click");
+      await wrapper.get('[data-test="apply-settings"]').trigger("click");
+      await flushPromises();
+
+      expect(api.setSatanicZoneRefreshEnabled).toHaveBeenCalledWith(true);
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });
 
 function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
@@ -382,6 +498,7 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     stopCapture: vi.fn().mockResolvedValue(state),
     chooseGameExecutable: vi.fn().mockResolvedValue(null),
     resetStats: vi.fn().mockResolvedValue(state),
+    refreshSatanicZone: vi.fn().mockResolvedValue(state),
     pauseRun: vi.fn().mockResolvedValue(state),
     resumeRun: vi.fn().mockResolvedValue(state),
     setPastRunTags: vi.fn().mockResolvedValue(state),
@@ -389,6 +506,7 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     deleteAllPastRuns: vi.fn().mockResolvedValue(state),
     setRunArchivePreferences: vi.fn().mockResolvedValue(state),
     setCapturePreferences: vi.fn().mockResolvedValue(state),
+    setSatanicZoneRefreshEnabled: vi.fn().mockResolvedValue(state),
     exportConfiguration: vi.fn().mockResolvedValue(true),
     importConfiguration: vi.fn().mockResolvedValue(JSON.stringify({ app: "hero-siege-companion", kind: "configuration", version: 1, uiPreferences: {} })),
     exportItemResearch: vi.fn().mockResolvedValue(true),
@@ -403,7 +521,8 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     setAlwaysOnTop: vi.fn().mockResolvedValue(undefined),
     setCompactMode: vi.fn().mockResolvedValue(undefined),
     writeClipboardText: vi.fn().mockResolvedValue(undefined),
-    getSupportDiagnosticsInfo: vi.fn().mockResolvedValue({ userDataPath: "C:\\Users\\Tester", appVersion: "0.2.5", generatedFiles: [], logFiles: [] }),
+    getSupportDiagnosticsInfo: vi.fn().mockResolvedValue({ userDataPath: "C:\\Users\\Tester", logsPath: "C:\\Users\\Tester\\logs", appVersion: "0.2.5", generatedFiles: [], logFiles: [] }),
+    openSupportLogsDirectory: vi.fn().mockResolvedValue(true),
     saveSupportDiagnostics: vi.fn().mockResolvedValue({ saved: false, canceled: true, filePath: null, includedFiles: [] }),
     checkForUpdate: vi.fn().mockResolvedValue(null),
     openRelease: vi.fn().mockResolvedValue(undefined),

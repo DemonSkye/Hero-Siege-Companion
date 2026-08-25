@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { CaptureUpdate } from "../../src/main/capture-runtime";
+import { DEFAULT_CAPTURE_PREFERENCES } from "../../src/shared/initial-state";
 
 describe("capture runtime selection", () => {
   afterEach(() => {
@@ -15,7 +16,7 @@ describe("capture runtime selection", () => {
     const updates: CaptureUpdate[] = [];
     const { createCaptureRuntime, NATIVE_CAPTURE_UNAVAILABLE_MESSAGE } = await import("../../src/main/capture-runtime");
 
-    const runtime = await createCaptureRuntime((update) => updates.push(update), "capture-debug.log", "capture-wide-debug.log", false);
+    const runtime = await createCaptureRuntime((update) => updates.push(update), "capture-debug.log", "capture-wide-debug.log", DEFAULT_CAPTURE_PREFERENCES);
 
     expect(updates).toContainEqual(
       expect.objectContaining({

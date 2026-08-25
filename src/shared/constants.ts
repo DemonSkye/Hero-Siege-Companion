@@ -1,4 +1,4 @@
-export const CURRENT_SEASON = 10;
+export const CURRENT_SEASON = 11;
 
 export const ITEM_RARITY: Record<string, string> = {
   "1": "Common",
@@ -29,6 +29,7 @@ export const ITEM_TYPE_NAMES: Record<number, string> = {
   13: "Collectible",
   14: "Material",
   15: "Socketable",
+  16: "Relic",
   18: "Vial",
 };
 

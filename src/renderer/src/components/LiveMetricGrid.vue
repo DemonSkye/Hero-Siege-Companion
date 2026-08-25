@@ -34,7 +34,7 @@ function toggleMetricCard(id: string) {
         <span class="metric-label">
           {{ tile.kind === "duration" ? "This Run" : tile.label }}
           <span v-if="tile.kind === 'kills'" class="info-bubble" data-tip="Tracks positive changes from the character's lifetime kill statistic while this run is recording.">i</span>
-          <span v-else-if="tile.kind === 'gold'" class="info-bubble" data-tip="Gold starts from the current server total and tracks positive differences. Sometimes you may need to force a server sync twice, such as vote reset or starting a new game, before gold fully syncs.">i</span>
+          <span v-else-if="tile.kind === 'gold'" class="info-bubble" data-tip="Gold starts from the first complete character and currency baseline, then tracks positive server-total changes during this run.">i</span>
         </span>
         <button
           class="dashboard-card-toggle metric-toggle"

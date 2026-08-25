@@ -1,4 +1,5 @@
 import type { CompanionStats, PastRunSummary } from "./stats";
+import type { SatanicZoneState } from "./satanic-zone";
 
 export interface LogEntry {
   id: string;
@@ -37,7 +38,10 @@ export interface RunArchivePreferences {
 }
 
 export interface CapturePreferences {
-  createDebugMode: boolean;
+  captureDebugLogging: boolean;
+  capturePayloadLogging: boolean;
+  captureWideLogging: boolean;
+  satanicZoneDebugLogging: boolean;
 }
 
 export interface ReleaseUpdateInfo {
@@ -61,6 +65,7 @@ export interface CompanionState {
   runPausedDurationMs: number;
   connections: CaptureConnection[];
   health: CaptureHealth;
+  satanicZone: SatanicZoneState;
   stats: CompanionStats;
   pastRuns: PastRunSummary[];
   runArchivePreferences: RunArchivePreferences;

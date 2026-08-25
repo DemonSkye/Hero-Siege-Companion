@@ -485,6 +485,33 @@
   gap: 14px;
 }
 
+.zone-status {
+  grid-column: auto;
+}
+
+.zone-status p {
+  margin: 0;
+}
+
+.zone-freshness {
+  color: var(--app-muted, #8893a4);
+}
+
+.zone-refresh-button {
+  align-self: center;
+  display: grid;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.zone-refresh-button svg {
+  width: 18px;
+  height: 18px;
+}
+
 .effect-column h3 {
   margin: 0 0 10px;
   color: #d8dde7;

@@ -367,6 +367,27 @@
   justify-content: flex-start;
 }
 
+.settings-check-with-note {
+  align-items: flex-start;
+}
+
+.settings-check-with-note > input {
+  margin-top: 2px;
+}
+
+.settings-check-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.settings-check-note {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
 .settings-check input,
 .settings-inline-check input {
   width: 15px;

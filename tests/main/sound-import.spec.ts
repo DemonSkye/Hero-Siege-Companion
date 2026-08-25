@@ -83,6 +83,21 @@ describe("sound import and export", () => {
     expect(fs.readFileSync(fileURLToPath(imported[1].src))).toEqual(Buffer.from("duplicate-alert"));
   });
 
+  test("bounds inflation even when a zip entry understates its expanded size", () => {
+    const sourceDir = tempPath("hsc-zip-bomb-source-");
+    const userData = tempPath("hsc-zip-bomb-user-data-");
+    const soundpackPath = path.join(sourceDir, "misreported.zip");
+    const archive = createZipArchive([
+      { name: "oversized.wav", data: Buffer.alloc(4 * 1024 * 1024 + 1), modifiedAt: new Date(0) },
+    ]);
+    const centralDirectoryOffset = archive.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    expect(centralDirectoryOffset).toBeGreaterThanOrEqual(0);
+    archive.writeUInt32LE(1, centralDirectoryOffset + 24);
+    fs.writeFileSync(soundpackPath, archive);
+
+    expect(importLootSounds([soundpackPath], userData)).toEqual([]);
+  });
+
   test("embeds local configuration sounds and installs embedded sounds back into userData", () => {
     const sourceDir = tempPath("hsc-config-sound-source-");
     const exportUserData = tempPath("hsc-config-sound-export-");

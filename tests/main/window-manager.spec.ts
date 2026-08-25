@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { MainWindowManager } from "../../src/main/window-manager";
 import type { WindowBoundsPreferences } from "../../src/main/persistence";
 
@@ -206,13 +208,13 @@ describe("main window manager", () => {
     vi.useRealTimers();
   });
 
-  test("runs preload outside the Electron sandbox so shared IPC modules resolve after packaging", () => {
+  test("runs the self-contained preload inside Electron's sandbox", () => {
     createManager().create();
 
     expect(electronMock.instances[0]?.options.webPreferences).toMatchObject({
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     });
   });
 
@@ -227,6 +229,21 @@ describe("main window manager", () => {
     expect(window.webContents.openWindow("file:///C:/Users/example/AppData/local.txt")).toEqual({ action: "deny" });
     expect(window.webContents.openWindow("javascript:alert(1)")).toEqual({ action: "deny" });
     expect(electronMock.shell.openExternal).not.toHaveBeenCalled();
+  });
+
+  test("blocks renderer navigation while allowing reloads of the configured app document", () => {
+    createManager().create();
+    const window = electronMock.instances[0];
+    const blockedEvent = { preventDefault: vi.fn() };
+    const allowedEvent = { preventDefault: vi.fn() };
+
+    window.webContents.emit("will-navigate", blockedEvent, "https://example.com/release?token=secret");
+    expect(blockedEvent.preventDefault).toHaveBeenCalledTimes(1);
+    expect(electronMock.shell.openExternal).toHaveBeenCalledWith("https://example.com/release?token=secret");
+
+    const rendererUrl = `${pathToFileURL(path.resolve("dist/renderer/index.html")).href}#live`;
+    window.webContents.emit("will-navigate", allowedEvent, rendererUrl);
+    expect(allowedEvent.preventDefault).not.toHaveBeenCalled();
   });
 
   test("saves the current mode bounds before restoring locked compact and normal positions", () => {

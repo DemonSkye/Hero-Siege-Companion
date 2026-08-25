@@ -1,5 +1,6 @@
 import { EVENT_NAMES } from "./constants";
 import type { AccountInfo, AddedItemObject, CurrencyData, ParsedEvent, SatanicZoneInfo } from "./parser";
+import { nextSatanicZoneBoundary } from "./satanic-zone";
 
 export interface ItemCounter {
   total: number;
@@ -20,11 +21,13 @@ export interface ResourceCounter {
 
 export interface ItemTimelineEntry {
   source: AddedItemObject["source"];
+  repository: AddedItemObject["repository"];
   rarity: string;
   label: string;
   localizationId?: string;
   id: number;
   type: number;
+  weaponType: number;
   seed: number;
   dropQuality: number;
   amount: number;
@@ -239,11 +242,13 @@ export class StatsEngine {
 
     this.stats.itemTimeline.unshift({
       source: item.source,
+      repository: item.repository,
       rarity,
       label: item.label,
       localizationId: item.localizationId,
       id: item.id,
       type: item.type,
+      weaponType: item.weaponType,
       seed: item.seed,
       dropQuality: item.dropQuality,
       amount: item.amount,
@@ -257,7 +262,7 @@ export class StatsEngine {
   private updateSatanicZone(zone: SatanicZoneInfo): void {
     const hasSpecificZone = typeof zone.act === "number" && typeof zone.area === "number" && zone.rawZone.length > 0;
     const cachedZoneExpired =
-      this.stats.satanicZone !== null && Date.now() >= nextHalfHourBoundary(this.stats.satanicZone.updatedAt);
+      this.stats.satanicZone !== null && Date.now() >= nextSatanicZoneBoundary(this.stats.satanicZone.updatedAt);
 
     if (hasSpecificZone) {
       this.stats.satanicZone = zone;
@@ -280,14 +285,6 @@ export class StatsEngine {
       this.stats.itemsPerHour[rarity] = Math.trunc(this.stats.items[rarity].total / hours);
     }
   }
-}
-
-function nextHalfHourBoundary(timestamp: number): number {
-  const date = new Date(timestamp);
-  const minutes = date.getMinutes();
-  const nextMinute = minutes < 30 ? 30 : 60;
-  date.setMinutes(nextMinute, 0, 0);
-  return date.getTime();
 }
 
 function normalizeTrackedRarity(rarity: string): string | null {

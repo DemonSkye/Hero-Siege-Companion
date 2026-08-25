@@ -1,6 +1,6 @@
-import type { ItemTranslation } from "./item-lookup";
+import type { ItemTranslation, ItemTranslationRow } from "./item-lookup";
 
-const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = [
+const STACK_ITEM_TRANSLATION_ROWS: ItemTranslationRow[] = [
   { localizationId: "stack_basic_key", name: "Basic Key", gameId: 0, type: 12, weaponType: 0 },
   { localizationId: "stack_crystal_key", name: "Crystal Key", gameId: 1, type: 12, weaponType: 0 },
   { localizationId: "stack_bifrost_key", name: "Bifr\u00f6st Key", gameId: 2, type: 12, weaponType: 0 },
@@ -207,6 +207,11 @@ const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "stack_blessed_dice", name: "Blessed Dice", gameId: 67, type: 14, weaponType: 0 },
   { localizationId: "stack_tinkerers_toolkit", name: "Tinkerer's Toolkit", gameId: 52, type: 14, weaponType: 0 },
 ];
+
+const STACK_ITEM_TRANSLATIONS: ItemTranslation[] = STACK_ITEM_TRANSLATION_ROWS.map((item) => ({
+  ...item,
+  repository: item.repository ?? "normal",
+}));
 
 const stackLookup = new Map(STACK_ITEM_TRANSLATIONS.map((item) => [`${item.type}:${item.gameId}`, item]));
 

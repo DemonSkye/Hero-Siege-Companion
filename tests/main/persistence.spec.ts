@@ -3,18 +3,30 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
+  SATANIC_ZONE_CACHE_SCHEMA_VERSION,
   loadCapturePreferences,
   loadPastRuns,
   loadRunArchivePreferences,
+  loadSatanicZoneCache,
+  loadSatanicZoneRefreshPreferences,
   loadWindowBounds,
   normalizeCapturePreferences,
   normalizeRunArchivePreferences,
+  normalizeSatanicZoneCache,
+  normalizeSatanicZoneRefreshPreferences,
   savePastRuns,
   saveCapturePreferences,
   saveRunArchivePreferences,
+  saveSatanicZoneCache,
+  saveSatanicZoneRefreshPreferences,
+  satanicZoneCachePersistenceKey,
   withMinimumBounds,
 } from "../../src/main/persistence";
 import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../../src/shared/initial-state";
+import {
+  DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES,
+  createInitialSatanicZoneState,
+} from "../../src/shared/satanic-zone";
 import { PAST_RUN_SCHEMA_VERSION } from "../../src/shared/stats";
 import { pastRun } from "../renderer/fixtures";
 
@@ -42,16 +54,24 @@ describe("main process persistence helpers", () => {
       skipEmptyRuns: false,
       minDurationMinutes: 0,
     });
-    expect(normalizeCapturePreferences({ createDebugMode: 1 as unknown as boolean })).toEqual({
-      createDebugMode: true,
+    expect(normalizeCapturePreferences({ capturePayloadLogging: true, captureWideLogging: true })).toEqual({
+      captureDebugLogging: true,
+      capturePayloadLogging: true,
+      captureWideLogging: true,
+      satanicZoneDebugLogging: true,
     });
     expect(normalizeRunArchivePreferences(null)).toEqual({
       skipEmptyRuns: false,
       minDurationMinutes: 0,
     });
     expect(normalizeCapturePreferences(undefined)).toEqual({
-      createDebugMode: false,
+      captureDebugLogging: true,
+      capturePayloadLogging: false,
+      captureWideLogging: false,
+      satanicZoneDebugLogging: true,
     });
+    expect(normalizeSatanicZoneRefreshPreferences({ enabled: true })).toEqual({ enabled: true });
+    expect(normalizeSatanicZoneRefreshPreferences({ enabled: "true" })).toEqual({ enabled: false });
   });
 
   test("preserves unrelated preference sections while saving one section", () => {
@@ -61,33 +81,233 @@ describe("main process persistence helpers", () => {
       `${JSON.stringify({
         untouched: { value: 42 },
         runArchive: { skipEmptyRuns: true, minDurationMinutes: 5 },
-        capture: { createDebugMode: true },
+        capture: { captureDebugLogging: false, capturePayloadLogging: true, captureWideLogging: true, satanicZoneDebugLogging: false },
+        satanicZoneRefresh: { enabled: true },
       })}\n`,
       "utf8",
     );
 
     expect(loadRunArchivePreferences(preferencesPath)).toEqual({ skipEmptyRuns: true, minDurationMinutes: 5 });
-    expect(loadCapturePreferences(preferencesPath)).toEqual({ createDebugMode: true });
+    expect(loadCapturePreferences(preferencesPath)).toEqual({
+      captureDebugLogging: false,
+      capturePayloadLogging: true,
+      captureWideLogging: true,
+      satanicZoneDebugLogging: false,
+    });
+    expect(loadSatanicZoneRefreshPreferences(preferencesPath)).toEqual({ enabled: true });
 
     saveRunArchivePreferences(preferencesPath, { skipEmptyRuns: false, minDurationMinutes: 15 });
-    saveCapturePreferences(preferencesPath, { createDebugMode: false });
+    saveCapturePreferences(preferencesPath, {
+      captureDebugLogging: true,
+      capturePayloadLogging: false,
+      captureWideLogging: false,
+      satanicZoneDebugLogging: true,
+    });
+    saveSatanicZoneRefreshPreferences(preferencesPath, { enabled: false });
 
     expect(JSON.parse(fs.readFileSync(preferencesPath, "utf8"))).toEqual({
       untouched: { value: 42 },
       runArchive: { skipEmptyRuns: false, minDurationMinutes: 15 },
-      capture: { createDebugMode: false },
+      capture: {
+        captureDebugLogging: true,
+        capturePayloadLogging: false,
+        captureWideLogging: false,
+        satanicZoneDebugLogging: true,
+      },
+      satanicZoneRefresh: { enabled: false },
     });
   });
 
   test("loads default main-process preferences when files or sections are missing", () => {
     expect(loadRunArchivePreferences(tempFile("missing.json"))).toEqual(DEFAULT_RUN_ARCHIVE_PREFERENCES);
     expect(loadCapturePreferences(tempFile("missing.json"))).toEqual(DEFAULT_CAPTURE_PREFERENCES);
+    expect(loadSatanicZoneRefreshPreferences(tempFile("missing.json"))).toEqual(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES);
 
     const preferencesPath = tempFile("partial-preferences.json");
     fs.writeFileSync(preferencesPath, `${JSON.stringify({ untouched: { value: 42 } })}\n`, "utf8");
 
     expect(loadRunArchivePreferences(preferencesPath)).toEqual(DEFAULT_RUN_ARCHIVE_PREFERENCES);
     expect(loadCapturePreferences(preferencesPath)).toEqual(DEFAULT_CAPTURE_PREFERENCES);
+    expect(loadSatanicZoneRefreshPreferences(preferencesPath)).toEqual(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES);
+  });
+
+  test.each([1, 2])("starts clean without restoring schema-v%s Satanic Zone observations", (schemaVersion) => {
+    const cachePath = tempFile(`legacy-satanic-zone-v${schemaVersion}.json`);
+    const updatedAt = new Date(2026, 7, 24, 10, 12).getTime();
+    fs.writeFileSync(cachePath, JSON.stringify({
+      schemaVersion,
+      current: {
+        rawZone: "Act_08_03",
+        zone: "Act 8: Forgotten Caves",
+        act: 8,
+        area: 3,
+        pros: [{ id: 1, name: "Treasure", description: "More loot." }],
+        cons: [{ id: 2, name: "Danger", description: "More danger." }],
+        buffs: [{ id: 3, name: "Legacy", description: "Must not cross a process boundary." }],
+        updatedAt,
+      },
+      source: "manual",
+      lastSuccessAt: updatedAt,
+      nextAllowedRefreshAt: null,
+    }), "utf8");
+
+    expect(loadSatanicZoneCache(cachePath, updatedAt + 1_000)).toEqual(createInitialSatanicZoneState());
+  });
+
+  test.each([1, 2])("migrates only an active bounded cooldown from schema v%s", (schemaVersion) => {
+    const now = new Date(2026, 7, 24, 10, 12).getTime();
+    const nextAllowedRefreshAt = now + 30_000;
+
+    expect(normalizeSatanicZoneCache({
+      schemaVersion,
+      current: {
+        zone: "Act 8: Forgotten Caves",
+        pros: [{ id: 1, name: "Legacy", description: "Ignored." }],
+        updatedAt: now,
+      },
+      source: "captured",
+      lastSuccessAt: now,
+      nextAllowedRefreshAt,
+    }, now)).toEqual({
+      ...createInitialSatanicZoneState(),
+      nextAllowedRefreshAt,
+    });
+  });
+
+  test("persists only an active refresh cooldown, never zone observations", () => {
+    const cachePath = tempFile("satanic-zone-cooldown.json");
+    const now = new Date(2026, 7, 24, 10, 12).getTime();
+    const nextAllowedRefreshAt = now + 30_000;
+    const current = {
+      rawZone: "Act_08_03",
+      zone: "Act 8: Forgotten Caves",
+      act: 8,
+      area: 3,
+      pros: [{ id: 1, name: "Treasure", description: "More loot." }],
+      cons: [{ id: 2, name: "Danger", description: "More danger." }],
+      buffs: [],
+      updatedAt: now,
+    };
+    const state = {
+      ...createInitialSatanicZoneState(),
+      current,
+      phase: "failed" as const,
+      source: "manual" as const,
+      lastAttemptAt: now + 1_000,
+      lastSuccessAt: now,
+      errorCode: "helper_failed",
+      nextAllowedRefreshAt,
+    };
+
+    saveSatanicZoneCache(cachePath, state, undefined, now);
+
+    expect(JSON.parse(fs.readFileSync(cachePath, "utf8"))).toEqual({
+      schemaVersion: SATANIC_ZONE_CACHE_SCHEMA_VERSION,
+      nextAllowedRefreshAt,
+    });
+    expect(loadSatanicZoneCache(cachePath, now + 1)).toEqual({
+      ...createInitialSatanicZoneState(),
+      nextAllowedRefreshAt,
+    });
+    expect(loadSatanicZoneCache(cachePath, nextAllowedRefreshAt)).toEqual(createInitialSatanicZoneState());
+  });
+
+  test("does not create a cache file for an observation without an active cooldown", () => {
+    const cachePath = tempFile("satanic-zone-observation-only.json");
+    const now = new Date(2026, 7, 24, 10, 12).getTime();
+
+    saveSatanicZoneCache(cachePath, {
+      ...createInitialSatanicZoneState(),
+      current: {
+        rawZone: "Act_08_03",
+        zone: "Act 8: Forgotten Caves",
+        pros: [],
+        cons: [],
+        buffs: [],
+        updatedAt: now,
+      },
+      source: "captured",
+      lastSuccessAt: now,
+    });
+
+    expect(fs.existsSync(cachePath)).toBe(false);
+  });
+
+  test("normalizes an empty current-schema cache to a clean initial state", () => {
+    const now = new Date(2026, 7, 24, 10, 12).getTime();
+
+    expect(normalizeSatanicZoneCache({
+      schemaVersion: SATANIC_ZONE_CACHE_SCHEMA_VERSION,
+      nextAllowedRefreshAt: null,
+    }, now)).toEqual(createInitialSatanicZoneState());
+    expect(normalizeSatanicZoneCache(null, now)).toEqual(createInitialSatanicZoneState());
+  });
+
+  test.each([
+    ["string", "123"],
+    ["fractional", 123.5],
+    ["expired", new Date(2026, 7, 24, 10, 12).getTime()],
+    ["far future", new Date(2026, 7, 24, 10, 18).getTime()],
+  ])("rejects a %s persisted cooldown", (_label, cooldown) => {
+    const now = new Date(2026, 7, 24, 10, 12).getTime();
+    expect(normalizeSatanicZoneCache({
+      schemaVersion: SATANIC_ZONE_CACHE_SCHEMA_VERSION,
+      nextAllowedRefreshAt: cooldown,
+    }, now)).toEqual(createInitialSatanicZoneState());
+  });
+
+  test("rejects cooldowns from unknown Satanic Zone cache schemas", () => {
+    const now = new Date(2026, 7, 24, 10, 12).getTime();
+    expect(normalizeSatanicZoneCache({
+      schemaVersion: 999,
+      nextAllowedRefreshAt: now + 30_000,
+    }, now)).toEqual(createInitialSatanicZoneState());
+  });
+
+  test("changes the cache trigger only for active cooldown extensions", () => {
+    const now = new Date(2026, 7, 24, 10, 12).getTime();
+    const cooldownState = {
+      ...createInitialSatanicZoneState(),
+      phase: "refreshing" as const,
+      nextAllowedRefreshAt: now + 30_000,
+    };
+    const key = satanicZoneCachePersistenceKey(cooldownState, now);
+
+    expect(key).not.toBeNull();
+    expect(satanicZoneCachePersistenceKey({
+      ...cooldownState,
+      phase: "failed",
+      errorCode: "helper_failed",
+    }, now)).toBe(key);
+    expect(satanicZoneCachePersistenceKey({
+      ...cooldownState,
+      current: {
+        rawZone: "Act_08_03",
+        zone: "Act 8: Forgotten Caves",
+        pros: [],
+        cons: [],
+        buffs: [],
+        updatedAt: now,
+      },
+      source: "manual",
+      lastSuccessAt: now,
+    }, now)).toBe(key);
+    expect(satanicZoneCachePersistenceKey({
+      ...cooldownState,
+      nextAllowedRefreshAt: now + 35_000,
+    }, now)).not.toBe(key);
+    expect(satanicZoneCachePersistenceKey(cooldownState, now + 30_000)).toBeNull();
+    expect(satanicZoneCachePersistenceKey({
+      ...createInitialSatanicZoneState(),
+      current: {
+        rawZone: "Act_08_03",
+        zone: "Act 8: Forgotten Caves",
+        pros: [],
+        cons: [],
+        buffs: [],
+        updatedAt: now,
+      },
+    }, now)).toBeNull();
   });
 
   test("loads past runs defensively and migrates additive fields", () => {

@@ -10,6 +10,7 @@ export interface SoundPackEntry {
 export interface SoundPackReadOptions {
   maxEntries: number;
   maxEntryBytes: number;
+  maxTotalBytes: number;
   supportedExtensions: ReadonlySet<string>;
 }
 
@@ -22,6 +23,7 @@ export function readSoundPackEntries(filePath: string, options: SoundPackReadOpt
   const entryCount = archive.readUInt16LE(eocdOffset + 10);
   const centralDirectoryOffset = archive.readUInt32LE(eocdOffset + 16);
   const entries: SoundPackEntry[] = [];
+  let totalBytes = 0;
   let offset = centralDirectoryOffset;
 
   for (let index = 0; index < entryCount && offset + 46 <= archive.length && entries.length < options.maxEntries; index += 1) {
@@ -41,7 +43,10 @@ export function readSoundPackEntries(filePath: string, options: SoundPackReadOpt
     offset = fileNameEnd + extraLength + commentLength;
 
     if (!rawName || rawName.endsWith("/") || rawName.endsWith("\\")) continue;
-    if (uncompressedSize <= 0 || uncompressedSize > options.maxEntryBytes) continue;
+    const remainingBytes = options.maxTotalBytes - totalBytes;
+    const entryByteLimit = Math.min(options.maxEntryBytes, remainingBytes);
+    if (entryByteLimit <= 0) break;
+    if (uncompressedSize <= 0 || uncompressedSize > entryByteLimit) continue;
     if (compressionMethod !== 0 && compressionMethod !== 8) continue;
 
     const fileName = rawName.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "";
@@ -57,12 +62,13 @@ export function readSoundPackEntries(filePath: string, options: SoundPackReadOpt
     const compressed = archive.slice(dataStart, dataEnd);
     let contents: Buffer;
     try {
-      contents = compressionMethod === 0 ? compressed : zlib.inflateRawSync(compressed);
+      contents = compressionMethod === 0 ? compressed : zlib.inflateRawSync(compressed, { maxOutputLength: entryByteLimit });
     } catch {
       continue;
     }
-    if (contents.length <= 0 || contents.length > options.maxEntryBytes) continue;
+    if (contents.length <= 0 || contents.length > entryByteLimit || contents.length !== uncompressedSize) continue;
     entries.push({ fileName, contents });
+    totalBytes += contents.length;
   }
 
   return entries;

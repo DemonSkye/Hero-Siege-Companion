@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CompanionState, LogEntry } from "../../shared/app-state";
 import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES, createInitialCompanionState } from "../../shared/initial-state";
+import { DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES } from "../../shared/satanic-zone";
 import AppTitlebar from "./components/AppTitlebar.vue";
 import CompactView from "./components/CompactView.vue";
 import LiveSessionHeader from "./components/LiveSessionHeader.vue";
@@ -63,6 +64,7 @@ const logLimitOptions = LOG_LIMIT_OPTIONS;
 const showSettings = ref(false);
 const settingsInitialTab = ref<SettingsTab>("general");
 const showCompactZone = ref(false);
+const satanicZoneRefreshSubmitting = ref(false);
 const activeTab = ref<"live" | "past" | "filter">("live");
 const appVersion = WHATS_NEW_RELEASE.version;
 const expandedLogIds = ref<Set<string>>(new Set());
@@ -116,7 +118,11 @@ const {
   draftThemeForegroundFills,
   draftCompactThemeForegroundFills,
   draftThemeTokenMaps,
-  draftCreateDebugMode,
+  draftCaptureDebugLogging,
+  draftCapturePayloadLogging,
+  draftCaptureWideLogging,
+  draftSatanicZoneDebugLogging,
+  draftSatanicZoneRefreshEnabled,
   draftSkipEmptyRuns,
   draftMinRunDurationMinutes,
   configIncludeAppSettings,
@@ -132,6 +138,7 @@ const {
   loadDraftPreferences,
   currentDraftRunArchivePreferences,
   currentDraftCapturePreferences,
+  currentDraftSatanicZoneRefreshEnabled,
   currentConfigurationTransferOptions,
   updateDraftThemeAccent,
   updatePostRunReportConfig,
@@ -144,6 +151,7 @@ const {
   refreshSupportDiagnosticsInfo,
   saveSupportDiagnostics,
   copySupportDiagnosticsSummary,
+  openSupportLogsDirectory,
   openNpcapGuide,
 } = useSupportDiagnosticsRuntime({ state, showToast });
 const {
@@ -314,7 +322,12 @@ function applyUiPreferences(preferences: UiPreferences): void {
 }
 
 function loadCurrentDraftPreferences(preferences = currentUiPreferences()): void {
-  loadDraftPreferences(preferences, state.value.runArchivePreferences, state.value.capturePreferences);
+  loadDraftPreferences(
+    preferences,
+    state.value.runArchivePreferences,
+    state.value.capturePreferences,
+    state.value.satanicZone.refreshEnabled,
+  );
 }
 
 async function toggleCapture() {
@@ -331,6 +344,22 @@ async function resetStats() {
   state.value = await window.heroSiegeCompanion.resetStats();
   resetItemFilterSession(state.value.stats.itemTimeline);
   if ((state.value.pastRuns?.length ?? 0) > previousRunCount) activeTab.value = "past";
+}
+
+async function refreshSatanicZone() {
+  if (satanicZoneRefreshSubmitting.value) return;
+  satanicZoneRefreshSubmitting.value = true;
+  try {
+    state.value = await window.heroSiegeCompanion.refreshSatanicZone();
+    if (state.value.satanicZone.phase === "refreshing") showToast("Satanic Zone refresh requested");
+    else if (state.value.satanicZone.phase === "failed" || state.value.satanicZone.phase === "unavailable") {
+      showToast("Satanic Zone refresh unavailable");
+    }
+  } catch {
+    showToast("Satanic Zone refresh failed");
+  } finally {
+    satanicZoneRefreshSubmitting.value = false;
+  }
 }
 
 async function toggleRunPaused() {
@@ -383,7 +412,12 @@ function closeSettings() {
 }
 
 function resetDraftPreferences() {
-  loadDraftPreferences(defaultPreferences, DEFAULT_RUN_ARCHIVE_PREFERENCES, DEFAULT_CAPTURE_PREFERENCES);
+  loadDraftPreferences(
+    defaultPreferences,
+    DEFAULT_RUN_ARCHIVE_PREFERENCES,
+    DEFAULT_CAPTURE_PREFERENCES,
+    DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled,
+  );
 }
 
 async function applyDraftPreferences() {
@@ -391,6 +425,7 @@ async function applyDraftPreferences() {
   savePreferences(currentUiPreferences());
   state.value = await window.heroSiegeCompanion.setRunArchivePreferences(currentDraftRunArchivePreferences());
   state.value = await window.heroSiegeCompanion.setCapturePreferences(currentDraftCapturePreferences());
+  state.value = await window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(currentDraftSatanicZoneRefreshEnabled());
   showSettings.value = false;
   await syncWindowMode();
 }
@@ -559,11 +594,14 @@ function toggleLog(log: LogEntry) {
       v-if="compactMode"
       v-model:show-zone="showCompactZone"
       :state="state"
+      :now="now"
       :compact-run-tile-displays="compactRunTileDisplays"
       :run-paused-label="runPausedLabel"
       :can-toggle-run-paused="canToggleRunPaused"
+      :satanic-zone-refresh-submitting="satanicZoneRefreshSubmitting"
       @toggle-run-paused="toggleRunPaused"
       @end-run="resetStats"
+      @refresh-satanic-zone="refreshSatanicZone"
     />
 
     <LiveSessionHeader
@@ -600,10 +638,12 @@ function toggleLog(log: LogEntry) {
         v-model:shopping-draft-item="shoppingDraftItem"
         v-model:log-limit="logLimit"
         :state="state"
+        :now="now"
         :capture-status-label="captureStatusLabel"
         :run-tile-displays="compactRunTileDisplays"
         :zone-countdown="zoneCountdown"
         :zone-reset-label="zoneResetLabel"
+        :satanic-zone-refresh-submitting="satanicZoneRefreshSubmitting"
         :tracked-items="trackedItems"
         :key-drop-total="keyDropTotal"
         :ore-drop-total="oreDropTotal"
@@ -625,6 +665,7 @@ function toggleLog(log: LogEntry) {
         @open-npcap-guide="openNpcapGuide"
         @open-item-filter-group="openItemFilterGroup"
         @identify-timeline-item="identifyTimelineItem"
+        @refresh-satanic-zone="refreshSatanicZone"
         @toggle-log="toggleLog"
       />
 
@@ -681,7 +722,11 @@ function toggleLog(log: LogEntry) {
       v-model:launch-through-steam="draftLaunchThroughSteam"
       v-model:game-executable-path="draftGameExecutablePath"
       v-model:show-capture-details="draftShowCaptureDetails"
-      v-model:create-debug-mode="draftCreateDebugMode"
+      v-model:capture-debug-logging="draftCaptureDebugLogging"
+      v-model:capture-payload-logging="draftCapturePayloadLogging"
+      v-model:capture-wide-logging="draftCaptureWideLogging"
+      v-model:satanic-zone-debug-logging="draftSatanicZoneDebugLogging"
+      v-model:satanic-zone-refresh-enabled="draftSatanicZoneRefreshEnabled"
       v-model:always-on-top="draftAlwaysOnTop"
       v-model:lock-compact-location="draftLockCompactLocation"
       v-model:hide-socketables="draftHideSocketables"
@@ -714,7 +759,7 @@ function toggleLog(log: LogEntry) {
       :support-diagnostics="supportDiagnostics"
       :support-generated-files="supportDiagnosticsInfo.generatedFiles"
       :support-log-files="supportDiagnosticsInfo.logFiles"
-      :support-logs-path="supportDiagnosticsInfo.userDataPath"
+      :support-logs-path="supportDiagnosticsInfo.logsPath"
       :support-bundle-busy="supportBundleBusy"
       :whats-new="WHATS_NEW_RELEASE"
       :initial-tab="settingsInitialTab"
@@ -729,6 +774,7 @@ function toggleLog(log: LogEntry) {
       @remove-sound="removeItemFilterSound"
       @save-support-diagnostics="saveSupportDiagnostics"
       @copy-support-diagnostics-summary="copySupportDiagnosticsSummary"
+      @open-support-logs-directory="openSupportLogsDirectory"
       @export-configuration="exportConfiguration"
       @import-configuration="importConfiguration"
       @settings-tab-change="settingsInitialTab = $event"

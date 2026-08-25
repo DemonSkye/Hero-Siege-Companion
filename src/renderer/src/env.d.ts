@@ -1,8 +1,8 @@
 import type { HeroSiegeCompanionApi } from "../../shared/ipc";
 
-declare const __APP_VERSION__: string;
-
 declare global {
+  const __APP_VERSION__: string;
+
   interface Window {
     heroSiegeCompanion: HeroSiegeCompanionApi;
   }

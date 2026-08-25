@@ -1,5 +1,6 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import type { CapturePreferences, RunArchivePreferences } from "../../../shared/app-state";
+import { DEFAULT_CAPTURE_PREFERENCES } from "../../../shared/initial-state";
 import { defaultCompactRunTiles, normalizeCompactRunTiles, type CompactRunTileConfig } from "./compact-tiles";
 import {
   DEFAULT_ITEM_FILTER_GROUPS,
@@ -230,7 +231,7 @@ export function importConfigurationPayload(
       : currentPreferences.customItemFilterSounds;
 
   if (!options.includeAppSettings) {
-    for (const key of APP_SETTING_KEYS) nextUiPreferences[key] = currentPreferences[key];
+    for (const key of APP_SETTING_KEYS) Object.assign(nextUiPreferences, { [key]: currentPreferences[key] });
   }
   if (!options.includeReportTracking) {
     nextUiPreferences.postRunReport = currentPreferences.postRunReport;
@@ -326,8 +327,15 @@ export function normalizeRunArchivePreferences(value: unknown): RunArchivePrefer
 export function normalizeCapturePreferences(value: unknown): CapturePreferences {
   const preferences = isRecord(value) ? value : {};
   return {
-    createDebugMode: Boolean(preferences.createDebugMode),
+    captureDebugLogging: booleanPreference(preferences.captureDebugLogging, DEFAULT_CAPTURE_PREFERENCES.captureDebugLogging),
+    capturePayloadLogging: booleanPreference(preferences.capturePayloadLogging, DEFAULT_CAPTURE_PREFERENCES.capturePayloadLogging),
+    captureWideLogging: booleanPreference(preferences.captureWideLogging, DEFAULT_CAPTURE_PREFERENCES.captureWideLogging),
+    satanicZoneDebugLogging: booleanPreference(preferences.satanicZoneDebugLogging, DEFAULT_CAPTURE_PREFERENCES.satanicZoneDebugLogging),
   };
+}
+
+function booleanPreference(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

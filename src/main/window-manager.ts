@@ -1,4 +1,5 @@
 import { BrowserWindow, nativeImage, shell } from "electron";
+import { pathToFileURL } from "node:url";
 import { saveWindowBounds, withMinimumBounds, type WindowBoundsPreferences } from "./persistence";
 import type { LogEntry } from "../shared/app-state";
 
@@ -64,9 +65,7 @@ export class MainWindowManager {
         preload: this.options.preloadPath,
         contextIsolation: true,
         nodeIntegration: false,
-        // The preload imports compiled shared IPC contracts. Electron's sandboxed
-        // preload resolver cannot load sibling app modules from the packaged ASAR.
-        sandbox: false,
+        sandbox: true,
       },
     });
 
@@ -151,6 +150,8 @@ export class MainWindowManager {
       if (this.isExternalWebUrl(url)) void shell.openExternal(url);
       return { action: "deny" };
     });
+    window.webContents.on("will-navigate", (event, url) => this.handleRendererNavigation(event, url));
+    window.webContents.on("will-redirect", (event, url) => this.handleRendererNavigation(event, url));
 
     window.on("close", () => {
       this.options.writeAppLog("window-close", { id: window.id, ...this.options.getCaptureSnapshot() });
@@ -195,6 +196,27 @@ export class MainWindowManager {
     try {
       const parsed = new URL(url);
       return parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch {
+      return false;
+    }
+  }
+
+  private handleRendererNavigation(event: Electron.Event, url: string): void {
+    if (this.isRendererUrl(url)) return;
+    event.preventDefault();
+    if (this.isExternalWebUrl(url)) void shell.openExternal(url);
+    this.options.writeAppLog("renderer-navigation-blocked", { target: navigationTarget(url) });
+  }
+
+  private isRendererUrl(url: string): boolean {
+    try {
+      const expected = new URL(pathToFileURL(this.options.rendererIndexPath).href);
+      const candidate = new URL(url);
+      expected.hash = "";
+      expected.search = "";
+      candidate.hash = "";
+      candidate.search = "";
+      return candidate.href === expected.href;
     } catch {
       return false;
     }
@@ -253,5 +275,14 @@ export class MainWindowManager {
       webContentsId: destroyed ? null : window.webContents.id,
       url: destroyed ? null : window.webContents.getURL(),
     };
+  }
+}
+
+function navigationTarget(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? `${parsed.protocol}//${parsed.host}` : parsed.protocol;
+  } catch {
+    return "invalid";
   }
 }

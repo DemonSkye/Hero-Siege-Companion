@@ -33,7 +33,7 @@ const props = defineProps<{
   itemTypeOptions: ItemTypeOption[];
   itemFilterGroups: ItemFilterGroup[];
   itemSuggestions: string[];
-  themeOptions: ThemeOption[];
+  themeOptions: readonly ThemeOption[];
   customItemFilterSounds: CustomItemFilterSound[];
   supportDiagnostics: string;
   supportGeneratedFiles: SupportDiagnosticGeneratedFileInfo[];
@@ -56,6 +56,7 @@ const emit = defineEmits<{
   removeSound: [sound: CustomItemFilterSound];
   saveSupportDiagnostics: [];
   copySupportDiagnosticsSummary: [];
+  openSupportLogsDirectory: [];
   exportConfiguration: [];
   importConfiguration: [];
   reset: [];
@@ -69,7 +70,11 @@ const draftTimelineType = defineModel<string>("timelineType", { required: true }
 const draftLaunchThroughSteam = defineModel<boolean>("launchThroughSteam", { required: true });
 const draftGameExecutablePath = defineModel<string>("gameExecutablePath", { required: true });
 const draftShowCaptureDetails = defineModel<boolean>("showCaptureDetails", { required: true });
-const draftCreateDebugMode = defineModel<boolean>("createDebugMode", { required: true });
+const draftCaptureDebugLogging = defineModel<boolean>("captureDebugLogging", { required: true });
+const draftCapturePayloadLogging = defineModel<boolean>("capturePayloadLogging", { required: true });
+const draftCaptureWideLogging = defineModel<boolean>("captureWideLogging", { required: true });
+const draftSatanicZoneDebugLogging = defineModel<boolean>("satanicZoneDebugLogging", { required: true });
+const draftSatanicZoneRefreshEnabled = defineModel<boolean>("satanicZoneRefreshEnabled", { required: true });
 const draftAlwaysOnTop = defineModel<boolean>("alwaysOnTop", { required: true });
 const draftLockCompactLocation = defineModel<boolean>("lockCompactLocation", { required: true });
 const draftHideSocketables = defineModel<boolean>("hideSocketables", { required: true });
@@ -216,7 +221,11 @@ function handleSettingsTabKeydown(event: KeyboardEvent) {
         <SettingsCaptureTab
           v-else-if="activeSettingsTab === 'capture'"
           v-model:show-capture-details="draftShowCaptureDetails"
-          v-model:create-debug-mode="draftCreateDebugMode"
+          v-model:capture-debug-logging="draftCaptureDebugLogging"
+          v-model:capture-payload-logging="draftCapturePayloadLogging"
+          v-model:capture-wide-logging="draftCaptureWideLogging"
+          v-model:satanic-zone-debug-logging="draftSatanicZoneDebugLogging"
+          v-model:satanic-zone-refresh-enabled="draftSatanicZoneRefreshEnabled"
           v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
           v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
           v-model:skip-empty-runs="draftSkipEmptyRuns"
@@ -268,6 +277,7 @@ function handleSettingsTabKeydown(event: KeyboardEvent) {
           :support-bundle-busy="supportBundleBusy"
           @save-support-diagnostics="$emit('saveSupportDiagnostics')"
           @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
+          @open-support-logs-directory="$emit('openSupportLogsDirectory')"
         />
 
         <SettingsConfigTab

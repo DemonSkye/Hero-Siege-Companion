@@ -58,6 +58,35 @@ test("satanic zone request route is recovered from compact protocol framing", ()
   assert.equal(message.crossregion_identifier, "abc");
 });
 
+test("versioned query routes retain every path segment", () => {
+  const messages = captureMessages(
+    "frame inventory/item_generate/v1 account_id=123&item_data=%7B%22id%22%3A1%7D&season=11",
+  );
+  const message = messages[0] as Record<string, unknown>;
+
+  assert.equal(message.route, "inventory/item_generate/v1");
+  assert.deepEqual(message.item_data, { id: 1 });
+});
+
+test("save query snapshots recover account, XP, and kill totals", () => {
+  const messages = captureMessages(
+    'save account_id=123&slot_data={"name":"Dante","experience":5000,"statisticTotalMonsterKills":250,"season":11,"hardcore":0,"blood_pact":0}&beta=0',
+  );
+  const events = messageToEvents(messages);
+
+  assert.deepEqual(events.map((event) => event.name), ["updateAccount"]);
+  assert.deepEqual(events[0].value, {
+    name: "Dante",
+    experience: 5000,
+    hasExperience: true,
+    totalMonsterKills: 250,
+    season: 11,
+    hardcore: 0,
+    bloodPact: 0,
+    seasonMode: "GSS",
+  });
+});
+
 test("satanic zone query payloads load zone effects from compact framing", () => {
   const messages = captureMessages("f0a2c3e4f843R satanic_zone_getRsatanic_zone_name=Act_06_02&zone_buffs=17|14|9&zone_debuffs=15|18");
   const events = messageToEvents(messages);
@@ -70,12 +99,27 @@ test("satanic zone query payloads load zone effects from compact framing", () =>
   assert.deepEqual(zone.cons.map((effect) => effect.name), ["Lingering Evil", "Abnormal Dwelling"]);
 });
 
+test("Season 11 live Satanic Zone responses reach stats unchanged", () => {
+  const messages = captureMessages(
+    '{"status":"1","message":"success","satanicZoneName":"Act_08_03","buffs":"21|22|5","debuffs":"25|18"}',
+  );
+  const events = messageToEvents(messages);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].name, "updateSatanicZone");
+  assert.equal(snapshot.satanicZone?.rawZone, "Act_08_03");
+  assert.equal(snapshot.satanicZone?.zone, "Act 8: Forgotten Caves");
+  assert.equal(snapshot.satanicZone?.pros.length, 3);
+  assert.equal(snapshot.satanicZone?.cons.length, 2);
+});
+
 test("bare currency snapshots update gold after account mode is known", () => {
   const events = messageToEvents([{ gss: 400, gsh: 0, gns: 0, gnh: 0, gbp: 0 }]);
   const stats = new StatsEngine();
 
   stats.applyEvents(events);
-  const snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+  const snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 11, hardcore: 0 }]));
 
   assert.equal(events[0].name, "updateGold");
   assert.equal(events[0].value.GSS, 400);
@@ -97,7 +141,7 @@ test("loose currency payloads recover readable gold totals from corrupt framing"
 test("gold snapshots track current gold and earned positive deltas", () => {
   const stats = new StatsEngine();
 
-  stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+  stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 11, hardcore: 0 }]));
   stats.applyEvents(messageToEvents([{ currencyData: { account_id: 39094, GSS: 1719845, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
   const snapshot = stats.applyEvents(messageToEvents([{ currencyData: { account_id: 39094, GSS: 1719900, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
 
@@ -205,14 +249,14 @@ test("gold mode changes reset baseline instead of counting cross-mode totals as 
 
   stats.applyEvents(messageToEvents([{ route: "inventory/item_stack_handler/v1", seasonal: 0, hardcore: 0, blood_pact: 6788 }]));
   stats.applyEvents(currencyEvents);
-  let snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+  let snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 11, hardcore: 0 }]));
 
   assert.equal(snapshot.seasonMode, "GSS");
   assert.equal(snapshot.totalGold, 2797371);
   assert.equal(snapshot.totalGoldEarned, 0);
 
   stats.applyEvents(messageToEvents([{ route: "inventory/item_stack_handler/v1", seasonal: 0, hardcore: 0, blood_pact: 6788 }]));
-  snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+  snapshot = stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 11, hardcore: 0 }]));
 
   assert.equal(snapshot.totalGold, 2797371);
   assert.equal(snapshot.totalGoldEarned, 0);
@@ -221,7 +265,7 @@ test("gold mode changes reset baseline instead of counting cross-mode totals as 
 test("gold snapshots take precedence over noisy delta fields", () => {
   const stats = new StatsEngine();
 
-  stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 10, hardcore: 0 }]));
+  stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 11, hardcore: 0 }]));
   stats.applyEvents(messageToEvents([{ currencyData: { account_id: 39094, GSS: 1000, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
   const snapshot = stats.applyEvents(messageToEvents([{ goldAmount: 999999, currencyData: { account_id: 39094, GSS: 1100, GSH: 0, GNS: 0, GNH: 0, GBP: 0 } }]));
 
@@ -426,6 +470,182 @@ test("inventory update ext adds items from short fields", () => {
   assert.equal(snapshot.items.Heroic.mf, 0);
 });
 
+test("generated charm bases do not inherit fixed charm identities from short ids", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-0000000-65643fdba44110001-10": {
+            e: 10,
+            a: 123456789,
+            j: 0,
+            b: 59,
+            d: 2,
+            c: 0,
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events[0].value.label, "Grand Charm");
+  assert.equal(events[0].value.localizationId, undefined);
+  assert.equal(events[0].value.rarityName, "Superior");
+  assert.equal(snapshot.items.Set.total, 0);
+});
+
+test("generated charms use extracted base names without treating ambiguous short rarity code 4 as Set", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-3909410-659c652b59df30004-10": {
+            e: 11,
+            a: 345716836,
+            j: 0,
+            b: 33,
+            d: 4,
+            c: 0,
+          },
+          "10-3909410-659b3499336ef0001-10": {
+            e: 11,
+            a: 652715118,
+            j: 0,
+            b: 34,
+            d: 4,
+            c: 0,
+          },
+        },
+      },
+    },
+  ]);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.value.label), ["Large Charm", "Large Charm"]);
+  assert.deepEqual(events.map((event) => event.value.seed), [345716836, 652715118]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [undefined, undefined]);
+  assert.deepEqual(events.map((event) => event.value.rarity), [4, 4]);
+  assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Unknown"]);
+  assert.deepEqual(snapshot.itemTimeline.map((item) => item.rarity), ["Unknown", "Unknown"]);
+  assert.equal(snapshot.items.Set.total, 0);
+});
+
+test("generated charm rarity fails closed for long-form and default-normal packet shapes", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "long-form-generated-charm": {
+            type: 10,
+            id: 33,
+            seed: 345716836,
+            rarity: 4,
+            repository: "normal",
+          },
+          "10-3909410-default_normal_charm-10": {
+            a: 345716836,
+            b: 33,
+            d: 4,
+          },
+        },
+      },
+    },
+  ]);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.value.repository), ["normal", "normal"]);
+  assert.deepEqual(events.map((event) => event.value.label), ["Large Charm", "Large Charm"]);
+  assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Unknown"]);
+  assert.equal(snapshot.items.Set.total, 0);
+});
+
+test("repository keeps a generated Large Charm distinct from the colliding fixed charm", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-normal_charm_33-10": { a: 345716836, b: 33, c: 0, d: 4 },
+          "10-3909410-fixed_charm_33-10": { a: 987654321, b: 33, c: 1, d: 4 },
+        },
+      },
+    },
+  ]);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.value.repository), ["normal", "unique"]);
+  assert.deepEqual(events.map((event) => event.value.label), ["Large Charm", "Bag of Unknown Riches"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [undefined, "charms_bag_of_unknown_riches"]);
+  assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Satanic"]);
+  assert.equal(snapshot.items.Set.total, 0);
+  assert.equal(snapshot.items.Satanic.total, 1);
+});
+
+test("known fixed charm rarity overrides noisy short Set code", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-3909410-178732387221-10": {
+            e: 11,
+            a: 692011461,
+            j: 0,
+            b: 68,
+            d: 4,
+            c: 1,
+          },
+        },
+      },
+    },
+  ]);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.equal(events[0].value.label, "Crow's Feather");
+  assert.equal(events[0].value.localizationId, "charms_crows_feather");
+  assert.equal(events[0].value.id, 68);
+  assert.equal(events[0].value.type, 10);
+  assert.equal(events[0].value.rarity, 4);
+  assert.equal(events[0].value.rarityName, "Satanic");
+  assert.equal(snapshot.itemTimeline[0].rarity, "Satanic");
+  assert.equal(snapshot.items.Satanic.total, 1);
+  assert.equal(snapshot.items.Set.total, 0);
+});
+
+test("fixed named charms still resolve from short ids", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-0000000-fixed_charm-10": {
+            e: 10,
+            a: 987654321,
+            j: 0,
+            b: 59,
+            d: 2,
+            c: 1,
+          },
+        },
+      },
+    },
+  ]);
+
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.equal(events[0].value.label, "Abomination's Brain");
+  assert.equal(events[0].value.localizationId, "charms_abominations_brain");
+  assert.equal(events[0].value.rarityName, "Set");
+  assert.equal(snapshot.items.Set.total, 1);
+});
+
 test("generated ground itemData is not treated as a named drop", () => {
   const payload = {
     status: 1,
@@ -481,6 +701,101 @@ test("correlated generated itemData can track c0 drops", () => {
   assert.equal(events[0].value.fingerprint, fingerprint);
   assert.equal(events[0].value.source, "server");
   assert.equal(events[0].value.type, 12);
+});
+
+test("correlated c0 data rejects fingerprints with extra components", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      __hscTrustedGeneratedDrop: true,
+      itemData: {
+        "10-3909410-fake-12-extra": {
+          a: 741364673,
+          b: 0,
+          c: 0,
+          d: 3,
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events, []);
+});
+
+test("generated itemData does not treat partial numeric c as the unique repository", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      itemData: {
+        "10-3909410-invalid_repository-4": {
+          a: 741364673,
+          b: 0,
+          c: "1junk",
+          d: 3,
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events, []);
+});
+
+test("correlated c0 stack identity cannot be retyped or renamed by contradictory fields", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      __hscTrustedGeneratedDrop: true,
+      itemData: {
+        "10-3909410-contradictory_name-12": {
+          a: 1,
+          b: 0,
+          c: 0,
+          d: 1,
+          name: "Ali's Boxing Gloves",
+        },
+        "10-3909410-contradictory_type-12": {
+          a: 2,
+          b: 1,
+          c: 0,
+          d: 1,
+          type: 4,
+          id: 50,
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events.map((event) => event.value.label), ["Basic Key", "Crystal Key"]);
+  assert.deepEqual(events.map((event) => event.value.type), [12, 12]);
+  assert.deepEqual(events.map((event) => event.value.id), [0, 1]);
+  assert.deepEqual(events.map((event) => event.value.repository), ["normal", "normal"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), ["stack_basic_key", "stack_crystal_key"]);
+});
+
+test("correlated generated itemData ignores c0 randomized equipment", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      __hscTrustedGeneratedDrop: true,
+      itemData: {
+        "10-3909410-6526ec544f10a0003-7": {
+          e: 10,
+          j: 0,
+          gid: 2864038,
+          b: 9,
+          d: 2,
+          c: 0,
+          a: 949407396,
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events, []);
 });
 
 test("generated ground itemData is ignored until an inventory pickup event", () => {
@@ -610,6 +925,63 @@ test("server just found messages can produce named drop events", () => {
   assert.equal(events[0].value.type, 2);
 });
 
+test("named weapon identity supplies its catalog subtype", () => {
+  const events = messageToEvents([
+    { message: "SERVER: [Softcore] Dante just found [Stofflix Cooking Cleaver]" },
+    {
+      operations: {
+        add: {
+          "10-3909410-contradictory_weapon_subtype-3": {
+            a: 1,
+            b: 35,
+            c: 1,
+            d: 2,
+            j: 7,
+            name: "Stofflix Cooking Cleaver",
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events.map((event) => event.value.label), [
+    "Stofflix Cooking Cleaver",
+    "Stofflix Cooking Cleaver",
+  ]);
+  assert.deepEqual(events.map((event) => event.value.weaponType), [1, 1]);
+  assert.deepEqual(events.map((event) => event.value.id), [35, 35]);
+});
+
+test("server announcements resolve overridden heroic catalog identities", () => {
+  const events = messageToEvents([
+    { message: "SERVER: [Softcore] Dante just found [Scourge Loop]" },
+  ]);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.equal(events[0].name, "itemDropped");
+  assert.equal(events[0].value.label, "Scourge Loop");
+  assert.equal(events[0].value.repository, "unique");
+  assert.equal(events[0].value.type, 7);
+  assert.equal(events[0].value.id, 48);
+  assert.equal(events[0].value.rarityName, "Heroic");
+  assert.equal(snapshot.items.Heroic.total, 1);
+});
+
+test("server announcements retain known rarity when the name spans repositories", () => {
+  const events = messageToEvents([
+    { message: "SERVER: [Softcore] Dante just found [Ali's Boxing Gloves]" },
+  ]);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.equal(events[0].value.label, "Ali's Boxing Gloves");
+  assert.equal(events[0].value.repository, "unknown");
+  assert.equal(events[0].value.type, 4);
+  assert.equal(events[0].value.id, 50);
+  assert.equal(events[0].value.localizationId, "gloves_alis_boxing_gloves");
+  assert.equal(events[0].value.rarityName, "Heroic");
+  assert.equal(snapshot.items.Heroic.total, 1);
+});
+
 test("heroic and angelic item identities require server just found messages", () => {
   const inventoryEvents = messageToEvents([
     {
@@ -652,13 +1024,13 @@ test("submitted research resolves confirmed glove identities without widening he
       message: "Success on inventory update ext",
       operations: {
         add: {
-          "10-3909410-research-50-4": {
+          "10-3909410-research_50-4": {
             a: 1,
             b: 50,
             d: 2,
             c: 0,
           },
-          "10-3909410-research-61-4": {
+          "10-3909410-research_61-4": {
             a: 2,
             b: 61,
             d: 2,
@@ -734,13 +1106,13 @@ test("common inventory pickups still appear in timeline", () => {
       message: "Success on inventory update ext",
       operations: {
         add: {
-          "10-3909410-common": {
+          "10-3909410-common-4": {
             e: 10,
             a: 1,
             b: 4,
             d: 1,
             m: 1,
-            c: 1,
+            c: 0,
           },
         },
       },
@@ -751,7 +1123,7 @@ test("common inventory pickups still appear in timeline", () => {
 
   assert.equal(snapshot.itemTimeline.length, 1);
   assert.equal(snapshot.itemTimeline[0].rarity, "Common");
-  assert.equal(snapshot.itemTimeline[0].label, "Gloves - Seed 1");
+  assert.equal(snapshot.itemTimeline[0].label, "Gloves #4");
   assert.equal(snapshot.itemTimeline[0].type, 4);
 });
 
@@ -886,7 +1258,7 @@ test("known item rarities override superior packet rarity", () => {
       message: "Success on inventory update ext",
       operations: {
         add: {
-          "10-3909410-bloodletters-crown-33-0": {
+          "10-3909410-bloodletters_crown_33-0": {
             e: 10,
             a: 25605711,
             j: 0,
@@ -895,7 +1267,7 @@ test("known item rarities override superior packet rarity", () => {
             c: 1,
             sh: "superior-set",
           },
-          "10-3909410-wakaykas-tomahawk-0-3": {
+          "10-3909410-wakaykas_tomahawk_0-3": {
             e: 10,
             a: 203653800,
             j: 16,
@@ -1226,52 +1598,52 @@ test("manual stack lookup resolves known keys collectibles and materials", () =>
     {
       operations: {
         stack: {
-          "10-3909410-key-1-12": {
+          "10-3909410-key_1-12": {
             pickup_add_data: { a: 1, b: 1, d: 1 },
           },
-          "10-3909410-key-19-12": {
+          "10-3909410-key_19-12": {
             pickup_add_data: { a: 2, b: 19, d: 1 },
           },
-          "10-3909410-key-33-12": {
+          "10-3909410-key_33-12": {
             pickup_add_data: { a: 3, b: 33, d: 1 },
           },
-          "10-3909410-collectible-0-13": {
+          "10-3909410-collectible_0-13": {
             pickup_add_data: { a: 4, b: 0, d: 1 },
           },
-          "10-3909410-collectible-39-13": {
+          "10-3909410-collectible_39-13": {
             pickup_add_data: { a: 5, b: 39, d: 1 },
           },
-          "10-3909410-collectible-20-13": {
+          "10-3909410-collectible_20-13": {
             pickup_add_data: { a: 10, b: 20, d: 1 },
           },
-          "10-3909410-collectible-22-13": {
+          "10-3909410-collectible_22-13": {
             pickup_add_data: { a: 16, b: 22, d: 1 },
           },
-          "10-3909410-collectible-24-13": {
+          "10-3909410-collectible_24-13": {
             pickup_add_data: { a: 11, b: 24, d: 1 },
           },
-          "10-3909410-collectible-32-13": {
+          "10-3909410-collectible_32-13": {
             pickup_add_data: { a: 14, b: 32, d: 1 },
           },
-          "10-3909410-collectible-33-13": {
+          "10-3909410-collectible_33-13": {
             pickup_add_data: { a: 12, b: 33, d: 1 },
           },
-          "10-3909410-collectible-34-13": {
+          "10-3909410-collectible_34-13": {
             pickup_add_data: { a: 13, b: 34, d: 1 },
           },
-          "10-3909410-collectible-40-13": {
+          "10-3909410-collectible_40-13": {
             pickup_add_data: { a: 15, b: 40, d: 1 },
           },
-          "10-3909410-material-0-14": {
+          "10-3909410-material_0-14": {
             pickup_add_data: { a: 6, b: 0, d: 1 },
           },
-          "10-3909410-material-32-14": {
+          "10-3909410-material_32-14": {
             pickup_add_data: { a: 7, b: 32, d: 1 },
           },
-          "10-3909410-material-65-14": {
+          "10-3909410-material_65-14": {
             pickup_add_data: { a: 8, b: 65, d: 1 },
           },
-          "10-3909410-material-29-14": {
+          "10-3909410-material_29-14": {
             pickup_add_data: { a: 9, b: 29, d: 1 },
           },
         },
@@ -1307,22 +1679,22 @@ test("run summaries track non-basic keys ore and selected drops", () => {
     {
       operations: {
         stack: {
-          "10-3909410-basic-key-0-12": {
+          "10-3909410-basic_key_0-12": {
             pickup_add_data: { a: 1, b: 0, d: 1, o: 99 },
           },
-          "10-3909410-crystal-key-1-12": {
+          "10-3909410-crystal_key_1-12": {
             pickup_add_data: { a: 2, b: 1, d: 1, o: 2 },
           },
-          "10-3909410-devils-key-19-12": {
+          "10-3909410-devils_key_19-12": {
             pickup_add_data: { a: 3, b: 19, d: 1, o: 1 },
           },
-          "10-3909410-copper-ore-27-14": {
+          "10-3909410-copper_ore_27-14": {
             pickup_add_data: { a: 4, b: 27, d: 1, o: 7 },
           },
-          "10-3909410-iron-ore-28-14": {
+          "10-3909410-iron_ore_28-14": {
             pickup_add_data: { a: 5, b: 28, d: 1, o: 5 },
           },
-          "10-3909410-battle-fragment-0-13": {
+          "10-3909410-battle_fragment_0-13": {
             pickup_add_data: { a: 6, b: 0, d: 1, o: 3 },
           },
         },
@@ -1414,7 +1786,7 @@ test("battle fragments are treated as material-like timeline noise", () => {
     {
       operations: {
         stack: {
-          "10-3909410-collectible-0-13": {
+          "10-3909410-collectible_0-13": {
             pickup_add_data: { a: 4, b: 0, d: 1 },
           },
         },
@@ -1432,25 +1804,25 @@ test("manual stack lookup resolves known socketables", () => {
     {
       operations: {
         stack: {
-          "10-3909410-socketable-1-15": {
+          "10-3909410-socketable_1-15": {
             pickup_add_data: { a: 1, b: 1, d: 1 },
           },
-          "10-3909410-socketable-30-15": {
+          "10-3909410-socketable_30-15": {
             pickup_add_data: { a: 2, b: 30, d: 1 },
           },
-          "10-3909410-socketable-35-15": {
+          "10-3909410-socketable_35-15": {
             pickup_add_data: { a: 3, b: 35, d: 1 },
           },
-          "10-3909410-socketable-68-15": {
+          "10-3909410-socketable_68-15": {
             pickup_add_data: { a: 4, b: 68, d: 1 },
           },
-          "10-3909410-socketable-111-15": {
+          "10-3909410-socketable_111-15": {
             pickup_add_data: { a: 5, b: 111, d: 1 },
           },
-          "10-3909410-socketable-118-15": {
+          "10-3909410-socketable_118-15": {
             pickup_add_data: { a: 6, b: 118, d: 1 },
           },
-          "10-3909410-socketable-134-15": {
+          "10-3909410-socketable_134-15": {
             pickup_add_data: { a: 7, b: 134, d: 1 },
           },
         },
@@ -1493,7 +1865,7 @@ test("submitted research resolves infernal stacks runes and codices", () => {
     [15, 128],
     [15, 129],
   ]) {
-    stackEntries[`10-3909410-community-${id}-${type}`] = {
+    stackEntries[`10-3909410-community_${id}-${type}`] = {
       pickup_add_data: { a: id, b: id, d: 1 },
     };
   }
@@ -1507,12 +1879,12 @@ test("submitted research resolves infernal stacks runes and codices", () => {
     {
       operations: {
         add: {
-          "10-3909410-codex-18-11": {
+          "10-3909410-codex_18-11": {
             a: 18,
             b: 18,
             d: 4,
           },
-          "10-3909410-codex-23-11": {
+          "10-3909410-codex_23-11": {
             a: 23,
             b: 23,
             d: 4,
@@ -1554,6 +1926,263 @@ test("submitted research resolves infernal stacks runes and codices", () => {
       "Infernal Codex",
     ],
   );
+});
+
+test("repository and weapon subtype prevent cross-catalog item names", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-normal_cleaver-3": { a: 1, b: 35, c: 0, d: 6, j: 1 },
+          "10-3909410-wrong_subtype-3": { a: 2, b: 35, c: 1, d: 6, j: 7 },
+          "10-3909410-known_cleaver-3": { a: 3, b: 35, c: 1, d: 6, j: 1 },
+        },
+      },
+    },
+  ]);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.value.label), ["Sword #35", "Chainsaw #35", "Stofflix Cooking Cleaver"]);
+  assert.deepEqual(events.map((event) => event.value.repository), ["normal", "unique", "unique"]);
+  assert.deepEqual(events.map((event) => event.value.weaponType), [1, 7, 1]);
+  assert.equal(events[0].value.localizationId, undefined);
+  assert.equal(events[1].value.localizationId, undefined);
+  assert.equal(snapshot.itemTimeline[1].weaponType, 7);
+  assert.equal(snapshot.itemTimeline[1].repository, "unique");
+});
+
+test("an explicit catalog name cannot cross its packet repository", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-repository_conflict-3": {
+            a: 1,
+            b: 35,
+            c: 0,
+            d: 2,
+            j: 1,
+            name: "Stofflix Cooking Cleaver",
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(events[0].value.label, "Sword #35");
+  assert.equal(events[0].value.repository, "normal");
+  assert.equal(events[0].value.localizationId, undefined);
+});
+
+test("native c repository flags take precedence over contradictory long-form metadata", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-native_repository-3": {
+            a: 1,
+            b: 35,
+            c: 0,
+            d: 2,
+            j: 1,
+            repository: "unique",
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(events[0].value.label, "Sword #35");
+  assert.equal(events[0].value.repository, "normal");
+  assert.equal(events[0].value.localizationId, undefined);
+});
+
+test("definition-shaped items without c use the binary normal-repository default", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "long-form-definition": {
+            type: 4,
+            id: 50,
+            rarity: 2,
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(events[0].value.label, "Ali's Boxing Gloves");
+  assert.equal(events[0].value.repository, "normal");
+  assert.equal(events[0].value.localizationId, "gloves_alis_boxing_gloves");
+});
+
+test("non-weapon items ignore stray long-form weapon subtype fields", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "long-form-nonweapon-subtype": {
+            type: 4,
+            id: 50,
+            rarity: 2,
+            weapon_type: 99,
+          },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(events[0].value.label, "Ali's Boxing Gloves");
+  assert.equal(events[0].value.weaponType, 0);
+  assert.equal(events[0].value.localizationId, "gloves_alis_boxing_gloves");
+});
+
+test("binary-proven item types stay observable even without catalog names", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-relic-16": { a: 1, b: 155, c: 1, d: 6 },
+          "10-3909410-unknown17-17": { a: 2, b: 999, c: 1, d: 6 },
+          "10-3909410-unknown19-19": { a: 3, b: 999, c: 1, d: 6 },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events.map((event) => event.value.label), ["Relic #155", "Type 17 #999", "Type 19 #999"]);
+  assert.deepEqual(events.map((event) => event.value.type), [16, 17, 19]);
+});
+
+test("malformed fingerprints cannot manufacture an item type from b", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "not-a-native-fingerprint": { a: 123456, b: 6, c: 1, d: 6 },
+        },
+      },
+    },
+  ]);
+
+  assert.equal(events[0].value.type, -1);
+  assert.equal(events[0].value.id, 0);
+  assert.equal(events[0].value.label, "Seed 123456");
+});
+
+test("a fingerprint type without an ordinal cannot manufacture catalog item zero", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-missing_ordinal-4": { c: 1, d: 2 },
+          "10-3909410-missing_normal_ordinal-10": { c: 0, d: 2 },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events.map((event) => event.value.type), [4, 10]);
+  assert.deepEqual(events.map((event) => event.value.id), [0, 0]);
+  assert.deepEqual(events.map((event) => event.value.label), ["Gloves", "Charm"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [undefined, undefined]);
+});
+
+test("malformed ordinal, type, and repository fields cannot resolve catalog identities", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-invalid_b-4": { a: 1, b: "garbage", c: 1, d: 2 },
+          "10-3909410-partial_b-4": { a: 2, b: "0junk", c: 1, d: 2 },
+          "10-3909410-null_b-4": { a: 3, b: null, c: 1, d: 2 },
+          "invalid-long-id": { a: 4, type: 4, id: null, rarity: 2 },
+          "invalid-long-type": { a: 5, type: "bad", id: 5, c: 1, rarity: 2 },
+          "invalid-repository": { a: 6, type: 4, id: 50, c: "bad", rarity: 2 },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events.map((event) => event.value.label), [
+    "Gloves - Seed 1",
+    "Gloves - Seed 2",
+    "Gloves - Seed 3",
+    "Gloves - Seed 4",
+    "Seed 5",
+    "Gloves #50",
+  ]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  assert.equal(events[4].value.type, -1);
+  assert.equal(events[5].value.repository, "unknown");
+});
+
+test("present zero-based ordinals remain visible in generic labels", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        add: {
+          "10-3909410-zero_helmet-0": { a: 1, b: 0, c: 0, d: 1 },
+          "10-3909410-zero_gloves-4": { a: 2, b: 0, c: 0, d: 1 },
+          "10-3909410-zero_weapon-3": { a: 3, b: 0, c: 1, d: 1, j: 99 },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events.map((event) => event.value.label), [
+    "Helmet #0",
+    "Gloves #0",
+    "Weapon Type 99 #0",
+  ]);
+});
+
+test("correlated c0 relic-shaped data remains outside the trusted stack set", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "ok",
+      __hscTrustedGeneratedDrop: true,
+      itemData: {
+        "10-3909410-untrusted_relic-16": { a: 1, b: 155, c: 0, d: 6 },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events, []);
+});
+
+test("stack pickup wrappers preserve outer amount and nested pickup data", () => {
+  const events = messageToEvents([
+    {
+      operations: {
+        stack: {
+          "10-3909410-outer_amount-12": {
+            amount: 7,
+            pickup_add_data: { a: 1, b: 1, c: 0, d: 1 },
+          },
+        },
+      },
+    },
+    {
+      itemData: {
+        "10-3909410-nested_pickup-14": {
+          pickup_add_data: { a: 2, b: 29, c: 0, d: 1, o: 3 },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(events.map((event) => event.value.label), ["Crystal Key", "Gold Ore"]);
+  assert.deepEqual(events.map((event) => event.value.amount), [7, 3]);
 });
 
 test("unknown fingerprint ids use item type names instead of bare ids", () => {

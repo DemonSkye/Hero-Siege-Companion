@@ -1,13 +1,18 @@
+export type ItemRepository = "normal" | "unique" | "runeword";
+
 export interface ItemTranslation {
   localizationId: string;
   name: string;
   gameId: number;
   type: number;
   weaponType: number;
+  repository: ItemRepository;
 }
 
+export type ItemTranslationRow = Omit<ItemTranslation, "repository"> & Partial<Pick<ItemTranslation, "repository">>;
+
 // Generated from https://hero-siege-helper.vercel.app/data/itemlist on 2026-05-16.
-const ITEM_TRANSLATIONS: ItemTranslation[] = [
+const ITEM_TRANSLATION_ROWS: ItemTranslationRow[] = [
   { localizationId: "amulets_all_seeing_eye", name: "All Seeing Eye", gameId: 0, type: 5, weaponType: 0 },
   { localizationId: "amulets_high_demons_necklace", name: "High Demon's Necklace", gameId: 1, type: 5, weaponType: 0 },
   { localizationId: "amulets_satans_precious", name: "Satan's Precious", gameId: 2, type: 5, weaponType: 0 },
@@ -880,10 +885,24 @@ const ITEM_TRANSLATIONS: ItemTranslation[] = [
   { localizationId: "consumable_amun_ras_demise", name: "Amun Ra's Demise", gameId: 21, type: 18, weaponType: 0 },
 ];
 
+// The helper dataset contains the game's fixed-name/unique repository. Normal
+// equipment is generated and must not resolve through these rows merely because
+// it shares the same type, ordinal (`b`), and weapon subtype (`j`).
+const ITEM_TRANSLATIONS: ItemTranslation[] = ITEM_TRANSLATION_ROWS.map((item) => ({
+  ...item,
+  repository: item.repository ?? "unique",
+}));
+
 const ITEM_TRANSLATION_OVERRIDES: ItemTranslation[] = [
-  { localizationId: "armors_sharpshooters_cloak", name: "Sharpshooter's Cloak", gameId: 100, type: 1, weaponType: 0 },
-  { localizationId: "gloves_shade_of_sand", name: "Shade of Sand", gameId: 61, type: 4, weaponType: 0 },
-  { localizationId: "rings_scourge_loop", name: "Scourge Loop", gameId: 48, type: 7, weaponType: 0 },
+  { localizationId: "armors_sharpshooters_cloak", name: "Sharpshooter's Cloak", gameId: 100, type: 1, weaponType: 0, repository: "unique" },
+  { localizationId: "rings_scourge_loop", name: "Scourge Loop", gameId: 48, type: 7, weaponType: 0, repository: "unique" },
+  // Capture-confirmed normal-repository identities. Most c=0 equipment remains
+  // generic until it has equivalent evidence.
+  { localizationId: "armors_pirate_captains_shirt", name: "Pirate Captain's Shirt", gameId: 17, type: 1, weaponType: 0, repository: "normal" },
+  { localizationId: "gloves_alis_boxing_gloves", name: "Ali's Boxing Gloves", gameId: 50, type: 4, weaponType: 0, repository: "normal" },
+  { localizationId: "gloves_shade_of_sand", name: "Shade of Sand", gameId: 61, type: 4, weaponType: 0, repository: "normal" },
+  { localizationId: "consumable_eternity_codex", name: "Eternity Codex", gameId: 18, type: 11, weaponType: 0, repository: "normal" },
+  { localizationId: "consumable_infernal_codex", name: "Infernal Codex", gameId: 23, type: 11, weaponType: 0, repository: "normal" },
 ];
 
 const ITEM_TRANSLATION_NAME_ALIASES: Array<{ name: string; type: number; gameId: number; weaponType: number }> = [
@@ -898,58 +917,130 @@ const ITEM_TRANSLATION_NAME_ALIASES: Array<{ name: string; type: number; gameId:
 // User-submitted research can confirm a generic inventory signature without
 // making every Heroic/Angelic inventory id trusted.
 const TRUSTED_INVENTORY_IDENTITY_KEYS = new Set<string>([
-  lookupKey(4, 50, 0),
-  lookupKey(4, 61, 0),
+  lookupKey("normal", 4, 50, 0),
+  lookupKey("normal", 4, 61, 0),
 ]);
 
 const exactLookup = new Map<string, ItemTranslation>();
 const looseLookup = new Map<string, ItemTranslation[]>();
-const nameLookup = new Map<string, ItemTranslation>();
+const nameLookup = new Map<string, ItemTranslation[]>();
+const overriddenKeys = new Set(ITEM_TRANSLATION_OVERRIDES.map((item) => lookupKey(item.repository, item.type, item.gameId, item.weaponType)));
+const overriddenLocalizationIds = new Set(ITEM_TRANSLATION_OVERRIDES.map((item) => repositoryLocalizationKey(item)));
+const baseGroups = new Map<string, ItemTranslation[]>();
 
 for (const item of ITEM_TRANSLATIONS) {
-  exactLookup.set(lookupKey(item.type, item.gameId, item.weaponType), item);
-  const looseKey = lookupKey(item.type, item.gameId);
-  const matches = looseLookup.get(looseKey) ?? [];
-  matches.push(item);
-  looseLookup.set(looseKey, matches);
-  nameLookup.set(normalizeItemName(item.name), item);
+  if (!overriddenLocalizationIds.has(repositoryLocalizationKey(item))) addNameTranslation(item);
+  const key = lookupKey(item.repository, item.type, item.gameId, item.weaponType);
+  const group = baseGroups.get(key) ?? [];
+  group.push(item);
+  baseGroups.set(key, group);
+}
+
+for (const [key, group] of baseGroups) {
+  const item = group[0];
+  if (group.length !== 1 || overriddenKeys.has(key) || overriddenLocalizationIds.has(repositoryLocalizationKey(item))) continue;
+  addResolvableTranslation(item);
 }
 
 for (const item of ITEM_TRANSLATION_OVERRIDES) {
-  exactLookup.set(lookupKey(item.type, item.gameId, item.weaponType), item);
-  looseLookup.set(lookupKey(item.type, item.gameId), [item]);
-  nameLookup.set(normalizeItemName(item.name), item);
+  addResolvableTranslation(item);
+  addNameTranslation(item);
 }
 
 for (const alias of ITEM_TRANSLATION_NAME_ALIASES) {
-  const target = exactLookup.get(lookupKey(alias.type, alias.gameId, alias.weaponType));
-  if (target) nameLookup.set(normalizeItemName(alias.name), target);
+  const target = exactLookup.get(lookupKey("unique", alias.type, alias.gameId, alias.weaponType));
+  if (target) addNameTranslation(target, alias.name);
 }
 
-export function lookupItemTranslation(type: number, gameId: number, weaponType = 0): ItemTranslation | null {
+export function lookupItemTranslation(
+  type: number,
+  gameId: number,
+  weaponType = 0,
+  repository: ItemRepository = "unique",
+): ItemTranslation | null {
   if (type < 0 || gameId < 0) return null;
 
-  const exact = exactLookup.get(lookupKey(type, gameId, weaponType));
+  const exact = exactLookup.get(lookupKey(repository, type, gameId, weaponType));
   if (exact) return exact;
+  if (type === 3) return null;
 
-  const looseMatches = looseLookup.get(lookupKey(type, gameId)) ?? [];
+  const looseMatches = looseLookup.get(looseLookupKey(repository, type, gameId)) ?? [];
   return looseMatches.length === 1 ? looseMatches[0] : null;
 }
 
-export function lookupItemTranslationByName(name: string): ItemTranslation | null {
-  return nameLookup.get(normalizeItemName(name)) ?? null;
+export function lookupItemTranslationByName(name: string, repository?: ItemRepository): ItemTranslation | null {
+  const matches = nameLookup.get(normalizeItemName(name)) ?? [];
+  const repositoryMatches = repository ? matches.filter((item) => item.repository === repository) : matches;
+  if (repositoryMatches.length === 1) return repositoryMatches[0];
+  if (repositoryMatches.length > 1 && repositoryMatches.every((item) => sameDisplayIdentity(item, repositoryMatches[0]))) {
+    return repositoryMatches[0];
+  }
+  return null;
+}
+
+export function lookupSharedItemTranslationByName(name: string): ItemTranslation | null {
+  const matches = nameLookup.get(normalizeItemName(name)) ?? [];
+  if (matches.length < 2) return null;
+  return matches.every((item) => sameIdentityAcrossRepositories(item, matches[0])) ? matches[0] : null;
 }
 
 export function allItemTranslations(): ItemTranslation[] {
-  return [...ITEM_TRANSLATIONS, ...ITEM_TRANSLATION_OVERRIDES];
+  return [
+    ...ITEM_TRANSLATIONS.filter((item) => !overriddenLocalizationIds.has(repositoryLocalizationKey(item))),
+    ...ITEM_TRANSLATION_OVERRIDES,
+  ];
+}
+
+export function allResolvableItemTranslations(): ItemTranslation[] {
+  return [...exactLookup.values()];
 }
 
 export function isTrustedInventoryItemTranslation(item: ItemTranslation): boolean {
-  return TRUSTED_INVENTORY_IDENTITY_KEYS.has(lookupKey(item.type, item.gameId, item.weaponType));
+  return TRUSTED_INVENTORY_IDENTITY_KEYS.has(lookupKey(item.repository, item.type, item.gameId, item.weaponType));
 }
 
-function lookupKey(type: number, gameId: number, weaponType = 0): string {
-  return `${type}:${gameId}:${weaponType}`;
+function addResolvableTranslation(item: ItemTranslation): void {
+  exactLookup.set(lookupKey(item.repository, item.type, item.gameId, item.weaponType), item);
+  const key = looseLookupKey(item.repository, item.type, item.gameId);
+  const matches = looseLookup.get(key) ?? [];
+  matches.push(item);
+  looseLookup.set(key, matches);
+}
+
+function addNameTranslation(item: ItemTranslation, name = item.name): void {
+  const key = normalizeItemName(name);
+  const matches = nameLookup.get(key) ?? [];
+  if (!matches.includes(item)) matches.push(item);
+  nameLookup.set(key, matches);
+}
+
+function repositoryLocalizationKey(item: Pick<ItemTranslation, "repository" | "localizationId">): string {
+  return `${item.repository}:${item.localizationId}`;
+}
+
+function sameDisplayIdentity(left: ItemTranslation, right: ItemTranslation): boolean {
+  return left.repository === right.repository
+    && left.type === right.type
+    && left.gameId === right.gameId
+    && left.weaponType === right.weaponType
+    && left.localizationId === right.localizationId
+    && left.name === right.name;
+}
+
+function sameIdentityAcrossRepositories(left: ItemTranslation, right: ItemTranslation): boolean {
+  return left.type === right.type
+    && left.gameId === right.gameId
+    && left.weaponType === right.weaponType
+    && left.localizationId === right.localizationId
+    && left.name === right.name;
+}
+
+function lookupKey(repository: ItemRepository, type: number, gameId: number, weaponType = 0): string {
+  return `${repository}:${type}:${gameId}:${weaponType}`;
+}
+
+function looseLookupKey(repository: ItemRepository, type: number, gameId: number): string {
+  return `${repository}:${type}:${gameId}`;
 }
 
 function normalizeItemName(name: string): string {

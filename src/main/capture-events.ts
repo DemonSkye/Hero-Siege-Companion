@@ -1,10 +1,30 @@
 import { EVENT_NAMES } from "../shared/constants";
+import type { RunStatus } from "../shared/app-state";
 import type { MessageValue } from "../shared/fields";
 import type { ParsedEvent } from "../shared/parser";
 
 export function summarizeEvent(event: ParsedEvent): string {
   const json = JSON.stringify(event.value);
   return `Parsed ${event.name}: ${json}`;
+}
+
+export function captureEventsForRunStatus(events: ParsedEvent[], runStatus: RunStatus): ParsedEvent[] {
+  if (runStatus === "recording") return events;
+  return events.filter((event) => event.name === EVENT_NAMES.satanicZone);
+}
+
+export function eventDebugSummary(event: ParsedEvent): Record<string, unknown> {
+  const raw = event.raw && typeof event.raw === "object" && !Array.isArray(event.raw) ? (event.raw as Record<string, unknown>) : {};
+  const route = shortDebugText(raw.route ?? raw.__route);
+  const message = shortDebugText(raw.message);
+
+  return {
+    name: event.name,
+    value: event.value,
+    rawKeys: messageKeySummary(event.raw),
+    ...(route ? { route } : {}),
+    ...(message ? { message } : {}),
+  };
 }
 
 export function eventFingerprint(event: ParsedEvent): string {
@@ -70,4 +90,11 @@ export function endpointKey(address: string, port: number): string {
 export function shouldLogEvent(event: ParsedEvent): boolean {
   if (event.name === EVENT_NAMES.accountMode) return false;
   return true;
+}
+
+function shortDebugText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
 }

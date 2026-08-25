@@ -526,10 +526,52 @@
   padding: 6px 7px;
 }
 
+.compact-run-cover .compact-cover-grid .compact-zone-tile-with-refresh {
+  grid-column: span 2;
+}
+
 .compact-run-cover .compact-cover-grid strong {
   margin-top: 2px;
   font-size: 15px;
   line-height: 1.05;
+}
+
+.compact-run-cover .compact-cover-grid .compact-zone-clock {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  color: inherit;
+  text-transform: none;
+}
+
+.compact-run-cover .compact-cover-grid .compact-zone-clock strong {
+  min-width: 0;
+}
+
+.compact-zone-refresh-button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #dce2eb;
+  cursor: pointer;
+}
+
+.compact-zone-refresh-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.compact-zone-refresh-button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .compact-settings-section {

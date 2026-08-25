@@ -1,8 +1,8 @@
 # Hero Siege Companion
 
-Passive live-session tracking for Hero Siege on Windows.
+Local live-session tracking for Hero Siege on Windows.
 
-Hero Siege Companion watches local Hero Siege traffic, parses the game messages it understands, and turns them into a practical desktop dashboard for runs, loot, Satanic Zone timing, item alerts, and Past Runs reporting.
+Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into a practical desktop dashboard for runs, loot, Satanic Zone timing, item alerts, and Past Runs reporting. An optional manual Satanic Zone refresh is available behind a setting that is off by default.
 
 > **Required before first launch:** install [Npcap](https://npcap.com/#download) so the companion can read local game traffic. The exact installer options are in [Required: Install Npcap](#required-install-npcap).
 
@@ -21,19 +21,22 @@ Current release target follows the `version` field in `package.json`.
 ## Quick Start
 
 1. Install [Npcap](https://npcap.com/#download) using the options shown below.
-2. Start Hero Siege.
-3. Launch `Hero Siege Companion.exe`.
-4. Leave capture running while you play.
+2. Launch `Hero Siege Companion.exe`.
+3. If you use manual Satanic Zone refresh, install its optional dependency and enable the feature now.
+4. Start Hero Siege and leave capture running while you play.
 5. Use `End Run` when a run is complete and should be saved to Past Runs.
 
-Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details appear after a zone vote/reset packet arrives.
+Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later passive/manual update.
+
+If you opt into manual Satanic Zone refresh, enable it in **Settings > Capture before Hero Siege connects**. If the game is already connected, reconnect or restart it so the local relay can attach.
 
 ## Core Features
 
 - Live session dashboard with capture status, packet counts, run timer, gold, XP, kills, Satanic Zone timing, and tracked drops.
 - Run pause/resume controls, including automatic run pause when capture stops.
 - Compact overlay mode for keeping the current run visible while playing.
-- Satanic Zone name, reset countdown, pros, and cons in both full and compact views.
+- Satanic Zone name, reset countdown, pros, cons, and freshness status in both full and compact views.
+- Optional recycle-style Satanic Zone refresh icon beside the full-view countdown and the configured compact SZ timer tile, hidden until enabled and gated for exactly 30 seconds from each accepted refresh handoff.
 - Loot audio filters with custom groups, rarity/type rules, exact watched items, sound selection, volume, cooldown, and mute controls.
 - Imported loot alert sounds from local audio files or zip soundpacks, plus soundpack ZIP export.
 - Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes with separate full-app and compact choices, accent colors, and theme import/export.
@@ -41,14 +44,16 @@ Most data appears after Hero Siege sends the relevant packet. For example, gold 
 - Shopping list for quickly saving and copying marketplace searches.
 - Past Runs explorer with search, compact run rows, expandable details, JSON/CSV export, Discord-friendly summary copy, report presets, per-run tags, delete controls, configurable report cards, tracked item groups, top drops, and resource drawers.
 - Settings import/export for app settings, Past Run settings, report tracking, loot filters, sounds, and optional research data.
-- Support diagnostics summary copy and ZIP export for troubleshooting capture/setup issues.
+- Support diagnostics summary copy, log folder opening, and sanitized ZIP export with app-session state and Crashpad report metadata (never dump memory) for troubleshooting capture/setup issues.
 - Local-only desktop app: no account login, no cloud service, and no packet capture files are written by the app.
 
 ## Live Dashboard
 
 The dashboard is built around the current run. It tracks duration, gold, XP rate, kills, Satanic Zone timer, and any configured custom tiles. The right side focuses on drops, shopping list access, and diagnostics so the important play-session data stays visible.
 
-Satanic Zone details use the same source data in full and compact mode: zone name, remaining time, pros, and cons come from parsed game packets and are cached until the next half-hour window.
+Satanic Zone details use the same current-run source data in full and compact mode: zone name, remaining time, pros, and cons come from fresh parsed game packets or the optional sanitized manual-refresh result. The Companion does not restore a prior zone, effects, source, or observation time when it launches. `End Run` also clears the current Satanic Zone details for the next run; the next passive or manual response repopulates them.
+
+Manual refresh is enabled from **Settings > Capture** and remains off until you choose it. The opt-in is stored by the main process and restored across Companion launches. While it is off, the dashboard and compact overlay show no manual-refresh control or enablement guidance. While it is on, an accessible recycle-style icon appears beside the full-view SZ countdown and, when that tile is configured, beside the compact SZ timer. The UI disables the icon only while it is submitting that click and during the 30-second window that begins when a refresh handoff is accepted; passive Satanic Zone activity, capture status, and cached relay readiness do not gray it out. Every other click reaches the main process. The relay derives the request context from ordinary authenticated API traffic and queues a committed click briefly if the current frame boundary is incomplete; no prior Satanic Zone exchange or vote reset is required. A still-active cooldown can survive a Companion restart, and `End Run` preserves the opt-in, availability, active request, and cooldown even while clearing the prior observation. Unavailable checks and requests rejected before handoff do not start it. The feature does not poll the server or automatically retry a network request. Disabling the setting stops the Companion-owned relay.
 
 ## Compact Overlay
 
@@ -56,7 +61,7 @@ Compact mode is designed for playing with the companion on top of the game. It k
 
 ![Hero Siege Companion compact overlay](docs/assets/compact.png)
 
-Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. Dashboard tile presets can switch the compact run view between default, loot, resource, and XP/kills layouts.
+Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. Dashboard tile presets can switch the compact run view between default, loot, resource, and XP/kills layouts. If manual Satanic Zone refresh is enabled and the compact layout includes the SZ timer tile, its recycle icon uses the same submission and 30-second deadline rules as the full dashboard.
 
 ## Past Runs
 
@@ -78,6 +83,8 @@ Developer item research is opt-in. When enabled, unknown item signatures appear 
 
 Settings are saved locally on the device and restored between sessions. Appearance settings include Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes, separate full/compact theme choices, accent colors, and theme JSON import/export.
 
+The manual Satanic Zone refresh opt-in is stored locally by the main process and restored across Companion launches, but is intentionally excluded from configuration import/export so importing someone else's settings cannot enable it.
+
 Settings, What's New, Item Filter confirmation, and Past Runs report dialogs keep keyboard focus inside the open dialog and return focus to the invoking control when closed.
 
 The configuration JSON import/export flow can include:
@@ -93,7 +100,7 @@ Loot filters, sounds, and research data are optional export sections so you can 
 
 ## Required: Install Npcap
 
-Hero Siege Companion uses the Windows packet capture driver provided by Npcap. Install Npcap before running the app.
+Hero Siege Companion uses the Windows packet capture driver provided by Npcap. Install Npcap before running the app. Npcap is used only to read traffic; the manual refresh feature does not inject raw TCP frames through Npcap.
 
 Download Npcap from the official Npcap site:
 
@@ -109,6 +116,18 @@ During setup, use these options:
 
 If capture does not start, reinstall Npcap with the WinPcap-compatible option enabled, then restart Hero Siege Companion.
 
+## Experimental: Manual Satanic Zone Refresh
+
+Manual refresh is an experimental, default-off feature that uses a hidden local `mitmdump` relay scoped to `Hero_Siege.exe`. The Companion includes its relay addon, but the current runtime does not bundle `mitmdump`: install [mitmproxy](https://www.mitmproxy.org/) in its standard Windows location or make `mitmdump.exe` available on `PATH`.
+
+Because this feature uses a local proxy relay, some VPNs, system proxy configurations, and network-security tools may conflict with it. The same warning is shown beside the opt-in checkbox.
+
+Enable the feature before starting or connecting Hero Siege so the local relay owns the connection from its beginning. If you enable it after the game has already connected, reconnect or restart the game so the connection can pass through the relay. Ordinary authenticated API traffic supplies the account context and counter state used for manual refresh; a prior Satanic Zone exchange and vote reset are not required. A click made while the connection is momentarily between complete frames waits boundedly for a safe boundary rather than requiring another click. This is local flow coordination, not server polling.
+
+The Companion owns the relay it starts and stops it when the setting is disabled; disabling it during a connected session may therefore make the game reconnect. The relay also shuts itself down if the Companion exits. Its process and connection details stay internal and are not stored or exposed in the UI. Only that owned relay is added to passive capture so ordinary item and stat updates continue. Product operation writes no packet-capture files.
+
+The source tree includes the six-file relay addon under `resources/satanic-zone-relay`, and Windows packaging copies those Python files into the runtime resource directory. Development and packaged resource paths are selected explicitly and covered by automated tests. Live in-world refresh has passed in both Nightmare and Hell; portable packaged-executable startup with the installed mitmproxy dependency remains the release check. If installed `mitmdump` is unavailable, the feature fails closed as unavailable.
+
 ## Development
 
 Install dependencies:
@@ -122,20 +141,20 @@ Install Electron into the local cache:
 
 ```powershell
 $env:electron_config_cache=(Join-Path (Get-Location) '.electron-cache')
-node .\node_modules\electron\install.js
+npm run postinstall:electron
 ```
 
-Rebuild the native packet capture module. This requires Python on your `PATH`; Python 3.10+ is a good default on Windows.
+Rebuild the native packet capture module. This command first applies the required Windows close-retention and no-current-context teardown repairs, then invokes Electron Rebuild. It requires Python on your `PATH`; Python 3.10+ is a good default on Windows.
 
 ```powershell
-npx electron-rebuild -f -w cap
+npm run rebuild
 ```
 
 If Python is installed but not on `PATH`, point npm at your local `python.exe` first:
 
 ```powershell
 $env:npm_config_python='C:\Path\To\Python\python.exe'
-npx electron-rebuild -f -w cap
+npm run rebuild
 ```
 
 Run the app:
@@ -144,10 +163,18 @@ Run the app:
 npm start
 ```
 
+For development of manual Satanic Zone refresh, keep the packaged relay sources under `resources/satanic-zone-relay` and install mitmproxy so `mitmdump.exe` is in its standard Program Files location or on `PATH`. Enable the setting before establishing the Hero Siege connection.
+
 Run tests:
 
 ```powershell
 npm test
+```
+
+Run strict main and renderer typechecks:
+
+```powershell
+npm run typecheck
 ```
 
 Run the headless Electron E2E suite:

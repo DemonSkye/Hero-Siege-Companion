@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
 import type { CaptureConnection } from "../shared/app-state";
 
-// Hero Siege gameplay traffic does not currently use HTTP/HTTPS ports.
-// Exclude these transient launcher/CDN connections so they are not captured or logged.
+// Exclude transient launcher/CDN connections from passive game capture.
 const WEB_REMOTE_PORTS = new Set([80, 443]);
+const CAPTURABLE_TCP_STATES = new Set(["3", "4", "5", "synsent", "synreceived", "established"]);
 
 export interface HeroSiegeNetworkState {
   gameProcessIds: number[];
@@ -25,7 +25,22 @@ export interface CaptureTarget {
   remotePort: number;
 }
 
-export async function getHeroSiegeNetworkState(): Promise<HeroSiegeNetworkState> {
+export interface RetainedCaptureTarget {
+  target: CaptureTarget;
+  expiresAt: number;
+}
+
+export interface CapturePacketEndpoints {
+  src: string;
+  srcPort: number;
+  dst: string;
+  dstPort: number;
+}
+
+export async function getHeroSiegeNetworkState(
+  supplementalProcessIds: readonly number[] = [],
+): Promise<HeroSiegeNetworkState> {
+  const supplementalProcessIdLiteral = normalizeCaptureProcessIds(supplementalProcessIds).join(",");
   const script = `
     $processes = Get-Process |
       Where-Object {
@@ -40,13 +55,14 @@ export async function getHeroSiegeNetworkState(): Promise<HeroSiegeNetworkState>
       };
 
     $processIds = @($processes | Select-Object -ExpandProperty Id);
+    $captureProcessIds = @($processIds + @(${supplementalProcessIdLiteral}));
     $connections = @();
 
-    if ($processIds.Count -gt 0) {
+    if ($captureProcessIds.Count -gt 0) {
       $connections = @(
         Get-NetTCPConnection -ErrorAction SilentlyContinue |
           Where-Object {
-            $processIds -contains $_.OwningProcess -and
+            $captureProcessIds -contains $_.OwningProcess -and
             $_.RemoteAddress -and
             $_.RemoteAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') -and
             $_.RemoteAddress -notlike '*:*'
@@ -85,9 +101,16 @@ export async function getHeroSiegeNetworkState(): Promise<HeroSiegeNetworkState>
         remotePort: Number(entry.RemotePort),
       })),
     };
-  } catch {
-    return { gameProcessIds: [], antiCheatProcessIds: [], connections: [] };
+  } catch (error) {
+    throw new Error(`PowerShell network query returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/** Keeps process IDs safe to interpolate as numeric PowerShell literals. */
+export function normalizeCaptureProcessIds(values: readonly number[]): number[] {
+  return Array.from(new Set(values))
+    .filter((value) => Number.isSafeInteger(value) && value > 0 && value <= 0x7fffffff)
+    .sort((left, right) => left - right);
 }
 
 export async function getNpcapServiceStatus(): Promise<string> {
@@ -113,7 +136,7 @@ export async function getNpcapRegistry(): Promise<{ adminOnly: boolean; winPcapC
 }
 
 export function selectGameServerConnections(connections: CaptureConnection[]): CaptureConnection[] {
-  return connections.filter((connection) => !isLikelyWebConnection(connection));
+  return connections.filter((connection) => !isLikelyWebConnection(connection) && isCapturableConnectionState(connection.state));
 }
 
 export function uniqueCaptureTargets(connections: CaptureConnection[]): CaptureTarget[] {
@@ -128,11 +151,37 @@ export function uniqueCaptureTargets(connections: CaptureConnection[]): CaptureT
   return targets;
 }
 
-export function stableCaptureFilter(localAddress: string): string {
-  const webPortFilter = Array.from(WEB_REMOTE_PORTS)
-    .map((port) => `port ${port}`)
-    .join(" or ");
-  return `tcp and host ${localAddress} and not (${webPortFilter}) and len > 30`;
+export function refreshRetainedCaptureTargets(
+  retainedTargets: Map<string, RetainedCaptureTarget>,
+  connections: CaptureConnection[],
+  now: number,
+  graceMs: number,
+): CaptureTarget[] {
+  for (const target of uniqueCaptureTargets(connections)) {
+    retainedTargets.set(captureTargetKey(target), { target, expiresAt: now + Math.max(graceMs, 0) });
+  }
+  for (const [key, retained] of retainedTargets.entries()) {
+    if (retained.expiresAt <= now) retainedTargets.delete(key);
+  }
+  return Array.from(retainedTargets.values(), ({ target }) => target);
+}
+
+export function stableCaptureFilter(localAddress: string, targets: CaptureTarget[]): string {
+  const targetFilters = uniqueTargets(targets)
+    .sort((left, right) => `${left.remoteAddress}:${left.remotePort}`.localeCompare(`${right.remoteAddress}:${right.remotePort}`))
+    .map((target) => `(host ${target.remoteAddress} and port ${target.remotePort})`);
+  if (targetFilters.length === 0) return `tcp and host ${localAddress} and not (port 80 or port 443) and len > 30`;
+  return `tcp and host ${localAddress} and (${targetFilters.join(" or ")}) and len > 30`;
+}
+
+export function captureConnectionFlowKey(connection: CaptureConnection): string {
+  return `${connection.localAddress}:${connection.localPort}->${connection.remoteAddress}:${connection.remotePort}`;
+}
+
+export function capturePacketFlowKey(packet: CapturePacketEndpoints, localAddress: string): string | null {
+  if (packet.src === localAddress) return `${packet.src}:${packet.srcPort}->${packet.dst}:${packet.dstPort}`;
+  if (packet.dst === localAddress) return `${packet.dst}:${packet.dstPort}->${packet.src}:${packet.srcPort}`;
+  return null;
 }
 
 export function summarizeConnections(connections: CaptureConnection[]): Array<Omit<CaptureConnection, "owningProcess">> {
@@ -157,18 +206,46 @@ function isLikelyWebConnection(connection: CaptureConnection): boolean {
   return WEB_REMOTE_PORTS.has(Number(connection.remotePort));
 }
 
+function isCapturableConnectionState(state: CaptureConnection["state"]): boolean {
+  return CAPTURABLE_TCP_STATES.has(String(state).replace(/[^a-z0-9]/gi, "").toLowerCase());
+}
+
+function uniqueTargets(targets: CaptureTarget[]): CaptureTarget[] {
+  const seen = new Set<string>();
+  const uniqueTargets: CaptureTarget[] = [];
+  for (const target of targets) {
+    const remotePort = Number(target.remotePort);
+    const key = `${target.remoteAddress}:${remotePort}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueTargets.push({ remoteAddress: target.remoteAddress, remotePort });
+  }
+  return uniqueTargets;
+}
+
+function captureTargetKey(target: CaptureTarget): string {
+  return `${target.remoteAddress}:${Number(target.remotePort)}`;
+}
+
 function normalizeNumberArray(value: unknown): number[] {
   const values = Array.isArray(value) ? value : value === null || value === undefined ? [] : [value];
   return values.map(Number).filter(Number.isFinite);
 }
 
 function runPowerShell(script: string): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     execFile(
       "powershell.exe",
       ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-      { windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
-      (_error, stdout) => resolve(stdout.trim()),
+      { windowsHide: true, maxBuffer: 4 * 1024 * 1024, timeout: 15_000 },
+      (error, stdout, stderr) => {
+        if (error) {
+          const detail = stderr.trim() || error.message;
+          reject(new Error(`PowerShell network query failed: ${detail}`));
+          return;
+        }
+        resolve(stdout.trim());
+      },
     );
   });
 }

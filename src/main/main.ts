@@ -2,6 +2,7 @@ import { app, clipboard, crashReporter, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { createAppDiagnostics, type AppDiagnostics } from "./app-diagnostics";
+import { captureEventsForRunStatus } from "./capture-events";
 import {
   createCaptureRuntime,
   emitElectronE2eCaptureEvents,
@@ -12,20 +13,32 @@ import {
 import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
 import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
+import {
+  createManagedSatanicZoneRefreshProvider,
+  type ManagedSatanicZoneRefreshProvider,
+} from "./managed-satanic-zone-provider";
+import { satanicZoneRelayResourcesPath } from "./satanic-zone-relay-runtime-io";
 import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
 import {
   MAX_PAST_RUNS,
   loadCapturePreferences,
   loadPastRuns,
   loadRunArchivePreferences,
+  loadSatanicZoneCache,
+  loadSatanicZoneRefreshPreferences,
   loadWindowBounds,
   normalizeCapturePreferences,
   normalizeRunArchivePreferences,
+  normalizeSatanicZoneRefreshPreferences,
   saveCapturePreferences,
   savePastRuns,
   saveRunArchivePreferences,
+  saveSatanicZoneCache,
+  saveSatanicZoneRefreshPreferences,
+  satanicZoneCachePersistenceKey,
   type WindowBoundsPreferences,
 } from "./persistence";
+import { SatanicZoneController } from "./satanic-zone-controller";
 import { checkForReleaseUpdate } from "./release-updates";
 import {
   embedConfigurationSoundData,
@@ -34,12 +47,15 @@ import {
   installEmbeddedConfigurationSounds,
   removeImportedLootSound,
 } from "./sound-import";
-import { getSupportDiagnosticsInfo, saveSupportDiagnosticsBundle } from "./support-diagnostics";
+import { ensureSupportLogsDirectory, getSupportDiagnosticsInfo, saveSupportDiagnosticsBundle } from "./support-diagnostics";
 import { saveTextFileWithDialog } from "./text-file-dialogs";
 import { MainWindowManager } from "./window-manager";
 import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
+import { EVENT_NAMES } from "../shared/constants";
 import { IPC_CHANNELS, type ConfigurationExportOptions } from "../shared/ipc";
 import { createInitialCompanionState } from "../shared/initial-state";
+import type { SatanicZoneInfo } from "../shared/parser";
+import type { SatanicZoneState } from "../shared/satanic-zone";
 import { hasRunActivity, normalizePastRunTags, StatsEngine, type PastRunSummary } from "../shared/stats";
 import type { SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
 
@@ -60,11 +76,17 @@ let pastRunsPath = "";
 let preferencesPath = "";
 let windowBoundsPath = "";
 let appSessionPath = "";
+let satanicZoneCachePath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
 let windowBounds: WindowBoundsPreferences = {};
 let statePublishTimer: NodeJS.Timeout | null = null;
 let lastPendingCaptureEventsLogAt = 0;
 let appDiagnostics: AppDiagnostics | null = null;
+let satanicZoneController: SatanicZoneController | null = null;
+let satanicZoneRefreshProvider: ManagedSatanicZoneRefreshProvider | null = null;
+let lastPersistedSatanicZoneCacheKey: string | null = null;
+let crashReporterStarted = false;
+let crashReporterStartError: string | null = null;
 const archivedSessionStarts = new Set<number>();
 const gameCaptureCoordinator = new GameCaptureCoordinator({
   state,
@@ -78,8 +100,19 @@ if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion
 configureElectronE2eApp(app);
 
 try {
-  crashReporter.start({ uploadToServer: false });
+  crashReporter.start({
+    uploadToServer: false,
+    globalExtra: {
+      runtime_electron: process.versions.electron ?? "unknown",
+      runtime_node: process.versions.node,
+      node_modules_abi: process.versions.modules,
+      runtime_platform: process.platform,
+      runtime_arch: process.arch,
+    },
+  });
+  crashReporterStarted = true;
 } catch (error) {
+  crashReporterStartError = error instanceof Error ? error.message : String(error);
   console.error("Failed to start crash reporter", error);
 }
 
@@ -114,8 +147,9 @@ process.on("exit", (code) => {
   writeAppLog("process-exit", { code });
   stopAppSessionHeartbeat();
   stopAppDiagnosticHeartbeat();
-  markAppSessionClosed("process-exit");
   shutdownCapture("process-exit");
+  if (code === 0) markAppSessionClosed("process-exit");
+  else writeAppSession("faulted", { exitCode: code, shutdownReason: "process-exit" });
 });
 
 function createWindow(): void {
@@ -173,6 +207,9 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) state.connections = update.connections;
   if (update.health) state.health = { ...state.health, ...update.health };
+  if (update.running !== undefined || update.status || update.connections || update.health) {
+    updateCrashReportCaptureContext();
+  }
 
   if (update.status && update.status !== previousCaptureStatus) {
     writeAppLog("capture-status-changed", {
@@ -188,8 +225,21 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
     maybeLogPendingCaptureBacklog(update.events.length);
   }
 
+  if (update.satanicZoneActivity?.kind === "request") {
+    satanicZoneController?.observePassiveRequest(update.satanicZoneActivity.observedAt);
+  } else if (update.satanicZoneActivity?.kind === "timeout") {
+    satanicZoneController?.observePassiveTimeout(
+      update.satanicZoneActivity.observedAt,
+      update.satanicZoneActivity.requestedAt,
+    );
+  }
+
   if (previousCaptureRunning && !state.captureRunning) {
     applyPendingCaptureEvents();
+    const zonePhase = satanicZoneController?.getState().phase;
+    if (zonePhase === "refreshing" || zonePhase === "updating") {
+      satanicZoneController?.markUnavailable("capture_unavailable");
+    }
     pauseRun("captureStopped");
   } else if (!previousCaptureRunning && state.captureRunning && state.runStatus === "paused" && state.runPausedReason === "captureStopped") {
     resumeRun();
@@ -200,6 +250,21 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   }
   if (update.log) addLog(update.log.level, update.log.message);
   publishState();
+}
+
+function updateCrashReportCaptureContext(): void {
+  if (!crashReporterStarted) return;
+  try {
+    crashReporter.addExtraParameter("capture_status", state.captureStatus);
+    crashReporter.addExtraParameter("capture_running", String(state.captureRunning));
+    crashReporter.addExtraParameter("capture_connections", String(state.connections.length));
+    crashReporter.addExtraParameter("capture_packets", String(state.health.packetsSeen));
+    crashReporter.addExtraParameter("capture_parser_errors", String(state.health.parserErrors));
+    crashReporter.addExtraParameter("capture_parser_restarts", String(state.health.parserRestarts));
+  } catch (error) {
+    crashReporterStarted = false;
+    writeAppLog("crash-reporter-context-error", { error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 function maybeLogPendingCaptureBacklog(addedEvents: number): void {
@@ -227,6 +292,18 @@ function addLog(level: LogEntry["level"], message: string): void {
   logs.splice(500);
 }
 
+function captureLoggingChanges(previous: CapturePreferences, next: CapturePreferences): string[] {
+  const labels: Array<[keyof CapturePreferences, string]> = [
+    ["captureDebugLogging", "capture diagnostics"],
+    ["satanicZoneDebugLogging", "Satanic Zone diagnostics"],
+    ["capturePayloadLogging", "payload snippets"],
+    ["captureWideLogging", "verbose packet file"],
+  ];
+  return labels
+    .filter(([key]) => previous[key] !== next[key])
+    .map(([key, label]) => `${label} ${next[key] ? "on" : "off"}`);
+}
+
 function publishState(): void {
   if (statePublishTimer) return;
   statePublishTimer = setTimeout(() => {
@@ -243,17 +320,36 @@ function publishStateNow(): void {
   window.webContents.send(IPC_CHANNELS.stateUpdated, state);
 }
 
+function applySatanicZoneState(nextState: SatanicZoneState): void {
+  state.satanicZone = nextState;
+  state.stats.satanicZone = nextState.current;
+  const cacheNow = Date.now();
+  const cacheKey = satanicZoneCachePersistenceKey(nextState, cacheNow);
+  if (cacheKey !== null && cacheKey !== lastPersistedSatanicZoneCacheKey) {
+    saveSatanicZoneCache(satanicZoneCachePath, nextState, writeAppLog, cacheNow);
+    lastPersistedSatanicZoneCacheKey = cacheKey;
+  }
+  publishState();
+}
+
 function applyPendingCaptureEvents(): void {
   if (pendingCaptureEvents.length === 0) return;
   const events = pendingCaptureEvents.splice(0);
-  if (state.runStatus !== "recording") return;
+  const applicableEvents = captureEventsForRunStatus(events, state.runStatus);
+  if (applicableEvents.length === 0) return;
 
   try {
-    state.stats = statsEngine.applyEvents(events);
+    state.stats = statsEngine.applyEvents(applicableEvents);
+    for (const event of applicableEvents) {
+      if (event.name === EVENT_NAMES.satanicZone) {
+        satanicZoneController?.observePassiveResponse(event.value as SatanicZoneInfo, event.createdAt);
+      }
+    }
+    state.stats.satanicZone = state.satanicZone.current;
   } catch (error) {
     writeAppLog("stats-apply-error", {
       error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
-      eventNames: events.map((event) => event.name),
+      eventNames: applicableEvents.map((event) => event.name),
     });
     addLog("error", `Parsed events were dropped after stats update failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -301,13 +397,41 @@ ipcMain.handle(IPC_CHANNELS.captureStop, () => {
 ipcMain.handle(IPC_CHANNELS.statsReset, () => {
   applyPendingCaptureEvents();
   const archived = archiveCurrentRun("reset");
+  satanicZoneController?.resetObservation();
   state.stats = statsEngine.reset();
+  state.stats.satanicZone = state.satanicZone.current;
   state.runStatus = "recording";
   state.runPausedReason = null;
   state.runPausedAt = null;
   state.runPausedDurationMs = 0;
   addLog("info", archived ? "Run saved and session stats reset." : "Session stats reset. Run did not match save settings.");
   publishState();
+  return state;
+});
+ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
+  if (!state.satanicZone.refreshEnabled) {
+    const result = await satanicZoneController?.refreshNow();
+    writeAppLog("satanic-zone-refresh-requested", {
+      accepted: result?.accepted ?? false,
+      errorCode: result?.accepted ? null : result?.errorCode ?? "refresh_disabled",
+    });
+    addLog("warning", "Manual Satanic Zone refresh is disabled in Settings.");
+    publishState();
+    return state;
+  }
+  if (!state.captureRunning || state.captureStatus !== "running") {
+    satanicZoneController?.markUnavailable("capture_unavailable");
+    addLog("warning", "Start capture before requesting a Satanic Zone refresh.");
+    return state;
+  }
+  const result = await satanicZoneController?.refreshNow();
+  writeAppLog("satanic-zone-refresh-requested", {
+    accepted: result?.accepted ?? false,
+    errorCode: result?.accepted ? null : result?.errorCode ?? "refresh_not_configured",
+  });
+  if (result?.accepted) addLog("info", "Manual Satanic Zone refresh requested; waiting for the validated response.");
+  else addLog("warning", `Manual Satanic Zone refresh was not sent (${result?.errorCode ?? "refresh_not_configured"}).`);
+  publishStateNow();
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.runPause, () => {
@@ -361,11 +485,30 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetRunArchive, (_event, preferences: Part
 });
 ipcMain.handle(IPC_CHANNELS.preferencesSetCapture, (_event, preferences: Partial<CapturePreferences>) => {
   const nextPreferences = normalizeCapturePreferences(preferences);
-  const changed = state.capturePreferences.createDebugMode !== nextPreferences.createDebugMode;
+  const changedLogging = captureLoggingChanges(state.capturePreferences, nextPreferences);
   state.capturePreferences = nextPreferences;
-  captureService?.setCreateDebugMode(nextPreferences.createDebugMode);
+  captureService?.setCapturePreferences(nextPreferences);
   saveCapturePreferences(preferencesPath, state.capturePreferences, writeAppLog);
-  if (changed) addLog("info", `Verbose live logging ${nextPreferences.createDebugMode ? "enabled" : "disabled"}.`);
+  if (changedLogging.length) addLog("info", `Capture logging updated: ${changedLogging.join(", ")}.`);
+  publishState();
+  return state;
+});
+ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, enabled: unknown) => {
+  const preferences = normalizeSatanicZoneRefreshPreferences({ enabled });
+  saveSatanicZoneRefreshPreferences(preferencesPath, preferences, writeAppLog);
+  if (satanicZoneController) {
+    await satanicZoneController.setRefreshEnabled(preferences.enabled);
+    if (!preferences.enabled) satanicZoneRefreshProvider?.stop();
+  } else {
+    state.satanicZone = {
+      ...state.satanicZone,
+      refreshEnabled: preferences.enabled,
+      refreshAvailable: false,
+      refreshExperimental: false,
+      errorCode: preferences.enabled ? state.satanicZone.errorCode : "refresh_disabled",
+    };
+  }
+  addLog("info", `Manual Satanic Zone refresh ${preferences.enabled ? "enabled" : "disabled"}.`);
   publishState();
   return state;
 });
@@ -476,6 +619,7 @@ ipcMain.handle(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
   clipboard.writeText(String(value));
 });
 ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData"), app.getVersion()));
+ipcMain.handle(IPC_CHANNELS.supportOpenLogsDirectory, openSupportLogsDirectory);
 ipcMain.handle(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
   saveSupportDiagnostics(String(diagnosticsSummary ?? "")),
 );
@@ -523,14 +667,37 @@ async function saveSupportDiagnostics(diagnosticsSummary: string): Promise<Suppo
   return result;
 }
 
+async function openSupportLogsDirectory(): Promise<boolean> {
+  try {
+    const logsPath = ensureSupportLogsDirectory(app.getPath("userData"));
+    const error = await shell.openPath(logsPath);
+    if (error) {
+      writeAppLog("support-logs-open-failed", { logsPath, error });
+      addLog("warning", `Could not open diagnostics log folder: ${error}`);
+      return false;
+    }
+
+    writeAppLog("support-logs-opened", { logsPath });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeAppLog("support-logs-open-failed", { error: message });
+    addLog("warning", `Could not open diagnostics log folder: ${message}`);
+    return false;
+  }
+}
+
 app.whenReady().then(async () => {
-  appLogPath = path.join(app.getPath("userData"), "app-debug.log");
-  pastRunsPath = path.join(app.getPath("userData"), "past-runs.json");
-  preferencesPath = path.join(app.getPath("userData"), "preferences.json");
-  windowBoundsPath = path.join(app.getPath("userData"), "window-bounds.json");
-  appSessionPath = path.join(app.getPath("userData"), "app-session.json");
-  const debugLogPath = path.join(app.getPath("userData"), "capture-debug.log");
-  const wideDebugLogPath = path.join(app.getPath("userData"), "capture-wide-debug.log");
+  const userDataPath = app.getPath("userData");
+  const logsPath = ensureSupportLogsDirectory(userDataPath);
+  appLogPath = path.join(logsPath, "app-debug.log");
+  pastRunsPath = path.join(userDataPath, "past-runs.json");
+  preferencesPath = path.join(userDataPath, "preferences.json");
+  windowBoundsPath = path.join(userDataPath, "window-bounds.json");
+  appSessionPath = path.join(userDataPath, "app-session.json");
+  satanicZoneCachePath = path.join(userDataPath, "satanic-zone.json");
+  const debugLogPath = path.join(logsPath, "capture-debug.log");
+  const wideDebugLogPath = path.join(logsPath, "capture-wide-debug.log");
   appDiagnostics = createAppDiagnostics({
     appLogPath,
     appSessionPath,
@@ -548,8 +715,33 @@ app.whenReady().then(async () => {
   state.pastRuns = loadPastRuns(pastRunsPath, writeAppLog);
   state.runArchivePreferences = loadRunArchivePreferences(preferencesPath, writeAppLog);
   state.capturePreferences = loadCapturePreferences(preferencesPath, writeAppLog);
+  const satanicZoneRefreshPreferences = loadSatanicZoneRefreshPreferences(preferencesPath, writeAppLog);
+  state.satanicZone = {
+    ...loadSatanicZoneCache(satanicZoneCachePath, Date.now(), writeAppLog),
+    refreshEnabled: satanicZoneRefreshPreferences.enabled,
+  };
+  state.stats.satanicZone = state.satanicZone.current;
+  lastPersistedSatanicZoneCacheKey = satanicZoneCachePersistenceKey(state.satanicZone, Date.now());
+  satanicZoneRefreshProvider = isElectronE2eTestMode()
+    ? null
+    : createManagedSatanicZoneRefreshProvider({
+        resourcesPath: satanicZoneRelayResourcesPath({
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appPath: app.getAppPath(),
+        }),
+        stateRoot: path.join(userDataPath, "satanic-zone-relay"),
+      });
+  satanicZoneController = new SatanicZoneController({
+    provider: satanicZoneRefreshProvider,
+    initialState: state.satanicZone,
+    onStateChange: applySatanicZoneState,
+  });
+  await satanicZoneController.refreshAvailability();
   windowBounds = loadWindowBounds(windowBoundsPath, writeAppLog);
   writeAppLog("app-ready", {
+    userDataPath,
+    logsPath,
     appLogPath,
     debugLogPath,
     wideDebugLogPath,
@@ -557,17 +749,29 @@ app.whenReady().then(async () => {
     preferencesPath,
     windowBoundsPath,
     appSessionPath,
+    satanicZoneCachePath,
     crashDumpsPath: app.getPath("crashDumps"),
     lastCrashReport: crashReporter.getLastCrashReport(),
+    crashReporterStarted,
+    crashReporterStartError,
+    runtime: {
+      electron: process.versions.electron ?? "unknown",
+      node: process.versions.node,
+      nodeModulesAbi: process.versions.modules,
+      chrome: process.versions.chrome ?? "unknown",
+    },
   });
+  updateCrashReportCaptureContext();
   createWindow();
   captureService = await createCaptureRuntime(
     applyCaptureUpdate,
     debugLogPath,
     wideDebugLogPath,
-    state.capturePreferences.createDebugMode,
+    state.capturePreferences,
+    () => satanicZoneRefreshProvider?.captureProcessIds() ?? [],
   );
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
+  updateCrashReportCaptureContext();
   installElectronE2eMainHooks({
     emitCaptureEvents: (events) => {
       if (!emitElectronE2eCaptureEvents(captureService, events)) applyCaptureUpdate({ events });
@@ -637,6 +841,8 @@ function shutdownCapture(reason: string): void {
   writeAppLog("shutdown-capture", { reason, captureStatus: state.captureStatus, captureRunning: state.captureRunning });
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   gameCaptureCoordinator.stopMonitor();
+  satanicZoneController?.dispose();
+  satanicZoneRefreshProvider?.dispose();
   archiveCurrentRun(reason);
   try {
     captureService?.stop();

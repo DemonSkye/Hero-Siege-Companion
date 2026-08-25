@@ -1,4 +1,4 @@
-import type { CaptureHealth, LogEntry } from "../shared/app-state";
+import type { CaptureHealth, CapturePreferences, LogEntry } from "../shared/app-state";
 import { captureMessages, messageToEvents, type ParsedEvent } from "../shared/parser";
 import type { CaptureUpdate } from "./capture";
 import { isElectronE2eTestMode } from "./electron-test-mode";
@@ -11,7 +11,7 @@ export const NATIVE_CAPTURE_UNAVAILABLE_MESSAGE =
 export interface CaptureRuntime {
   diagnostics(): Promise<Partial<CaptureHealth>>;
   hasHeroSiegeProcess(): Promise<boolean>;
-  setCreateDebugMode(enabled: boolean): void;
+  setCapturePreferences(preferences: CapturePreferences): void;
   start(): Promise<void>;
   stop(): void;
 }
@@ -20,13 +20,20 @@ export async function createCaptureRuntime(
   onUpdate: (update: CaptureUpdate) => void,
   debugLogPath: string,
   wideDebugLogPath: string,
-  createDebugMode: boolean,
+  capturePreferences: CapturePreferences,
+  supplementalCaptureProcessIds: () => readonly number[] = () => [],
 ): Promise<CaptureRuntime> {
-  if (isElectronE2eTestMode()) return new ElectronE2eCaptureRuntime(onUpdate, createDebugMode);
+  if (isElectronE2eTestMode()) return new ElectronE2eCaptureRuntime(onUpdate, capturePreferences);
 
   try {
     const { CaptureService } = await import("./capture");
-    return new CaptureService(onUpdate, debugLogPath, wideDebugLogPath, createDebugMode);
+    return new CaptureService(
+      onUpdate,
+      debugLogPath,
+      wideDebugLogPath,
+      capturePreferences,
+      supplementalCaptureProcessIds,
+    );
   } catch (error) {
     const runtime = new NativeCaptureUnavailableRuntime(onUpdate, error);
     runtime.emitUnavailable();
@@ -48,7 +55,7 @@ export function emitElectronE2eCapturePayloads(runtime: CaptureRuntime | null, p
 
 class ElectronE2eCaptureRuntime implements CaptureRuntime {
   private running = false;
-  private createDebugMode: boolean;
+  private capturePreferences: CapturePreferences;
   private health: CaptureHealth = {
     npcapService: "Running",
     winPcapCompatible: true,
@@ -66,9 +73,9 @@ class ElectronE2eCaptureRuntime implements CaptureRuntime {
 
   constructor(
     private readonly onUpdate: (update: CaptureUpdate) => void,
-    createDebugMode: boolean,
+    capturePreferences: CapturePreferences,
   ) {
-    this.createDebugMode = createDebugMode;
+    this.capturePreferences = capturePreferences;
   }
 
   async diagnostics(): Promise<CaptureHealth> {
@@ -79,8 +86,8 @@ class ElectronE2eCaptureRuntime implements CaptureRuntime {
     return process.env.HERO_SIEGE_COMPANION_E2E_GAME_RUNNING !== "0";
   }
 
-  setCreateDebugMode(enabled: boolean): void {
-    this.createDebugMode = enabled;
+  setCapturePreferences(preferences: CapturePreferences): void {
+    this.capturePreferences = preferences;
   }
 
   async start(): Promise<void> {
@@ -130,7 +137,7 @@ class ElectronE2eCaptureRuntime implements CaptureRuntime {
     this.onUpdate({
       events,
       health: { ...this.health },
-      logs: this.createDebugMode ? [e2eLog("debug", `E2E emitted ${eventCount} parsed capture event${eventCount === 1 ? "" : "s"}.`)] : [],
+      logs: this.shouldEmitDebugLogs() ? [e2eLog("debug", `E2E emitted ${eventCount} parsed capture event${eventCount === 1 ? "" : "s"}.`)] : [],
     });
   }
 
@@ -162,7 +169,7 @@ class ElectronE2eCaptureRuntime implements CaptureRuntime {
     };
 
     const logs: LogEntry[] = [];
-    if (this.createDebugMode) {
+    if (this.shouldEmitDebugLogs()) {
       logs.push(e2eLog("debug", `E2E parsed ${payloads.length} mocked traffic payload${payloads.length === 1 ? "" : "s"}.`));
     }
     if (parserErrors > 0) logs.push(e2eLog("error", `E2E mocked traffic parser failed ${parserErrors} time${parserErrors === 1 ? "" : "s"}.`));
@@ -172,6 +179,10 @@ class ElectronE2eCaptureRuntime implements CaptureRuntime {
       health: { ...this.health },
       logs,
     });
+  }
+
+  private shouldEmitDebugLogs(): boolean {
+    return this.capturePreferences.capturePayloadLogging || this.capturePreferences.captureWideLogging;
   }
 }
 
@@ -204,7 +215,7 @@ class NativeCaptureUnavailableRuntime implements CaptureRuntime {
     return false;
   }
 
-  setCreateDebugMode(): void {
+  setCapturePreferences(): void {
     // Native capture never loaded, so there is no live capture logger to update.
   }
 

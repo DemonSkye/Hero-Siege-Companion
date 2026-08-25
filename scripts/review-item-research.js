@@ -5,8 +5,10 @@ const ROOT = path.resolve(__dirname, "..");
 const ITEM_LOOKUP_PATH = path.join(ROOT, "src", "shared", "item-lookup.ts");
 const STACK_LOOKUP_PATH = path.join(ROOT, "src", "shared", "stack-item-lookup.ts");
 const STACK_TYPES = new Set([12, 13, 14, 15]);
+const POTENTIALLY_GENERATED_NORMAL_EQUIPMENT_TYPES = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 10]);
+const REPOSITORIES = new Set(["normal", "unique", "runeword", "unknown"]);
 const CLASSIFICATIONS = new Set(["unknown-normal", "stack-item", "material-collectible", "generated-placeholder", "known-missing-icon"]);
-const GENERIC_LABEL_PATTERN = /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|socketable|key|sword|dagger|mace|axe|claw|polearm|chainsaw|staff|cane|wand|book|spellblade|bow|gun|flask|throwing|novelty)\s+#\d+/i;
+const GENERIC_LABEL_PATTERN = /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|relic|socketable|key|sword|dagger|mace|axe|claw|polearm|chainsaw|staff|cane|wand|book|spellblade|bow|gun|flask|throwing|novelty)(?:\s+type)?(?:\s+\d+)?\s+#\d+/i;
 
 function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
@@ -81,26 +83,34 @@ function normalizeEntry(entry, filePath) {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
   const type = numberField(entry.type);
   const id = numberField(entry.id);
+  const repository = normalizeRepository(entry.repository);
+  const weaponType = entry.weaponType === undefined || entry.weaponType === null || entry.weaponType === ""
+    ? 0
+    : numberField(entry.weaponType);
   const dropQuality = numberField(entry.dropQuality);
   const label = cleanText(entry.label || "");
   const resolvedName = cleanText(entry.resolvedName || "");
+  const localizationId = cleanText(entry.localizationId || "");
   const ignored = Boolean(entry.ignored);
   const count = Math.max(1, numberField(entry.count) || 1);
   const classification = normalizeClassification(entry.classification, type, id, label);
   return {
     filePath,
-    signature: cleanText(entry.signature || `${type}:${id}:${dropQuality}:${label.toLowerCase()}`),
+    signature: cleanText(entry.signature || `${repository}:${type}:${id}:${weaponType}:${dropQuality}:${label.toLowerCase()}`),
     label: label || `Type ${type} #${id}`,
     resolvedName,
     resolvedNameKey: normalizeNameKey(resolvedName),
     rarity: cleanText(entry.rarity || "Unknown"),
     type,
     id,
+    repository,
+    weaponType,
     dropQuality,
     classification,
     count,
     ignored,
     notes: cleanText(entry.notes || ""),
+    ...(localizationId ? { localizationId } : {}),
   };
 }
 
@@ -126,11 +136,14 @@ function buildResearchReview(files) {
         key,
         type: entry.type,
         id: entry.id,
+        repository: entry.repository,
+        weaponType: entry.weaponType,
         dropQuality: entry.dropQuality,
         entries: [],
         count: 0,
         files: new Set(),
         labels: new Set(),
+        localizationIds: new Set(),
         classifications: new Map(),
         resolvedNames: new Map(),
       };
@@ -138,6 +151,7 @@ function buildResearchReview(files) {
       group.count += entry.count;
       group.files.add(path.basename(entry.filePath));
       group.labels.add(entry.label);
+      if (entry.localizationId) group.localizationIds.add(entry.localizationId);
       const classificationCount = group.classifications.get(entry.classification) ?? 0;
       group.classifications.set(entry.classification, classificationCount + entry.count);
       if (entry.resolvedNameKey) {
@@ -154,10 +168,10 @@ function buildResearchReview(files) {
   const alreadyKnown = [];
   const missingIcons = [];
   const suggestions = [];
+  const candidateGroups = [];
 
   for (const group of [...groups.values()].sort(compareGroups)) {
     const resolvedKeys = [...group.resolvedNames.keys()];
-    const existingNames = existing.byTypeId.get(typeIdKey(group.type, group.id)) ?? [];
     const classification = primaryClassification(group);
 
     if (classification === "generated-placeholder") {
@@ -167,6 +181,14 @@ function buildResearchReview(files) {
 
     if (classification === "known-missing-icon") {
       missingIcons.push(groupSummary(group, "known item missing icon"));
+      continue;
+    }
+
+    if (isPotentiallyGeneratedNormalEquipmentGroup(group, existing)) {
+      noisyEntries.push({
+        entry: group.entries[0],
+        reason: "normal equipment requires seed-aware/manual identity analysis",
+      });
       continue;
     }
 
@@ -186,28 +208,86 @@ function buildResearchReview(files) {
       continue;
     }
 
-    if (group.type === 3) {
+    if (group.type === 3 && group.weaponType <= 0) {
       conflicts.push(groupSummary(group, "weapon type requires manual review"));
       continue;
     }
+
+    if (group.repository === "unknown") {
+      conflicts.push(groupSummary(group, "repository requires manual review"));
+      continue;
+    }
+
+    if (group.repository === "runeword") {
+      conflicts.push(groupSummary(group, "runeword packet selector requires manual review"));
+      continue;
+    }
+
+    if (group.type !== 3 && group.weaponType !== 0 && !STACK_TYPES.has(group.type)) {
+      conflicts.push(groupSummary(group, "non-weapon item subtype requires manual review"));
+      continue;
+    }
+
+    if (STACK_TYPES.has(group.type) && group.repository !== "normal") {
+      conflicts.push(groupSummary(group, "stack item repository requires manual review"));
+      continue;
+    }
+
+    if (STACK_TYPES.has(group.type) && group.weaponType !== 0) {
+      conflicts.push(groupSummary(group, "stack item weapon subtype requires manual review"));
+      continue;
+    }
+
+    candidateGroups.push(group);
+  }
+
+  const candidatesByIdentity = new Map();
+  for (const group of candidateGroups) {
+    const key = catalogTargetKey(group);
+    const identityGroups = candidatesByIdentity.get(key) ?? [];
+    identityGroups.push(group);
+    candidatesByIdentity.set(key, identityGroups);
+  }
+
+  for (const identityGroups of candidatesByIdentity.values()) {
+    const group = mergeIdentityGroups(identityGroups);
+    const resolvedKeys = [...group.resolvedNames.keys()];
+    if (resolvedKeys.length > 1) {
+      conflicts.push(groupSummary(group, "drop qualities resolve to conflicting names for one catalog identity"));
+      continue;
+    }
+
+    const resolvedName = [...group.resolvedNames.values()][0].values().next().value;
+    const classification = primaryClassification(group);
+    const existingNames = existing.byIdentity.get(identityKey(group.repository, group.type, group.id, group.weaponType)) ?? [];
 
     const existingMatch = existingNames.find((name) => normalizeNameKey(name) === normalizeNameKey(resolvedName));
     if (existingMatch) {
       alreadyKnown.push({ ...groupSummary(group, "already known"), resolvedName, existingName: existingMatch });
       continue;
     }
+    if (existingNames.length > 0) {
+      conflicts.push(groupSummary(
+        group,
+        `resolved name conflicts with existing catalog identity: ${existingNames.join(" | ")}`,
+      ));
+      continue;
+    }
 
     suggestions.push({
       key: group.key,
-      target: STACK_TYPES.has(group.type) ? "src/shared/stack-item-lookup.ts" : "src/shared/item-lookup.ts",
+      target: STACK_TYPES.has(group.type) && group.repository === "normal" ? "src/shared/stack-item-lookup.ts" : "src/shared/item-lookup.ts",
       type: group.type,
       id: group.id,
+      repository: group.repository,
+      weaponType: group.weaponType,
       dropQuality: group.dropQuality,
       classification,
       resolvedName,
       count: group.count,
       files: [...group.files].sort(),
       labels: [...group.labels].sort(),
+      localizationIds: [...group.localizationIds].sort(),
       existingNames,
       suggestedLine: suggestedLookupLine(group, resolvedName),
     });
@@ -226,23 +306,130 @@ function buildResearchReview(files) {
   };
 }
 
-function readExistingLookupIndex() {
-  const byTypeId = new Map();
-  for (const filePath of [ITEM_LOOKUP_PATH, STACK_LOOKUP_PATH]) {
-    const source = fs.readFileSync(filePath, "utf8");
-    const pattern = /\{\s*localizationId:\s*"[^"]+",\s*name:\s*"((?:\\"|[^"])*)",\s*gameId:\s*(-?\d+),\s*type:\s*(-?\d+),\s*weaponType:\s*(-?\d+)/g;
-    let match;
-    while ((match = pattern.exec(source))) {
-      const name = parseTsString(match[1]);
-      const gameId = Number(match[2]);
-      const type = Number(match[3]);
-      const key = typeIdKey(type, gameId);
-      const names = byTypeId.get(key) ?? [];
-      names.push(name);
-      byTypeId.set(key, names);
+function catalogTargetKey(group) {
+  if (STACK_TYPES.has(group.type) && group.repository === "normal") return `stack:${group.type}:${group.id}`;
+  return identityKey(group.repository, group.type, group.id, group.weaponType);
+}
+
+function isPotentiallyGeneratedNormalEquipmentGroup(group, existing) {
+  return group.repository === "normal"
+    && POTENTIALLY_GENERATED_NORMAL_EQUIPMENT_TYPES.has(group.type)
+    && !(existing.byIdentity.get(identityKey(group.repository, group.type, group.id, group.weaponType)) ?? []).length;
+}
+
+function mergeIdentityGroups(groups) {
+  if (groups.length === 1) return groups[0];
+  const sorted = [...groups].sort(compareGroups);
+  const first = sorted[0];
+  const merged = {
+    ...first,
+    entries: [],
+    count: 0,
+    files: new Set(),
+    labels: new Set(),
+    localizationIds: new Set(),
+    classifications: new Map(),
+    resolvedNames: new Map(),
+  };
+
+  for (const group of sorted) {
+    merged.entries.push(...group.entries);
+    merged.count += group.count;
+    for (const file of group.files) merged.files.add(file);
+    for (const label of group.labels) merged.labels.add(label);
+    for (const localizationId of group.localizationIds) merged.localizationIds.add(localizationId);
+    for (const [classification, count] of group.classifications) {
+      merged.classifications.set(classification, (merged.classifications.get(classification) ?? 0) + count);
+    }
+    for (const [nameKey, names] of group.resolvedNames) {
+      const mergedNames = merged.resolvedNames.get(nameKey) ?? new Set();
+      for (const name of names) mergedNames.add(name);
+      merged.resolvedNames.set(nameKey, mergedNames);
     }
   }
-  return { byTypeId };
+
+  return merged;
+}
+
+function readExistingLookupIndex() {
+  const byIdentity = new Map();
+  const itemSource = fs.readFileSync(ITEM_LOOKUP_PATH, "utf8");
+  const baseRows = parseLookupRows(itemSource, "ITEM_TRANSLATION_ROWS", "unique");
+  const overrideRows = parseLookupRows(itemSource, "ITEM_TRANSLATION_OVERRIDES", "unique");
+  const overrideKeys = new Set(overrideRows.map((row) => lookupRowIdentityKey(row)));
+  const overrideLocalizationIds = new Set(overrideRows.map((row) => lookupRowLocalizationKey(row)));
+  const baseGroups = new Map();
+
+  for (const row of baseRows) {
+    const key = lookupRowIdentityKey(row);
+    const group = baseGroups.get(key) ?? [];
+    group.push(row);
+    baseGroups.set(key, group);
+  }
+
+  for (const [key, group] of baseGroups) {
+    const row = group[0];
+    if (group.length !== 1 || overrideKeys.has(key) || overrideLocalizationIds.has(lookupRowLocalizationKey(row))) continue;
+    addExistingLookup(byIdentity, row);
+  }
+
+  const overridesByIdentity = new Map();
+  for (const row of overrideRows) overridesByIdentity.set(lookupRowIdentityKey(row), row);
+  for (const row of overridesByIdentity.values()) addExistingLookup(byIdentity, row);
+
+  const stackSource = fs.readFileSync(STACK_LOOKUP_PATH, "utf8");
+  const stackRows = parseLookupRows(stackSource, "STACK_ITEM_TRANSLATION_ROWS", "normal");
+  const stackRowsByRuntimeKey = new Map();
+  for (const row of stackRows) stackRowsByRuntimeKey.set(`${row.type}:${row.gameId}`, row);
+  for (const row of stackRowsByRuntimeKey.values()) addExistingLookup(byIdentity, row);
+
+  return { byIdentity };
+}
+
+function parseLookupRows(source, arrayName, defaultRepository) {
+  const declarationStart = source.indexOf(`const ${arrayName}`);
+  const assignmentStart = source.indexOf("=", declarationStart);
+  const arrayStart = source.indexOf("[", assignmentStart);
+  const arrayEnd = source.indexOf("];", arrayStart);
+  if (declarationStart < 0 || assignmentStart < 0 || arrayStart < 0 || arrayEnd < 0) {
+    throw new Error(`Could not read ${arrayName} from the existing lookup source.`);
+  }
+
+  const rows = [];
+  const pattern = /\{[^{}\r\n]*\blocalizationId:\s*"[^"]+"[^{}\r\n]*\}/g;
+  const arraySource = source.slice(arrayStart + 1, arrayEnd);
+  let match;
+  while ((match = pattern.exec(arraySource))) {
+    const row = match[0];
+    const localizationIdMatch = row.match(/\blocalizationId:\s*"((?:\\.|[^"])*)"/);
+    const nameMatch = row.match(/\bname:\s*"((?:\\.|[^"])*)"/);
+    const gameIdMatch = row.match(/\bgameId:\s*(-?\d+)/);
+    const typeMatch = row.match(/\btype:\s*(-?\d+)/);
+    const weaponTypeMatch = row.match(/\bweaponType:\s*(-?\d+)/);
+    if (!localizationIdMatch || !nameMatch || !gameIdMatch || !typeMatch || !weaponTypeMatch) continue;
+    const repositoryMatch = row.match(/\brepository:\s*"([^"]+)"/);
+    rows.push({
+      localizationId: parseTsString(localizationIdMatch[1]),
+      name: parseTsString(nameMatch[1]),
+      gameId: Number(gameIdMatch[1]),
+      type: Number(typeMatch[1]),
+      weaponType: Number(weaponTypeMatch[1]),
+      repository: repositoryMatch ? normalizeRepository(repositoryMatch[1]) : defaultRepository,
+    });
+  }
+  return rows;
+}
+
+function addExistingLookup(byIdentity, row) {
+  byIdentity.set(lookupRowIdentityKey(row), [row.name]);
+}
+
+function lookupRowIdentityKey(row) {
+  return identityKey(row.repository, row.type, row.gameId, row.weaponType);
+}
+
+function lookupRowLocalizationKey(row) {
+  return `${row.repository}:${row.localizationId}`;
 }
 
 function renderReviewMarkdown(review) {
@@ -276,11 +463,14 @@ function renderReviewMarkdown(review) {
       lines.push(`### ${suggestion.resolvedName}`);
       lines.push("");
       lines.push(`- Key: \`${suggestion.key}\``);
+      lines.push(`- Repository: ${suggestion.repository}`);
+      lines.push(`- Weapon subtype: ${suggestion.weaponType}`);
       lines.push(`- Target: \`${suggestion.target}\``);
       lines.push(`- Classification: ${classificationLabel(suggestion.classification)}`);
       lines.push(`- Count: ${suggestion.count}`);
       lines.push(`- Files: ${suggestion.files.join(", ")}`);
-      if (suggestion.existingNames.length) lines.push(`- Existing same type/id names: ${suggestion.existingNames.join(", ")}`);
+      if (suggestion.localizationIds.length) lines.push(`- Observed localization IDs: ${suggestion.localizationIds.join(", ")}`);
+      if (suggestion.existingNames.length) lines.push(`- Existing same type/id/subtype names: ${suggestion.existingNames.join(", ")}`);
       lines.push("");
       lines.push("```ts");
       lines.push(suggestion.suggestedLine);
@@ -314,7 +504,7 @@ function appendGroupSection(lines, title, groups) {
     return;
   }
   for (const group of groups) {
-    lines.push(`- \`${group.key}\` count ${group.count}: ${group.names.join(" | ")} (${group.files.join(", ")}) - ${classificationLabel(group.classification)}; ${group.reason}`);
+    lines.push(`- \`${group.key}\` repository ${group.repository}, weapon subtype ${group.weaponType}, count ${group.count}: ${group.names.join(" | ")} (${group.files.join(", ")}) - ${classificationLabel(group.classification)}; ${group.reason}`);
   }
   lines.push("");
 }
@@ -325,10 +515,13 @@ function groupSummary(group, reason) {
     key: group.key,
     type: group.type,
     id: group.id,
+    repository: group.repository,
+    weaponType: group.weaponType,
     dropQuality: group.dropQuality,
     count: group.count,
     files: [...group.files].sort(),
     labels: [...group.labels].sort(),
+    localizationIds: [...group.localizationIds].sort(),
     names: names.length ? names.sort() : [...group.labels].sort(),
     classification: primaryClassification(group),
     reason,
@@ -336,14 +529,19 @@ function groupSummary(group, reason) {
 }
 
 function suggestedLookupLine(group, resolvedName) {
-  const localizationPrefix = STACK_TYPES.has(group.type) ? "stack" : "research";
-  const localizationId = `${localizationPrefix}_${slugName(resolvedName)}_${group.type}_${group.id}_${group.dropQuality}`;
-  return `{ localizationId: "${localizationId}", name: "${escapeTsString(resolvedName)}", gameId: ${group.id}, type: ${group.type}, weaponType: 0 },`;
+  const localizationPrefix = STACK_TYPES.has(group.type) && group.repository === "normal" ? "stack" : "research";
+  const observedLocalizationIds = [...group.localizationIds];
+  const localizationId = observedLocalizationIds.length === 1
+    ? observedLocalizationIds[0]
+    : `${localizationPrefix}_${slugName(resolvedName)}_${group.repository}_${group.type}_${group.id}_${group.weaponType}_${group.dropQuality}`;
+  return `{ localizationId: "${escapeTsString(localizationId)}", name: "${escapeTsString(resolvedName)}", gameId: ${group.id}, type: ${group.type}, weaponType: ${group.weaponType}, repository: "${group.repository}" },`;
 }
 
 function invalidEntryReason(entry) {
   if (!Number.isFinite(entry.type) || entry.type < 0) return "invalid type";
   if (!Number.isFinite(entry.id) || entry.id < 0) return "invalid id";
+  if (!REPOSITORIES.has(entry.repository)) return "invalid repository";
+  if (!Number.isFinite(entry.weaponType) || entry.weaponType < 0) return "invalid weaponType";
   if (!Number.isFinite(entry.dropQuality)) return "invalid dropQuality";
   return "";
 }
@@ -374,15 +572,20 @@ function classificationLabel(classification) {
 }
 
 function compareGroups(left, right) {
-  return left.type - right.type || left.id - right.id || left.dropQuality - right.dropQuality || left.key.localeCompare(right.key);
+  return left.type - right.type || left.id - right.id || left.weaponType - right.weaponType || left.dropQuality - right.dropQuality || left.repository.localeCompare(right.repository) || left.key.localeCompare(right.key);
 }
 
 function groupKey(entry) {
-  return `${entry.type}:${entry.id}:${entry.dropQuality}`;
+  return `${entry.repository}:${entry.type}:${entry.id}:${entry.weaponType}:${entry.dropQuality}`;
 }
 
-function typeIdKey(type, id) {
-  return `${type}:${id}`;
+function identityKey(repository, type, id, weaponType) {
+  return `${repository}:${type}:${id}:${weaponType}`;
+}
+
+function normalizeRepository(value) {
+  const repository = cleanText(value).toLowerCase();
+  return REPOSITORIES.has(repository) ? repository : "unknown";
 }
 
 function numberField(value) {

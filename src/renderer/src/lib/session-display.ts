@@ -1,6 +1,7 @@
 import { computed, type Ref } from "vue";
 import type { CompanionState } from "../../../shared/app-state";
 import { MATERIAL_LIKE_TIMELINE_TYPES } from "../../../shared/constants";
+import { nextSatanicZoneBoundary } from "../../../shared/satanic-zone";
 import type { ItemDropCounter, ItemTimelineEntry } from "../../../shared/stats";
 import {
   COMPACT_RUN_TILE_LIMIT,
@@ -70,12 +71,7 @@ export function useSessionDisplay({
     () => !(state.value.runStatus === "paused" && state.value.runPausedReason === "captureStopped" && !state.value.captureRunning),
   );
   const nextZoneAt = computed(() => {
-    const date = new Date(now.value);
-    const minutes = date.getMinutes();
-    const nextMinute = minutes < 30 ? 30 : 60;
-    const next = new Date(date);
-    next.setMinutes(nextMinute, 0, 0);
-    return next;
+    return new Date(nextSatanicZoneBoundary(now.value));
   });
   const zoneCountdown = computed(() => formatDuration(Math.max(nextZoneAt.value.getTime() - now.value, 0)));
   const zoneResetLabel = computed(() => nextZoneAt.value.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));

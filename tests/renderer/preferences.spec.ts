@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { useAppPreferences } from "../../src/renderer/src/lib/app-preferences";
+import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../../src/shared/initial-state";
 import {
   activeItemResearchEntries,
   classifyItemResearchFields,
   createItemResearchExportPayload,
+  isGeneratedNormalItemResearchEntry,
   isItemResearchCandidate,
   isKnownItemResearchName,
   itemResearchSignature,
+  normalizeItemResearchEntries,
   normalizeResearchItemName,
   upsertItemResearchEntry,
   type ItemResearchEntry,
@@ -118,6 +121,35 @@ describe("renderer preferences persistence", () => {
     for (const ref of Object.values(persistedPreferenceRefs)) expect(watchedRefs.has(ref)).toBe(true);
   });
 
+  test("keeps the manual-refresh opt-in in main preferences instead of portable configuration", () => {
+    const preferences = useAppPreferences();
+    expect(preferences.currentDraftSatanicZoneRefreshEnabled()).toBe(false);
+
+    preferences.loadDraftPreferences(
+      defaultPreferences,
+      DEFAULT_RUN_ARCHIVE_PREFERENCES,
+      DEFAULT_CAPTURE_PREFERENCES,
+      true,
+    );
+    expect(preferences.currentDraftSatanicZoneRefreshEnabled()).toBe(true);
+
+    const payload = createConfigurationExportPayload(
+      defaultPreferences,
+      DEFAULT_RUN_ARCHIVE_PREFERENCES,
+      DEFAULT_CAPTURE_PREFERENCES,
+      {
+        includeAppSettings: true,
+        includeRunSaving: true,
+        includeReportTracking: true,
+        includeLootFilters: true,
+        includeSounds: true,
+        includeItemResearch: true,
+      },
+    );
+    expect(payload).not.toHaveProperty("satanicZoneRefreshPreferences");
+    expect(payload.uiPreferences).not.toHaveProperty("satanicZoneRefreshEnabled");
+  });
+
   test("normalizes old or hostile preference values before the UI consumes them", () => {
     window.localStorage.setItem(
       "hero-siege-companion:preferences:v1",
@@ -216,7 +248,7 @@ describe("renderer preferences persistence", () => {
     expect(preferences.developerItemResearchEnabled).toBe(true);
     expect(preferences.unknownItemAudioPrompt).toBe(true);
     expect(preferences.itemResearchEntries[0]).toMatchObject({
-      signature: "4:55:0:gloves #55",
+      signature: "unknown:4:55:0:0:gloves #55",
       label: "Gloves #55",
       classification: "unknown-normal",
       count: 2,
@@ -358,13 +390,20 @@ describe("renderer preferences persistence", () => {
   });
 
   test("treats generic item labels as research candidates and exports shareable research JSON", () => {
-    const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
-    const genericWeapon = itemTimelineEntry({ label: "Chainsaw #10 - mfDrop=1 - Weapon - 10-3909410-65295343278200001-3", rarity: "Superior", type: 3, id: 10, fingerprint: "chainsaw-10" });
+    const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", repository: "normal", type: 13, id: 24, fingerprint: "collectible-24" });
+    const genericWeapon = itemTimelineEntry({ label: "Chainsaw #35 - mfDrop=1 - Weapon - 10-3909410-65295343278200001-3", rarity: "Superior", type: 3, id: 35, weaponType: 7, fingerprint: "chainsaw-35" });
     const generatedPlaceholder = itemTimelineEntry({ label: "Weapon - Seed 123456", rarity: "Unknown", type: 3, id: 0, fingerprint: "generated-0" });
     const generatedKnownMissingIcon = itemTimelineEntry({ label: "Weapon - Seed 123456", rarity: "Unknown", type: 1, id: 100, fingerprint: "generated-known-100" });
-    const stackItem = itemTimelineEntry({ label: "Key #77", rarity: "Superior", type: 12, id: 77, fingerprint: "key-77" });
+    const stackItem = itemTimelineEntry({ label: "Key #77", rarity: "Superior", repository: "normal", type: 12, id: 77, fingerprint: "key-77" });
     const knownMissingIcon = itemTimelineEntry({ label: "Sharpshooter's Cloak", rarity: "Satanic", type: 1, id: 100, localizationId: "armors_sharpshooters_cloak", fingerprint: "cloak-100" });
-    const knownCollectible = itemTimelineEntry({ label: "Ruby", rarity: "Superior", type: 13, id: 19, localizationId: "ruby" });
+    const knownCollectible = itemTimelineEntry({ label: "Ruby", rarity: "Superior", repository: "normal", type: 13, id: 19, localizationId: "ruby" });
+    const genericRelic = itemTimelineEntry({ label: "Relic #155", rarity: "Unknown", type: 16, id: 155, fingerprint: "relic-155" });
+    const generatedNormalCharm = itemTimelineEntry({ label: "Charm #33", rarity: "Unknown", repository: "normal", type: 10, id: 33, fingerprint: "generated-charm-33" });
+    const legacyGeneratedCharm = itemTimelineEntry({ label: "Charm #33", rarity: "Unknown", repository: "unknown", type: 10, id: 33, fingerprint: "legacy-generated-charm-33" });
+    const fixedCharmCollision = itemTimelineEntry({ label: "Charm #33", rarity: "Unknown", repository: "unique", type: 10, id: 33, fingerprint: "fixed-charm-33" });
+    const zeroHelmet = itemTimelineEntry({ label: "Helmet #0", rarity: "Unknown", repository: "normal", type: 0, id: 0 });
+    const unknownType = itemTimelineEntry({ label: "Type 17 #999", rarity: "Unknown", repository: "unique", type: 17, id: 999 });
+    const unknownWeaponSubtype = itemTimelineEntry({ label: "Weapon Type 99 #0", rarity: "Unknown", repository: "unique", type: 3, id: 0, weaponType: 99 });
 
     expect(isItemResearchCandidate(genericCollectible)).toBe(true);
     expect(isItemResearchCandidate(genericWeapon)).toBe(true);
@@ -372,6 +411,13 @@ describe("renderer preferences persistence", () => {
     expect(isItemResearchCandidate(stackItem)).toBe(true);
     expect(isItemResearchCandidate(knownMissingIcon)).toBe(false);
     expect(isItemResearchCandidate(knownCollectible)).toBe(false);
+    expect(isItemResearchCandidate(genericRelic)).toBe(true);
+    expect(isItemResearchCandidate(generatedNormalCharm)).toBe(false);
+    expect(isItemResearchCandidate(legacyGeneratedCharm)).toBe(false);
+    expect(isItemResearchCandidate(fixedCharmCollision)).toBe(true);
+    expect(isItemResearchCandidate(zeroHelmet)).toBe(false);
+    expect(isItemResearchCandidate(unknownType)).toBe(true);
+    expect(isItemResearchCandidate(unknownWeaponSubtype)).toBe(true);
     expect(classifyItemResearchFields(genericCollectible)).toBe("material-collectible");
     expect(classifyItemResearchFields(genericWeapon)).toBe("unknown-normal");
     expect(classifyItemResearchFields(generatedPlaceholder)).toBe("generated-placeholder");
@@ -380,6 +426,26 @@ describe("renderer preferences persistence", () => {
     expect(classifyItemResearchFields(knownMissingIcon)).toBe("known-missing-icon");
     expect(activeItemResearchEntries(upsertItemResearchEntry([], genericWeapon))).toHaveLength(1);
     expect(activeItemResearchEntries(upsertItemResearchEntry([], knownMissingIcon))).toHaveLength(0);
+    expect(activeItemResearchEntries(upsertItemResearchEntry([], generatedNormalCharm))).toHaveLength(0);
+    expect(activeItemResearchEntries(upsertItemResearchEntry([], legacyGeneratedCharm))).toHaveLength(0);
+
+    const legacyGeneratedHelmet = normalizeItemResearchEntries([{
+      signature: "0:999:0:helmet #999",
+      label: "Helmet #999",
+      type: 0,
+      id: 999,
+      dropQuality: 0,
+    }])[0];
+    expect(legacyGeneratedHelmet).toMatchObject({ repository: "unknown", classification: "unknown-normal" });
+    expect(isGeneratedNormalItemResearchEntry(legacyGeneratedHelmet)).toBe(true);
+    expect(activeItemResearchEntries([legacyGeneratedHelmet])).toHaveLength(0);
+    expect(isGeneratedNormalItemResearchEntry({
+      repository: "normal",
+      type: 4,
+      id: 50,
+      weaponType: 0,
+      classification: "known-missing-icon",
+    })).toBe(false);
 
     const signature = itemResearchSignature(genericCollectible);
     const entries = upsertItemResearchEntry([], genericCollectible).map((entry): ItemResearchEntry =>
@@ -389,6 +455,7 @@ describe("renderer preferences persistence", () => {
     const mixedEntries = [...entries, ...upsertItemResearchEntry([], genericWeapon)];
 
     expect(payload.kind).toBe("item-research");
+    expect(payload.version).toBe(2);
     expect(payload.scope).toBe("all");
     expect(payload.summary).toMatchObject({ total: 1, resolved: 1, unresolved: 0 });
     expect(payload.entries[0]).toMatchObject({
@@ -398,6 +465,8 @@ describe("renderer preferences persistence", () => {
       resolvedNameKey: "damiens eye",
       type: 13,
       id: 24,
+      repository: "normal",
+      weaponType: 0,
       classification: "material-collectible",
     });
     expect(payload.summary.classifications["material-collectible"]).toBe(1);
@@ -408,8 +477,74 @@ describe("renderer preferences persistence", () => {
     expect(payload.shareHint).toContain("gist");
   });
 
+  test("keeps repository and weapon subtype distinct across research persistence", () => {
+    const sword = itemTimelineEntry({
+      repository: "unique",
+      type: 3,
+      id: 35,
+      weaponType: 1,
+      label: "Sword #35",
+      localizationId: "research-sword",
+      fingerprint: "sword-35",
+    });
+    const chainsaw = itemTimelineEntry({
+      repository: "unique",
+      type: 3,
+      id: 35,
+      weaponType: 7,
+      label: "Chainsaw #35",
+      fingerprint: "chainsaw-35",
+    });
+    const normalSword = itemTimelineEntry({
+      repository: "normal",
+      type: 3,
+      id: 35,
+      weaponType: 1,
+      label: "Sword #35",
+      fingerprint: "normal-sword-35",
+    });
+
+    expect(isItemResearchCandidate(normalSword)).toBe(false);
+    expect(new Set([sword, chainsaw, normalSword].map(itemResearchSignature)).size).toBe(3);
+    const entries = [sword, chainsaw, normalSword].reduce(upsertItemResearchEntry, [] as ItemResearchEntry[]);
+    expect(entries).toHaveLength(3);
+    expect(createItemResearchExportPayload(entries).entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ repository: "unique", type: 3, id: 35, weaponType: 1, localizationId: "research-sword" }),
+      expect.objectContaining({ repository: "unique", type: 3, id: 35, weaponType: 7 }),
+      expect.objectContaining({ repository: "normal", type: 3, id: 35, weaponType: 1 }),
+    ]));
+
+    expect(normalizeItemResearchEntries([{
+      signature: "3:35:0:weapon #35",
+      label: "Weapon #35",
+      type: 3,
+      id: 35,
+      dropQuality: 0,
+    }])[0]).toMatchObject({
+      signature: "unknown:3:35:0:0:weapon #35",
+      repository: "unknown",
+      weaponType: 0,
+    });
+
+    expect(normalizeItemResearchEntries([{
+      signature: "legacy-missing-icon",
+      label: "Chest #100",
+      repository: "unique",
+      type: 1,
+      id: 100,
+      weaponType: 0,
+      dropQuality: 0,
+      classification: "invalid",
+    }])[0]).toMatchObject({
+      repository: "unique",
+      type: 1,
+      id: 100,
+      classification: "known-missing-icon",
+    });
+  });
+
   test("normalizes item research names for uncertain casing before export", () => {
-    const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
+    const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", repository: "normal", type: 13, id: 24, fingerprint: "collectible-24" });
     const signature = itemResearchSignature(genericCollectible);
 
     expect(normalizeResearchItemName("THE WHEEL OF FORTUNE")).toBe("The Wheel of Fortune");
@@ -584,7 +719,12 @@ describe("renderer preferences persistence", () => {
     const payload = createConfigurationExportPayload(
       imported,
       { skipEmptyRuns: true, minDurationMinutes: 12 },
-      { createDebugMode: true },
+      {
+        captureDebugLogging: true,
+        capturePayloadLogging: true,
+        captureWideLogging: true,
+        satanicZoneDebugLogging: true,
+      },
       {
         includeAppSettings: true,
         includeRunSaving: true,
@@ -631,7 +771,12 @@ describe("renderer preferences persistence", () => {
     const reportExcludedPayload = createConfigurationExportPayload(
       imported,
       { skipEmptyRuns: true, minDurationMinutes: 12 },
-      { createDebugMode: true },
+      {
+        captureDebugLogging: true,
+        capturePayloadLogging: true,
+        captureWideLogging: true,
+        satanicZoneDebugLogging: true,
+      },
       {
         includeAppSettings: true,
         includeRunSaving: true,
@@ -663,6 +808,11 @@ describe("renderer preferences persistence", () => {
     expect(result.uiPreferences.postRunReport.topDropLimit).toBe(3);
     expect(result.uiPreferences.itemResearchEntries).toHaveLength(1);
     expect(result.runArchivePreferences).toEqual({ skipEmptyRuns: true, minDurationMinutes: 12 });
-    expect(result.capturePreferences).toEqual({ createDebugMode: true });
+    expect(result.capturePreferences).toEqual({
+      captureDebugLogging: true,
+      capturePayloadLogging: true,
+      captureWideLogging: true,
+      satanicZoneDebugLogging: true,
+    });
   });
 });

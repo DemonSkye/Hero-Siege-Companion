@@ -1,21 +1,25 @@
 {
   "name": "hero-siege-companion",
   "productName": "Hero Siege Companion",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "Electron + Vue companion app for passive Hero Siege stat tracking.",
   "main": "dist/main/main/main.js",
   "scripts": {
-    "build": "npm run build:main && npm run build:renderer",
+    "build": "npm run build:main && npm run typecheck:renderer && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
-    "dist:win": "npm run prepare:cap && npm run build && electron-builder --win portable --x64 --publish=never",
+    "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
+    "typecheck:main": "tsc -p tsconfig.main.json --noEmit --noUnusedLocals --noUnusedParameters",
+    "typecheck:renderer": "vue-tsc -p tsconfig.renderer.json --noEmit",
+    "dist:win": "npm run rebuild && npm run prepare:cap && npm run build && electron-builder --win portable --x64 --publish=never",
     "prepare:cap": "node scripts/prepare-cap-native.js",
     "start": "npm run build && electron .",
     "test": "vitest run",
+    "test:relay": "python -m unittest discover -s tests/relay -p \"test_*.py\"",
     "test:electron": "npm run build && playwright test -c playwright.electron.config.cjs",
     "test:watch": "vitest",
-    "rebuild": "electron-rebuild -f -w cap",
+    "rebuild": "node scripts/patch-cap-native.js && electron-rebuild -f -w cap",
     "postinstall:electron": "node ./node_modules/electron/install.js"
   },
   "build": {
@@ -40,6 +44,13 @@
       {
         "from": "icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "resources/satanic-zone-relay",
+        "to": "satanic-zone-relay",
+        "filter": [
+          "*.py"
+        ]
       }
     ],
     "win": {
@@ -60,17 +71,19 @@
     "cap": "^0.2.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "4.2.0",
     "@playwright/test": "1.60.0",
     "@types/node": "^22.15.21",
-    "@vitejs/plugin-vue": "^5.2.4",
+    "@vitejs/plugin-vue": "6.0.7",
     "@vue/test-utils": "2.4.10",
-    "electron": "^31.7.7",
-    "electron-builder": "^24.13.3",
-    "electron-rebuild": "^3.2.9",
+    "electron": "43.4.1",
+    "electron-builder": "26.15.3",
     "jsdom": "29.1.1",
+    "node-abi": "4.33.0",
     "typescript": "^5.8.3",
-    "vite": "^5.4.19",
+    "vite": "8.1.4",
     "vitest": "4.1.7",
-    "vue": "^3.5.14"
+    "vue": "^3.5.14",
+    "vue-tsc": "3.3.7"
   }
 }

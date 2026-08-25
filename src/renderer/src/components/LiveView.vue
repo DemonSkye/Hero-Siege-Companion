@@ -14,10 +14,12 @@ import TrackedDropsPanel from "./TrackedDropsPanel.vue";
 
 defineProps<{
   state: CompanionState;
+  now: number;
   captureStatusLabel: string;
   runTileDisplays: CompactRunTileDisplay[];
   zoneCountdown: string;
   zoneResetLabel: string;
+  satanicZoneRefreshSubmitting: boolean;
   trackedItems: LiveTrackedItem[];
   keyDropTotal: number;
   oreDropTotal: number;
@@ -42,6 +44,7 @@ defineEmits<{
   openNpcapGuide: [];
   openItemFilterGroup: [groupId: string];
   identifyTimelineItem: [item: ItemTimelineEntry];
+  refreshSatanicZone: [];
   toggleLog: [log: LogEntry];
 }>();
 
@@ -71,9 +74,12 @@ const logLimit = defineModel<number>("logLimit", { required: true });
     <section class="dashboard-grid">
       <div class="dashboard-column dashboard-column-main">
         <SatanicZonePanel
-          :zone="state.stats.satanicZone"
+          :zone-state="state.satanicZone"
+          :now="now"
           :zone-countdown="zoneCountdown"
           :zone-reset-label="zoneResetLabel"
+          :refresh-submitting="satanicZoneRefreshSubmitting"
+          @refresh="$emit('refreshSatanicZone')"
         />
 
         <ItemTimelinePanel

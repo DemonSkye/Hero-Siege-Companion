@@ -1,18 +1,34 @@
 <script setup lang="ts">
-import type { SatanicZoneInfo } from "../../../shared/parser";
-import LiveDashboardCard from "./LiveDashboardCard.vue";
+import { computed } from "vue";
 
-defineProps<{
-  zone: SatanicZoneInfo | null;
+import type { SatanicZoneState } from "../../../shared/satanic-zone";
+import { satanicZoneDisplay, satanicZoneRefreshControl } from "../lib/satanic-zone-display";
+import LiveDashboardCard from "./LiveDashboardCard.vue";
+import RefreshIcon from "./RefreshIcon.vue";
+
+const props = defineProps<{
+  zoneState: SatanicZoneState;
+  now: number;
   zoneCountdown: string;
   zoneResetLabel: string;
+  refreshSubmitting: boolean;
 }>();
+
+defineEmits<{
+  refresh: [];
+}>();
+
+const zone = computed(() => props.zoneState.current);
+const display = computed(() => satanicZoneDisplay(props.zoneState, props.now));
+const refreshControl = computed(() =>
+  satanicZoneRefreshControl(props.zoneState, props.now, props.refreshSubmitting),
+);
 </script>
 
 <template>
   <LiveDashboardCard id="satanic-zone-card" panel-class="zone-panel" :title="zone?.zone || 'Waiting for zone packet'">
     <template #eyebrow>
-      Satanic Zone <span class="info-bubble" data-tip="Satanic zone data updates when the game sends a fresh zone vote/reset packet.">i</span>
+      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses the Companion's local relay and does not require a vote reset or leaving your zone. Some VPN or proxy setups may interfere with it.">i</span>
     </template>
     <template #title>{{ zone?.zone || "Waiting for zone packet" }}</template>
     <template #actions>
@@ -20,7 +36,27 @@ defineProps<{
         <span>{{ zoneCountdown }}</span>
         <small>until {{ zoneResetLabel }}</small>
       </div>
+      <button
+        v-if="refreshControl.visible"
+        class="icon-button ghost zone-refresh-button"
+        type="button"
+        :disabled="refreshControl.disabled"
+        :title="refreshControl.title"
+        :aria-label="refreshControl.ariaLabel"
+        @click="$emit('refresh')"
+      >
+        <RefreshIcon />
+      </button>
     </template>
+
+    <div class="status-details zone-status" role="status" aria-live="polite" :data-phase="display.phase">
+      <p><strong>{{ display.statusLabel }}</strong> — {{ display.statusDetail }}</p>
+      <p v-if="display.observedLabel || display.validUntilLabel" class="zone-freshness">
+        <span v-if="display.observedLabel">{{ display.observedLabel }}</span>
+        <span v-if="display.observedLabel && display.validUntilLabel" aria-hidden="true"> · </span>
+        <span v-if="display.validUntilLabel">{{ display.validUntilLabel }}</span>
+      </p>
+    </div>
 
     <div v-if="zone" class="zone-effects">
       <div class="effect-column">
@@ -44,6 +80,6 @@ defineProps<{
         </div>
       </div>
     </div>
-    <p v-else class="empty-copy">Zone details are cached until the next half-hour once a zone packet arrives.</p>
+    <p v-else class="empty-copy">No zone details have been observed for this half-hour window yet.</p>
   </LiveDashboardCard>
 </template>

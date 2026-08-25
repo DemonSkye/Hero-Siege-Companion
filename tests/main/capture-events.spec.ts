@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 import { EVENT_NAMES } from "../../src/shared/constants";
 import type { ParsedEvent } from "../../src/shared/parser";
 import {
+  captureEventsForRunStatus,
   endpointKey,
+  eventDebugSummary,
   isGeneratedItemDataResponse,
   messageKeySummary,
   shouldDebugPayload,
@@ -15,6 +17,16 @@ function event(name: ParsedEvent["name"], value: unknown = {}): ParsedEvent {
 }
 
 describe("capture event helpers", () => {
+  test("keeps Satanic Zone state live while run counters are paused", () => {
+    const itemEvent = event(EVENT_NAMES.item, { id: 1 });
+    const zoneEvent = event(EVENT_NAMES.satanicZone, { rawZone: "Act_08_03" });
+    const mailEvent = event(EVENT_NAMES.mail, true);
+    const events = [itemEvent, zoneEvent, mailEvent];
+
+    expect(captureEventsForRunStatus(events, "recording")).toBe(events);
+    expect(captureEventsForRunStatus(events, "paused")).toEqual([zoneEvent]);
+  });
+
   test("identifies payloads worth retaining in debug logs", () => {
     expect(shouldDebugPayload("ordinary heartbeat", [], [])).toBe(false);
     expect(shouldDebugPayload("ordinary heartbeat", [], [event(EVENT_NAMES.gold)])).toBe(true);
@@ -34,5 +46,26 @@ describe("capture event helpers", () => {
     expect(messageKeySummary({ alpha: 1, "bad key": 2, beta: 3 })).toBe("alpha,beta");
     expect(shouldLogEvent(event(EVENT_NAMES.accountMode))).toBe(false);
     expect(summarizeEvent(event(EVENT_NAMES.mail, true))).toBe("Parsed updateMail: true");
+  });
+
+  test("creates structured parsed-event debug summaries", () => {
+    expect(
+      eventDebugSummary({
+        name: EVENT_NAMES.item,
+        value: { label: "Rotten Pumpkin", source: "inventory", type: 10, id: 54 },
+        raw: {
+          route: "inventory/item_stack_handler/v1",
+          message: "Success on inventory update ext",
+          item_data: { b: 54 },
+        },
+        createdAt: 1,
+      }),
+    ).toEqual({
+      name: EVENT_NAMES.item,
+      value: { label: "Rotten Pumpkin", source: "inventory", type: 10, id: 54 },
+      rawKeys: "route,message,item_data",
+      route: "inventory/item_stack_handler/v1",
+      message: "Success on inventory update ext",
+    });
   });
 });

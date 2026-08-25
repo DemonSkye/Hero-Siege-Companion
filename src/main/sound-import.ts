@@ -46,6 +46,7 @@ export function importLootSounds(filePaths: string[], userDataPath: string): Imp
       const entries = readSoundPackEntries(filePath, {
         maxEntries: MAX_SOUND_IMPORT_COUNT,
         maxEntryBytes: MAX_CUSTOM_SOUND_IMPORT_BYTES,
+        maxTotalBytes: MAX_SOUND_PACK_IMPORT_BYTES,
         supportedExtensions: CUSTOM_SOUND_EXTENSIONS,
       });
       if (entries.length === 0) continue;

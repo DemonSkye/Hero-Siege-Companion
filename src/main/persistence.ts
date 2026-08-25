@@ -1,9 +1,18 @@
 import fs from "node:fs";
 import type { CapturePreferences, RunArchivePreferences } from "../shared/app-state";
 import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../shared/initial-state";
+import {
+  DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES,
+  createInitialSatanicZoneState,
+  type SatanicZoneRefreshPreferences,
+  type SatanicZoneState,
+} from "../shared/satanic-zone";
 import { PAST_RUN_SCHEMA_VERSION, normalizePastRunTags, type ItemDropCounter, type PastRunSummary, type ResourceCounter } from "../shared/stats";
 
 export const MAX_PAST_RUNS = 100;
+export const SATANIC_ZONE_CACHE_SCHEMA_VERSION = 3;
+const LEGACY_SATANIC_ZONE_CACHE_SCHEMA_VERSIONS = new Set([1, 2]);
+const MAX_SATANIC_ZONE_COOLDOWN_FUTURE_MS = 5 * 60_000;
 const PAST_RUN_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
 
 export interface WindowBounds {
@@ -27,6 +36,62 @@ type StoredPastRunSummary = Partial<PastRunSummary> & {
   totalGoldGained: number;
   totalXpGained: number;
 };
+
+interface StoredSatanicZoneCache {
+  schemaVersion: number;
+  nextAllowedRefreshAt: number;
+}
+
+export function loadSatanicZoneCache(filePath: string, now = Date.now(), log: StorageLog = noopLog): SatanicZoneState {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return createInitialSatanicZoneState();
+    return normalizeSatanicZoneCache(readJsonFile(filePath), now);
+  } catch (error) {
+    logStorageError(log, "satanic-zone-cache-load-error", error);
+    return createInitialSatanicZoneState();
+  }
+}
+
+export function saveSatanicZoneCache(
+  filePath: string,
+  state: SatanicZoneState,
+  log: StorageLog = noopLog,
+  now = Date.now(),
+): void {
+  if (!filePath) return;
+  try {
+    const nextAllowedRefreshAt = boundedSatanicZoneCooldown(state.nextAllowedRefreshAt, now);
+    if (nextAllowedRefreshAt === null) return;
+    const cache: StoredSatanicZoneCache = {
+      schemaVersion: SATANIC_ZONE_CACHE_SCHEMA_VERSION,
+      nextAllowedRefreshAt,
+    };
+    writeJsonFile(filePath, cache);
+  } catch (error) {
+    logStorageError(log, "satanic-zone-cache-save-error", error);
+  }
+}
+
+export function normalizeSatanicZoneCache(value: unknown, now = Date.now()): SatanicZoneState {
+  if (!isRecord(value)) {
+    return createInitialSatanicZoneState();
+  }
+  const schemaVersion = Number(value.schemaVersion);
+  if (
+    !LEGACY_SATANIC_ZONE_CACHE_SCHEMA_VERSIONS.has(schemaVersion)
+    && schemaVersion !== SATANIC_ZONE_CACHE_SCHEMA_VERSION
+  ) return createInitialSatanicZoneState();
+
+  return {
+    ...createInitialSatanicZoneState(),
+    nextAllowedRefreshAt: boundedSatanicZoneCooldown(value.nextAllowedRefreshAt, now),
+  };
+}
+
+export function satanicZoneCachePersistenceKey(state: SatanicZoneState, now = Date.now()): string | null {
+  const nextAllowedRefreshAt = boundedSatanicZoneCooldown(state.nextAllowedRefreshAt, now);
+  return nextAllowedRefreshAt === null ? null : String(nextAllowedRefreshAt);
+}
 
 export function loadPastRuns(filePath: string, log: StorageLog = noopLog): PastRunSummary[] {
   try {
@@ -149,7 +214,49 @@ export function saveCapturePreferences(filePath: string, preferences: CapturePre
 export function normalizeCapturePreferences(preferences: unknown): CapturePreferences {
   const record = isRecord(preferences) ? preferences : {};
   return {
-    createDebugMode: Boolean(record.createDebugMode),
+    captureDebugLogging: booleanField(record.captureDebugLogging, DEFAULT_CAPTURE_PREFERENCES.captureDebugLogging),
+    capturePayloadLogging: booleanField(record.capturePayloadLogging, DEFAULT_CAPTURE_PREFERENCES.capturePayloadLogging),
+    captureWideLogging: booleanField(record.captureWideLogging, DEFAULT_CAPTURE_PREFERENCES.captureWideLogging),
+    satanicZoneDebugLogging: booleanField(record.satanicZoneDebugLogging, DEFAULT_CAPTURE_PREFERENCES.satanicZoneDebugLogging),
+  };
+}
+
+export function loadSatanicZoneRefreshPreferences(
+  filePath: string,
+  log: StorageLog = noopLog,
+): SatanicZoneRefreshPreferences {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES;
+    const parsed = loadPreferencesFile(filePath) as { satanicZoneRefresh?: Partial<SatanicZoneRefreshPreferences> };
+    return parsed.satanicZoneRefresh === undefined
+      ? DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES
+      : normalizeSatanicZoneRefreshPreferences(parsed.satanicZoneRefresh);
+  } catch (error) {
+    logStorageError(log, "preferences-load-error", error);
+    return DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES;
+  }
+}
+
+export function saveSatanicZoneRefreshPreferences(
+  filePath: string,
+  preferences: SatanicZoneRefreshPreferences,
+  log: StorageLog = noopLog,
+): void {
+  if (!filePath) return;
+  try {
+    savePreferencesFile(filePath, {
+      ...loadPreferencesFile(filePath),
+      satanicZoneRefresh: normalizeSatanicZoneRefreshPreferences(preferences),
+    });
+  } catch (error) {
+    logStorageError(log, "preferences-save-error", error);
+  }
+}
+
+export function normalizeSatanicZoneRefreshPreferences(preferences: unknown): SatanicZoneRefreshPreferences {
+  const record = isRecord(preferences) ? preferences : {};
+  return {
+    enabled: booleanField(record.enabled, DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled),
   };
 }
 
@@ -247,6 +354,22 @@ function isFiniteNumber(value: unknown): boolean {
 function numberField(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : 0;
+}
+
+function booleanField(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function boundedSatanicZoneCooldown(value: unknown, now: number): number | null {
+  if (
+    typeof value !== "number"
+    || !Number.isSafeInteger(value)
+    || value <= 0
+    || !Number.isFinite(now)
+    || value <= now
+    || value > now + MAX_SATANIC_ZONE_COOLDOWN_FUTURE_MS
+  ) return null;
+  return value;
 }
 
 function timestampField(value: unknown): number {

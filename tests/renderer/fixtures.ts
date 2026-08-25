@@ -5,6 +5,16 @@ import type { ItemFilterGroup } from "../../src/renderer/src/lib/item-filters";
 export const baseTime = new Date("2026-05-23T12:00:00.000Z").getTime();
 
 export function companionState(overrides: Partial<CompanionState> = {}): CompanionState {
+  const satanicZone = {
+    rawZone: "Act_01_01",
+    zone: "Act 1: Siege Fields",
+    act: 1,
+    area: 1,
+    pros: [{ id: 1, name: "Treasure Goblin", description: "More loot." }],
+    cons: [{ id: 2, name: "Lingering Evil", description: "More danger." }],
+    buffs: [],
+    updatedAt: baseTime,
+  };
   return {
     captureRunning: true,
     captureStatus: "running",
@@ -27,6 +37,19 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
       parserErrors: 0,
       parserRestarts: 0,
       lastParserError: null,
+    },
+    satanicZone: {
+      current: satanicZone,
+      phase: "current",
+      source: "captured",
+      lastAttemptAt: baseTime - 1_000,
+      lastSuccessAt: baseTime,
+      validUntil: baseTime + 30 * 60_000,
+      nextAllowedRefreshAt: null,
+      errorCode: null,
+      refreshEnabled: false,
+      refreshAvailable: false,
+      refreshExperimental: false,
     },
     stats: {
       ...createInitialStats(),
@@ -75,16 +98,7 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
         itemTimelineEntry({ label: "Sash of the Magi", rarity: "Satanic", type: 6, id: 17, mfDrop: true, fingerprint: "drop-1" }),
         itemTimelineEntry({ label: "Copper Ore", rarity: "Common", type: 13, id: 27, amount: 3, fingerprint: "ore-1" }),
       ],
-      satanicZone: {
-        rawZone: "Act_01_01",
-        zone: "Act 1: Siege Fields",
-        act: 1,
-        area: 1,
-        pros: [{ id: 1, name: "Treasure Goblin", description: "More loot." }],
-        cons: [{ id: 2, name: "Lingering Evil", description: "More danger." }],
-        buffs: [],
-        updatedAt: baseTime,
-      },
+      satanicZone,
     },
     pastRuns: [],
     runArchivePreferences: {
@@ -92,7 +106,10 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
       minDurationMinutes: 0,
     },
     capturePreferences: {
-      createDebugMode: false,
+      captureDebugLogging: true,
+      capturePayloadLogging: false,
+      captureWideLogging: false,
+      satanicZoneDebugLogging: true,
     },
     logs: [logEntry({ id: "log-1", level: "success", message: "Capture opened." })],
     ...overrides,
@@ -102,10 +119,12 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
 export function itemTimelineEntry(overrides: Partial<ItemTimelineEntry> = {}): ItemTimelineEntry {
   return {
     source: "inventory",
+    repository: "unique",
     rarity: "Satanic",
     label: "Sash of the Magi",
     id: 17,
     type: 6,
+    weaponType: 0,
     seed: 123,
     dropQuality: 0,
     amount: 1,

@@ -22,7 +22,7 @@ const { handleModalFocusKeydown } = useModalFocus(promptDialog);
         <div>
           <p class="eyebrow">Updated</p>
           <h2 id="whats-new-title">See what's new?</h2>
-          <p class="settings-note">Version {{ version }} includes new player-facing changes.</p>
+          <p class="settings-note">Version {{ version }} is ready.</p>
         </div>
       </div>
       <div class="settings-actions whats-new-prompt-actions">

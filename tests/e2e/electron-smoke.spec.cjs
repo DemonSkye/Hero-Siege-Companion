@@ -1,8 +1,10 @@
 const { test, expect } = require("@playwright/test");
+const path = require("node:path");
 const {
   emitCaptureEvents,
   getMainWindowState,
   getRendererState,
+  waitForRendererState,
   withCompanionApp,
 } = require("./support/companion-app.cjs");
 const { e2eCaptureEvents } = require("./support/fixtures.cjs");
@@ -43,6 +45,98 @@ test("drives capture events through the real renderer and main-process IPC", asy
   });
 });
 
+test("keeps Satanic Zone state live while run counters are paused", async () => {
+  await withCompanionApp(async ({ electronApp, page }) => {
+    await page.getByRole("button", { name: "Pause Run" }).click();
+    await expect.poll(async () => (await getRendererState(page)).runStatus).toBe("paused");
+
+    const now = Date.now();
+    await emitCaptureEvents(electronApp, [
+      {
+        name: "updateSatanicZone",
+        value: {
+          rawZone: "Act_08_03",
+          zone: "Act 8: Forgotten Caves",
+          act: 8,
+          area: 3,
+          pros: [],
+          cons: [],
+          buffs: [],
+          updatedAt: now,
+        },
+        raw: {},
+        createdAt: now,
+      },
+      {
+        name: "itemDropped",
+        value: {
+          source: "server",
+          fingerprint: "e2e-paused-drop",
+          label: "Paused Angelic Drop",
+          id: 77,
+          type: 3,
+          rarityName: "Angelic",
+          amount: 1,
+          mfDrop: 0,
+        },
+        raw: {},
+        createdAt: now + 1,
+      },
+    ]);
+
+    const state = await waitForRendererState(
+      page,
+      (nextState) => nextState.stats.satanicZone?.rawZone === "Act_08_03",
+      { message: "paused runs should still receive the latest Satanic Zone" },
+    );
+    expect(state.stats.items.Angelic.total).toBe(0);
+    expect(state.stats.itemTimeline).toHaveLength(0);
+  });
+});
+
+test("starts the next run without the previous Satanic Zone observation", async () => {
+  await withCompanionApp(async ({ electronApp, page }) => {
+    const now = Date.now();
+    await emitCaptureEvents(electronApp, [
+      {
+        name: "updateSatanicZone",
+        value: {
+          rawZone: "Act_08_03",
+          zone: "Act 8: Flooded Plains",
+          act: 8,
+          area: 3,
+          pros: [{ id: 1, name: "Old Town", description: "Prior run evidence" }],
+          cons: [],
+          buffs: [{ id: 1, name: "Old Town", description: "Prior run evidence" }],
+          updatedAt: now,
+        },
+      },
+    ]);
+    await waitForRendererState(
+      page,
+      (state) => state.satanicZone.current?.rawZone === "Act_08_03",
+      { message: "the first run should receive its Satanic Zone observation" },
+    );
+
+    await page.getByRole("button", { name: "End Run" }).click();
+
+    const state = await waitForRendererState(
+      page,
+      (nextState) => nextState.satanicZone.current === null,
+      { message: "the next run should start without prior Satanic Zone evidence" },
+    );
+    expect(state.satanicZone).toMatchObject({
+      current: null,
+      phase: "waiting",
+      source: null,
+      lastAttemptAt: null,
+      lastSuccessAt: null,
+      validUntil: null,
+    });
+    expect(state.stats.satanicZone).toBeNull();
+  });
+});
+
 test("covers compact mode and support settings in an Electron window", async () => {
   await withCompanionApp(async ({ electronApp, page, userDataDir }) => {
     await page.getByRole("button", { name: "Compact mode" }).click();
@@ -57,8 +151,9 @@ test("covers compact mode and support settings in an Electron window", async () 
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
     await page.getByRole("tab", { name: "Support" }).click();
     await expect(page.getByLabel("Diagnostics files").getByText("diagnostics-summary.txt")).toBeVisible();
-    await expect(page.locator(".settings-support-path code")).toHaveText(userDataDir);
+    await expect(page.locator(".settings-support-path code")).toHaveText(path.join(userDataDir, "logs"));
     await expect(page.getByText("does not include packet captures")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Folder" })).toBeVisible();
     await page.getByRole("button", { name: "Copy Summary" }).click();
     await expect(page.getByText("Diagnostics summary copied")).toBeVisible();
   });

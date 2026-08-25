@@ -37,7 +37,14 @@ describe("app diagnostics", () => {
     const session = JSON.parse(fs.readFileSync(path.join(dir, "app-session.json"), "utf8")) as Record<string, unknown>;
 
     expect(log).toMatchObject({ type: "custom-event", ok: true });
-    expect(session).toMatchObject({ sessionId: "test-session", phase: "closed", version: "0.2.0", shutdownReason: "test" });
+    expect(session).toMatchObject({
+      sessionId: "test-session",
+      phase: "closed",
+      version: "0.2.0",
+      nodeVersion: process.versions.node,
+      nodeModulesAbi: process.versions.modules,
+      shutdownReason: "test",
+    });
   });
 
   test("reports previous non-graceful sessions", () => {

@@ -1,6 +1,10 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import { lookupItemIconFile } from "../../../shared/item-icons";
-import { lookupItemTranslation, lookupItemTranslationByName } from "../../../shared/item-lookup";
+import { lookupItemTranslation, lookupItemTranslationByName, type ItemRepository } from "../../../shared/item-lookup";
+import {
+  isPotentiallyGeneratedNormalEquipment,
+  lookupGeneratedNormalItemBase,
+} from "../../../shared/normal-item-name";
 import type { ItemTimelineEntry } from "../../../shared/stats";
 import { itemNameOptionByNormalizedName } from "./item-options";
 import { isRecord, normalizeLookupText, stringField } from "./text";
@@ -23,9 +27,12 @@ export interface ItemResearchExportOptions {
 export interface ItemResearchEntry {
   signature: string;
   label: string;
+  localizationId?: string;
   rarity: string;
+  repository: ItemRepository | "unknown";
   type: number;
   id: number;
+  weaponType: number;
   dropQuality: number;
   classification: ItemResearchClassification;
   count: number;
@@ -38,7 +45,7 @@ export interface ItemResearchEntry {
 
 export const ITEM_RESEARCH_ENTRY_LIMIT = 200;
 const GENERIC_UNKNOWN_LABEL_PATTERN =
-  /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|socketable|key|sword|dagger|mace|axe|claw|polearm|chainsaw|staff|cane|wand|book|spellblade|bow|gun|flask|throwing|novelty)\s+#\d+/i;
+  /(?:^|\s)(?:(?:type|weapon type)\s+\d+|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|socketable|key|relic|sword|dagger|mace|axe|claw|polearm|chainsaw|staff|cane|wand|book|spellblade|bow|gun|flask|throwing|novelty)\s+#\d+/i;
 const RESOURCE_LIKE_TYPES = new Set([12, 13, 14, 15]);
 const MATERIAL_COLLECTIBLE_TYPES = new Set([13, 14]);
 const STACK_ITEM_TYPES = new Set([12, 15]);
@@ -47,12 +54,23 @@ interface ItemResearchClassificationInput {
   label: string;
   type: number;
   id: number;
+  repository?: ItemRepository | "unknown";
+  weaponType?: number;
   localizationId?: string;
+}
+
+interface ItemResearchIdentityInput {
+  repository?: ItemRepository | "unknown";
+  type: number;
+  id: number;
+  weaponType?: number;
+  classification?: ItemResearchClassification;
 }
 
 export function isItemResearchCandidate(item: ItemTimelineEntry): boolean {
   const label = item.label.trim();
   const hasGenericLabel = isGenericUnknownLabel(label);
+  if (isGeneratedNormalItemResearchEntry(item)) return false;
   if (item.localizationId && !hasGenericLabel) return false;
   if (RESOURCE_LIKE_TYPES.has(item.type) && !hasGenericLabel) return false;
   if (!label) return true;
@@ -71,7 +89,10 @@ export function upsertItemResearchEntry(entries: ItemResearchEntry[], item: Item
       {
         ...existing,
         label: item.label || existing.label,
+        localizationId: item.localizationId ?? existing.localizationId,
         rarity: item.rarity || existing.rarity,
+        repository: normalizeItemResearchRepository(item.repository),
+        weaponType: Math.max(0, Math.trunc(item.weaponType || existing.weaponType || 0)),
         classification,
         count: existing.count + Math.max(item.amount || 1, 1),
         lastSeenAt: Math.max(existing.lastSeenAt, now),
@@ -84,9 +105,12 @@ export function upsertItemResearchEntry(entries: ItemResearchEntry[], item: Item
     {
       signature,
       label: item.label || "Unknown item",
+      localizationId: item.localizationId,
       rarity: item.rarity || "Unknown",
+      repository: normalizeItemResearchRepository(item.repository),
       type: item.type,
       id: item.id,
+      weaponType: Math.max(0, Math.trunc(item.weaponType || 0)),
       dropQuality: item.dropQuality,
       classification,
       count: Math.max(item.amount || 1, 1),
@@ -125,25 +149,32 @@ export function normalizeItemResearchEntries(value: unknown): ItemResearchEntry[
   const entries: ItemResearchEntry[] = [];
   for (const item of values) {
     if (!isRecord(item)) continue;
-    const signature = stringField(item, "signature").trim();
-    if (!signature || seen.has(signature)) continue;
-    seen.add(signature);
+    if (!stringField(item, "signature").trim()) continue;
     const type = numberField(item, "type");
     const id = numberField(item, "id");
+    const repository = normalizeItemResearchRepository(stringField(item, "repository"));
+    const weaponType = Math.max(0, numberField(item, "weaponType"));
     const dropQuality = numberField(item, "dropQuality");
     const firstSeenAt = positiveNumberField(item, "firstSeenAt") || Date.now();
     const lastSeenAt = positiveNumberField(item, "lastSeenAt") || firstSeenAt;
     const label = cleanText(stringField(item, "label") || fallbackLabel(type, id), 120);
+    const signature = researchSignatureFields({ type, id, repository, weaponType, dropQuality, label });
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    const localizationId = cleanText(stringField(item, "localizationId"), 160);
     entries.push({
       signature,
       label,
+      localizationId: localizationId || undefined,
       rarity: cleanText(stringField(item, "rarity") || "Unknown", 40),
+      repository,
       type,
       id,
+      weaponType,
       dropQuality,
       classification:
         normalizeItemResearchClassification(stringField(item, "classification")) ??
-        classifyItemResearchFields({ label, type, id }),
+        classifyItemResearchFields({ label, type, id, repository, weaponType, localizationId: localizationId || undefined }),
       count: Math.max(1, numberField(item, "count") || 1),
       firstSeenAt,
       lastSeenAt,
@@ -158,11 +189,41 @@ export function normalizeItemResearchEntries(value: unknown): ItemResearchEntry[
 }
 
 export function activeItemResearchEntries(entries: ItemResearchEntry[]): ItemResearchEntry[] {
-  return entries.filter((entry) => !entry.ignored && !entry.resolvedName.trim() && !isKnownMissingIconResearchEntry(entry));
+  return entries.filter((entry) =>
+    !entry.ignored
+    && !entry.resolvedName.trim()
+    && isPlayerActionableItemResearchEntry(entry),
+  );
 }
 
 export function isKnownMissingIconResearchEntry(entry: Pick<ItemResearchEntry, "classification">): boolean {
   return entry.classification === "known-missing-icon";
+}
+
+export function isGeneratedNormalItemResearchEntry(
+  entry: ItemResearchIdentityInput,
+): boolean {
+  const repository = normalizeItemResearchRepository(entry.repository);
+  const hasFixedNormalIdentity = lookupItemTranslation(
+    entry.type,
+    entry.id,
+    entry.type === 3 ? Math.max(0, Math.trunc(entry.weaponType || 0)) : 0,
+    "normal",
+  ) !== null;
+  if (repository === "normal") {
+    return !hasFixedNormalIdentity && isPotentiallyGeneratedNormalEquipment(repository, entry.type);
+  }
+  if (repository !== "unknown" || hasFixedNormalIdentity) return false;
+  // Version-1 research did not retain repository. Extracted charm ordinals and
+  // legacy rows already classified as unknown-normal are unsafe fixed-name tasks.
+  return lookupGeneratedNormalItemBase(entry.type, entry.id) !== null
+    || (entry.classification === "unknown-normal" && isPotentiallyGeneratedNormalEquipment("normal", entry.type));
+}
+
+export function isPlayerActionableItemResearchEntry(
+  entry: Pick<ItemResearchEntry, "classification" | "repository" | "type" | "id">,
+): boolean {
+  return !isKnownMissingIconResearchEntry(entry) && !isGeneratedNormalItemResearchEntry(entry);
 }
 
 export function createItemResearchExportPayload(entries: ItemResearchEntry[], options: ItemResearchExportOptions = {}) {
@@ -173,11 +234,14 @@ export function createItemResearchExportPayload(entries: ItemResearchEntry[], op
     .map((entry) => ({
       signature: entry.signature,
       label: entry.label,
+      localizationId: entry.localizationId,
       resolvedName: entry.resolvedName,
       resolvedNameKey: entry.resolvedName ? normalizeItemResearchNameKey(entry.resolvedName) : "",
       rarity: entry.rarity,
+      repository: entry.repository,
       type: entry.type,
       id: entry.id,
+      weaponType: entry.weaponType,
       dropQuality: entry.dropQuality,
       classification: entry.classification,
       count: entry.count,
@@ -195,7 +259,7 @@ export function createItemResearchExportPayload(entries: ItemResearchEntry[], op
   return {
     app: "hero-siege-companion",
     kind: "item-research",
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     scope,
     shareHint: "Share this JSON as a gist and contact sarevok9 on Reddit or Snyne on the Hero Siege Discord so item lookups can improve.",
@@ -223,7 +287,14 @@ export function isKnownItemResearchName(value: string): boolean {
 }
 
 export function itemResearchSignature(item: ItemTimelineEntry): string {
-  return `${item.type}:${item.id}:${item.dropQuality}:${genericLabelKey(item.label)}`;
+  return researchSignatureFields({
+    type: item.type,
+    id: item.id,
+    repository: normalizeItemResearchRepository(item.repository),
+    weaponType: Math.max(0, Math.trunc(item.weaponType || 0)),
+    dropQuality: item.dropQuality,
+    label: item.label,
+  });
 }
 
 export function itemResearchClassificationLabel(classification: ItemResearchClassification): string {
@@ -263,9 +334,11 @@ function isKnownNormalItemWithMissingIcon(input: ItemResearchClassificationInput
 }
 
 function knownNormalItemName(input: ItemResearchClassificationInput): string {
-  const byName = lookupItemTranslationByName(input.label);
+  const repository = normalizeItemResearchRepository(input.repository);
+  const byName = lookupItemTranslationByName(input.label, repository === "unknown" ? undefined : repository);
   if (byName) return byName.name;
-  const byId = lookupItemTranslation(input.type, input.id);
+  if (repository === "unknown") return "";
+  const byId = lookupItemTranslation(input.type, input.id, Math.max(0, Math.trunc(input.weaponType || 0)), repository);
   if (byId) return byId.name;
   return "";
 }
@@ -276,6 +349,22 @@ function isGeneratedPlaceholderLabel(label: string): boolean {
 
 function genericLabelKey(label: string): string {
   return label.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function researchSignatureFields(item: {
+  type: number;
+  id: number;
+  repository: ItemRepository | "unknown";
+  weaponType: number;
+  dropQuality: number;
+  label: string;
+}): string {
+  return `${item.repository}:${item.type}:${item.id}:${item.weaponType}:${item.dropQuality}:${genericLabelKey(item.label)}`;
+}
+
+function normalizeItemResearchRepository(value: unknown): ItemRepository | "unknown" {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "normal" || normalized === "unique" || normalized === "runeword" ? normalized : "unknown";
 }
 
 function fallbackLabel(type: number, id: number): string {

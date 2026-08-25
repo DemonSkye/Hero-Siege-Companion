@@ -45,6 +45,16 @@ export function useSupportDiagnosticsRuntime({ state, showToast }: UseSupportDia
     }
   }
 
+  async function openSupportLogsDirectory() {
+    try {
+      const opened = await window.heroSiegeCompanion.openSupportLogsDirectory();
+      showToast(opened ? "Diagnostics log folder opened" : "Diagnostics log folder open failed");
+      void refreshSupportDiagnosticsInfo();
+    } catch {
+      showToast("Diagnostics log folder open failed");
+    }
+  }
+
   async function openNpcapGuide() {
     await window.heroSiegeCompanion.openNpcapGuide();
   }
@@ -56,6 +66,7 @@ export function useSupportDiagnosticsRuntime({ state, showToast }: UseSupportDia
     refreshSupportDiagnosticsInfo,
     saveSupportDiagnostics,
     copySupportDiagnosticsSummary,
+    openSupportLogsDirectory,
     openNpcapGuide,
   };
 }

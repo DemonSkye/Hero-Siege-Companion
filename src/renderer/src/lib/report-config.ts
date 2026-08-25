@@ -333,11 +333,11 @@ function uniqueSummaryItems(items: ReportSummaryItemId[]): ReportSummaryItemId[]
 }
 
 function summaryMetricsFromSummaryItems(items: ReportSummaryItemId[]): ReportMetricId[] {
-  const allowed = new Set(REPORT_METRIC_OPTIONS.map((option) => option.id));
+  const allowed = new Set<ReportMetricId>(REPORT_METRIC_OPTIONS.map((option) => option.id));
   return items
     .filter((itemId) => reportSummaryItemKind(itemId) === "metric")
     .map(reportSummaryItemValue)
-    .filter((value): value is ReportMetricId => allowed.has(value));
+    .filter((value): value is ReportMetricId => allowed.has(value as ReportMetricId));
 }
 
 function dropRaritiesFromSummaryItems(items: ReportSummaryItemId[]): string[] {

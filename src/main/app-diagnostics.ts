@@ -107,6 +107,7 @@ export function createAppDiagnostics(options: AppDiagnosticsOptions): AppDiagnos
       uptimeSeconds: Math.round(process.uptime()),
       pid: process.pid,
       version: options.appVersion,
+      runtime: runtimeVersionSnapshot(),
       captureRunning: snapshot.state.captureRunning,
       captureStatus: snapshot.state.captureStatus,
       captureError: snapshot.state.captureError,
@@ -150,6 +151,10 @@ export function createAppDiagnostics(options: AppDiagnosticsOptions): AppDiagnos
             version: options.appVersion,
             platform: process.platform,
             arch: process.arch,
+            electronVersion: process.versions.electron ?? "unknown",
+            nodeVersion: process.versions.node,
+            nodeModulesAbi: process.versions.modules,
+            chromeVersion: process.versions.chrome ?? "unknown",
             ...extra,
           },
           null,
@@ -172,6 +177,15 @@ export function createAppDiagnostics(options: AppDiagnosticsOptions): AppDiagnos
     writeDiagnosticHeartbeat,
     writeSession,
     markSessionClosed,
+  };
+}
+
+function runtimeVersionSnapshot(): Record<string, string> {
+  return {
+    electron: process.versions.electron ?? "unknown",
+    node: process.versions.node,
+    nodeModulesAbi: process.versions.modules,
+    chrome: process.versions.chrome ?? "unknown",
   };
 }
 

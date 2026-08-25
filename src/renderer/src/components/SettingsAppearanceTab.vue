@@ -25,7 +25,7 @@ interface ThemeOption {
 }
 
 defineProps<{
-  themeOptions: ThemeOption[];
+  themeOptions: readonly ThemeOption[];
 }>();
 
 defineEmits<{

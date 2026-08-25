@@ -1,10 +1,17 @@
 import { ref, type Ref } from "vue";
 import type { CapturePreferences, RunArchivePreferences } from "../../../shared/app-state";
 import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../../../shared/initial-state";
+import { DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES } from "../../../shared/satanic-zone";
 import type { CompactRunTileConfig } from "./compact-tiles";
 import type { CustomItemFilterSound, ItemFilterGroup } from "./item-filters";
 import type { ItemResearchEntry } from "./item-research";
-import { defaultPreferences, normalizeRunDurationMinutes, type ConfigurationTransferOptions, type UiPreferences } from "./preferences";
+import {
+  defaultPreferences,
+  normalizeRunDurationMinutes,
+  UI_PREFERENCES_SCHEMA_VERSION,
+  type ConfigurationTransferOptions,
+  type UiPreferences,
+} from "./preferences";
 import { normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
 import {
   DEFAULT_THEME_ACCENTS,
@@ -65,7 +72,11 @@ export interface AppPreferencesState {
   draftThemeForegroundFills: Ref<ThemeForegroundFillMap>;
   draftCompactThemeForegroundFills: Ref<ThemeForegroundFillMap>;
   draftThemeTokenMaps: Ref<ThemeTokenMaps>;
-  draftCreateDebugMode: Ref<boolean>;
+  draftCaptureDebugLogging: Ref<boolean>;
+  draftCapturePayloadLogging: Ref<boolean>;
+  draftCaptureWideLogging: Ref<boolean>;
+  draftSatanicZoneDebugLogging: Ref<boolean>;
+  draftSatanicZoneRefreshEnabled: Ref<boolean>;
   draftSkipEmptyRuns: Ref<boolean>;
   draftMinRunDurationMinutes: Ref<number>;
   configIncludeAppSettings: Ref<boolean>;
@@ -78,9 +89,15 @@ export interface AppPreferencesState {
   currentPreferences(shoppingListItems: string[]): UiPreferences;
   applyPreferences(preferences: UiPreferences): void;
   currentDraftPreferences(shoppingListItems: string[]): UiPreferences;
-  loadDraftPreferences(preferences: UiPreferences, runArchivePreferences: RunArchivePreferences, capturePreferences: CapturePreferences): void;
+  loadDraftPreferences(
+    preferences: UiPreferences,
+    runArchivePreferences: RunArchivePreferences,
+    capturePreferences: CapturePreferences,
+    satanicZoneRefreshEnabled: boolean,
+  ): void;
   currentDraftRunArchivePreferences(): RunArchivePreferences;
   currentDraftCapturePreferences(): CapturePreferences;
+  currentDraftSatanicZoneRefreshEnabled(): boolean;
   currentConfigurationTransferOptions(): ConfigurationTransferOptions;
   updateDraftThemeAccent(value: string, targetThemeId?: ThemeId): void;
   updatePostRunReportConfig(value: PostRunReportConfig): void;
@@ -136,7 +153,11 @@ export function useAppPreferences(): AppPreferencesState {
   const draftThemeForegroundFills = ref<ThemeForegroundFillMap>({ ...defaultPreferences.themeForegroundFills });
   const draftCompactThemeForegroundFills = ref<ThemeForegroundFillMap>({ ...defaultPreferences.compactThemeForegroundFills });
   const draftThemeTokenMaps = ref<ThemeTokenMaps>({ ...defaultPreferences.themeTokenMaps });
-  const draftCreateDebugMode = ref(DEFAULT_CAPTURE_PREFERENCES.createDebugMode);
+  const draftCaptureDebugLogging = ref(DEFAULT_CAPTURE_PREFERENCES.captureDebugLogging);
+  const draftCapturePayloadLogging = ref(DEFAULT_CAPTURE_PREFERENCES.capturePayloadLogging);
+  const draftCaptureWideLogging = ref(DEFAULT_CAPTURE_PREFERENCES.captureWideLogging);
+  const draftSatanicZoneDebugLogging = ref(DEFAULT_CAPTURE_PREFERENCES.satanicZoneDebugLogging);
+  const draftSatanicZoneRefreshEnabled = ref(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled);
   const draftSkipEmptyRuns = ref(DEFAULT_RUN_ARCHIVE_PREFERENCES.skipEmptyRuns);
   const draftMinRunDurationMinutes = ref(DEFAULT_RUN_ARCHIVE_PREFERENCES.minDurationMinutes);
 
@@ -179,6 +200,7 @@ export function useAppPreferences(): AppPreferencesState {
 
   function currentPreferences(shoppingListItems: string[]): UiPreferences {
     return {
+      schemaVersion: UI_PREFERENCES_SCHEMA_VERSION,
       logLimit: logLimit.value,
       timelineLimit: timelineLimit.value,
       showCaptureDetails: showCaptureDetails.value,
@@ -242,6 +264,7 @@ export function useAppPreferences(): AppPreferencesState {
 
   function currentDraftPreferences(shoppingListItems: string[]): UiPreferences {
     return {
+      schemaVersion: UI_PREFERENCES_SCHEMA_VERSION,
       logLimit: draftLogLimit.value,
       timelineLimit: draftTimelineLimit.value,
       showCaptureDetails: draftShowCaptureDetails.value,
@@ -277,6 +300,7 @@ export function useAppPreferences(): AppPreferencesState {
     preferences: UiPreferences,
     runArchivePreferences: RunArchivePreferences,
     capturePreferences: CapturePreferences,
+    satanicZoneRefreshEnabled: boolean,
   ): void {
     draftLogLimit.value = preferences.logLimit;
     draftTimelineLimit.value = preferences.timelineLimit;
@@ -299,7 +323,11 @@ export function useAppPreferences(): AppPreferencesState {
     draftThemeForegroundFills.value = { ...preferences.themeForegroundFills };
     draftCompactThemeForegroundFills.value = { ...preferences.compactThemeForegroundFills };
     draftThemeTokenMaps.value = { ...preferences.themeTokenMaps };
-    draftCreateDebugMode.value = capturePreferences.createDebugMode;
+    draftCaptureDebugLogging.value = capturePreferences.captureDebugLogging;
+    draftCapturePayloadLogging.value = capturePreferences.capturePayloadLogging;
+    draftCaptureWideLogging.value = capturePreferences.captureWideLogging;
+    draftSatanicZoneDebugLogging.value = capturePreferences.satanicZoneDebugLogging;
+    draftSatanicZoneRefreshEnabled.value = satanicZoneRefreshEnabled === true;
     draftSkipEmptyRuns.value = runArchivePreferences.skipEmptyRuns;
     draftMinRunDurationMinutes.value = runArchivePreferences.minDurationMinutes;
   }
@@ -313,8 +341,15 @@ export function useAppPreferences(): AppPreferencesState {
 
   function currentDraftCapturePreferences(): CapturePreferences {
     return {
-      createDebugMode: draftCreateDebugMode.value,
+      captureDebugLogging: draftCaptureDebugLogging.value,
+      capturePayloadLogging: draftCaptureDebugLogging.value && draftCapturePayloadLogging.value,
+      captureWideLogging: draftCaptureWideLogging.value,
+      satanicZoneDebugLogging: draftCaptureDebugLogging.value && draftSatanicZoneDebugLogging.value,
     };
+  }
+
+  function currentDraftSatanicZoneRefreshEnabled(): boolean {
+    return draftSatanicZoneRefreshEnabled.value;
   }
 
   function currentConfigurationTransferOptions(): ConfigurationTransferOptions {
@@ -387,7 +422,11 @@ export function useAppPreferences(): AppPreferencesState {
     draftThemeForegroundFills,
     draftCompactThemeForegroundFills,
     draftThemeTokenMaps,
-    draftCreateDebugMode,
+    draftCaptureDebugLogging,
+    draftCapturePayloadLogging,
+    draftCaptureWideLogging,
+    draftSatanicZoneDebugLogging,
+    draftSatanicZoneRefreshEnabled,
     draftSkipEmptyRuns,
     draftMinRunDurationMinutes,
     configIncludeAppSettings,
@@ -403,6 +442,7 @@ export function useAppPreferences(): AppPreferencesState {
     loadDraftPreferences,
     currentDraftRunArchivePreferences,
     currentDraftCapturePreferences,
+    currentDraftSatanicZoneRefreshEnabled,
     currentConfigurationTransferOptions,
     updateDraftThemeAccent,
     updatePostRunReportConfig,

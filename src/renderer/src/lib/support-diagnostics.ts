@@ -3,6 +3,7 @@ import type { SupportDiagnosticsInfo } from "../../../shared/support-diagnostics
 
 export const DEFAULT_SUPPORT_DIAGNOSTICS_INFO: SupportDiagnosticsInfo = {
   userDataPath: "%APPDATA%\\Hero Siege Companion",
+  logsPath: "%APPDATA%\\Hero Siege Companion\\logs",
   appVersion: "unknown",
   generatedFiles: [
     {

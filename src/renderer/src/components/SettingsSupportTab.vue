@@ -13,6 +13,7 @@ const props = defineProps<{
 defineEmits<{
   saveSupportDiagnostics: [];
   copySupportDiagnosticsSummary: [];
+  openSupportLogsDirectory: [];
 }>();
 
 function formatBytes(bytes: number): string {
@@ -38,6 +39,7 @@ const availableSupportLogFiles = computed(() => props.supportLogFiles.filter((fi
         <strong>Diagnostics bundle</strong>
         <div class="settings-support-actions">
           <button class="icon-button ghost" type="button" @click="$emit('copySupportDiagnosticsSummary')">Copy Summary</button>
+          <button class="icon-button ghost" type="button" @click="$emit('openSupportLogsDirectory')">Open Folder</button>
           <button class="icon-button ghost" type="button" :disabled="supportBundleBusy" @click="$emit('saveSupportDiagnostics')">
             {{ supportBundleBusy ? "Preparing ZIP" : "Save ZIP" }}
           </button>

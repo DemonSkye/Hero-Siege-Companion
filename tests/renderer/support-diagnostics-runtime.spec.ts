@@ -7,6 +7,7 @@ describe("support diagnostics runtime", () => {
   test("loads diagnostics info and saves the diagnostics bundle", async () => {
     const getSupportDiagnosticsInfo = vi.fn().mockResolvedValue({
       userDataPath: "C:\\Users\\Test\\AppData\\Roaming\\Hero Siege Companion",
+      logsPath: "C:\\Users\\Test\\AppData\\Roaming\\Hero Siege Companion\\logs",
       appVersion: "0.2.0",
       generatedFiles: [],
       logFiles: [],
@@ -20,6 +21,7 @@ describe("support diagnostics runtime", () => {
     Object.defineProperty(window, "heroSiegeCompanion", {
       value: {
         getSupportDiagnosticsInfo,
+        openSupportLogsDirectory: vi.fn().mockResolvedValue(true),
         saveSupportDiagnostics,
         writeClipboardText: vi.fn().mockResolvedValue(undefined),
         openNpcapGuide: vi.fn(),
@@ -38,6 +40,7 @@ describe("support diagnostics runtime", () => {
     await runtime.copySupportDiagnosticsSummary();
 
     expect(runtime.supportDiagnosticsInfo.value.userDataPath).toContain("Hero Siege Companion");
+    expect(runtime.supportDiagnosticsInfo.value.logsPath).toContain("logs");
     expect(saveSupportDiagnostics).toHaveBeenCalledWith(expect.stringContaining("App version: 0.2.0"));
     expect(saveSupportDiagnostics).toHaveBeenCalledWith(expect.stringContaining("Capture error: Native capture unavailable: Npcap is missing"));
     expect(showToast).toHaveBeenCalledWith("Diagnostics ZIP saved with 1 file");
@@ -49,6 +52,7 @@ describe("support diagnostics runtime", () => {
     Object.defineProperty(window, "heroSiegeCompanion", {
       value: {
         getSupportDiagnosticsInfo: vi.fn().mockRejectedValue(new Error("nope")),
+        openSupportLogsDirectory: vi.fn(),
         saveSupportDiagnostics: vi.fn(),
         writeClipboardText: vi.fn(),
         openNpcapGuide: vi.fn(),
@@ -64,12 +68,14 @@ describe("support diagnostics runtime", () => {
     await runtime.refreshSupportDiagnosticsInfo();
 
     expect(runtime.supportDiagnosticsInfo.value.userDataPath).toBe("%APPDATA%\\Hero Siege Companion");
+    expect(runtime.supportDiagnosticsInfo.value.logsPath).toBe("%APPDATA%\\Hero Siege Companion\\logs");
   });
 
   test("shows a toast when diagnostics summary copy fails", async () => {
     Object.defineProperty(window, "heroSiegeCompanion", {
       value: {
         getSupportDiagnosticsInfo: vi.fn(),
+        openSupportLogsDirectory: vi.fn(),
         saveSupportDiagnostics: vi.fn(),
         writeClipboardText: vi.fn().mockRejectedValue(new Error("clipboard unavailable")),
         openNpcapGuide: vi.fn(),
@@ -86,5 +92,36 @@ describe("support diagnostics runtime", () => {
     await runtime.copySupportDiagnosticsSummary();
 
     expect(showToast).toHaveBeenCalledWith("Diagnostics summary copy failed");
+  });
+
+  test("opens the diagnostics log folder through the preload bridge", async () => {
+    const openSupportLogsDirectory = vi.fn().mockResolvedValue(true);
+    Object.defineProperty(window, "heroSiegeCompanion", {
+      value: {
+        getSupportDiagnosticsInfo: vi.fn().mockResolvedValue({
+          userDataPath: "C:\\Users\\Test\\AppData\\Roaming\\Hero Siege Companion",
+          logsPath: "C:\\Users\\Test\\AppData\\Roaming\\Hero Siege Companion\\logs",
+          appVersion: "0.2.0",
+          generatedFiles: [],
+          logFiles: [],
+        }),
+        openSupportLogsDirectory,
+        saveSupportDiagnostics: vi.fn(),
+        writeClipboardText: vi.fn(),
+        openNpcapGuide: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    const showToast = vi.fn();
+    const runtime = useSupportDiagnosticsRuntime({
+      state: ref(companionState()),
+      showToast,
+    });
+
+    await runtime.openSupportLogsDirectory();
+
+    expect(openSupportLogsDirectory).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith("Diagnostics log folder opened");
   });
 });

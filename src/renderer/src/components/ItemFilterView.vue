@@ -11,8 +11,10 @@ import {
 } from "../lib/item-filters";
 import { eventChecked, eventValue } from "../lib/dom-events";
 import {
+  isGeneratedNormalItemResearchEntry,
   isKnownMissingIconResearchEntry,
   isKnownItemResearchName,
+  isPlayerActionableItemResearchEntry,
   itemResearchClassificationLabel,
   type ItemResearchEntry,
   type ItemResearchExportScope,
@@ -251,6 +253,7 @@ function updateResearchDraft(entry: ItemResearchEntry, patch: Partial<{ resolved
 }
 
 function saveResearchEntry(entry: ItemResearchEntry) {
+  if (!isPlayerActionableResearchEntry(entry)) return;
   const draft = researchDraft(entry);
   emit("saveItemResearchEntry", entry.signature, {
     resolvedName: isKnownMissingIconEntry(entry) ? "" : draft.resolvedName,
@@ -279,20 +282,30 @@ function entryTypeLabelValue(type: number): string {
 }
 
 function researchClassificationLabel(entry: ItemResearchEntry): string {
+  if (isGeneratedNormalResearchEntry(entry)) return "Generated normal item";
   return itemResearchClassificationLabel(entry.classification);
 }
 
 function entryMatchesResearchStatus(entry: ItemResearchEntry, status: ItemResearchStatusFilter): boolean {
   const missingIcon = isKnownMissingIconEntry(entry);
+  const playerActionable = isPlayerActionableResearchEntry(entry);
   if (status === "ignored") return entry.ignored;
   if (status === "missing-icon") return !entry.ignored && missingIcon;
-  if (status === "resolved") return !entry.ignored && !missingIcon && Boolean(entry.resolvedName.trim());
-  if (status === "unresolved") return !entry.ignored && !missingIcon && !entry.resolvedName.trim();
+  if (status === "resolved") return !entry.ignored && playerActionable && Boolean(entry.resolvedName.trim());
+  if (status === "unresolved") return !entry.ignored && playerActionable && !entry.resolvedName.trim();
   return true;
 }
 
 function isKnownMissingIconEntry(entry: ItemResearchEntry): boolean {
   return isKnownMissingIconResearchEntry(entry);
+}
+
+function isGeneratedNormalResearchEntry(entry: ItemResearchEntry): boolean {
+  return isGeneratedNormalItemResearchEntry(entry);
+}
+
+function isPlayerActionableResearchEntry(entry: ItemResearchEntry): boolean {
+  return isPlayerActionableItemResearchEntry(entry);
 }
 
 function wikiItemPageUrl(entry: ItemResearchEntry): string {
@@ -354,7 +367,7 @@ function fallbackSoundName(soundId: string): string {
         </div>
         <template v-if="itemResearchOpen">
           <p class="item-research-share">
-            Unknown drops need names. Known items with missing app icons are maintainer asset backlog, not player research. Share exported research as a
+            Unknown fixed drops need names. Generated normal equipment is handled by the app and does not need player naming. Known items with missing app icons are maintainer asset backlog, not player research. Share exported research as a
             <a href="https://gist.github.com/" target="_blank" rel="noreferrer">GitHub Gist</a>
             with sarevok9 on Reddit or Snyne on the Hero Siege Discord.
           </p>
@@ -388,7 +401,7 @@ function fallbackSoundName(soundId: string): string {
               </div>
             </div>
             <div v-if="filteredItemResearchEntries.length" class="item-research-list">
-              <article v-for="entry in filteredItemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName && !isKnownMissingIconEntry(entry), ignored: entry.ignored, 'missing-icon': isKnownMissingIconEntry(entry) }]">
+              <article v-for="entry in filteredItemResearchEntries" :key="entry.signature" :class="['item-research-row', { resolved: entry.resolvedName && isPlayerActionableResearchEntry(entry), ignored: entry.ignored, 'missing-icon': isKnownMissingIconEntry(entry), 'generated-normal': isGeneratedNormalResearchEntry(entry) }]">
                 <div class="item-research-meta">
                   <strong>{{ researchDraft(entry).resolvedName || entry.label }}</strong>
                   <div class="item-research-details">
@@ -401,12 +414,16 @@ function fallbackSoundName(soundId: string): string {
                   <small>No player action needed; included in maintainer exports.</small>
                   <a :href="wikiItemPageUrl(entry)" target="_blank" rel="noreferrer">Wiki</a>
                 </div>
+                <div v-else-if="isGeneratedNormalResearchEntry(entry)" class="item-research-field item-research-missing-icon-note">
+                  <span>Generated normal item</span>
+                  <small>No player action needed; exact affixes require the seed-aware item resolver.</small>
+                </div>
                 <div v-else class="item-research-field">
                   <input :value="researchDraft(entry).resolvedName" type="text" placeholder="Actual item name" spellcheck="false" @input="updateResearchDraft(entry, { resolvedName: eventValue($event) })" />
                   <small v-if="hasUnknownResolvedName(entry)">Name is not in known item options.</small>
                 </div>
-                <input v-if="!isKnownMissingIconEntry(entry)" :value="researchDraft(entry).notes" type="text" placeholder="Notes" spellcheck="false" @input="updateResearchDraft(entry, { notes: eventValue($event) })" />
-                <div v-if="!isKnownMissingIconEntry(entry)" class="item-research-actions">
+                <input v-if="isPlayerActionableResearchEntry(entry)" :value="researchDraft(entry).notes" type="text" placeholder="Notes" spellcheck="false" @input="updateResearchDraft(entry, { notes: eventValue($event) })" />
+                <div v-if="isPlayerActionableResearchEntry(entry)" class="item-research-actions">
                   <button class="sound-test-button" type="button" @click="saveResearchEntry(entry)">Save</button>
                   <button v-if="canResetResearchEntry(entry)" class="sound-test-button" type="button" @click="resetResearchEntry(entry)">Reset</button>
                   <button v-else class="shopping-remove" type="button" @click="$emit('ignoreItemResearchEntry', entry.signature)" :aria-label="`Ignore ${entry.label}`">x</button>

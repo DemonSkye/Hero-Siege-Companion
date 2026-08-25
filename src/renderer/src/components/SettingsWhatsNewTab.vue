@@ -13,9 +13,9 @@ defineProps<{
         <strong>What's New in {{ whatsNew.version }}</strong>
         <span>{{ whatsNew.title }}</span>
       </div>
-      <p class="whats-new-intro">{{ whatsNew.intro }}</p>
-      <div class="whats-new-sections">
-        <section class="whats-new-section">
+      <p v-if="whatsNew.intro" class="whats-new-intro">{{ whatsNew.intro }}</p>
+      <div v-if="whatsNew.items.length > 0 || whatsNew.sections.length > 0" class="whats-new-sections">
+        <section v-if="whatsNew.items.length > 0" class="whats-new-section">
           <h3>Highlights</h3>
           <ul class="whats-new-list">
             <li v-for="item in whatsNew.items" :key="item">{{ item }}</li>

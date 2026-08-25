@@ -18,7 +18,7 @@ import { itemTimelineKey } from "../../src/renderer/src/lib/item-filters";
 import { defaultPostRunReportConfig, withPostRunReportSummaryItems } from "../../src/renderer/src/lib/report-config";
 import { DEFAULT_THEME_ACCENTS, THEME_OPTIONS } from "../../src/renderer/src/lib/themes";
 import { WHATS_NEW_RELEASE } from "../../src/renderer/src/lib/whats-new";
-import { companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
+import { baseTime, companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
 
 describe("Vue component contracts", () => {
   test("AppTitlebar exposes window chrome actions", async () => {
@@ -124,6 +124,7 @@ describe("Vue component contracts", () => {
     const wrapper = mount(CompactView, {
       props: {
         state,
+        now: baseTime,
         compactRunTileDisplays: [
           { id: "duration", kind: "duration", label: "This Run", value: "10m", title: "Recording" },
           { id: "gold", kind: "gold", label: "Gold", value: "10,000", title: "Current 1,010,000 - 60,000/h" },
@@ -137,6 +138,7 @@ describe("Vue component contracts", () => {
         runPausedLabel: "Paused",
         canToggleRunPaused: true,
         showZone: true,
+        satanicZoneRefreshSubmitting: false,
       },
     });
 
@@ -145,6 +147,8 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("10,000");
     expect(wrapper.text()).toContain("Kills");
     expect(wrapper.text()).toContain("Siege Fields");
+    expect(wrapper.find('.compact-zone-refresh-button').exists()).toBe(false);
+    expect(wrapper.find(".compact-zone-tile-with-refresh").exists()).toBe(false);
 
     await wrapper.get(".compact-zone-tray .compact-shopping-close").trigger("click");
     await buttonByText(wrapper, "Stop").trigger("click");
@@ -156,14 +160,95 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("update:showZone")).toEqual([[false], [true]]);
   });
 
+  test("CompactView places the opted-in refresh action beside the SZ clock and emits it after gating", async () => {
+    const state = companionState();
+    state.satanicZone = {
+      ...state.satanicZone,
+      refreshEnabled: true,
+      refreshAvailable: true,
+      refreshExperimental: true,
+      nextAllowedRefreshAt: baseTime + 30_000,
+    };
+    const wrapper = mount(CompactView, {
+      props: {
+        state,
+        now: baseTime,
+        compactRunTileDisplays: [
+          { id: "sz", kind: "sz", label: "SZ", value: "20m", title: "Satanic zone details" },
+        ],
+        runPausedLabel: "Paused",
+        canToggleRunPaused: true,
+        showZone: false,
+        satanicZoneRefreshSubmitting: false,
+      },
+    });
+
+    const clock = wrapper.get(".compact-zone-clock");
+    expect(clock.element.parentElement?.classList.contains("compact-zone-tile-with-refresh")).toBe(true);
+    expect(clock.get("strong").text()).toBe("20m");
+    const refreshButton = clock.get(".compact-zone-refresh-button");
+    expect(refreshButton.attributes("disabled")).toBeDefined();
+    expect(refreshButton.attributes("title")).toBe("Refresh available in 30s.");
+    expect(refreshButton.attributes("aria-label")).toBe("Refresh Satanic Zone unavailable: Refresh available in 30s.");
+
+    await wrapper.setProps({ now: baseTime + 30_000 });
+    expect(refreshButton.attributes("disabled")).toBeUndefined();
+    expect(refreshButton.attributes("aria-label")).toBe("Refresh Satanic Zone");
+    await refreshButton.trigger("click");
+
+    expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
+  });
+
+  test("CompactView lets main recheck stale readiness and blocks only the local submission", async () => {
+    const state = companionState();
+    state.captureRunning = false;
+    state.captureStatus = "error";
+    state.satanicZone = {
+      ...state.satanicZone,
+      phase: "updating",
+      refreshEnabled: true,
+      refreshAvailable: false,
+      refreshExperimental: false,
+      nextAllowedRefreshAt: null,
+      errorCode: "helper_unavailable",
+    };
+    const wrapper = mount(CompactView, {
+      props: {
+        state,
+        now: baseTime,
+        compactRunTileDisplays: [
+          { id: "sz", kind: "sz", label: "SZ", value: "20m", title: "Satanic zone details" },
+        ],
+        runPausedLabel: "Paused",
+        canToggleRunPaused: true,
+        showZone: false,
+        satanicZoneRefreshSubmitting: false,
+      },
+    });
+
+    const refreshButton = wrapper.get(".compact-zone-refresh-button");
+    expect(refreshButton.attributes("disabled")).toBeUndefined();
+    expect(refreshButton.attributes("title")).toBe("Refresh Satanic Zone");
+    await refreshButton.trigger("click");
+    expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
+
+    await wrapper.setProps({ satanicZoneRefreshSubmitting: true });
+    expect(refreshButton.attributes("disabled")).toBeDefined();
+    expect(refreshButton.attributes("title")).toBe("Submitting a manual refresh request.");
+    await refreshButton.trigger("click");
+    expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
+  });
+
   test("ItemFilterView exercises group editing, mute state, suggestions, and rule toggles", async () => {
     const group = itemFilterGroup();
     const researchEntry = {
       signature: "4:55:0:gloves #55",
       label: "Gloves #55",
       rarity: "Satanic",
+      repository: "unique",
       type: 4,
       id: 55,
+      weaponType: 0,
       dropQuality: 0,
       classification: "unknown-normal",
       count: 1,
@@ -299,8 +384,10 @@ describe("Vue component contracts", () => {
       signature: "4:55:0:gloves #55",
       label: "Gloves #55",
       rarity: "Satanic",
+      repository: "unique",
       type: 4,
       id: 55,
+      weaponType: 0,
       dropQuality: 0,
       classification: "unknown-normal",
       count: 1,
@@ -401,6 +488,96 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Angel");
   });
 
+  test("ItemFilterView presents generated normal and legacy equipment research as no-player-action", async () => {
+    const group = itemFilterGroup();
+    const generatedEntries = [
+      {
+        signature: "normal:0:0:0:0:helmet #0",
+        label: "Helmet #0",
+        rarity: "Unknown",
+        repository: "normal",
+        type: 0,
+        id: 0,
+        weaponType: 0,
+        dropQuality: 0,
+        classification: "unknown-normal",
+        count: 1,
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+        resolvedName: "",
+        notes: "",
+        ignored: false,
+      },
+      {
+        signature: "unknown:10:33:0:0:charm #33",
+        label: "Charm #33",
+        rarity: "Unknown",
+        repository: "unknown",
+        type: 10,
+        id: 33,
+        weaponType: 0,
+        dropQuality: 0,
+        classification: "unknown-normal",
+        count: 1,
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+        resolvedName: "",
+        notes: "",
+        ignored: false,
+      },
+      {
+        signature: "unknown:0:999:0:0:helmet #999",
+        label: "Helmet #999",
+        rarity: "Unknown",
+        repository: "unknown",
+        type: 0,
+        id: 999,
+        weaponType: 0,
+        dropQuality: 0,
+        classification: "unknown-normal",
+        count: 1,
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+        resolvedName: "",
+        notes: "",
+        ignored: false,
+      },
+    ];
+    const wrapper = mount(ItemFilterView, {
+      props: {
+        itemFilterGroups: [group],
+        itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }],
+        selectedItemFilterGroup: null,
+        selectedItemFilterGroupedItems: [],
+        itemFilterDraftGroupName: "",
+        itemFilterDraftItem: "",
+        itemFilterSuggestions: [],
+        itemTypeOptions: [{ value: "0", label: "Helmet" }, { value: "10", label: "Charm" }],
+        itemFilterMuted: false,
+        developerItemResearchEnabled: true,
+        itemResearchEntries: generatedEntries,
+        unresolvedItemResearchCount: 0,
+      },
+    });
+
+    expect(wrapper.text()).toContain("0 need naming");
+    await buttonByText(wrapper, "Show Research").trigger("click");
+    const rows = wrapper.findAll(".item-research-row.generated-normal");
+    expect(rows).toHaveLength(3);
+    expect(rows.every((row) => row.text().includes("Generated normal item"))).toBe(true);
+    expect(rows.every((row) => row.text().includes("No player action needed"))).toBe(true);
+    expect(rows.every((row) => !row.find('input[placeholder="Actual item name"]').exists())).toBe(true);
+    expect(rows.every((row) => !row.find('input[placeholder="Notes"]').exists())).toBe(true);
+    expect(rows.every((row) => !row.text().includes("Save"))).toBe(true);
+
+    await rows[0].get("button").trigger("click");
+    expect(wrapper.emitted("ignoreItemResearchEntry")?.[0]).toEqual(["normal:0:0:0:0:helmet #0"]);
+
+    const filters = wrapper.findAll(".item-research-toolbar select");
+    await filters[0].setValue("unresolved");
+    expect(wrapper.text()).toContain("No research entries match the current filters.");
+  });
+
   test("SettingsModal keeps persisted settings explicit and emits application actions", async () => {
     const wrapper = mount(SettingsModal, {
       props: {
@@ -426,7 +603,7 @@ describe("Vue component contracts", () => {
         supportLogFiles: [
           {
             name: "app-debug.log",
-            path: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\app-debug.log",
+            path: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\logs\\app-debug.log",
             description: "App startup diagnostics.",
             exists: true,
             sizeBytes: 2048,
@@ -434,14 +611,14 @@ describe("Vue component contracts", () => {
           },
           {
             name: "capture-debug.log.old",
-            path: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\capture-debug.log.old",
+            path: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\logs\\capture-debug.log.old",
             description: "Previous capture diagnostics.",
             exists: false,
             sizeBytes: 0,
             updatedAt: null,
           },
         ],
-        supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion",
+        supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\logs",
         supportBundleBusy: false,
         whatsNew: WHATS_NEW_RELEASE,
         logLimit: 20,
@@ -450,7 +627,11 @@ describe("Vue component contracts", () => {
         launchThroughSteam: false,
         gameExecutablePath: "C:\\Games\\Hero Siege\\Hero_Siege.exe",
         showCaptureDetails: false,
-        createDebugMode: false,
+        captureDebugLogging: true,
+        capturePayloadLogging: false,
+        captureWideLogging: false,
+        satanicZoneDebugLogging: true,
+        satanicZoneRefreshEnabled: false,
         alwaysOnTop: true,
         lockCompactLocation: false,
         hideSocketables: false,
@@ -479,7 +660,18 @@ describe("Vue component contracts", () => {
 
     expect(wrapper.text()).toContain("Settings");
     await buttonByText(wrapper, "Capture").trigger("click");
-    expect(wrapper.text()).toContain("Verbose live logging");
+    expect(wrapper.text()).toContain("Verbose packet file");
+    const satanicZoneRefreshCheckbox = checkboxByLabel(wrapper, "Enable manual Satanic Zone refresh");
+    const satanicZoneRefreshNote = wrapper.get("#satanic-zone-refresh-note");
+    expect(satanicZoneRefreshNote.text()).toBe(
+      "Uses a local proxy relay. Enabling or disabling this option while connected will disconnect the game in progress; enable it before joining a game. Some VPNs, system proxy setups, and network-security tools may conflict with it.",
+    );
+    expect(satanicZoneRefreshCheckbox.attributes("aria-describedby")).toBe("satanic-zone-refresh-note");
+    expect(satanicZoneRefreshCheckbox.attributes("aria-label")).toBe("Enable manual Satanic Zone refresh");
+    expect(
+      satanicZoneRefreshCheckbox.element.closest("label")?.querySelector(".info-bubble")?.getAttribute("data-tip"),
+    ).toContain("will disconnect the game in progress");
+    await satanicZoneRefreshCheckbox.setValue(true);
     await wrapper.get('nav[role="tablist"]').trigger("keydown", { key: "ArrowRight" });
     expect(wrapper.text()).toContain("Rarity colors stay game-matched.");
 
@@ -529,13 +721,20 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "What's New").trigger("click");
     expect(wrapper.text()).toContain(`What's New in ${WHATS_NEW_RELEASE.version}`);
     expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.title);
+    expect(wrapper.text()).toContain("Added experimental manual Satanic Zone refresh.");
+    expect(wrapper.text()).toContain("enabling or disabling it while connected will disconnect the game in progress.");
+    expect(wrapper.text()).toContain("Patched stability issues across capture startup, packet handling, diagnostics, and native shutdown.");
+    expect(wrapper.text()).toContain("Updated the tracked Hero Siege season number to Season 11.");
+    expect(wrapper.text()).toContain(
+      "Fixed generated item handling so ambiguous charm rarity codes no longer inflate Set totals or trigger manual Identify tasks, while named Satanic and Set charms keep their correct rarity.",
+    );
+    expect(wrapper.text()).toContain("Various bug fixes and reliability improvements.");
     expect(wrapper.text()).toContain("Npcap is still required for capture.");
+    expect(WHATS_NEW_RELEASE.items).toHaveLength(6);
+    expect(WHATS_NEW_RELEASE.sections).toHaveLength(0);
     expect(wrapper.text()).toContain("Highlights");
-    expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.items[0]);
-    expect(wrapper.text()).toContain("Themes And Appearance");
-    expect(wrapper.text()).toContain("Past Runs");
-    expect(wrapper.text()).toContain("Use report presets, linked Item Filter groups, custom recap groups, top-drop limits, and resource drawers to shape run recaps.");
-    expect(wrapper.text()).toContain("Item Research can filter, classify, export scoped review data, clear resolved or ignored rows, and separate generated placeholders from missing-icon follow-up work.");
+    expect(wrapper.text()).not.toContain("Themes And Appearance");
+    expect(wrapper.text()).not.toContain("Past Runs");
     expect(wrapper.text()).not.toContain("Added The Hierophant for collectible type 13 / id 40.");
 
     await buttonByText(wrapper, "Support").trigger("click");
@@ -546,6 +745,7 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).not.toContain("capture-debug.log.old");
     expect(wrapper.text()).not.toContain("Missing");
     await buttonByText(wrapper, "Copy Summary").trigger("click");
+    await buttonByText(wrapper, "Open Folder").trigger("click");
     await buttonByText(wrapper, "Save ZIP").trigger("click");
 
     await buttonByText(wrapper, "General").trigger("click");
@@ -558,6 +758,7 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "Done").trigger("click");
 
     expect(wrapper.emitted("update:logLimit")).toEqual([[50]]);
+    expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toEqual([[true]]);
     expect(wrapper.emitted("update:themeId")).toEqual([["cyberpunk"]]);
     expect(wrapper.emitted("update:compactThemeId")).toEqual([["light"]]);
     expect(wrapper.emitted("update:themeTextures")).toEqual([[{ cyberpunk: "carbon-fiber" }]]);
@@ -585,6 +786,7 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("exportSounds")).toHaveLength(1);
     expect(wrapper.emitted("removeSound")?.[0]?.[0]).toMatchObject({ id: "custom-sound:boss" });
     expect(wrapper.emitted("copySupportDiagnosticsSummary")).toHaveLength(1);
+    expect(wrapper.emitted("openSupportLogsDirectory")).toHaveLength(1);
     expect(wrapper.emitted("saveSupportDiagnostics")).toHaveLength(1);
     expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
     expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
@@ -910,12 +1112,27 @@ describe("Vue component contracts", () => {
 
   test("LiveView binds the high-churn dashboard controls through explicit update events", async () => {
     const state = companionState();
+    const now = state.stats.lastEventAt ?? Date.now();
+    state.satanicZone = {
+      current: state.stats.satanicZone,
+      phase: "current",
+      source: "captured",
+      lastAttemptAt: now - 1_000,
+      lastSuccessAt: now,
+      refreshEnabled: true,
+      refreshAvailable: true,
+      refreshExperimental: true,
+      validUntil: now + 600_000,
+      nextAllowedRefreshAt: null,
+      errorCode: null,
+    };
     const filteredDrop = itemTimelineEntry({ label: "Sash of the Magi", rarity: "Satanic", mfDrop: true });
     const researchDrop = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
     const filterGroup = itemFilterGroup();
     const wrapper = mount(LiveView, {
       props: {
         state,
+        now,
         captureStatusLabel: "Capturing",
         runTileDisplays: [
           { id: "duration", kind: "duration", label: "This Run", value: "10m", detail: "TestHero" },
@@ -925,6 +1142,7 @@ describe("Vue component contracts", () => {
         ],
         zoneCountdown: "20m",
         zoneResetLabel: "12:30 PM",
+        satanicZoneRefreshSubmitting: false,
         trackedItems: [
           { rarity: "Set", total: 1, mf: 0, perHour: 6, drops: [{ name: "Earth Shaper's Boots", total: 1, mf: 0 }] },
           { rarity: "Satanic", total: 2, mf: 1, perHour: 12, drops: [{ name: "Sash of the Magi", total: 2, mf: 1 }] },
@@ -1002,6 +1220,7 @@ describe("Vue component contracts", () => {
     await checkboxByLabel(wrapper, "Hide unfiltered").setValue(true);
     await buttonByText(wrapper, "Loot Alerts").trigger("click");
     await buttonByText(wrapper, "Identify").trigger("click");
+    await wrapper.get('button[aria-label="Refresh Satanic Zone"]').trigger("click");
     await wrapper.get(".logs button").trigger("click");
 
     expect(wrapper.emitted("update:showCaptureDetails")).toEqual([[true]]);
@@ -1010,11 +1229,26 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("addShoppingItem")).toHaveLength(1);
     expect(wrapper.emitted("openItemFilterGroup")).toEqual([["loot-alerts"]]);
     expect(wrapper.emitted("identifyTimelineItem")?.[0]?.[0]).toMatchObject({ label: "Collectible #24", type: 13, id: 24 });
+    expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
     expect(wrapper.emitted("toggleLog")?.[0]).toEqual([state.logs[0]]);
   });
 
   test("LiveView surfaces the Npcap setup checklist when first-run prerequisites are wrong", async () => {
     const state = companionState();
+    const now = state.stats.lastEventAt ?? Date.now();
+    state.satanicZone = {
+      current: state.stats.satanicZone,
+      phase: "current",
+      source: "captured",
+      lastAttemptAt: now - 1_000,
+      lastSuccessAt: now,
+      validUntil: now + 600_000,
+      nextAllowedRefreshAt: null,
+      errorCode: null,
+      refreshEnabled: false,
+      refreshAvailable: false,
+      refreshExperimental: false,
+    };
     state.health = {
       ...state.health,
       npcapService: "Stopped",
@@ -1024,10 +1258,12 @@ describe("Vue component contracts", () => {
     const wrapper = mount(LiveView, {
       props: {
         state,
+        now,
         captureStatusLabel: "Needs attention",
         runTileDisplays: [],
         zoneCountdown: "20m",
         zoneResetLabel: "12:30 PM",
+        satanicZoneRefreshSubmitting: false,
         trackedItems: [],
         keyDropTotal: 0,
         oreDropTotal: 0,
@@ -1090,7 +1326,7 @@ function settingsModalProps() {
     supportDiagnostics: "Hero Siege Companion capture diagnostics",
     supportGeneratedFiles: [],
     supportLogFiles: [],
-    supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion",
+    supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\logs",
     supportBundleBusy: false,
     whatsNew: WHATS_NEW_RELEASE,
     logLimit: 20,
@@ -1099,7 +1335,11 @@ function settingsModalProps() {
     launchThroughSteam: false,
     gameExecutablePath: "",
     showCaptureDetails: false,
-    createDebugMode: false,
+    captureDebugLogging: true,
+    capturePayloadLogging: false,
+    captureWideLogging: false,
+    satanicZoneDebugLogging: true,
+    satanicZoneRefreshEnabled: false,
     alwaysOnTop: true,
     lockCompactLocation: false,
     hideSocketables: false,
