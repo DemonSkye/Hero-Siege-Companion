@@ -1,4 +1,9 @@
-import type { CapturePreferences, CompanionState, ReleaseUpdateInfo, RunArchivePreferences } from "./app-state";
+import type {
+  CaptureDiagnosticsLevel,
+  CaptureDiagnosticsMode,
+  CompanionState,
+  ReleaseUpdateInfo,
+} from "./app-state";
 import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "./support-diagnostics";
 
 export const enum IpcChannel {
@@ -15,11 +20,10 @@ export const enum IpcChannel {
   pastRunsSetTags = "past-runs:set-tags",
   pastRunsDelete = "past-runs:delete",
   pastRunsDeleteAll = "past-runs:delete-all",
-  preferencesSetRunArchive = "preferences:set-run-archive",
-  preferencesSetCapture = "preferences:set-capture",
   preferencesSetSatanicZoneRefresh = "preferences:set-satanic-zone-refresh",
   configurationExport = "configuration:export",
   configurationImport = "configuration:import",
+  configurationInstallSounds = "configuration:install-sounds",
   itemResearchExport = "item-research:export",
   soundsImport = "sounds:import",
   soundsExport = "sounds:export",
@@ -31,10 +35,12 @@ export const enum IpcChannel {
   windowClose = "window:close",
   windowSetAlwaysOnTop = "window:set-always-on-top",
   windowSetCompactMode = "window:set-compact-mode",
+  windowResetBounds = "window:reset-bounds",
   clipboardWriteText = "clipboard:write-text",
   supportGetDiagnosticsInfo = "support:get-diagnostics-info",
   supportOpenLogsDirectory = "support:open-logs-directory",
   supportSaveDiagnostics = "support:save-diagnostics",
+  supportSetDiagnosticsMode = "support:set-diagnostics-mode",
   updatesCheck = "updates:check",
   updatesOpenRelease = "updates:open-release",
   docsOpenNpcapGuide = "docs:open-npcap-guide",
@@ -54,11 +60,10 @@ export const IPC_CHANNELS = {
   pastRunsSetTags: IpcChannel.pastRunsSetTags,
   pastRunsDelete: IpcChannel.pastRunsDelete,
   pastRunsDeleteAll: IpcChannel.pastRunsDeleteAll,
-  preferencesSetRunArchive: IpcChannel.preferencesSetRunArchive,
-  preferencesSetCapture: IpcChannel.preferencesSetCapture,
   preferencesSetSatanicZoneRefresh: IpcChannel.preferencesSetSatanicZoneRefresh,
   configurationExport: IpcChannel.configurationExport,
   configurationImport: IpcChannel.configurationImport,
+  configurationInstallSounds: IpcChannel.configurationInstallSounds,
   itemResearchExport: IpcChannel.itemResearchExport,
   soundsImport: IpcChannel.soundsImport,
   soundsExport: IpcChannel.soundsExport,
@@ -70,10 +75,12 @@ export const IPC_CHANNELS = {
   windowClose: IpcChannel.windowClose,
   windowSetAlwaysOnTop: IpcChannel.windowSetAlwaysOnTop,
   windowSetCompactMode: IpcChannel.windowSetCompactMode,
+  windowResetBounds: IpcChannel.windowResetBounds,
   clipboardWriteText: IpcChannel.clipboardWriteText,
   supportGetDiagnosticsInfo: IpcChannel.supportGetDiagnosticsInfo,
   supportOpenLogsDirectory: IpcChannel.supportOpenLogsDirectory,
   supportSaveDiagnostics: IpcChannel.supportSaveDiagnostics,
+  supportSetDiagnosticsMode: IpcChannel.supportSetDiagnosticsMode,
   updatesCheck: IpcChannel.updatesCheck,
   updatesOpenRelease: IpcChannel.updatesOpenRelease,
   docsOpenNpcapGuide: IpcChannel.docsOpenNpcapGuide,
@@ -121,11 +128,10 @@ export interface HeroSiegeCompanionApi {
   setPastRunTags: (runId: string, tags: string[]) => Promise<CompanionState>;
   deletePastRun: (runId: string) => Promise<CompanionState>;
   deleteAllPastRuns: () => Promise<CompanionState>;
-  setRunArchivePreferences: (preferences: RunArchivePreferences) => Promise<CompanionState>;
-  setCapturePreferences: (preferences: CapturePreferences) => Promise<CompanionState>;
   setSatanicZoneRefreshEnabled: (enabled: boolean) => Promise<CompanionState>;
   exportConfiguration: (json: string, options?: ConfigurationExportOptions) => Promise<boolean>;
-  importConfiguration: (installEmbeddedSounds?: boolean) => Promise<string | null>;
+  importConfiguration: (legacyInstallEmbeddedSounds?: boolean) => Promise<string | null>;
+  installConfigurationSounds: (json: string) => Promise<string>;
   exportItemResearch: (json: string) => Promise<boolean>;
   importSounds: () => Promise<ImportedSoundReference[]>;
   exportSoundPack: (sounds: ExportableSoundReference[]) => Promise<SoundPackExportResult>;
@@ -136,11 +142,16 @@ export interface HeroSiegeCompanionApi {
   toggleMaximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
   setAlwaysOnTop: (enabled: boolean) => Promise<void>;
-  setCompactMode: (enabled: boolean, lockPositions: boolean) => Promise<void>;
+  setCompactMode: (enabled: boolean, legacyLockPositions?: boolean) => Promise<void>;
+  resetWindowBounds: () => Promise<void>;
   writeClipboardText: (value: string) => Promise<void>;
   getSupportDiagnosticsInfo: () => Promise<SupportDiagnosticsInfo>;
   openSupportLogsDirectory: () => Promise<boolean>;
   saveSupportDiagnostics: (diagnosticsSummary: string) => Promise<SupportDiagnosticsSaveResult>;
+  setCaptureDiagnosticsMode: (
+    level: CaptureDiagnosticsLevel,
+    mode: CaptureDiagnosticsMode,
+  ) => Promise<CompanionState>;
   checkForUpdate: () => Promise<ReleaseUpdateInfo | null>;
   openRelease: (url?: string) => Promise<void>;
   openNpcapGuide: () => Promise<void>;

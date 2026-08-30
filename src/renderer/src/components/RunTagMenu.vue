@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { MAX_PAST_RUN_TAGS, type PastRunSummary } from "../../../shared/stats";
 import {
   availableTagOptions,
@@ -19,6 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const tagDraft = ref("");
+const searchInput = ref<HTMLInputElement | null>(null);
 const tagOptions = computed(() => availableTagOptions(props.allRunTags, props.run, tagDraft.value));
 const canCreate = computed(() => canCreateTag(props.run, tagDraft.value));
 const pending = computed(() => pendingTag(tagDraft.value));
@@ -27,6 +28,8 @@ function addTag(tag: string) {
   emit("addTag", tag);
   tagDraft.value = "";
 }
+
+onMounted(() => searchInput.value?.focus());
 </script>
 
 <template>
@@ -37,7 +40,7 @@ function addTag(tag: string) {
     </div>
     <label class="run-tag-search">
       <span>Search</span>
-      <input v-model="tagDraft" type="search" placeholder="Search or create a new tag" autocomplete="off" spellcheck="false" @keydown.enter.prevent="canCreate ? addTag(pending) : null" />
+      <input ref="searchInput" v-model="tagDraft" type="search" placeholder="Search or create a new tag" autocomplete="off" spellcheck="false" @keydown.enter.prevent="canCreate ? addTag(pending) : null" />
     </label>
     <div class="run-tag-options">
       <button v-for="tag in tagOptions" :key="`${run.id}-option-${tag}`" class="run-tag-option" type="button" role="menuitem" @click="addTag(tag)">

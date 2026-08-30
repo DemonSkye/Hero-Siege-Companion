@@ -147,41 +147,61 @@ test("covers compact mode and support settings in an Electron window", async () 
     expect(compactWindow.bounds.width).toBeGreaterThanOrEqual(340);
     expect(compactWindow.bounds.height).toBeGreaterThanOrEqual(160);
 
+    await page.getByRole("button", { name: "Exit compact mode" }).click();
+    await expect(page.locator(".compact-view")).toHaveCount(0);
     await page.getByRole("button", { name: "Settings" }).click();
     await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
-    await page.getByRole("tab", { name: "Support" }).click();
+    await page.getByRole("dialog", { name: "Settings" }).getByRole("button", { name: "Help & Support", exact: true }).click();
+    await page.getByText("Support bundle contents", { exact: true }).click();
     await expect(page.getByLabel("Diagnostics files").getByText("diagnostics-summary.txt")).toBeVisible();
     await expect(page.locator(".settings-support-path code")).toHaveText(path.join(userDataDir, "logs"));
-    await expect(page.getByText("does not include packet captures")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open Folder" })).toBeVisible();
+    await expect(page.getByText("do not include packet captures")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Log Folder" })).toBeVisible();
     await page.getByRole("button", { name: "Copy Summary" }).click();
     await expect(page.getByText("Diagnostics summary copied")).toBeVisible();
   });
 });
 
 test("searches, tags, and persists seeded Past Runs through the app UI", async () => {
-  await withCompanionApp({ seedPastRuns: true }, async ({ page }) => {
+  await withCompanionApp({ seedPastRuns: true }, async ({ electronApp, page }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1_000, 700, false);
+    });
     await page.getByRole("tab", { name: "Past Runs" }).click();
     await expect(page.getByRole("heading", { name: "Past Runs", level: 1 })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Back to run library" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to run library" }).click();
     await expect(page.getByText("E2E Paladin")).toBeVisible();
 
     await page.getByPlaceholder("Tags, drops, resources, character, stats").fill("copper");
-    await expect(page.getByText("1/2 shown")).toBeVisible();
-    await page.getByRole("button", { name: "Details" }).click();
-    await expect(page.locator("#past-run-details-e2e-run-alpha").getByText("Copper Ore")).toBeVisible();
+    await expect(page.locator(".past-run-count")).toHaveText("1/2 shown");
+    const paladinCard = page.locator(".past-run-library-card", { hasText: "E2E Paladin" });
+    await expect(paladinCard.getByText("View report", { exact: true })).toHaveCount(0);
+    await paladinCard.click({ position: { x: 24, y: 24 } });
+    const searchedReport = page.getByLabel("Past run report");
+    const matchedResource = searchedReport.locator(".resource-chip", { hasText: "Copper Ore" });
+    await expect(searchedReport.getByText("Why this run is shown")).toHaveCount(0);
+    await expect(matchedResource).toBeVisible();
+    await expect(matchedResource).toHaveClass(/is-search-match/);
+    await expect(page.getByRole("button", { name: "Back to run library" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to run library" }).click();
+    await expect(paladinCard).toBeVisible();
 
     await page.getByRole("button", { name: "Clear" }).click();
-    await page.locator(".tag-selector-button").first().click();
+    await page.getByRole("button", { name: "More actions for E2E Paladin" }).click();
+    await page.getByRole("menuitem", { name: "Edit Tags" }).click();
     await page.getByPlaceholder("Search or create a new tag").fill("e2e reviewed");
     await page.getByRole("menuitem", { name: "Create #e2e reviewed" }).click();
-    await expect(page.locator(".run-tag-chip").filter({ hasText: "#e2e reviewed" })).toBeVisible();
+    await expect(page.locator(".past-run-library-card", { hasText: "E2E Paladin" }).locator(".run-tag-chip", { hasText: "#e2e reviewed" })).toBeVisible();
 
     const state = await getRendererState(page);
     const updatedRun = state.pastRuns.find((run) => run.id === "e2e-run-alpha");
     expect(updatedRun.tags).toContain("e2e reviewed");
 
-    await page.getByRole("button", { name: "Delete E2E Nomad" }).click();
-    await page.locator(".past-run-card").filter({ hasText: "E2E Nomad" }).getByRole("button", { name: "Confirm" }).click();
+    await page.getByRole("button", { name: "More actions for E2E Nomad" }).click();
+    await expect(paladinCard.getByRole("button", { name: /Open report for E2E Paladin/ })).toHaveAttribute("aria-current", "page");
+    await page.getByRole("menu", { name: "Actions for E2E Nomad" }).getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("group", { name: "Confirm delete E2E Nomad" }).getByRole("button", { name: "Delete" }).click();
     await expect.poll(async () => (await getRendererState(page)).pastRuns.map((run) => run.id)).toEqual(["e2e-run-alpha"]);
     await expect(page.getByText("E2E Nomad")).toHaveCount(0);
 

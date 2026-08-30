@@ -56,17 +56,17 @@
   min-width: 0;
 }
 
-.status-item div,
-.status-item span {
+.status-copy,
+.status-item > .status-dot {
   min-width: 0;
 }
 
-.status-item strong {
+.status-copy strong {
   display: block;
   font-size: 14px;
 }
 
-.status-item span {
+.status-copy span {
   display: block;
   overflow: hidden;
   color: #9fa8b8;
@@ -216,18 +216,40 @@
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(180px, 1.35fr) repeat(3, minmax(0, 1fr));
+  gap: 1px;
   margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--border);
+  box-shadow: 0 14px 40px var(--shadow);
+}
+
+.status-actions {
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .metric {
   display: flex;
-  min-height: 118px;
+  min-height: 96px;
   flex-direction: column;
   justify-content: center;
-  padding: 16px;
-  border-radius: 8px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-cell);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.run-score-identity {
+  background: var(--surface-strong);
+}
+
+.run-score-identity > strong {
+  color: var(--user-accent);
 }
 
 .collapsible-metric {
@@ -392,7 +414,7 @@
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.72fr);
   align-items: start;
   gap: 10px;
   margin-top: 10px;
@@ -402,6 +424,11 @@
   display: grid;
   min-width: 0;
   gap: 10px;
+}
+
+.dashboard-column-side {
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
 }
 
 .panel {
@@ -449,6 +476,12 @@
   grid-column: span 1;
 }
 
+.zone-panel,
+.timeline-panel,
+.log-panel {
+  min-height: 0;
+}
+
 .panel-heading {
   display: flex;
   align-items: start;
@@ -458,7 +491,10 @@
 }
 
 .countdown {
+  display: grid;
   min-width: 110px;
+  align-content: center;
+  gap: 3px;
   text-align: right;
 }
 
@@ -467,10 +503,23 @@
   color: #ffd38a;
   font-size: 24px;
   font-weight: 800;
+  line-height: 1;
 }
 
 .countdown small {
   color: #9fa8b8;
+  line-height: 1.1;
+}
+
+.zone-panel .live-dashboard-card-actions {
+  align-items: center;
+}
+
+.zone-panel .dashboard-card-toggle {
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  flex-basis: 36px;
 }
 
 .buff-list {

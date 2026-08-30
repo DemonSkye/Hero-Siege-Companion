@@ -49,11 +49,14 @@ const electronMock = vi.hoisted(() => {
     showCalls = 0;
     moveTopCalls = 0;
     focusCalls = 0;
+    centerCalls = 0;
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
     bounds: Electron.Rectangle;
+    normalBounds: Electron.Rectangle;
 
     constructor(readonly options: Electron.BrowserWindowConstructorOptions) {
       this.bounds = { x: 0, y: 0, width: Number(options.width), height: Number(options.height) };
+      this.normalBounds = { ...this.bounds };
     }
 
     on(event: string, handler: (...args: unknown[]) => void) {
@@ -73,12 +76,18 @@ const electronMock = vi.hoisted(() => {
       return this.bounds;
     }
 
+    getNormalBounds() {
+      return this.normalBounds;
+    }
+
     setBounds(bounds: Electron.Rectangle) {
       this.bounds = { ...bounds };
+      if (!this.maximized) this.normalBounds = { ...bounds };
     }
 
     setSize(width: number, height: number) {
       this.bounds = { ...this.bounds, width, height };
+      if (!this.maximized) this.normalBounds = { ...this.bounds };
     }
 
     setMinimumSize(width: number, height: number) {
@@ -94,6 +103,7 @@ const electronMock = vi.hoisted(() => {
     }
 
     maximize() {
+      this.normalBounds = { ...this.bounds };
       this.maximized = true;
     }
 
@@ -139,6 +149,10 @@ const electronMock = vi.hoisted(() => {
 
     focus() {
       this.focusCalls += 1;
+    }
+
+    center() {
+      this.centerCalls += 1;
     }
   }
 
@@ -246,7 +260,7 @@ describe("main window manager", () => {
     expect(allowedEvent.preventDefault).not.toHaveBeenCalled();
   });
 
-  test("saves the current mode bounds before restoring locked compact and normal positions", () => {
+  test("always saves and restores independent compact and normal positions", () => {
     const savedBounds: WindowBoundsPreferences = {
       compact: { x: 40, y: 50, width: 500, height: 240 },
       normal: { x: 10, y: 20, width: 1300, height: 820 },
@@ -255,22 +269,71 @@ describe("main window manager", () => {
     const window = manager.create();
     window.setBounds({ x: 1, y: 2, width: 1188, height: 766 });
 
-    manager.setCompactMode(true, true);
+    manager.setCompactMode(true);
 
     expect(manager.isCompactMode).toBe(true);
     expect(savedBounds.normal).toEqual({ x: 1, y: 2, width: 1188, height: 766 });
     expect(window.getBounds()).toEqual({ x: 40, y: 50, width: 500, height: 240 });
     expect(window.maximizable).toBe(false);
     expect(window.minimumSize).toEqual([340, 160]);
+    expect(window.alwaysOnTop).toBe(true);
     expect(persistenceMock.saveWindowBounds).toHaveBeenCalledWith("window-bounds.json", savedBounds, expect.any(Function));
 
-    manager.setCompactMode(false, true);
+    manager.setCompactMode(false);
 
     expect(manager.isCompactMode).toBe(false);
     expect(savedBounds.compact).toEqual({ x: 40, y: 50, width: 500, height: 240 });
     expect(window.getBounds()).toEqual({ x: 1, y: 2, width: 1188, height: 766 });
     expect(window.maximizable).toBe(true);
     expect(window.minimumSize).toEqual([980, 620]);
+    expect(window.alwaysOnTop).toBe(false);
+  });
+
+  test("keeps compact mode pinned while preserving the full-window session pin", () => {
+    const manager = createManager();
+    const window = manager.create();
+
+    manager.setAlwaysOnTop(true);
+    manager.setCompactMode(true);
+    expect(window.alwaysOnTop).toBe(true);
+
+    manager.setCompactMode(false);
+    expect(window.alwaysOnTop).toBe(true);
+
+    manager.setAlwaysOnTop(false);
+    expect(window.alwaysOnTop).toBe(false);
+  });
+
+  test("preserves normal restore bounds when compacting a maximized window", () => {
+    const savedBounds: WindowBoundsPreferences = {};
+    const manager = createManager(savedBounds);
+    const window = manager.create();
+    const normalBounds = { x: 80, y: 90, width: 1280, height: 800 };
+    window.setBounds(normalBounds);
+    window.maximize();
+    window.bounds = { x: 0, y: 0, width: 2560, height: 1440 };
+
+    manager.setCompactMode(true);
+    manager.setCompactMode(false);
+
+    expect(savedBounds.normal).toEqual(normalBounds);
+    expect(window.getBounds()).toEqual(normalBounds);
+  });
+
+  test("resets both saved positions and centers the current mode", () => {
+    const savedBounds: WindowBoundsPreferences = {
+      compact: { x: 40, y: 50, width: 500, height: 240 },
+      normal: { x: 10, y: 20, width: 1300, height: 820 },
+    };
+    const manager = createManager(savedBounds);
+    const window = manager.create();
+
+    manager.resetWindowBounds();
+
+    expect(savedBounds).toEqual({});
+    expect(window.getBounds()).toMatchObject({ width: 1180, height: 760 });
+    expect(window.centerCalls).toBe(1);
+    expect(persistenceMock.saveWindowBounds).toHaveBeenCalledWith("window-bounds.json", savedBounds, expect.any(Function));
   });
 
   test("debounces moved and resized window bounds persistence", () => {

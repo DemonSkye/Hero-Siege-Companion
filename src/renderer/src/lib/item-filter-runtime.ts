@@ -2,6 +2,7 @@ import { computed, ref, type Ref } from "vue";
 import type { ItemTimelineEntry } from "../../../shared/stats";
 import { playItemFilterSound } from "./item-filter-sounds";
 import {
+  ITEM_FILTER_FALLBACK_SOUND_ID,
   ITEM_FILTER_SOUNDS,
   ITEM_FILTER_SUGGESTION_LIMIT,
   INVENTORY_SOURCE_ITEM_FILTER_TYPES,
@@ -10,17 +11,21 @@ import {
   createCustomSoundId,
   createItemFilterGroup,
   createRecoveredItemFilterGroup,
+  createItemFilterPackPayload,
   itemFilterGroupedItems,
   itemFilterSoundOptions,
   itemTimelineKey,
   itemTypeLabelForName,
   matchItemFilter,
+  mergeItemFilterPack,
   normalizeCustomItemFilterSounds,
   normalizeItemFilterGroups,
   normalizeSpecificItems,
+  parseItemFilterPackPayload,
   resolveItemFilterSound,
   type CustomItemFilterSound,
   type ItemFilterGroup,
+  type ItemFilterPackImportPreview,
   type ItemFilterMatchHistoryEntry,
   type ItemFilterRuleMatch,
   type ItemFilterSpecificItem,
@@ -40,6 +45,9 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
   const itemFilterDraftGroupName = ref("");
   const activeItemFilterGroupId = ref("");
   const itemFilterMatchHistory = ref<ItemFilterMatchHistoryEntry[]>([]);
+  const pendingItemFilterPackImport = ref<ItemFilterPackImportPreview | null>(null);
+  const itemFilterPackImportBusy = ref(false);
+  let pendingItemFilterPackSource = "";
   const itemFilterSeenTimelineKeys = new Set<string>();
   const itemFilterLastPlayedAt = new Map<string, number>();
 
@@ -240,13 +248,93 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
   }
 
   async function removeItemFilterSound(sound: CustomItemFilterSound): Promise<void> {
-    const nextSounds = options.customItemFilterSounds.value.filter((candidate) => candidate.id !== sound.id);
-    options.customItemFilterSounds.value = nextSounds;
-    options.itemFilterGroups.value = normalizeItemFilterGroups(options.itemFilterGroups.value, nextSounds);
-    if (sound.src.startsWith("file://")) {
-      void window.heroSiegeCompanion.removeSound(sound.src);
+    try {
+      if (sound.src.startsWith("file://")) {
+        const removed = await window.heroSiegeCompanion.removeSound(sound.src);
+        if (!removed) throw new Error("Managed sound could not be removed.");
+      }
+
+      const nextSounds = options.customItemFilterSounds.value.filter((candidate) => candidate.id !== sound.id);
+      const rewrittenGroups = options.itemFilterGroups.value.map((group) => ({
+        ...group,
+        soundId: group.soundId === sound.id ? ITEM_FILTER_FALLBACK_SOUND_ID : group.soundId,
+        items: group.items.map((item) => item.soundId === sound.id ? { ...item, soundId: "" } : item),
+      }));
+      options.customItemFilterSounds.value = nextSounds;
+      options.itemFilterGroups.value = normalizeItemFilterGroups(rewrittenGroups, nextSounds);
+      options.showToast(`${sound.name} removed`);
+    } catch {
+      options.showToast(`${sound.name} could not be removed`);
     }
-    options.showToast(`${sound.name} removed`);
+  }
+
+  async function exportItemFilterPack(): Promise<void> {
+    try {
+      const payload = createItemFilterPackPayload(options.itemFilterGroups.value, options.customItemFilterSounds.value);
+      const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2), {
+        title: "Export Hero Siege item filter pack",
+        defaultPath: "hero-siege-item-filter-pack.json",
+      });
+      if (exported) {
+        const soundCount = payload.uiPreferences.customItemFilterSounds.length;
+        options.showToast(`Filter pack exported with ${payload.uiPreferences.itemFilterGroups.length} group${payload.uiPreferences.itemFilterGroups.length === 1 ? "" : "s"} and ${soundCount} custom sound${soundCount === 1 ? "" : "s"}`);
+      }
+    } catch {
+      options.showToast("Filter pack export failed");
+    }
+  }
+
+  async function prepareItemFilterPackImport(): Promise<void> {
+    if (itemFilterPackImportBusy.value) return;
+    itemFilterPackImportBusy.value = true;
+    try {
+      if (pendingItemFilterPackImport.value) await discardPendingItemFilterPackImport();
+      const contents = await window.heroSiegeCompanion.importConfiguration();
+      if (!contents) return;
+      const preview = parseItemFilterPackPayload(contents);
+      if (!preview) {
+        options.showToast("That file is not a valid item filter pack");
+        return;
+      }
+      pendingItemFilterPackSource = contents;
+      pendingItemFilterPackImport.value = preview;
+    } catch {
+      options.showToast("Filter pack import failed");
+    } finally {
+      itemFilterPackImportBusy.value = false;
+    }
+  }
+
+  async function confirmItemFilterPackImport(): Promise<void> {
+    const preview = pendingItemFilterPackImport.value;
+    if (!preview || itemFilterPackImportBusy.value) return;
+    itemFilterPackImportBusy.value = true;
+    try {
+      const approvedSource = JSON.stringify(createItemFilterPackPayload(preview.groups, preview.sounds), null, 2);
+      const installedSource = pendingItemFilterPackSource
+        ? await window.heroSiegeCompanion.installConfigurationSounds(approvedSource)
+        : "";
+      const installedPreview = installedSource ? parseItemFilterPackPayload(installedSource) : preview;
+      if (!installedPreview) throw new Error("Installed filter pack could not be read.");
+      const previousGroupCount = options.itemFilterGroups.value.length;
+      const merged = mergeItemFilterPack(options.itemFilterGroups.value, options.customItemFilterSounds.value, installedPreview);
+      options.customItemFilterSounds.value = merged.sounds;
+      options.itemFilterGroups.value = merged.groups;
+      pendingItemFilterPackImport.value = null;
+      pendingItemFilterPackSource = "";
+      const firstImportedGroup = merged.groups[previousGroupCount];
+      if (firstImportedGroup) activeItemFilterGroupId.value = firstImportedGroup.id;
+      options.showToast(`${merged.addedGroupCount} filter group${merged.addedGroupCount === 1 ? "" : "s"} added${merged.addedSoundCount ? ` with ${merged.addedSoundCount} custom sound${merged.addedSoundCount === 1 ? "" : "s"}` : ""}`);
+    } catch {
+      options.showToast("Filter pack import failed");
+    } finally {
+      itemFilterPackImportBusy.value = false;
+    }
+  }
+
+  async function discardPendingItemFilterPackImport(): Promise<void> {
+    pendingItemFilterPackImport.value = null;
+    pendingItemFilterPackSource = "";
   }
 
   return {
@@ -259,6 +347,8 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
     selectedItemFilterGroup,
     selectedItemFilterGroupedItems,
     itemFilterSuggestions,
+    pendingItemFilterPackImport,
+    itemFilterPackImportBusy,
     addItemFilterGroup,
     removeItemFilterGroup,
     restoreMissingItemFilterGroup,
@@ -274,6 +364,10 @@ export function useItemFilterRuntime(options: ItemFilterRuntimeOptions) {
     importItemFilterSounds,
     exportItemFilterSoundPack,
     removeItemFilterSound,
+    exportItemFilterPack,
+    prepareItemFilterPackImport,
+    confirmItemFilterPackImport,
+    discardPendingItemFilterPackImport,
   };
 }
 

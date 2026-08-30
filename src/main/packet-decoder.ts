@@ -26,8 +26,8 @@ const MAX_PENDING_SEGMENTS = 256;
 const MAX_STREAM_IDLE_MS = 30_000;
 const API_TOKEN_BYTES = 12;
 const API_HEADER_BYTES = API_TOKEN_BYTES + 4;
-const GENERIC_TOKEN_BYTES = 4;
-const GENERIC_HEADER_BYTES = GENERIC_TOKEN_BYTES + 4;
+const GENERIC_PREFIX_BYTES = 4;
+const GENERIC_HEADER_BYTES = GENERIC_PREFIX_BYTES + 4;
 const MAX_LENGTH_PREFIXED_BODY_BYTES = 64 * 1024;
 
 type ApplicationFraming = "unknown" | "length-prefixed" | "legacy";
@@ -44,6 +44,7 @@ interface BufferedTcpStream {
   frameBuffer: Buffer;
   framePacket: ParsedPayload;
   pendingCommandFrame: CompletedPayload | null;
+  tentativeFrameSequence: number | null;
   applicationFraming: ApplicationFraming;
   allowInitialPrepend: boolean;
   pending: Map<number, PendingSegment>;
@@ -68,6 +69,7 @@ export class PacketBuffers {
         frameBuffer: Buffer.alloc(0),
         framePacket: packetAtSequence(packet, sequence),
         pendingCommandFrame: null,
+        tentativeFrameSequence: null,
         applicationFraming: "unknown",
         allowInitialPrepend: true,
         pending: new Map(),
@@ -184,24 +186,125 @@ function streamBufferedBytes(stream: BufferedTcpStream): number {
 function drainApplicationFrames(stream: BufferedTcpStream, latestPacket: ParsedPayload): CompletedPayload[] {
   const completed: CompletedPayload[] = [];
 
+  if (stream.applicationFraming === "legacy" && stream.pendingCommandFrame === null) {
+    const recovery = recoverLegacyFrameBoundary(stream, latestPacket);
+    if (recovery === "waiting") return completed;
+    if (recovery === "recovered") stream.applicationFraming = "unknown";
+  }
+
   if (stream.applicationFraming !== "legacy") {
-    const lengthPrefixed = drainLengthPrefixedFrames(stream, completed);
+    const lengthPrefixed = drainLengthPrefixedFrames(stream, latestPacket, completed);
     if (lengthPrefixed || stream.applicationFraming === "length-prefixed") return completed;
+    if (shouldAwaitFramingDecision(stream.frameBuffer)) return completed;
     stream.applicationFraming = "legacy";
   }
 
   drainLegacyFrames(stream, latestPacket, completed);
+  if (stream.frameBuffer.length === 0 && stream.pendingCommandFrame === null) {
+    stream.tentativeFrameSequence = null;
+    stream.applicationFraming = "unknown";
+  }
   return completed;
+}
+
+function recoverLegacyFrameBoundary(
+  stream: BufferedTcpStream,
+  latestPacket: ParsedPayload,
+): "none" | "waiting" | "recovered" {
+  if (hasLegacyFrameStart(stream.frameBuffer)) {
+    stream.tentativeFrameSequence = null;
+    return "none";
+  }
+
+  if (stream.tentativeFrameSequence !== null) {
+    const tentativeOffset = sequenceDelta(stream.tentativeFrameSequence, stream.frameStartSequence);
+    if (tentativeOffset < 0 || tentativeOffset > stream.frameBuffer.length) {
+      stream.tentativeFrameSequence = null;
+    } else {
+      const available = stream.frameBuffer.length - tentativeOffset;
+      if (available < GENERIC_HEADER_BYTES) return "waiting";
+
+      const candidate = lengthPrefixedFrameAt(stream.frameBuffer, tentativeOffset, true);
+      if (isRecoverableLengthPrefixedFrame(stream.frameBuffer, tentativeOffset, candidate)) {
+        stream.tentativeFrameSequence = null;
+        discardFramePrefix(stream, tentativeOffset);
+        return "recovered";
+      }
+      if (isIncompleteOpaqueGenericFrame(stream.frameBuffer, tentativeOffset, candidate)) return "waiting";
+      stream.tentativeFrameSequence = null;
+    }
+  }
+
+  const packetBoundaryOffset = sequenceDelta(latestPacket.seq, stream.frameStartSequence);
+  if (packetBoundaryOffset > 0 && packetBoundaryOffset <= stream.frameBuffer.length) {
+    const available = stream.frameBuffer.length - packetBoundaryOffset;
+    if (available < GENERIC_HEADER_BYTES) {
+      // Preserve a new TCP-segment boundary until an opaque generic header is
+      // complete; legacy NUL draining would otherwise destroy a split header.
+      stream.tentativeFrameSequence = latestPacket.seq;
+      return "waiting";
+    }
+
+    const candidate = lengthPrefixedFrameAt(stream.frameBuffer, packetBoundaryOffset, true);
+    if (isRecoverableLengthPrefixedFrame(stream.frameBuffer, packetBoundaryOffset, candidate)) {
+      discardFramePrefix(stream, packetBoundaryOffset);
+      return "recovered";
+    }
+    if (isIncompleteOpaqueGenericFrame(stream.frameBuffer, packetBoundaryOffset, candidate)) {
+      stream.tentativeFrameSequence = latestPacket.seq;
+      return "waiting";
+    }
+  }
+
+  const candidate = lengthPrefixedFrameAt(stream.frameBuffer, 0);
+  if (isRecoverableLengthPrefixedFrame(stream.frameBuffer, 0, candidate)) return "recovered";
+
+  const recovered = findLengthPrefixedFrame(stream.frameBuffer);
+  if (!recovered) return "none";
+  discardFramePrefix(stream, recovered.offset);
+  return "recovered";
+}
+
+function shouldAwaitFramingDecision(buffer: Buffer): boolean {
+  if (buffer.length === 0 || buffer.length >= GENERIC_HEADER_BYTES) return false;
+  if (hasLegacyFrameStart(buffer)) return false;
+  return !isCompleteStandaloneJson(decodeApplicationText(buffer));
 }
 
 function drainLengthPrefixedFrames(
   stream: BufferedTcpStream,
+  latestPacket: ParsedPayload,
   completed: CompletedPayload[],
 ): boolean {
   let handledLengthPrefixedData = false;
 
   while (stream.frameBuffer.length > 0) {
     let candidate = lengthPrefixedFrameAt(stream.frameBuffer, 0);
+    if (
+      stream.applicationFraming === "unknown" &&
+      candidate.kind === "incomplete" &&
+      candidate.headerLength === undefined
+    ) {
+      // A partial prefix is not enough to establish framing. Keep the bytes
+      // until the generic/API header is complete without locking the stream.
+      return true;
+    }
+    const candidateIsIncomplete = candidate.kind === "incomplete";
+    if (
+      stream.applicationFraming === "unknown" &&
+      isOpaqueGenericFrame(stream.frameBuffer, 0, candidate) &&
+      !isRecoverableLengthPrefixedFrame(stream.frameBuffer, 0, candidate)
+    ) {
+      // Capture can begin in the middle of an established flow after Npcap is
+      // reopened. Arbitrary body bytes may contain a plausible little-endian
+      // length, so an opaque prefix is tentative until its complete body proves
+      // that it starts with a supported application frame. Prefer a later exact
+      // TCP-segment boundary when it contains a validated fresh frame.
+      const recovery = recoverLegacyFrameBoundary(stream, latestPacket);
+      if (recovery === "recovered") continue;
+      if (recovery === "waiting" || candidateIsIncomplete) return true;
+      candidate = { kind: "invalid" };
+    }
     if (candidate.kind === "invalid") {
       if (stream.applicationFraming === "unknown" && hasLegacyFrameStart(stream.frameBuffer)) {
         return handledLengthPrefixedData;
@@ -239,22 +342,36 @@ function drainLengthPrefixedFrames(
 
 type LengthPrefixedFrameCandidate =
   | { kind: "invalid" }
-  | { kind: "incomplete" }
+  | { kind: "incomplete"; headerLength?: number; frameLength?: number }
   | { kind: "complete"; headerLength: number; frameLength: number };
 
-function lengthPrefixedFrameAt(buffer: Buffer, offset: number): LengthPrefixedFrameCandidate {
+function lengthPrefixedFrameAt(
+  buffer: Buffer,
+  offset: number,
+  allowOpaqueGenericPrefix = offset === 0,
+): LengthPrefixedFrameCandidate {
   const available = buffer.length - offset;
   if (available <= 0) return { kind: "incomplete" };
 
-  const genericPrefixLength = Math.min(available, GENERIC_TOKEN_BYTES);
-  if (!isHexAscii(buffer.subarray(offset, offset + genericPrefixLength))) return { kind: "invalid" };
-  if (available < GENERIC_HEADER_BYTES) return { kind: "incomplete" };
+  if (available < GENERIC_HEADER_BYTES) {
+    const partialPrefix = buffer.subarray(offset, offset + Math.min(available, GENERIC_PREFIX_BYTES));
+    return isHexAscii(partialPrefix) || (allowOpaqueGenericPrefix && hasBinaryBytes(partialPrefix))
+      ? { kind: "incomplete" }
+      : { kind: "invalid" };
+  }
 
-  const genericBodyLength = buffer.readUInt32LE(offset + GENERIC_TOKEN_BYTES);
-  if (isSupportedFrameBodyLength(genericBodyLength)) {
+  // Client API tokens are ASCII hex, while live server responses use an opaque
+  // four-byte prefix. The bounded body length is the authoritative generic-frame
+  // signal; requiring the response prefix to be hex drops every inbound event.
+  const genericBodyLength = buffer.readUInt32LE(offset + GENERIC_PREFIX_BYTES);
+  const genericPrefix = buffer.subarray(offset, offset + GENERIC_PREFIX_BYTES);
+  if (
+    isSupportedFrameBodyLength(genericBodyLength) &&
+    (allowOpaqueGenericPrefix || isHexAscii(genericPrefix))
+  ) {
     const frameLength = GENERIC_HEADER_BYTES + genericBodyLength;
     return available < frameLength
-      ? { kind: "incomplete" }
+      ? { kind: "incomplete", headerLength: GENERIC_HEADER_BYTES, frameLength }
       : { kind: "complete", headerLength: GENERIC_HEADER_BYTES, frameLength };
   }
 
@@ -266,7 +383,7 @@ function lengthPrefixedFrameAt(buffer: Buffer, offset: number): LengthPrefixedFr
   if (!isSupportedFrameBodyLength(apiBodyLength)) return { kind: "invalid" };
   const frameLength = API_HEADER_BYTES + apiBodyLength;
   return available < frameLength
-    ? { kind: "incomplete" }
+    ? { kind: "incomplete", headerLength: API_HEADER_BYTES, frameLength }
     : { kind: "complete", headerLength: API_HEADER_BYTES, frameLength };
 }
 
@@ -274,10 +391,54 @@ function findLengthPrefixedFrame(
   buffer: Buffer,
 ): { offset: number; candidate: Extract<LengthPrefixedFrameCandidate, { kind: "complete" | "incomplete" }> } | null {
   for (let offset = 1; offset < buffer.length; offset += 1) {
-    const candidate = lengthPrefixedFrameAt(buffer, offset);
-    if (candidate.kind !== "invalid") return { offset, candidate };
+    const candidate = lengthPrefixedFrameAt(buffer, offset, false);
+    if (candidate.kind === "complete" || (candidate.kind === "incomplete" && candidate.frameLength !== undefined)) {
+      return { offset, candidate };
+    }
+
+    const opaqueCandidate = lengthPrefixedFrameAt(buffer, offset, true);
+    if (isRecoverableLengthPrefixedFrame(buffer, offset, opaqueCandidate)) {
+      return { offset, candidate: opaqueCandidate };
+    }
   }
   return null;
+}
+
+function isOpaqueGenericFrame(
+  buffer: Buffer,
+  offset: number,
+  candidate: LengthPrefixedFrameCandidate,
+): boolean {
+  if (candidate.kind === "invalid" || candidate.headerLength !== GENERIC_HEADER_BYTES) return false;
+  return !isHexAscii(buffer.subarray(offset, offset + GENERIC_PREFIX_BYTES));
+}
+
+function isIncompleteOpaqueGenericFrame(
+  buffer: Buffer,
+  offset: number,
+  candidate: LengthPrefixedFrameCandidate,
+): boolean {
+  return candidate.kind === "incomplete" && isOpaqueGenericFrame(buffer, offset, candidate);
+}
+
+function isRecoverableLengthPrefixedFrame(
+  buffer: Buffer,
+  offset: number,
+  candidate: LengthPrefixedFrameCandidate,
+): candidate is Extract<LengthPrefixedFrameCandidate, { kind: "complete" | "incomplete" }> {
+  if (candidate.kind === "invalid" || candidate.frameLength === undefined || candidate.headerLength === undefined) {
+    return false;
+  }
+  if (candidate.headerLength === API_HEADER_BYTES) return true;
+
+  const genericPrefix = buffer.subarray(offset, offset + GENERIC_PREFIX_BYTES);
+  if (isHexAscii(genericPrefix)) return true;
+  if (candidate.kind !== "complete") return false;
+
+  const bodyStart = offset + candidate.headerLength;
+  const body = buffer.subarray(bodyStart, offset + candidate.frameLength);
+  const text = decodeLengthPrefixedBody(body);
+  return hasApplicationFrameStart(text) || /^[\u0000-\u0020]*[01]\|[a-f0-9]{16,}$/i.test(text);
 }
 
 function retainPossibleLengthPrefixedHeader(stream: BufferedTcpStream): void {
@@ -311,6 +472,13 @@ function isHexAscii(value: Buffer): boolean {
     if (!decimal && !lowercase && !uppercase) return false;
   }
   return true;
+}
+
+function hasBinaryBytes(value: Buffer): boolean {
+  for (const byte of value) {
+    if (byte < 0x20 || byte > 0x7e) return true;
+  }
+  return false;
 }
 
 function hasLegacyFrameStart(buffer: Buffer): boolean {
@@ -408,14 +576,19 @@ function hasApplicationFrameStart(text: string): boolean {
   const jsonStart = firstJsonStart(text);
   if (jsonStart === -1 || jsonStart > 64) return false;
   const prefix = text.slice(0, jsonStart);
-  return !/[a-z0-9_"'}\]]/i.test(prefix) && balancedJsonEnd(text, jsonStart) !== -1;
+  return hasJsonFramePrefix(prefix) && balancedJsonEnd(text, jsonStart) !== -1;
 }
 
 function isCompleteStandaloneJson(text: string): boolean {
   const start = firstJsonStart(text);
-  if (start === -1 || start > 64 || /[a-z0-9_"'}\]]/i.test(text.slice(0, start))) return false;
+  if (start === -1 || start > 64 || !hasJsonFramePrefix(text.slice(0, start))) return false;
   const end = balancedJsonEnd(text, start);
   return end !== -1 && /^[\s\u0000-\u001f]*$/.test(text.slice(end + 1));
+}
+
+function hasJsonFramePrefix(prefix: string): boolean {
+  if (!/[a-z0-9_"'}\]]/i.test(prefix)) return true;
+  return /^[\u0000-\u0020]*R[\u0000-\u0020]*$/.test(prefix);
 }
 
 function firstJsonStart(text: string): number {

@@ -11,6 +11,7 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
+  hide: [];
   toggleLog: [log: LogEntry];
 }>();
 
@@ -22,7 +23,7 @@ function isLogExpanded(log: LogEntry): boolean {
 </script>
 
 <template>
-  <LiveDashboardCard id="live-log-card" panel-class="log-panel" title="Live Log">
+  <LiveDashboardCard id="live-log-card" panel-class="log-panel" title="Live Log" hideable @hide="$emit('hide')">
     <template #eyebrow>Diagnostics</template>
     <template #title>Live Log</template>
     <template #actions>
@@ -33,7 +34,7 @@ function isLogExpanded(log: LogEntry): boolean {
         </select>
       </label>
     </template>
-    <div class="logs">
+    <div v-if="recentLogs.length" class="logs">
       <button v-for="log in recentLogs" :key="log.id" type="button" :class="[logClass(log), { expanded: isLogExpanded(log) }]" @click="$emit('toggleLog', log)">
         <span class="log-time">{{ formatTime(log.createdAt) }}</span>
         <span :class="['log-event', logEventTone(log)]">{{ logEventLabel(log) }}</span>
@@ -43,5 +44,6 @@ function isLogExpanded(log: LogEntry): boolean {
         <pre v-if="isLogExpanded(log)" class="log-full">{{ log.message }}</pre>
       </button>
     </div>
+    <p v-else class="empty-copy dashboard-empty-state">Capture events and diagnostics will appear here as they arrive.</p>
   </LiveDashboardCard>
 </template>

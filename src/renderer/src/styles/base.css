@@ -277,7 +277,10 @@ h2 {
 
 .window-controls {
   display: inline-grid;
-  grid-template-columns: repeat(4, 34px);
+  grid-template-columns: repeat(5, 34px);
+  grid-auto-flow: column;
+  grid-auto-rows: 34px;
+  flex: 0 0 auto;
   gap: 2px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);

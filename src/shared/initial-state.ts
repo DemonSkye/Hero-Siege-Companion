@@ -1,10 +1,16 @@
-import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences } from "./app-state";
+import type {
+  CaptureDiagnosticsState,
+  CapturePreferences,
+  CompanionState,
+  LogEntry,
+  RunArchivePreferences,
+} from "./app-state";
 import { createInitialSatanicZoneState } from "./satanic-zone";
 import { createInitialStats } from "./stats";
 
 export const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
   skipEmptyRuns: true,
-  minDurationMinutes: 5,
+  minDurationMinutes: 0,
 };
 
 export const DEFAULT_CAPTURE_PREFERENCES: CapturePreferences = {
@@ -12,6 +18,11 @@ export const DEFAULT_CAPTURE_PREFERENCES: CapturePreferences = {
   capturePayloadLogging: false,
   captureWideLogging: false,
   satanicZoneDebugLogging: true,
+};
+
+export const DEFAULT_CAPTURE_DIAGNOSTICS_STATE: CaptureDiagnosticsState = {
+  enhanced: { mode: "off", timedUntil: null },
+  deep: { mode: "off", timedUntil: null },
 };
 
 export function createInitialCompanionState(logs: LogEntry[] = []): CompanionState {
@@ -43,6 +54,10 @@ export function createInitialCompanionState(logs: LogEntry[] = []): CompanionSta
     pastRuns: [],
     runArchivePreferences: DEFAULT_RUN_ARCHIVE_PREFERENCES,
     capturePreferences: DEFAULT_CAPTURE_PREFERENCES,
+    captureDiagnostics: {
+      enhanced: { ...DEFAULT_CAPTURE_DIAGNOSTICS_STATE.enhanced },
+      deep: { ...DEFAULT_CAPTURE_DIAGNOSTICS_STATE.deep },
+    },
     logs,
   };
 }

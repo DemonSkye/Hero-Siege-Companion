@@ -171,7 +171,6 @@
 }
 
 :root[data-theme="cyberpunk"] .view-tabs,
-:root[data-theme="cyberpunk"] .settings-tabs,
 :root[data-theme="cyberpunk"] .window-controls,
 :root[data-theme="cyberpunk"] .icon-button.ghost,
 :root[data-theme="cyberpunk"] .details-button,
@@ -183,7 +182,6 @@
 
 :root[data-theme="cyberpunk"] .icon-button.primary,
 :root[data-theme="cyberpunk"] .view-tabs button.active,
-:root[data-theme="cyberpunk"] .settings-tabs button.active,
 :root[data-theme="cyberpunk"] .shopping-item.active,
 :root[data-theme="cyberpunk"] .shopping-item-row.active .shopping-item {
   box-shadow:

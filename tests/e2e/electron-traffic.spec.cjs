@@ -35,6 +35,35 @@ test("parses mocked traffic payloads through main and renders live outcomes", as
     await page.locator("button.item-counter.angelic").click();
     await expect(page.locator("#tracked-drops-card-body").getByText("Aurelion Fury")).toBeVisible();
 
+    const runPace = page.locator("#run-pace-card");
+    await expect(runPace.locator('[data-lane-id="xp"]')).toBeVisible();
+    await expect(runPace.locator('[data-lane-id="gold"]')).toBeVisible();
+    await expect(runPace.locator('[data-lane-id="kills"]')).toBeVisible();
+    await expect(runPace.locator('[data-lane-id="items"] .run-pace-lane-summary strong')).toHaveText("1");
+
+    await runPace.locator(".run-pace-standard-lanes").getByRole("checkbox", { name: "Gold" }).uncheck();
+    await expect(runPace.locator('[data-lane-id="gold"]')).toHaveCount(0);
+
+    await runPace.getByPlaceholder("Enter an exact item name").fill("Aurelion Fury");
+    await runPace.getByRole("button", { name: "Track item" }).click();
+    const trackedLane = runPace.locator('[data-lane-id="item:aurelion fury"]');
+    await expect(trackedLane.locator(".run-pace-lane-label")).toHaveText("Aurelion Fury");
+    await expect(trackedLane.locator(".run-pace-lane-summary strong")).toHaveText("1");
+
+    await runPace.locator('[data-lane-id="items"] .run-pace-plot-surface').hover({ position: { x: 200, y: 20 } });
+    const inspection = page.locator("[data-run-pace-inspection]");
+    await expect(inspection).toBeVisible();
+    await expect(inspection.locator("strong")).toHaveText(/^\d+:\d{2} since graph started$/);
+    await expect(inspection.locator("dl > div", { hasText: "Items" }).locator("dd")).toHaveText("1");
+    await expect(inspection.locator("dl > div", { hasText: "Aurelion Fury" }).locator("dd")).toHaveText("1");
+    await expect(inspection).not.toContainText("Gold");
+
+    const viewTabs = page.getByRole("tablist", { name: "Companion views" });
+    await viewTabs.getByRole("tab", { name: /Item Filter/ }).click();
+    await viewTabs.getByRole("tab", { name: "Live Session" }).click();
+    await expect(page.locator('[data-lane-id="item:aurelion fury"] .run-pace-lane-summary strong')).toHaveText("1");
+    await expect(page.locator('[data-lane-id="gold"]')).toHaveCount(0);
+
     const refreshedState = await getRendererState(page);
     expect(refreshedState.stats.itemTimeline.some((item) => item.label === "Aurelion Fury")).toBe(true);
   });

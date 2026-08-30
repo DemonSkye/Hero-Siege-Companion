@@ -145,7 +145,6 @@
 
 :root[data-theme="demonsteel"] .icon-button.primary,
 :root[data-theme="demonsteel"] .view-tabs button.active,
-:root[data-theme="demonsteel"] .settings-tabs button.active,
 :root[data-theme="demonsteel"] .shopping-item.active,
 :root[data-theme="demonsteel"] .shopping-item-row.active .shopping-item {
   box-shadow:

@@ -1,30 +1,38 @@
 import { ref, type Ref } from "vue";
 
 interface UseWindowModeOptions {
-  alwaysOnTop: Ref<boolean>;
-  lockCompactLocation: Ref<boolean>;
   showSettings: Ref<boolean>;
-  openSettings: () => void;
+  showCompactCustomization: Ref<boolean>;
 }
 
-export function useWindowMode({ alwaysOnTop, lockCompactLocation, showSettings, openSettings }: UseWindowModeOptions) {
+export function useWindowMode({ showSettings, showCompactCustomization }: UseWindowModeOptions) {
   const compactMode = ref(false);
+  const fullWindowPinned = ref(false);
 
   async function syncWindowMode() {
-    await window.heroSiegeCompanion.setAlwaysOnTop(alwaysOnTop.value);
-    await window.heroSiegeCompanion.setCompactMode(compactMode.value, lockCompactLocation.value);
+    await window.heroSiegeCompanion.setCompactMode(compactMode.value);
+    if (!compactMode.value) await window.heroSiegeCompanion.setAlwaysOnTop(fullWindowPinned.value);
   }
 
-  async function openCompactSettings() {
+  async function openCompactCustomization() {
     compactMode.value = false;
     await syncWindowMode();
-    openSettings();
+    showCompactCustomization.value = true;
   }
 
   async function toggleCompactMode() {
     compactMode.value = !compactMode.value;
-    if (compactMode.value) showSettings.value = false;
+    if (compactMode.value) {
+      showSettings.value = false;
+      showCompactCustomization.value = false;
+    }
     await syncWindowMode();
+  }
+
+  async function toggleFullWindowPinned() {
+    if (compactMode.value) return;
+    fullWindowPinned.value = !fullWindowPinned.value;
+    await window.heroSiegeCompanion.setAlwaysOnTop(fullWindowPinned.value);
   }
 
   async function minimizeWindow() {
@@ -41,9 +49,11 @@ export function useWindowMode({ alwaysOnTop, lockCompactLocation, showSettings, 
 
   return {
     compactMode,
+    fullWindowPinned,
     syncWindowMode,
-    openCompactSettings,
+    openCompactCustomization,
     toggleCompactMode,
+    toggleFullWindowPinned,
     minimizeWindow,
     toggleMaximizeWindow,
     closeWindow,

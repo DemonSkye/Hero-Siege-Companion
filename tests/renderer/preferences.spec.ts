@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { useAppPreferences } from "../../src/renderer/src/lib/app-preferences";
-import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../../src/shared/initial-state";
+import {
+  ACTIVE_ITEM_CATALOG_BUILD,
+  createItemCatalogResolver,
+  type ItemCatalogArtifact,
+} from "../../src/shared/item-catalog";
 import {
   activeItemResearchEntries,
   classifyItemResearchFields,
@@ -22,10 +26,8 @@ import {
   defaultPreferences,
   importConfigurationPayload,
   loadPreferences,
-  normalizeRunDurationMinutes,
   normalizeShoppingList,
   savePreferences,
-  type UiPreferences,
 } from "../../src/renderer/src/lib/preferences";
 import { defaultPostRunReportConfig, withPostRunReportSummaryItems, withoutPostRunReportItemFilterGroup } from "../../src/renderer/src/lib/report-config";
 import {
@@ -62,16 +64,17 @@ describe("renderer preferences persistence", () => {
     expect(loadPreferences()).toMatchObject(defaultPreferences);
     expect(loadPreferences().schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(defaultPreferences).toMatchObject({
-      alwaysOnTop: true,
+      alwaysOnTop: false,
       lockCompactLocation: true,
       hideSocketables: true,
       hideKeys: true,
       hideMaterials: true,
       themeId: "voidglass",
-      compactThemeId: "demonsteel",
-      themeTextures: { voidglass: "starfield-dust", light: "neon-grid" },
-      compactThemeTextures: { cyberpunk: "brimstone" },
-      themeForegroundFills: { voidglass: 64 },
+      compactThemeId: "voidglass",
+      compactThemeMatchesApp: true,
+      themeTextures: {},
+      compactThemeTextures: {},
+      themeForegroundFills: {},
       postRunReport: defaultPostRunReportConfig,
     });
 
@@ -82,19 +85,18 @@ describe("renderer preferences persistence", () => {
   test("watches persisted current-setting refs for automatic saves", () => {
     const preferences = useAppPreferences();
     const persistedPreferenceRefs = {
-      logLimit: preferences.logLimit,
-      timelineLimit: preferences.timelineLimit,
-      showCaptureDetails: preferences.showCaptureDetails,
-      alwaysOnTop: preferences.alwaysOnTop,
-      lockCompactLocation: preferences.lockCompactLocation,
       hideSocketables: preferences.hideSocketables,
       hideKeys: preferences.hideKeys,
       hideMaterials: preferences.hideMaterials,
+      hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
       timelineType: preferences.timelineType,
       gameExecutablePath: preferences.gameExecutablePath,
       launchThroughSteam: preferences.launchThroughSteam,
       themeId: preferences.themeId,
       compactThemeId: preferences.compactThemeId,
+      themeCustomMode: preferences.themeCustomMode,
+      compactThemeCustomMode: preferences.compactThemeCustomMode,
+      compactThemeMatchesApp: preferences.compactThemeMatchesApp,
       themeAccents: preferences.themeAccents,
       themeTextures: preferences.themeTextures,
       compactThemeTextures: preferences.compactThemeTextures,
@@ -106,47 +108,25 @@ describe("renderer preferences persistence", () => {
       customItemFilterSounds: preferences.customItemFilterSounds,
       postRunReport: preferences.postRunReport,
       compactRunTiles: preferences.compactRunTiles,
-      developerItemResearchEnabled: preferences.developerItemResearchEnabled,
-      unknownItemAudioPrompt: preferences.unknownItemAudioPrompt,
+      hiddenDashboardPanels: preferences.hiddenDashboardPanels,
       itemResearchEntries: preferences.itemResearchEntries,
-    } satisfies Record<Exclude<keyof UiPreferences, "schemaVersion" | "shoppingListItems">, unknown>;
+    };
     const watchedRefs = new Set(preferences.preferenceWatchSources);
 
-    expect(preferences.preferenceWatchSources).toContain(preferences.alwaysOnTop);
-    expect(preferences.preferenceWatchSources).toContain(preferences.lockCompactLocation);
+    expect(preferences.preferenceWatchSources).not.toContain(preferences.logLimit);
+    expect(preferences.preferenceWatchSources).not.toContain(preferences.showCaptureDetails);
     expect(preferences.preferenceWatchSources).toContain(preferences.gameExecutablePath);
     expect(preferences.preferenceWatchSources).toContain(preferences.launchThroughSteam);
     expect(watchedRefs.size).toBe(preferences.preferenceWatchSources.length);
-    expect(preferences.preferenceWatchSources).toHaveLength(Object.keys(persistedPreferenceRefs).length);
+    expect(preferences.preferenceWatchSources).toHaveLength(Object.values(persistedPreferenceRefs).length);
     for (const ref of Object.values(persistedPreferenceRefs)) expect(watchedRefs.has(ref)).toBe(true);
   });
 
-  test("keeps the manual-refresh opt-in in main preferences instead of portable configuration", () => {
-    const preferences = useAppPreferences();
-    expect(preferences.currentDraftSatanicZoneRefreshEnabled()).toBe(false);
-
-    preferences.loadDraftPreferences(
-      defaultPreferences,
-      DEFAULT_RUN_ARCHIVE_PREFERENCES,
-      DEFAULT_CAPTURE_PREFERENCES,
-      true,
-    );
-    expect(preferences.currentDraftSatanicZoneRefreshEnabled()).toBe(true);
-
-    const payload = createConfigurationExportPayload(
-      defaultPreferences,
-      DEFAULT_RUN_ARCHIVE_PREFERENCES,
-      DEFAULT_CAPTURE_PREFERENCES,
-      {
-        includeAppSettings: true,
-        includeRunSaving: true,
-        includeReportTracking: true,
-        includeLootFilters: true,
-        includeSounds: true,
-        includeItemResearch: true,
-      },
-    );
+  test("keeps SZ Refresh and retired main controls out of portable backups", () => {
+    const payload = createConfigurationExportPayload(defaultPreferences);
     expect(payload).not.toHaveProperty("satanicZoneRefreshPreferences");
+    expect(payload).not.toHaveProperty("runArchivePreferences");
+    expect(payload).not.toHaveProperty("capturePreferences");
     expect(payload.uiPreferences).not.toHaveProperty("satanicZoneRefreshEnabled");
   });
 
@@ -210,13 +190,16 @@ describe("renderer preferences persistence", () => {
 
     expect(preferences.schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(preferences.logLimit).toBe(defaultPreferences.logLimit);
-    expect(preferences.timelineLimit).toBe(LOG_LIMIT_OPTIONS[2]);
+    expect(preferences.timelineLimit).toBe(defaultPreferences.timelineLimit);
     expect(preferences.timelineType).toBe(defaultPreferences.timelineType);
     expect(preferences.shoppingListItems).toEqual(["Copper Ore", "Ruby"]);
     expect(preferences.gameExecutablePath).toBe("");
     expect(preferences.launchThroughSteam).toBe(false);
     expect(preferences.themeId).toBe(defaultPreferences.themeId);
     expect(preferences.compactThemeId).toBe("cyberpunk");
+    expect(preferences.themeCustomMode).toBe(false);
+    expect(preferences.compactThemeCustomMode).toBe(true);
+    expect(preferences.compactThemeMatchesApp).toBe(false);
     expect(preferences.themeAccents).toEqual({ ...DEFAULT_THEME_ACCENTS, cyberpunk: "#ff3151", light: "#ffffff" });
     expect(preferences.themeTextures).toEqual({ cyberpunk: "neon-grid", light: "brushed-metal" });
     expect(preferences.compactThemeTextures).toEqual({ demonsteel: "brimstone", cyberpunk: "carbon-fiber" });
@@ -245,8 +228,8 @@ describe("renderer preferences persistence", () => {
         },
       ],
     });
-    expect(preferences.developerItemResearchEnabled).toBe(true);
-    expect(preferences.unknownItemAudioPrompt).toBe(true);
+    expect(preferences.developerItemResearchEnabled).toBe(false);
+    expect(preferences.unknownItemAudioPrompt).toBe(false);
     expect(preferences.itemResearchEntries[0]).toMatchObject({
       signature: "unknown:4:55:0:0:gloves #55",
       label: "Gloves #55",
@@ -380,16 +363,21 @@ describe("renderer preferences persistence", () => {
       postRunReport: defaultPostRunReportConfig,
     });
 
-    expect(loadPreferences().logLimit).toBe(50);
+    expect(loadPreferences().logLimit).toBe(defaultPreferences.logLimit);
     expect(loadPreferences().schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(loadPreferences().timelineType).toBe("item-filter:boss-drops");
     expect(loadPreferences().shoppingListItems).toEqual(["Jade"]);
     expect(normalizeShoppingList(["Ruby", "Ruby", "", "Jade"])).toEqual(["Ruby", "Jade"]);
-    expect(normalizeRunDurationMinutes(-5)).toBe(0);
-    expect(normalizeRunDurationMinutes(1445.8)).toBe(1440);
+  });
+
+  test("persists an intentionally empty Filter Stack without restoring the sample group", () => {
+    expect(savePreferences({ ...defaultPreferences, itemFilterGroups: [] })).toBe(true);
+
+    expect(loadPreferences().itemFilterGroups).toEqual([]);
   });
 
   test("treats generic item labels as research candidates and exports shareable research JSON", () => {
+    const catalog = itemResearchCatalogFixture();
     const genericCollectible = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", repository: "normal", type: 13, id: 24, fingerprint: "collectible-24" });
     const genericWeapon = itemTimelineEntry({ label: "Chainsaw #35 - mfDrop=1 - Weapon - 10-3909410-65295343278200001-3", rarity: "Superior", type: 3, id: 35, weaponType: 7, fingerprint: "chainsaw-35" });
     const generatedPlaceholder = itemTimelineEntry({ label: "Weapon - Seed 123456", rarity: "Unknown", type: 3, id: 0, fingerprint: "generated-0" });
@@ -404,30 +392,33 @@ describe("renderer preferences persistence", () => {
     const zeroHelmet = itemTimelineEntry({ label: "Helmet #0", rarity: "Unknown", repository: "normal", type: 0, id: 0 });
     const unknownType = itemTimelineEntry({ label: "Type 17 #999", rarity: "Unknown", repository: "unique", type: 17, id: 999 });
     const unknownWeaponSubtype = itemTimelineEntry({ label: "Weapon Type 99 #0", rarity: "Unknown", repository: "unique", type: 3, id: 0, weaponType: 99 });
+    const unknownRuneword = itemTimelineEntry({ label: "Gloves #96", rarity: "Unknown", repository: "runeword", type: 4, id: 96 });
 
-    expect(isItemResearchCandidate(genericCollectible)).toBe(true);
-    expect(isItemResearchCandidate(genericWeapon)).toBe(true);
-    expect(isItemResearchCandidate(generatedPlaceholder)).toBe(true);
-    expect(isItemResearchCandidate(stackItem)).toBe(true);
-    expect(isItemResearchCandidate(knownMissingIcon)).toBe(false);
-    expect(isItemResearchCandidate(knownCollectible)).toBe(false);
-    expect(isItemResearchCandidate(genericRelic)).toBe(true);
-    expect(isItemResearchCandidate(generatedNormalCharm)).toBe(false);
-    expect(isItemResearchCandidate(legacyGeneratedCharm)).toBe(false);
-    expect(isItemResearchCandidate(fixedCharmCollision)).toBe(true);
-    expect(isItemResearchCandidate(zeroHelmet)).toBe(false);
-    expect(isItemResearchCandidate(unknownType)).toBe(true);
-    expect(isItemResearchCandidate(unknownWeaponSubtype)).toBe(true);
+    expect(isItemResearchCandidate(genericCollectible, catalog)).toBe(true);
+    expect(isItemResearchCandidate(genericWeapon, catalog)).toBe(true);
+    expect(isItemResearchCandidate(generatedPlaceholder, catalog)).toBe(true);
+    expect(isItemResearchCandidate(stackItem, catalog)).toBe(true);
+    expect(isItemResearchCandidate(knownMissingIcon, catalog)).toBe(false);
+    expect(isItemResearchCandidate(knownCollectible, catalog)).toBe(false);
+    expect(isItemResearchCandidate(genericRelic, catalog)).toBe(true);
+    expect(isItemResearchCandidate(generatedNormalCharm, catalog)).toBe(false);
+    // Live rows without repository evidence stay fail-closed and researchable.
+    expect(isItemResearchCandidate(legacyGeneratedCharm, catalog)).toBe(true);
+    expect(isItemResearchCandidate(fixedCharmCollision, catalog)).toBe(true);
+    expect(isItemResearchCandidate(zeroHelmet, catalog)).toBe(false);
+    expect(isItemResearchCandidate(unknownType, catalog)).toBe(true);
+    expect(isItemResearchCandidate(unknownWeaponSubtype, catalog)).toBe(true);
+    expect(isItemResearchCandidate(unknownRuneword, catalog)).toBe(true);
     expect(classifyItemResearchFields(genericCollectible)).toBe("material-collectible");
     expect(classifyItemResearchFields(genericWeapon)).toBe("unknown-normal");
     expect(classifyItemResearchFields(generatedPlaceholder)).toBe("generated-placeholder");
     expect(classifyItemResearchFields(generatedKnownMissingIcon)).toBe("generated-placeholder");
     expect(classifyItemResearchFields(stackItem)).toBe("stack-item");
     expect(classifyItemResearchFields(knownMissingIcon)).toBe("known-missing-icon");
-    expect(activeItemResearchEntries(upsertItemResearchEntry([], genericWeapon))).toHaveLength(1);
-    expect(activeItemResearchEntries(upsertItemResearchEntry([], knownMissingIcon))).toHaveLength(0);
-    expect(activeItemResearchEntries(upsertItemResearchEntry([], generatedNormalCharm))).toHaveLength(0);
-    expect(activeItemResearchEntries(upsertItemResearchEntry([], legacyGeneratedCharm))).toHaveLength(0);
+    expect(activeItemResearchEntries(upsertItemResearchEntry([], genericWeapon), catalog)).toHaveLength(1);
+    expect(activeItemResearchEntries(upsertItemResearchEntry([], knownMissingIcon), catalog)).toHaveLength(0);
+    expect(activeItemResearchEntries(upsertItemResearchEntry([], generatedNormalCharm), catalog)).toHaveLength(0);
+    expect(activeItemResearchEntries(upsertItemResearchEntry([], legacyGeneratedCharm), catalog)).toHaveLength(0);
 
     const legacyGeneratedHelmet = normalizeItemResearchEntries([{
       signature: "0:999:0:helmet #999",
@@ -437,15 +428,30 @@ describe("renderer preferences persistence", () => {
       dropQuality: 0,
     }])[0];
     expect(legacyGeneratedHelmet).toMatchObject({ repository: "unknown", classification: "unknown-normal" });
-    expect(isGeneratedNormalItemResearchEntry(legacyGeneratedHelmet)).toBe(true);
-    expect(activeItemResearchEntries([legacyGeneratedHelmet])).toHaveLength(0);
+    expect(isGeneratedNormalItemResearchEntry(legacyGeneratedHelmet, catalog)).toBe(true);
+    expect(activeItemResearchEntries([legacyGeneratedHelmet], catalog)).toHaveLength(0);
     expect(isGeneratedNormalItemResearchEntry({
       repository: "normal",
       type: 4,
       id: 50,
       weaponType: 0,
       classification: "known-missing-icon",
-    })).toBe(false);
+    }, catalog)).toBe(false);
+
+    for (const id of [33, 34, 35, 999]) {
+      expect(isItemResearchCandidate(itemTimelineEntry({
+        label: `Charm #${id}`,
+        repository: "normal",
+        type: 10,
+        id,
+      }), catalog)).toBe(false);
+    }
+    expect(isItemResearchCandidate(itemTimelineEntry({
+      label: "Charm #90",
+      repository: "unique",
+      type: 10,
+      id: 90,
+    }), catalog)).toBe(true);
 
     const signature = itemResearchSignature(genericCollectible);
     const entries = upsertItemResearchEntry([], genericCollectible).map((entry): ItemResearchEntry =>
@@ -478,6 +484,7 @@ describe("renderer preferences persistence", () => {
   });
 
   test("keeps repository and weapon subtype distinct across research persistence", () => {
+    const catalog = itemResearchCatalogFixture();
     const sword = itemTimelineEntry({
       repository: "unique",
       type: 3,
@@ -504,7 +511,7 @@ describe("renderer preferences persistence", () => {
       fingerprint: "normal-sword-35",
     });
 
-    expect(isItemResearchCandidate(normalSword)).toBe(false);
+    expect(isItemResearchCandidate(normalSword, catalog)).toBe(false);
     expect(new Set([sword, chainsaw, normalSword].map(itemResearchSignature)).size).toBe(3);
     const entries = [sword, chainsaw, normalSword].reduce(upsertItemResearchEntry, [] as ItemResearchEntry[]);
     expect(entries).toHaveLength(3);
@@ -648,7 +655,7 @@ describe("renderer preferences persistence", () => {
     expect(normalizeThemeId("lost")).toBe("voidglass");
   });
 
-  test("exports and imports configuration sections according to checkbox scope", () => {
+  test("exports and restores one complete backup regardless of retired scope options", () => {
     const current = {
       ...defaultPreferences,
       logLimit: 50,
@@ -716,26 +723,9 @@ describe("renderer preferences persistence", () => {
       itemResearchEntries: [],
     };
 
-    const payload = createConfigurationExportPayload(
-      imported,
-      { skipEmptyRuns: true, minDurationMinutes: 12 },
-      {
-        captureDebugLogging: true,
-        capturePayloadLogging: true,
-        captureWideLogging: true,
-        satanicZoneDebugLogging: true,
-      },
-      {
-        includeAppSettings: true,
-        includeRunSaving: true,
-        includeReportTracking: true,
-        includeLootFilters: false,
-        includeSounds: true,
-        includeItemResearch: false,
-      },
-    );
+    const payload = createConfigurationExportPayload(imported);
 
-    expect(payload.uiPreferences.itemFilterMuted).toBeUndefined();
+    expect(payload.uiPreferences.itemFilterMuted).toBe(false);
     expect(payload.uiPreferences.customItemFilterSounds).toEqual([{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }]);
     expect(payload.uiPreferences.schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(payload.uiPreferences.itemResearchEntries).toBeUndefined();
@@ -768,51 +758,174 @@ describe("renderer preferences persistence", () => {
     ]);
     expect(payload.uiPreferences.postRunReport?.itemFilterGroupIds).toEqual(["boss"]);
 
-    const reportExcludedPayload = createConfigurationExportPayload(
-      imported,
-      { skipEmptyRuns: true, minDurationMinutes: 12 },
-      {
-        captureDebugLogging: true,
-        capturePayloadLogging: true,
-        captureWideLogging: true,
-        satanicZoneDebugLogging: true,
-      },
-      {
-        includeAppSettings: true,
-        includeRunSaving: true,
-        includeReportTracking: false,
-        includeLootFilters: false,
-        includeSounds: false,
-        includeItemResearch: false,
-      },
-    );
-    expect(reportExcludedPayload.uiPreferences.postRunReport).toBeUndefined();
-    expect(reportExcludedPayload.uiPreferences.customItemFilterSounds).toBeUndefined();
+    const reportExcludedPayload = createConfigurationExportPayload(imported);
+    expect(reportExcludedPayload.uiPreferences.postRunReport).toMatchObject({ topDropLimit: 5 });
+    expect(reportExcludedPayload.uiPreferences.customItemFilterSounds).toEqual(imported.customItemFilterSounds);
 
-    const result = importConfigurationPayload(payload, current, {
-      includeAppSettings: true,
-      includeRunSaving: true,
-      includeReportTracking: false,
-      includeLootFilters: false,
-      includeSounds: true,
-      includeItemResearch: false,
-    });
+    const result = importConfigurationPayload(payload, current);
 
-    expect(result.uiPreferences.logLimit).toBe(100);
-    expect(result.uiPreferences.itemFilterMuted).toBe(true);
-    expect(result.uiPreferences.customItemFilterSounds.map((sound) => sound.id)).toEqual(["custom-sound:alert", "custom-sound:boss"]);
+    expect(result.uiPreferences.logLimit).toBe(defaultPreferences.logLimit);
+    expect(result.uiPreferences.itemFilterMuted).toBe(false);
+    expect(result.uiPreferences.customItemFilterSounds.map((sound) => sound.id)).toEqual(["custom-sound:boss"]);
     expect(result.uiPreferences.themeTextures.cyberpunk).toBe("neon-grid");
     expect(result.uiPreferences.compactThemeTextures.light).toBe("brushed-metal");
     expect(result.uiPreferences.themeForegroundFills.cyberpunk).toBe(68);
     expect(result.uiPreferences.compactThemeForegroundFills.light).toBe(82);
-    expect(result.uiPreferences.postRunReport.topDropLimit).toBe(3);
+    expect(result.uiPreferences.postRunReport.topDropLimit).toBe(5);
     expect(result.uiPreferences.itemResearchEntries).toHaveLength(1);
-    expect(result.runArchivePreferences).toEqual({ skipEmptyRuns: true, minDurationMinutes: 12 });
-    expect(result.capturePreferences).toEqual({
-      captureDebugLogging: true,
-      capturePayloadLogging: true,
-      captureWideLogging: true,
-      satanicZoneDebugLogging: true,
-    });
   });
 });
+
+function itemResearchCatalogFixture() {
+  const sourceRef = "fixture-catalog-source";
+  const artifact: ItemCatalogArtifact = {
+    schemaVersion: 1,
+    catalogId: "item-research-policy-fixture",
+    catalogStatus: "partial",
+    provenance: {
+      ...ACTIVE_ITEM_CATALOG_BUILD,
+      source: "static-binary-analysis",
+      extractorRevision: "item-research-test-v1",
+      extractorSha256: "1".repeat(64),
+      configSha256: "2".repeat(64),
+      stringInitializerTsvSha256: "3".repeat(64),
+      stringInitializerManifestSha256: "4".repeat(64),
+      translationBundleSha256: "5".repeat(64),
+    },
+    coverage: { activeConstructorCount: 1, accountedConstructorCount: 1 },
+    sources: [{
+      id: sourceRef,
+      definitionFunction: "fixture_item_catalog",
+      bodySha256: "A".repeat(64),
+      definitionCount: 6,
+      status: "extracted",
+    }],
+    domains: [
+      {
+        id: "normal-charms",
+        repository: "normal",
+        type: 10,
+        weaponType: 0,
+        defaultIdentityMode: "seeded",
+        status: "partial",
+        sourceRefs: [sourceRef],
+        expectedItems: [
+          { gameId: 33, identityMode: "seeded" },
+          { gameId: 34, identityMode: "seeded" },
+          { gameId: 35, identityMode: "seeded" },
+        ],
+      },
+      {
+        id: "normal-helmets",
+        repository: "normal",
+        type: 0,
+        weaponType: 0,
+        defaultIdentityMode: "seeded",
+        status: "partial",
+        sourceRefs: [sourceRef],
+        expectedItems: [],
+      },
+      {
+        id: "normal-swords",
+        repository: "normal",
+        type: 3,
+        weaponType: 1,
+        defaultIdentityMode: "seeded",
+        status: "partial",
+        sourceRefs: [sourceRef],
+        expectedItems: [],
+      },
+      {
+        id: "unique-charms",
+        repository: "unique",
+        type: 10,
+        weaponType: 0,
+        defaultIdentityMode: "fixed",
+        status: "partial",
+        sourceRefs: [sourceRef],
+        expectedItems: [{ gameId: 90, identityMode: "fixed" }],
+      },
+      {
+        id: "normal-keys",
+        repository: "normal",
+        type: 12,
+        weaponType: 0,
+        defaultIdentityMode: "stack",
+        status: "partial",
+        sourceRefs: [sourceRef],
+        expectedItems: [{ gameId: 77, identityMode: "stack" }],
+      },
+      {
+        id: "runewords",
+        repository: "runeword",
+        type: 3,
+        weaponType: 0,
+        defaultIdentityMode: "runeword",
+        status: "partial",
+        sourceRefs: [sourceRef],
+        expectedItems: [{ gameId: 96, identityMode: "runeword" }],
+      },
+    ],
+    definitions: [{
+      repository: "normal",
+      type: 10,
+      gameId: 33,
+      weaponType: 0,
+      identityMode: "seeded",
+      baseLocalizationId: "large_charm",
+      baseName: "Large Charm",
+      provenanceRef: sourceRef,
+    }],
+    missing: [
+      {
+        repository: "normal",
+        type: 10,
+        gameId: 34,
+        weaponType: 0,
+        expectedIdentityMode: "seeded",
+        reason: "fixture missing seeded row",
+        sourceRefs: [sourceRef],
+      },
+      {
+        repository: "unique",
+        type: 10,
+        gameId: 90,
+        weaponType: 0,
+        expectedIdentityMode: "fixed",
+        reason: "fixture missing fixed row",
+        sourceRefs: [sourceRef],
+      },
+      {
+        repository: "normal",
+        type: 12,
+        gameId: 77,
+        weaponType: 0,
+        expectedIdentityMode: "stack",
+        reason: "fixture missing stack row",
+        sourceRefs: [sourceRef],
+      },
+      {
+        repository: "runeword",
+        type: 3,
+        gameId: 96,
+        weaponType: 0,
+        expectedIdentityMode: "runeword",
+        reason: "fixture missing runeword row",
+        sourceRefs: [sourceRef],
+      },
+    ],
+    quarantine: [{
+      repository: "normal",
+      type: 10,
+      gameId: 35,
+      weaponType: 0,
+      expectedIdentityMode: "seeded",
+      reason: "fixture same-mode collision",
+      candidates: [
+        { identityMode: "seeded", provenanceRef: sourceRef, baseLocalizationId: "large_charm_a", baseName: "Large Charm A" },
+        { identityMode: "seeded", provenanceRef: sourceRef, baseLocalizationId: "large_charm_b", baseName: "Large Charm B" },
+      ],
+    }],
+  };
+  return createItemCatalogResolver(artifact);
+}

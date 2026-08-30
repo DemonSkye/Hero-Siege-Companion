@@ -8,6 +8,9 @@ import {
   exportLootSoundPackToFile,
   importLootSounds,
   installEmbeddedConfigurationSounds,
+  MAX_CUSTOM_SOUND_IMPORT_BYTES,
+  MAX_EMBEDDED_CONFIGURATION_BYTES,
+  MAX_SOUND_IMPORT_COUNT,
 } from "../../src/main/sound-import";
 import { createZipArchive } from "../../src/main/zip-archive";
 import type { ExportableSoundReference } from "../../src/shared/ipc";
@@ -26,6 +29,12 @@ function tempPath(prefix: string): string {
 }
 
 describe("sound import and export", () => {
+  test("accepts the largest supported full-backup sound payload with JSON overhead", () => {
+    const maximumBase64Bytes = Math.ceil(MAX_CUSTOM_SOUND_IMPORT_BYTES * MAX_SOUND_IMPORT_COUNT * 4 / 3);
+    expect(MAX_EMBEDDED_CONFIGURATION_BYTES).toBeGreaterThan(maximumBase64Bytes);
+    expect(MAX_EMBEDDED_CONFIGURATION_BYTES - maximumBase64Bytes).toBeGreaterThanOrEqual(16 * 1024 * 1024);
+  });
+
   test("imports zip soundpacks into a directory named after the pack", () => {
     const sourceDir = tempPath("hsc-sound-source-");
     const firstUserData = tempPath("hsc-sound-user-data-");
@@ -159,7 +168,59 @@ describe("sound import and export", () => {
     expect(fs.readFileSync(fileURLToPath(installedSound.src))).toEqual(audioData);
   });
 
-  test("does not export file sound references outside the app sounds directory", () => {
+  test("rejects invalid configuration JSON before installing sounds", () => {
+    const importUserData = tempPath("hsc-config-invalid-import-");
+
+    expect(() => installEmbeddedConfigurationSounds("{not-json", importUserData)).toThrow("Invalid configuration JSON");
+    expect(fs.existsSync(path.join(importUserData, "sounds"))).toBe(false);
+  });
+
+  test("rejects configuration sound catalogs above the supported limit before writing files", () => {
+    const importUserData = tempPath("hsc-config-too-many-import-");
+    const audioData = Buffer.from("bounded-alert").toString("base64");
+    const payload = {
+      uiPreferences: {
+        customItemFilterSounds: Array.from({ length: MAX_SOUND_IMPORT_COUNT + 1 }, (_, index) => ({
+          id: `custom-sound:${index}`,
+          name: `Alert ${index}`,
+          fileName: `alert-${index}.wav`,
+          src: `data:audio/wav;base64,${audioData}`,
+        })),
+      },
+    };
+
+    expect(() => installEmbeddedConfigurationSounds(JSON.stringify(payload), importUserData)).toThrow(
+      `more than ${MAX_SOUND_IMPORT_COUNT} custom sounds`,
+    );
+    expect(fs.existsSync(path.join(importUserData, "sounds"))).toBe(false);
+  });
+
+  test("validates every embedded sound before installing any file", () => {
+    const importUserData = tempPath("hsc-config-invalid-sound-import-");
+    const payload = {
+      uiPreferences: {
+        customItemFilterSounds: [
+          {
+            id: "custom-sound:valid",
+            name: "Valid",
+            fileName: "valid.wav",
+            src: `data:audio/wav;base64,${Buffer.from("valid").toString("base64")}`,
+          },
+          {
+            id: "custom-sound:invalid",
+            name: "Invalid",
+            fileName: "invalid.wav",
+            src: "data:audio/wav;base64,%%%%",
+          },
+        ],
+      },
+    };
+
+    expect(() => installEmbeddedConfigurationSounds(JSON.stringify(payload), importUserData)).toThrow("invalid embedded sound");
+    expect(fs.existsSync(path.join(importUserData, "sounds"))).toBe(false);
+  });
+
+  test("fails a complete backup when a sound reference is outside the app sounds directory", () => {
     const sourceDir = tempPath("hsc-outside-sound-");
     const userData = tempPath("hsc-outside-user-data-");
     const outsideSound = path.join(sourceDir, "outside.wav");
@@ -178,9 +239,7 @@ describe("sound import and export", () => {
       },
     };
 
-    const embeddedJson = embedConfigurationSoundData(JSON.stringify(payload), userData);
-    const embeddedPayload = JSON.parse(embeddedJson) as typeof payload;
-    expect(embeddedPayload.uiPreferences.customItemFilterSounds).toEqual([]);
+    expect(() => embedConfigurationSoundData(JSON.stringify(payload), userData)).toThrow("could not be included in the backup");
   });
 
   test("exports data-url sounds with a mime-derived extension when the display name has none", () => {

@@ -159,7 +159,6 @@
 
 :root[data-theme="voidglass"] .icon-button.primary,
 :root[data-theme="voidglass"] .view-tabs button.active,
-:root[data-theme="voidglass"] .settings-tabs button.active,
 :root[data-theme="voidglass"] .shopping-item.active,
 :root[data-theme="voidglass"] .shopping-item-row.active .shopping-item {
   box-shadow:

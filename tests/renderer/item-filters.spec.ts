@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 
+import type { ItemCatalogDefinition } from "../../src/shared/item-catalog";
 import { allItemIconFiles, lookupItemIconFile } from "../../src/shared/item-icons";
 import {
   createItemFilterGroup,
@@ -22,6 +23,7 @@ import {
   resolveItemFilterSound,
   soundName,
 } from "../../src/renderer/src/lib/item-filters";
+import { createItemNameOptions } from "../../src/renderer/src/lib/item-options";
 import { itemFilterGroup, itemTimelineEntry } from "./fixtures";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -84,6 +86,65 @@ describe("renderer item filter rules", () => {
     expect(items.map((item) => item.name)).toEqual(["Bifröst Key", "Signet of Bifröst"]);
     expect(lookupItemIconFile("Bifrost Key")).toBe(lookupItemIconFile("Bifröst Key"));
     expect(matchItemFilter(itemTimelineEntry({ label: "Bifröst Key", rarity: "Common", type: 12 }), [group])).toMatchObject({ group });
+  });
+
+  test("builds autocomplete options from catalog identities without admitting rolled seeded names", () => {
+    const seededDefinition: ItemCatalogDefinition & { name: string } = {
+      repository: "normal",
+      type: 10,
+      gameId: 33,
+      weaponType: 0,
+      identityMode: "seeded",
+      baseLocalizationId: "large_charm",
+      baseName: "Large Charm",
+      // A defensive extra field must not turn an observed rolled name into an option.
+      name: "Mammoth Large Charm",
+      provenanceRef: "fixture-source",
+    };
+    const definitions: ItemCatalogDefinition[] = [
+      {
+        repository: "unique",
+        type: 0,
+        gameId: 101,
+        weaponType: 0,
+        identityMode: "fixed",
+        localizationId: "fixture_catalog_helm",
+        name: "Catalog Helm",
+        provenanceRef: "fixture-source",
+      },
+      seededDefinition,
+      {
+        repository: "normal",
+        type: 12,
+        gameId: 102,
+        weaponType: 0,
+        identityMode: "stack",
+        localizationId: "fixture_catalog_key",
+        name: "Catalog Key",
+        provenanceRef: "fixture-source",
+      },
+      {
+        repository: "runeword",
+        type: 4,
+        gameId: 103,
+        weaponType: 0,
+        identityMode: "runeword",
+        localizationId: "fixture_catalog_runeword",
+        name: "Catalog Runeword",
+        provenanceRef: "fixture-source",
+      },
+    ];
+
+    const options = createItemNameOptions(definitions, ["CATALOG KEY", "Icon Compatibility Alias"]);
+    const byName = new Map(options.map((option) => [option.name, option]));
+
+    expect(byName.get("Catalog Helm")).toMatchObject({ type: 0, typeLabel: "Helmet" });
+    expect(byName.get("Large Charm")).toMatchObject({ type: 10, typeLabel: "Charm" });
+    expect(byName.get("Catalog Key")).toMatchObject({ type: 12, typeLabel: "Key" });
+    expect(byName.get("Catalog Runeword")).toMatchObject({ type: 4, typeLabel: "Gloves" });
+    expect(byName.has("Mammoth Large Charm")).toBe(false);
+    expect(byName.has("CATALOG KEY")).toBe(false);
+    expect(byName.has("Icon Compatibility Alias")).toBe(true);
   });
 
   test("icon manifest entries point at files that exist in img/items", () => {

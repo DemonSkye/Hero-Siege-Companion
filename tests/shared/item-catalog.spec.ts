@@ -73,9 +73,10 @@ describe("item catalog identity", () => {
     for (const item of rows) expect(lookupStackItemTranslation(item.type, item.gameId)).toEqual(item);
   });
 
-  test("keeps every catalog row repository-tagged and labels binary-proven relics", () => {
+  test("keeps every catalog row repository-tagged and labels binary-proven item types", () => {
     expect(allItemTranslations().every((item) => ["normal", "unique", "runeword"].includes(item.repository))).toBe(true);
-    expect(ITEM_TYPE_NAMES[16]).toBe("Relic");
+    expect([ITEM_TYPE_NAMES[16], ITEM_TYPE_NAMES[17], ITEM_TYPE_NAMES[18], ITEM_TYPE_NAMES[19]])
+      .toEqual(["Relic", "Glyph", "Flask", "Vault"]);
   });
 
   test("keeps the extracted normal charm bases separate from fixed item identities", () => {

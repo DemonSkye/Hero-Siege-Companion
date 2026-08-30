@@ -19,91 +19,36 @@ describe("App orchestration", () => {
     });
   });
 
-  test("requests embedded sound installation only when the Sounds configuration scope is selected", async () => {
+  test("keeps backup selection read-only, previews it, then installs embedded sounds on confirmation", async () => {
     const api = installHeroSiegeCompanionApi();
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          AppTitlebar: { template: "<div />" },
-          CompactView: { template: "<div />" },
-          LiveSessionHeader: {
-            emits: ["open-settings"],
-            template: '<button data-test="open-settings" type="button" @click="$emit(\'open-settings\')">Settings</button>',
-          },
-          LiveView: { template: "<div />" },
-          SettingsModal: {
-            props: ["configIncludeSounds"],
-            emits: ["update:configIncludeSounds", "importConfiguration"],
-            template: `
-              <section data-test="settings-modal">
-                <button data-test="disable-sounds" type="button" @click="$emit('update:configIncludeSounds', false)">Disable Sounds</button>
-                <button data-test="import-configuration" type="button" @click="$emit('importConfiguration')">Import JSON</button>
-              </section>
-            `,
-          },
-          UpdateBanner: { template: "<div />" },
-          WhatsNewPrompt: { template: "<div />" },
-        },
-      },
-    });
-
-    try {
-      await flushPromises();
-      await wrapper.get('[data-test="open-settings"]').trigger("click");
-      await flushPromises();
-
-      await wrapper.get('[data-test="import-configuration"]').trigger("click");
-      await flushPromises();
-      expect(api.importConfiguration).toHaveBeenCalledWith(true);
-
-      await wrapper.get('[data-test="disable-sounds"]').trigger("click");
-      await flushPromises();
-      await wrapper.get('[data-test="import-configuration"]').trigger("click");
-      await flushPromises();
-      expect(api.importConfiguration).toHaveBeenLastCalledWith(false);
-    } finally {
-      wrapper.unmount();
-    }
-  });
-
-  test("applies imported configuration to UI preferences and main-process preference scopes", async () => {
-    const api = installHeroSiegeCompanionApi();
-    const importedRunArchivePreferences = { skipEmptyRuns: true, minDurationMinutes: 9 };
-    const importedCapturePreferences = {
-      captureDebugLogging: true,
-      capturePayloadLogging: true,
-      captureWideLogging: true,
-      satanicZoneDebugLogging: true,
-    };
-    vi.mocked(api.importConfiguration).mockResolvedValue(JSON.stringify({
+    const selectedBackup = {
       app: "hero-siege-companion",
-      kind: "configuration",
-      version: 1,
-      includes: {
-        appSettings: true,
-        runSaving: true,
-        reportTracking: true,
-        lootFilters: true,
-        sounds: true,
-        itemResearch: false,
-      },
+      kind: "backup",
+      version: 2,
       uiPreferences: {
-        logLimit: 50,
-        alwaysOnTop: false,
-        lockCompactLocation: true,
-        themeId: "cyberpunk",
-        compactThemeId: "light",
-        themeTextures: { cyberpunk: "neon-grid" },
-        compactThemeTextures: { light: "brushed-metal" },
+        schemaVersion: 2,
+        launchThroughSteam: false,
+        customItemFilterSounds: [{
+          id: "custom-sound:alert",
+          name: "Alert",
+          fileName: "alert.wav",
+          src: "data:audio/wav;base64,UklGRg==",
+        }],
       },
-      runArchivePreferences: importedRunArchivePreferences,
-      capturePreferences: importedCapturePreferences,
-    }));
-    vi.mocked(api.setRunArchivePreferences).mockResolvedValue(companionState({ runArchivePreferences: importedRunArchivePreferences }));
-    vi.mocked(api.setCapturePreferences).mockResolvedValue(companionState({
-      runArchivePreferences: importedRunArchivePreferences,
-      capturePreferences: importedCapturePreferences,
-    }));
+    };
+    const installedBackup = {
+      ...selectedBackup,
+      uiPreferences: {
+        ...selectedBackup.uiPreferences,
+        customItemFilterSounds: [{
+          ...selectedBackup.uiPreferences.customItemFilterSounds[0],
+          src: "file:///managed/alert.wav",
+        }],
+      },
+    };
+    const selectedSource = JSON.stringify(selectedBackup);
+    vi.mocked(api.importConfiguration).mockResolvedValue(selectedSource);
+    vi.mocked(api.installConfigurationSounds).mockResolvedValue(JSON.stringify(installedBackup));
     const wrapper = mount(App, {
       global: {
         stubs: {
@@ -115,15 +60,13 @@ describe("App orchestration", () => {
           },
           LiveView: { template: "<div />" },
           SettingsModal: {
-            props: ["logLimit", "themeId", "compactThemeId", "skipEmptyRuns", "minRunDurationMinutes", "captureWideLogging"],
-            emits: ["importConfiguration"],
+            props: ["backupPreview"],
+            emits: ["chooseBackup", "confirmRestoreBackup"],
             template: `
               <section data-test="settings-modal">
-                <span data-test="draft-log-limit">{{ logLimit }}</span>
-                <span data-test="draft-theme">{{ themeId }}/{{ compactThemeId }}</span>
-                <span data-test="draft-run-saving">{{ skipEmptyRuns }}:{{ minRunDurationMinutes }}</span>
-                <span data-test="draft-capture">{{ captureWideLogging }}</span>
-                <button data-test="import-configuration" type="button" @click="$emit('importConfiguration')">Import JSON</button>
+                <span v-if="backupPreview" data-test="backup-preview">{{ backupPreview.settings }} settings / {{ backupPreview.sounds }} sounds</span>
+                <button data-test="choose-backup" type="button" @click="$emit('chooseBackup')">Choose Backup</button>
+                <button v-if="backupPreview" data-test="confirm-backup" type="button" @click="$emit('confirmRestoreBackup')">Restore Backup</button>
               </section>
             `,
           },
@@ -135,39 +78,29 @@ describe("App orchestration", () => {
 
     try {
       await flushPromises();
-      vi.mocked(api.setAlwaysOnTop).mockClear();
-      vi.mocked(api.setCompactMode).mockClear();
-
       await wrapper.get('[data-test="open-settings"]').trigger("click");
       await flushPromises();
-      await wrapper.get('[data-test="import-configuration"]').trigger("click");
-      await flushPromises();
 
-      expect(api.importConfiguration).toHaveBeenCalledWith(true);
-      expect(api.setRunArchivePreferences).toHaveBeenCalledWith(importedRunArchivePreferences);
-      expect(api.setCapturePreferences).toHaveBeenCalledWith(importedCapturePreferences);
-      expect(api.setSatanicZoneRefreshEnabled).not.toHaveBeenCalled();
-      expect(api.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
-      expect(api.setCompactMode).toHaveBeenLastCalledWith(false, true);
+      await wrapper.get('[data-test="choose-backup"]').trigger("click");
+      await flushPromises();
+      expect(api.importConfiguration).toHaveBeenCalledWith();
+      expect(api.installConfigurationSounds).not.toHaveBeenCalled();
+      expect(wrapper.get('[data-test="backup-preview"]').text()).toBe("1 settings / 1 sounds");
+
+      await wrapper.get('[data-test="confirm-backup"]').trigger("click");
+      await flushPromises();
+      expect(api.installConfigurationSounds).toHaveBeenCalledWith(selectedSource);
       expect(JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}")).toMatchObject({
-        logLimit: 50,
-        alwaysOnTop: false,
-        lockCompactLocation: true,
-        themeId: "cyberpunk",
-        compactThemeId: "light",
-        themeTextures: { cyberpunk: "neon-grid" },
-        compactThemeTextures: { light: "brushed-metal" },
+        launchThroughSteam: false,
+        customItemFilterSounds: [expect.objectContaining({ src: "file:///managed/alert.wav" })],
       });
-      expect(wrapper.get('[data-test="draft-log-limit"]').text()).toBe("50");
-      expect(wrapper.get('[data-test="draft-theme"]').text()).toBe("cyberpunk/light");
-      expect(wrapper.get('[data-test="draft-run-saving"]').text()).toBe("true:9");
-      expect(wrapper.get('[data-test="draft-capture"]').text()).toBe("true");
+      expect(wrapper.find('[data-test="backup-preview"]').exists()).toBe(false);
     } finally {
       wrapper.unmount();
     }
   });
 
-  test("reopens settings on the last selected settings tab", async () => {
+  test("persists the last of the five settings sections while the app is open", async () => {
     installHeroSiegeCompanionApi();
     const wrapper = mount(App, {
       global: {
@@ -185,7 +118,11 @@ describe("App orchestration", () => {
             template: `
               <section data-test="settings-modal">
                 <span data-test="settings-initial-tab">{{ initialTab }}</span>
+                <button data-test="app-tab" type="button" @click="$emit('settingsTabChange', 'app')">App</button>
                 <button data-test="appearance-tab" type="button" @click="$emit('settingsTabChange', 'appearance')">Appearance</button>
+                <button data-test="features-tab" type="button" @click="$emit('settingsTabChange', 'features')">Features</button>
+                <button data-test="support-tab" type="button" @click="$emit('settingsTabChange', 'support')">Help &amp; Support</button>
+                <button data-test="developers-tab" type="button" @click="$emit('settingsTabChange', 'developers')">Developers</button>
                 <button data-test="close-settings" type="button" @click="$emit('close')">Close</button>
               </section>
             `,
@@ -200,17 +137,19 @@ describe("App orchestration", () => {
       await flushPromises();
       await wrapper.get('[data-test="open-settings"]').trigger("click");
       await flushPromises();
-      expect(wrapper.get('[data-test="settings-initial-tab"]').text()).toBe("general");
+      expect(wrapper.get('[data-test="settings-initial-tab"]').text()).toBe("app");
 
-      await wrapper.get('[data-test="appearance-tab"]').trigger("click");
-      await flushPromises();
-      expect(wrapper.get('[data-test="settings-initial-tab"]').text()).toBe("appearance");
+      for (const section of ["appearance", "features", "support", "developers"] as const) {
+        await wrapper.get(`[data-test="${section}-tab"]`).trigger("click");
+        await flushPromises();
+        expect(wrapper.get('[data-test="settings-initial-tab"]').text()).toBe(section);
+      }
 
       await wrapper.get('[data-test="close-settings"]').trigger("click");
       await flushPromises();
       await wrapper.get('[data-test="open-settings"]').trigger("click");
       await flushPromises();
-      expect(wrapper.get('[data-test="settings-initial-tab"]').text()).toBe("appearance");
+      expect(wrapper.get('[data-test="settings-initial-tab"]').text()).toBe("developers");
     } finally {
       wrapper.unmount();
     }
@@ -291,6 +230,65 @@ describe("App orchestration", () => {
       await buttonByText(wrapper, "Past Runs").trigger("click");
       await flushPromises();
       expect(wrapper.get('[data-test="view-title"]').text()).toBe("Past Runs");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  test("routes the full-window pin and compact customization events through window mode", async () => {
+    const api = installHeroSiegeCompanionApi();
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          AppTitlebar: {
+            props: ["compactMode", "fullWindowPinned"],
+            emits: ["toggle-compact-mode", "open-compact-customization", "toggle-full-window-pinned"],
+            template: `
+              <section>
+                <span data-test="window-mode">{{ compactMode ? "compact" : "full" }}:{{ fullWindowPinned }}</span>
+                <button v-if="!compactMode" data-test="toggle-pin" type="button" @click="$emit('toggle-full-window-pinned')">Pin</button>
+                <button data-test="toggle-compact" type="button" @click="$emit('toggle-compact-mode')">Compact</button>
+                <button v-if="compactMode" data-test="customize-compact" type="button" @click="$emit('open-compact-customization')">Customize</button>
+              </section>
+            `,
+          },
+          CompactView: { template: '<section data-test="compact-view" />' },
+          CompactCustomizeModal: {
+            template: '<section data-test="compact-customization" />',
+          },
+          LiveSessionHeader: { template: "<section />" },
+          LiveView: { template: "<section />" },
+          SettingsModal: { template: "<section />" },
+          UpdateBanner: { template: "<div />" },
+          WhatsNewPrompt: { template: "<div />" },
+        },
+      },
+    });
+
+    try {
+      await flushPromises();
+      expect(api.setCompactMode).toHaveBeenCalledWith(false);
+      expect(api.setAlwaysOnTop).toHaveBeenCalledWith(false);
+      vi.mocked(api.setCompactMode).mockClear();
+      vi.mocked(api.setAlwaysOnTop).mockClear();
+
+      await wrapper.get('[data-test="toggle-pin"]').trigger("click");
+      await flushPromises();
+      expect(api.setAlwaysOnTop).toHaveBeenCalledWith(true);
+      expect(wrapper.get('[data-test="window-mode"]').text()).toBe("full:true");
+
+      await wrapper.get('[data-test="toggle-compact"]').trigger("click");
+      await flushPromises();
+      expect(api.setCompactMode).toHaveBeenLastCalledWith(true);
+      expect(wrapper.get('[data-test="window-mode"]').text()).toBe("compact:true");
+      expect(wrapper.find('[data-test="compact-view"]').exists()).toBe(true);
+
+      await wrapper.get('[data-test="customize-compact"]').trigger("click");
+      await flushPromises();
+      expect(api.setCompactMode).toHaveBeenLastCalledWith(false);
+      expect(api.setAlwaysOnTop).toHaveBeenLastCalledWith(true);
+      expect(wrapper.find('[data-test="compact-customization"]').exists()).toBe(true);
+      expect(wrapper.find('[data-test="compact-view"]').exists()).toBe(false);
     } finally {
       wrapper.unmount();
     }
@@ -441,7 +439,7 @@ describe("App orchestration", () => {
     }
   });
 
-  test("applies the manual-refresh opt-in through the main-process preference bridge", async () => {
+  test("applies a confirmed SZ Refresh opt-in immediately through the main-process preference bridge", async () => {
     const api = installHeroSiegeCompanionApi();
     const enabledState = companionState({
       satanicZone: { ...companionState().satanicZone, refreshEnabled: true },
@@ -459,12 +457,11 @@ describe("App orchestration", () => {
           LiveView: { template: "<div />" },
           SettingsModal: {
             props: ["satanicZoneRefreshEnabled"],
-            emits: ["update:satanicZoneRefreshEnabled", "apply"],
+            emits: ["update:satanicZoneRefreshEnabled"],
             template: `
               <section data-test="settings-modal">
                 <span data-test="draft-sz-refresh">{{ satanicZoneRefreshEnabled }}</span>
                 <button data-test="enable-sz-refresh" type="button" @click="$emit('update:satanicZoneRefreshEnabled', true)">Enable</button>
-                <button data-test="apply-settings" type="button" @click="$emit('apply')">Done</button>
               </section>
             `,
           },
@@ -479,7 +476,6 @@ describe("App orchestration", () => {
       await wrapper.get('[data-test="open-settings"]').trigger("click");
       expect(wrapper.get('[data-test="draft-sz-refresh"]').text()).toBe("false");
       await wrapper.get('[data-test="enable-sz-refresh"]').trigger("click");
-      await wrapper.get('[data-test="apply-settings"]').trigger("click");
       await flushPromises();
 
       expect(api.setSatanicZoneRefreshEnabled).toHaveBeenCalledWith(true);
@@ -504,11 +500,10 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     setPastRunTags: vi.fn().mockResolvedValue(state),
     deletePastRun: vi.fn().mockResolvedValue(state),
     deleteAllPastRuns: vi.fn().mockResolvedValue(state),
-    setRunArchivePreferences: vi.fn().mockResolvedValue(state),
-    setCapturePreferences: vi.fn().mockResolvedValue(state),
     setSatanicZoneRefreshEnabled: vi.fn().mockResolvedValue(state),
     exportConfiguration: vi.fn().mockResolvedValue(true),
     importConfiguration: vi.fn().mockResolvedValue(JSON.stringify({ app: "hero-siege-companion", kind: "configuration", version: 1, uiPreferences: {} })),
+    installConfigurationSounds: vi.fn().mockImplementation(async (json: string) => json),
     exportItemResearch: vi.fn().mockResolvedValue(true),
     importSounds: vi.fn().mockResolvedValue([]),
     exportSoundPack: vi.fn().mockResolvedValue({ exported: false, canceled: true, filePath: null, includedFiles: [] }),
@@ -520,10 +515,12 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     closeWindow: vi.fn().mockResolvedValue(undefined),
     setAlwaysOnTop: vi.fn().mockResolvedValue(undefined),
     setCompactMode: vi.fn().mockResolvedValue(undefined),
+    resetWindowBounds: vi.fn().mockResolvedValue(undefined),
     writeClipboardText: vi.fn().mockResolvedValue(undefined),
     getSupportDiagnosticsInfo: vi.fn().mockResolvedValue({ userDataPath: "C:\\Users\\Tester", logsPath: "C:\\Users\\Tester\\logs", appVersion: "0.2.5", generatedFiles: [], logFiles: [] }),
     openSupportLogsDirectory: vi.fn().mockResolvedValue(true),
     saveSupportDiagnostics: vi.fn().mockResolvedValue({ saved: false, canceled: true, filePath: null, includedFiles: [] }),
+    setCaptureDiagnosticsMode: vi.fn().mockResolvedValue(state),
     checkForUpdate: vi.fn().mockResolvedValue(null),
     openRelease: vi.fn().mockResolvedValue(undefined),
     openNpcapGuide: vi.fn().mockResolvedValue(undefined),

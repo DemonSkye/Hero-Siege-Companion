@@ -30,6 +30,7 @@ interface MainWindowManagerOptions {
 export class MainWindowManager {
   private mainWindow: BrowserWindow | null = null;
   private compactWindowMode = false;
+  private fullWindowAlwaysOnTop = false;
   private saveWindowBoundsTimer: NodeJS.Timeout | null = null;
   private rendererRecoveryTimer: NodeJS.Timeout | null = null;
   private rendererRecoveryWindowStartedAt = 0;
@@ -108,20 +109,23 @@ export class MainWindowManager {
   setAlwaysOnTop(enabled: boolean): void {
     const window = this.mainWindow;
     if (!window || window.isDestroyed()) return;
-    window.setAlwaysOnTop(enabled, "screen-saver");
-    if (!enabled) return;
+    this.fullWindowAlwaysOnTop = enabled;
+    const effectiveEnabled = this.compactWindowMode || this.fullWindowAlwaysOnTop;
+    window.setAlwaysOnTop(effectiveEnabled, "screen-saver");
+    if (!effectiveEnabled) return;
     window.show();
     window.moveTop();
     window.focus();
   }
 
-  setCompactMode(enabled: boolean, lockPositions = false): void {
+  setCompactMode(enabled: boolean): void {
     const window = this.mainWindow;
     if (!window || window.isDestroyed()) return;
 
     if (this.compactWindowMode === enabled) {
       window.setMaximizable(!enabled);
-      if (lockPositions) this.restoreWindowBounds(enabled ? "compact" : "normal");
+      this.restoreWindowBounds(enabled ? "compact" : "normal");
+      window.setAlwaysOnTop(enabled || this.fullWindowAlwaysOnTop, "screen-saver");
       if (window.isAlwaysOnTop()) window.moveTop();
       return;
     }
@@ -132,16 +136,35 @@ export class MainWindowManager {
     if (window.isMaximized()) window.unmaximize();
     window.setMaximizable(!enabled);
     window.setMinimumSize(bounds.minWidth, bounds.minHeight);
-    if (!lockPositions || !this.restoreWindowBounds(enabled ? "compact" : "normal")) {
+    if (!this.restoreWindowBounds(enabled ? "compact" : "normal")) {
       window.setSize(bounds.width, bounds.height, true);
     }
+    window.setAlwaysOnTop(enabled || this.fullWindowAlwaysOnTop, "screen-saver");
     if (window.isAlwaysOnTop()) window.moveTop();
+  }
+
+  resetWindowBounds(): void {
+    const window = this.mainWindow;
+    if (!window || window.isDestroyed()) return;
+    if (this.saveWindowBoundsTimer) {
+      clearTimeout(this.saveWindowBoundsTimer);
+      this.saveWindowBoundsTimer = null;
+    }
+    delete this.options.windowBounds.normal;
+    delete this.options.windowBounds.compact;
+    saveWindowBounds(this.options.windowBoundsPath, this.options.windowBounds, this.options.writeAppLog);
+    const bounds = this.compactWindowMode ? COMPACT_WINDOW_BOUNDS : NORMAL_WINDOW_BOUNDS;
+    if (window.isMaximized()) window.unmaximize();
+    window.setMinimumSize(bounds.minWidth, bounds.minHeight);
+    window.setSize(bounds.width, bounds.height, false);
+    window.center();
   }
 
   saveCurrentWindowBounds(): void {
     const window = this.mainWindow;
     if (!window || window.isDestroyed() || window.isMinimized()) return;
-    this.options.windowBounds[this.compactWindowMode ? "compact" : "normal"] = window.getBounds();
+    this.options.windowBounds[this.compactWindowMode ? "compact" : "normal"] =
+      !this.compactWindowMode && window.isMaximized() ? window.getNormalBounds() : window.getBounds();
     saveWindowBounds(this.options.windowBoundsPath, this.options.windowBounds, this.options.writeAppLog);
   }
 

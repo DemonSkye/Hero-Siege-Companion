@@ -176,4 +176,19 @@ describe("Satanic Zone sanitized field projection", () => {
       updatedAt: observedAt,
     });
   });
+
+  test("resolves every current Act 9 zone identifier", () => {
+    const expectedNames = [
+      "Abyss Jungle",
+      "Shipwreck Cove",
+      "Tormented Reef",
+      "Boreal Island",
+      "Volcanic Island",
+      "Abyss Realm",
+    ];
+
+    expect(expectedNames.map((_, index) =>
+      createSatanicZoneInfo(`Act_09_0${index + 1}`, [], [], localTime(10, 12)).zone,
+    )).toEqual(expectedNames.map((name) => `Act 9: ${name}`));
+  });
 });

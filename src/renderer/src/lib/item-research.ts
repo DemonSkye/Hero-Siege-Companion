@@ -1,10 +1,12 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
+import {
+  activeItemCatalog,
+  requiresItemIdentification,
+  type ItemCatalogResolution,
+  type ItemCatalogResolver,
+} from "../../../shared/item-catalog";
 import { lookupItemIconFile } from "../../../shared/item-icons";
 import { lookupItemTranslation, lookupItemTranslationByName, type ItemRepository } from "../../../shared/item-lookup";
-import {
-  isPotentiallyGeneratedNormalEquipment,
-  lookupGeneratedNormalItemBase,
-} from "../../../shared/normal-item-name";
 import type { ItemTimelineEntry } from "../../../shared/stats";
 import { itemNameOptionByNormalizedName } from "./item-options";
 import { isRecord, normalizeLookupText, stringField } from "./text";
@@ -67,10 +69,13 @@ interface ItemResearchIdentityInput {
   classification?: ItemResearchClassification;
 }
 
-export function isItemResearchCandidate(item: ItemTimelineEntry): boolean {
+export function isItemResearchCandidate(
+  item: ItemTimelineEntry,
+  catalog: ItemCatalogResolver = activeItemCatalog,
+): boolean {
   const label = item.label.trim();
   const hasGenericLabel = isGenericUnknownLabel(label);
-  if (isGeneratedNormalItemResearchEntry(item)) return false;
+  if (!requiresItemIdentification(resolveItemResearchCatalogIdentity(item, catalog))) return false;
   if (item.localizationId && !hasGenericLabel) return false;
   if (RESOURCE_LIKE_TYPES.has(item.type) && !hasGenericLabel) return false;
   if (!label) return true;
@@ -188,11 +193,14 @@ export function normalizeItemResearchEntries(value: unknown): ItemResearchEntry[
     .slice(0, ITEM_RESEARCH_ENTRY_LIMIT);
 }
 
-export function activeItemResearchEntries(entries: ItemResearchEntry[]): ItemResearchEntry[] {
+export function activeItemResearchEntries(
+  entries: ItemResearchEntry[],
+  catalog: ItemCatalogResolver = activeItemCatalog,
+): ItemResearchEntry[] {
   return entries.filter((entry) =>
     !entry.ignored
     && !entry.resolvedName.trim()
-    && isPlayerActionableItemResearchEntry(entry),
+    && isPlayerActionableItemResearchEntry(entry, catalog),
   );
 }
 
@@ -202,28 +210,40 @@ export function isKnownMissingIconResearchEntry(entry: Pick<ItemResearchEntry, "
 
 export function isGeneratedNormalItemResearchEntry(
   entry: ItemResearchIdentityInput,
+  catalog: ItemCatalogResolver = activeItemCatalog,
 ): boolean {
-  const repository = normalizeItemResearchRepository(entry.repository);
-  const hasFixedNormalIdentity = lookupItemTranslation(
-    entry.type,
-    entry.id,
-    entry.type === 3 ? Math.max(0, Math.trunc(entry.weaponType || 0)) : 0,
-    "normal",
-  ) !== null;
-  if (repository === "normal") {
-    return !hasFixedNormalIdentity && isPotentiallyGeneratedNormalEquipment(repository, entry.type);
-  }
-  if (repository !== "unknown" || hasFixedNormalIdentity) return false;
-  // Version-1 research did not retain repository. Extracted charm ordinals and
-  // legacy rows already classified as unknown-normal are unsafe fixed-name tasks.
-  return lookupGeneratedNormalItemBase(entry.type, entry.id) !== null
-    || (entry.classification === "unknown-normal" && isPotentiallyGeneratedNormalEquipment("normal", entry.type));
+  const resolution = resolveItemResearchCatalogIdentity(entry, catalog);
+  if (resolution.status === "resolved") return resolution.definition.identityMode === "seeded";
+  if (resolution.status === "unclassified") return false;
+  return resolution.expectedIdentityMode === "seeded";
 }
 
 export function isPlayerActionableItemResearchEntry(
-  entry: Pick<ItemResearchEntry, "classification" | "repository" | "type" | "id">,
+  entry: Pick<ItemResearchEntry, "classification" | "repository" | "type" | "id" | "weaponType">,
+  catalog: ItemCatalogResolver = activeItemCatalog,
 ): boolean {
-  return !isKnownMissingIconResearchEntry(entry) && !isGeneratedNormalItemResearchEntry(entry);
+  return !isKnownMissingIconResearchEntry(entry)
+    && requiresItemIdentification(resolveItemResearchCatalogIdentity(entry, catalog));
+}
+
+export function resolveItemResearchCatalogIdentity(
+  entry: ItemResearchIdentityInput,
+  catalog: ItemCatalogResolver = activeItemCatalog,
+): ItemCatalogResolution {
+  const normalizedRepository = normalizeItemResearchRepository(entry.repository);
+  // Version-1 research did not retain repository. Its explicit unknown-normal
+  // classification is the only safe migration signal for trying the normal
+  // catalog; new unscoped identities remain fail-closed and researchable.
+  const repository = normalizedRepository === "unknown" && entry.classification === "unknown-normal"
+    ? "normal"
+    : normalizedRepository;
+  if (repository === "unknown") return { status: "unclassified", key: null, reason: "no-domain" };
+  return catalog.resolve({
+    repository,
+    type: entry.type,
+    gameId: entry.id,
+    weaponType: entry.type === 3 ? Math.max(0, Math.trunc(entry.weaponType || 0)) : 0,
+  });
 }
 
 export function createItemResearchExportPayload(entries: ItemResearchEntry[], options: ItemResearchExportOptions = {}) {

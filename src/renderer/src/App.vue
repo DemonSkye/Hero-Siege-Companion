@@ -1,8 +1,7 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
-import type { CompanionState, LogEntry } from "../../shared/app-state";
-import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES, createInitialCompanionState } from "../../shared/initial-state";
-import { DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES } from "../../shared/satanic-zone";
+import type { CaptureDiagnosticsLevel, CaptureDiagnosticsMode, CompanionState, LogEntry } from "../../shared/app-state";
+import { createInitialCompanionState } from "../../shared/initial-state";
 import AppTitlebar from "./components/AppTitlebar.vue";
 import CompactView from "./components/CompactView.vue";
 import LiveSessionHeader from "./components/LiveSessionHeader.vue";
@@ -10,20 +9,17 @@ import UpdateBanner from "./components/UpdateBanner.vue";
 import WhatsNewPrompt from "./components/WhatsNewPrompt.vue";
 import { useToast } from "./lib/app-toast";
 import { compactFilterGroupRecoveryOptions } from "./lib/compact-tiles";
+import { useConfigurationBackupRuntime } from "./lib/configuration-backup-runtime";
 import { ITEM_TYPE_OPTIONS, shoppingAutocompleteNames } from "./lib/item-options";
 import { itemFilterIdFromTimelineValue, type ItemFilterGroup } from "./lib/item-filters";
 import { useItemFilterRuntime } from "./lib/item-filter-runtime";
-import {
-  createItemResearchExportPayload,
-  type ItemResearchExportScope,
-} from "./lib/item-research";
-import { useItemResearchRuntime } from "./lib/item-research-runtime";
+import { createItemResearchExportPayload } from "./lib/item-research";
+import { useLiveRunHistory } from "./lib/live-run-history";
 import { useAppPreferences } from "./lib/app-preferences";
 import {
   LOG_LIMIT_OPTIONS,
-  createConfigurationExportPayload,
+  createFactoryResetPreferences,
   defaultPreferences,
-  importConfigurationPayload,
   loadPreferences,
   savePreferences,
   type UiPreferences,
@@ -32,11 +28,13 @@ import { withoutPostRunReportItemFilterGroup } from "./lib/report-config";
 import {
   DEFAULT_THEME_ACCENTS,
   THEME_OPTIONS,
+  THEME_TOKEN_OPTIONS,
   createThemeExportPayload,
   createThemeTemplatePayload,
   effectiveThemeForegroundFill,
   effectiveThemeTexture,
   importThemePayload,
+  themeHasCustomization,
 } from "./lib/themes";
 import { useThemeApplication } from "./lib/theme-application";
 import { useSessionDisplay } from "./lib/session-display";
@@ -48,41 +46,52 @@ import { useWhatsNewPrompt } from "./lib/whats-new-prompt";
 import { WHATS_NEW_RELEASE } from "./lib/whats-new";
 import { useWindowMode } from "./lib/window-mode";
 
-type SettingsTab = "general" | "capture" | "appearance" | "sounds" | "dashboard" | "whatsNew" | "support" | "config";
+type SettingsSection = "app" | "appearance" | "features" | "support" | "developers";
+type SettingsTarget = SettingsSection | "whatsNew";
 
+const CompactCustomizeModal = defineAsyncComponent(() => import("./components/CompactCustomizeModal.vue"));
 const ItemFilterView = defineAsyncComponent(() => import("./components/ItemFilterView.vue"));
 const LiveView = defineAsyncComponent(() => import("./components/LiveView.vue"));
 const PastRunsView = defineAsyncComponent(() => import("./components/PastRunsView.vue"));
 const SettingsModal = defineAsyncComponent(() => import("./components/SettingsModal.vue"));
 
 const state = ref<CompanionState>(createInitialCompanionState());
-
+const stateHydrated = ref(false);
 const now = ref(Date.now());
-let unsubscribe: (() => void) | null = null;
-let clock: number | null = null;
-const logLimitOptions = LOG_LIMIT_OPTIONS;
 const showSettings = ref(false);
-const settingsInitialTab = ref<SettingsTab>("general");
+const showCompactCustomization = ref(false);
+const settingsInitialTab = ref<SettingsTarget>("app");
 const showCompactZone = ref(false);
 const satanicZoneRefreshSubmitting = ref(false);
 const activeTab = ref<"live" | "past" | "filter">("live");
-const appVersion = WHATS_NEW_RELEASE.version;
 const expandedLogIds = ref<Set<string>>(new Set());
 const expandedDropRarity = ref<string | null>(null);
-const hideUnfilteredTimelineItems = ref(false);
+const diagnosticsBusyLevel = ref<CaptureDiagnosticsLevel | null>(null);
+const factoryResetBusy = ref(false);
+const saveStatus = ref<"saved" | "saving" | "error">("saved");
+const appVersion = WHATS_NEW_RELEASE.version;
+const logLimitOptions = LOG_LIMIT_OPTIONS;
 const itemTypeOptions = ITEM_TYPE_OPTIONS;
+let preferencesLoaded = false;
+let preferenceSaveGeneration = 0;
+let unsubscribe: (() => void) | null = null;
+let clock: number | null = null;
+
 const {
   logLimit,
-  timelineLimit,
   showCaptureDetails,
-  alwaysOnTop,
-  lockCompactLocation,
   hideSocketables,
   hideKeys,
   hideMaterials,
+  hideUnfilteredTimelineItems,
   timelineType,
+  gameExecutablePath,
+  launchThroughSteam,
   themeId,
   compactThemeId,
+  themeCustomMode,
+  compactThemeCustomMode,
+  compactThemeMatchesApp,
   themeAccents,
   themeTextures,
   compactThemeTextures,
@@ -94,53 +103,11 @@ const {
   customItemFilterSounds,
   postRunReport,
   compactRunTiles,
-  developerItemResearchEnabled,
-  unknownItemAudioPrompt,
+  hiddenDashboardPanels,
   itemResearchEntries,
-  draftLogLimit,
-  draftTimelineLimit,
-  draftShowCaptureDetails,
-  draftAlwaysOnTop,
-  draftLockCompactLocation,
-  draftHideSocketables,
-  draftHideKeys,
-  draftHideMaterials,
-  draftDeveloperItemResearchEnabled,
-  draftUnknownItemAudioPrompt,
-  draftTimelineType,
-  draftGameExecutablePath,
-  draftLaunchThroughSteam,
-  draftThemeId,
-  draftCompactThemeId,
-  draftThemeAccents,
-  draftThemeTextures,
-  draftCompactThemeTextures,
-  draftThemeForegroundFills,
-  draftCompactThemeForegroundFills,
-  draftThemeTokenMaps,
-  draftCaptureDebugLogging,
-  draftCapturePayloadLogging,
-  draftCaptureWideLogging,
-  draftSatanicZoneDebugLogging,
-  draftSatanicZoneRefreshEnabled,
-  draftSkipEmptyRuns,
-  draftMinRunDurationMinutes,
-  configIncludeAppSettings,
-  configIncludeRunSaving,
-  configIncludeReportTracking,
-  configIncludeLootFilters,
-  configIncludeSounds,
-  configIncludeItemResearch,
   preferenceWatchSources,
   currentPreferences,
   applyPreferences,
-  currentDraftPreferences,
-  loadDraftPreferences,
-  currentDraftRunArchivePreferences,
-  currentDraftCapturePreferences,
-  currentDraftSatanicZoneRefreshEnabled,
-  currentConfigurationTransferOptions,
-  updateDraftThemeAccent,
   updatePostRunReportConfig,
 } = useAppPreferences();
 const { toastMessage, showToast } = useToast();
@@ -166,13 +133,15 @@ const {
 } = useShoppingListRuntime({ showToast });
 const {
   compactMode,
+  fullWindowPinned,
   syncWindowMode,
-  openCompactSettings,
+  openCompactCustomization,
   toggleCompactMode,
+  toggleFullWindowPinned,
   minimizeWindow,
   toggleMaximizeWindow,
   closeWindow,
-} = useWindowMode({ alwaysOnTop, lockCompactLocation, showSettings, openSettings });
+} = useWindowMode({ showSettings, showCompactCustomization });
 const {
   itemFilterDraftItem,
   itemFilterDraftGroupName,
@@ -181,6 +150,8 @@ const {
   selectedItemFilterGroup,
   selectedItemFilterGroupedItems,
   itemFilterSuggestions,
+  pendingItemFilterPackImport,
+  itemFilterPackImportBusy,
   addItemFilterGroup,
   removeItemFilterGroup,
   restoreMissingItemFilterGroup,
@@ -196,9 +167,14 @@ const {
   importItemFilterSounds,
   exportItemFilterSoundPack,
   removeItemFilterSound,
+  exportItemFilterPack,
+  prepareItemFilterPackImport,
+  confirmItemFilterPackImport,
+  discardPendingItemFilterPackImport,
 } = useItemFilterRuntime({ itemFilterGroups, itemFilterMuted, customItemFilterSounds, showToast });
 const {
   captureStatusLabel,
+  runScoreDisplays,
   compactRunTileDisplays,
   runPausedLabel,
   canToggleRunPaused,
@@ -218,7 +194,6 @@ const {
   itemFilterGroups,
   itemFilterMatchHistory,
   logLimit,
-  timelineLimit,
   timelineType,
   hideUnfilteredTimelineItems,
   hideKeys,
@@ -226,79 +201,110 @@ const {
   hideSocketables,
 });
 const {
-  unresolvedItemResearchEntries,
-  initializeItemResearchSeenItems,
-  processItemResearchTimeline,
-  saveItemResearchEntry,
-  ignoreItemResearchEntry,
-  resetItemResearchEntry,
-  clearResolvedItemResearchEntries,
-  clearIgnoredItemResearchEntries,
-  identifyTimelineItem,
-} = useItemResearchRuntime({
-  itemResearchEntries,
-  developerItemResearchEnabled,
-  unknownItemAudioPrompt,
-  showToast,
-  openItemFilterTab: () => {
-    activeTab.value = "filter";
-  },
-});
+  lanes: liveRunGraphLanes,
+  customItems: liveRunGraphCustomItems,
+  enabledStandardMetrics: liveRunGraphEnabledStandardMetrics,
+  elapsedMs: liveRunGraphElapsedMs,
+  addCustomItem: addLiveRunGraphItem,
+  removeCustomItem: removeLiveRunGraphItem,
+  setStandardMetricEnabled: setLiveRunGraphStandardMetric,
+} = useLiveRunHistory({ state, now, ready: stateHydrated });
 const { availableUpdate, checkForUpdateNotice, openAvailableUpdate, ignoreAvailableUpdate } = useUpdateNotice();
 const { showWhatsNewPrompt, maybeShowWhatsNewPrompt, dismissWhatsNewPrompt, openWhatsNewFromPrompt } = useWhatsNewPrompt(
   WHATS_NEW_RELEASE.version,
   () => openSettings("whatsNew"),
 );
-const effectiveThemeId = computed(() => (compactMode.value ? compactThemeId.value : themeId.value));
-const activeThemeAccent = computed(() => themeAccents.value[effectiveThemeId.value] ?? DEFAULT_THEME_ACCENTS[effectiveThemeId.value]);
-const activeBackgroundTexture = computed(() =>
-  compactMode.value
-    ? effectiveThemeTexture(compactThemeId.value, compactThemeTextures.value)
-    : effectiveThemeTexture(themeId.value, themeTextures.value),
-);
-const activeForegroundFill = computed(() =>
-  compactMode.value
-    ? effectiveThemeForegroundFill(compactThemeId.value, compactThemeForegroundFills.value)
-    : effectiveThemeForegroundFill(themeId.value, themeForegroundFills.value),
-);
-const recoverableCompactFilterGroups = computed(() => compactFilterGroupRecoveryOptions(compactRunTiles.value, itemFilterGroups.value));
-const activeViewTitle = computed(() => {
-  if (activeTab.value === "filter") return "Item Filter";
-  if (activeTab.value === "past") return "Past Runs";
-  return "Live Session";
+const {
+  backupPreview,
+  backupBusy,
+  exportBackup,
+  chooseBackup,
+  confirmRestoreBackup,
+  cancelRestoreBackup,
+} = useConfigurationBackupRuntime({
+  currentPreferences: currentUiPreferences,
+  applyPreferences: applyUiPreferences,
+  showToast,
 });
-useThemeApplication(effectiveThemeId, activeThemeAccent, themeTokenMaps, activeBackgroundTexture, activeForegroundFill);
+
+const compactUsesAppTheme = computed(() => compactMode.value && compactThemeMatchesApp.value);
+const effectiveThemeId = computed(() => (
+  compactMode.value && !compactThemeMatchesApp.value ? compactThemeId.value : themeId.value
+));
+const effectiveThemeCustomMode = computed(() => (
+  compactMode.value && !compactThemeMatchesApp.value ? compactThemeCustomMode.value : themeCustomMode.value
+));
+const activeThemeAccent = computed(() => (
+  effectiveThemeCustomMode.value
+    ? themeAccents.value[effectiveThemeId.value] ?? DEFAULT_THEME_ACCENTS[effectiveThemeId.value]
+    : DEFAULT_THEME_ACCENTS[effectiveThemeId.value]
+));
+const activeThemeTokenMaps = computed(() => effectiveThemeCustomMode.value ? themeTokenMaps.value : {});
+const activeBackgroundTexture = computed(() => {
+  if (!effectiveThemeCustomMode.value) return effectiveThemeTexture(effectiveThemeId.value, {});
+  return effectiveThemeTexture(
+    effectiveThemeId.value,
+    compactMode.value && !compactUsesAppTheme.value ? compactThemeTextures.value : themeTextures.value,
+  );
+});
+const activeForegroundFill = computed(() => {
+  if (!effectiveThemeCustomMode.value) return effectiveThemeForegroundFill(effectiveThemeId.value, {});
+  return effectiveThemeForegroundFill(
+    effectiveThemeId.value,
+    compactMode.value && !compactUsesAppTheme.value ? compactThemeForegroundFills.value : themeForegroundFills.value,
+  );
+});
+const legacyThemeAvailable = computed(() => themeHasCustomization(
+  themeId.value,
+  themeAccents.value,
+  themeTokenMaps.value,
+  themeTextures.value,
+  themeForegroundFills.value,
+));
+const legacyCompactThemeAvailable = computed(() => themeHasCustomization(
+  compactThemeId.value,
+  themeAccents.value,
+  themeTokenMaps.value,
+  compactThemeTextures.value,
+  compactThemeForegroundFills.value,
+));
+const recoverableCompactFilterGroups = computed(() => compactFilterGroupRecoveryOptions(compactRunTiles.value, itemFilterGroups.value));
+const activeViewTitle = computed(() => activeTab.value === "filter" ? "Item Filter" : activeTab.value === "past" ? "Past Runs" : "Live Session");
+const satanicZoneRefreshEnabled = computed({
+  get: () => state.value.satanicZone.refreshEnabled,
+  set: (enabled: boolean) => { void setSatanicZoneRefreshEnabled(enabled); },
+});
+const legacyResearchAvailable = computed(() => itemResearchEntries.value.length > 0);
+
+useThemeApplication(effectiveThemeId, activeThemeAccent, activeThemeTokenMaps, activeBackgroundTexture, activeForegroundFill);
 
 onMounted(async () => {
   applyUiPreferences(loadPreferences());
+  preferencesLoaded = true;
   await syncWindowMode();
   state.value = await window.heroSiegeCompanion.getState();
+  stateHydrated.value = true;
   initializeItemFilterSeenItems(state.value.stats.itemTimeline);
-  initializeItemResearchSeenItems(state.value.stats.itemTimeline);
   maybeShowWhatsNewPrompt();
   void refreshSupportDiagnosticsInfo();
   unsubscribe = window.heroSiegeCompanion.onStateUpdated((nextState) => {
     processItemFilterTimeline(nextState.stats.itemTimeline);
-    processItemResearchTimeline(nextState.stats.itemTimeline);
     state.value = nextState;
   });
   void checkForUpdateNotice();
-  clock = window.setInterval(() => {
-    now.value = Date.now();
-  }, 1000);
+  clock = window.setInterval(() => { now.value = Date.now(); }, 1000);
 });
 
 watch([...preferenceWatchSources, shoppingListItems], () => {
-  savePreferences(currentUiPreferences());
+  if (!preferencesLoaded) return;
+  persistUiPreferences();
   clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
 }, { deep: true });
 
 watch([timelineType, itemFilterGroups], () => {
   const groupId = itemFilterIdFromTimelineValue(timelineType.value);
-  if (groupId && !itemFilterGroups.value.some((group) => group.id === groupId)) {
-    timelineType.value = "all";
-  }
+  if (groupId && !itemFilterGroups.value.some((group) => group.id === groupId)) timelineType.value = "all";
 }, { deep: true });
 
 onUnmounted(() => {
@@ -310,10 +316,6 @@ function currentUiPreferences(): UiPreferences {
   return currentPreferences(shoppingListItems.value);
 }
 
-function currentDraftUiPreferences(): UiPreferences {
-  return currentDraftPreferences(shoppingListItems.value);
-}
-
 function applyUiPreferences(preferences: UiPreferences): void {
   applyPreferences(preferences);
   shoppingListItems.value = preferences.shoppingListItems;
@@ -321,21 +323,28 @@ function applyUiPreferences(preferences: UiPreferences): void {
   clampActiveItemFilterGroup();
 }
 
-function loadCurrentDraftPreferences(preferences = currentUiPreferences()): void {
-  loadDraftPreferences(
-    preferences,
-    state.value.runArchivePreferences,
-    state.value.capturePreferences,
-    state.value.satanicZone.refreshEnabled,
-  );
+function persistUiPreferences(): void {
+  const generation = ++preferenceSaveGeneration;
+  saveStatus.value = "saving";
+  try {
+    if (!savePreferences(currentUiPreferences())) {
+      saveStatus.value = "error";
+      return;
+    }
+    window.setTimeout(() => {
+      if (generation === preferenceSaveGeneration) saveStatus.value = "saved";
+    }, 120);
+  } catch {
+    saveStatus.value = "error";
+  }
 }
 
 async function toggleCapture() {
   state.value = state.value.captureRunning
     ? await window.heroSiegeCompanion.stopCapture()
     : await window.heroSiegeCompanion.launchGameOrCapture({
-        executablePath: currentUiPreferences().gameExecutablePath,
-        launchThroughSteam: currentUiPreferences().launchThroughSteam,
+        executablePath: gameExecutablePath.value,
+        launchThroughSteam: launchThroughSteam.value,
       });
 }
 
@@ -352,13 +361,32 @@ async function refreshSatanicZone() {
   try {
     state.value = await window.heroSiegeCompanion.refreshSatanicZone();
     if (state.value.satanicZone.phase === "refreshing") showToast("Satanic Zone refresh requested");
-    else if (state.value.satanicZone.phase === "failed" || state.value.satanicZone.phase === "unavailable") {
-      showToast("Satanic Zone refresh unavailable");
-    }
+    else if (state.value.satanicZone.phase === "failed" || state.value.satanicZone.phase === "unavailable") showToast("Satanic Zone refresh unavailable");
   } catch {
     showToast("Satanic Zone refresh failed");
   } finally {
     satanicZoneRefreshSubmitting.value = false;
+  }
+}
+
+async function setSatanicZoneRefreshEnabled(enabled: boolean) {
+  try {
+    state.value = await window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(enabled);
+    showToast(`SZ Refresh ${enabled ? "enabled" : "disabled"}`);
+  } catch {
+    showToast("SZ Refresh could not be changed");
+  }
+}
+
+async function setDiagnosticsMode(level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode) {
+  if (diagnosticsBusyLevel.value) return;
+  diagnosticsBusyLevel.value = level;
+  try {
+    state.value = await window.heroSiegeCompanion.setCaptureDiagnosticsMode(level, mode);
+  } catch {
+    showToast("Diagnostics mode could not be changed");
+  } finally {
+    diagnosticsBusyLevel.value = null;
   }
 }
 
@@ -400,85 +428,35 @@ function openItemFilterGroup(groupId: string) {
   activeTab.value = "filter";
 }
 
-function openSettings(tab?: SettingsTab) {
-  loadCurrentDraftPreferences();
+function openSettings(tab?: SettingsTarget) {
   if (tab) settingsInitialTab.value = tab;
   showSettings.value = true;
+  showCompactCustomization.value = false;
   void refreshSupportDiagnosticsInfo();
 }
 
-function closeSettings() {
-  showSettings.value = false;
+function resetThemes() {
+  themeId.value = defaultPreferences.themeId;
+  compactThemeId.value = defaultPreferences.compactThemeId;
+  themeCustomMode.value = false;
+  compactThemeCustomMode.value = false;
+  compactThemeMatchesApp.value = true;
+  themeAccents.value = { ...DEFAULT_THEME_ACCENTS };
+  themeTextures.value = {};
+  compactThemeTextures.value = {};
+  themeForegroundFills.value = {};
+  compactThemeForegroundFills.value = {};
+  themeTokenMaps.value = {};
 }
 
-function resetDraftPreferences() {
-  loadDraftPreferences(
-    defaultPreferences,
-    DEFAULT_RUN_ARCHIVE_PREFERENCES,
-    DEFAULT_CAPTURE_PREFERENCES,
-    DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled,
-  );
-}
-
-async function applyDraftPreferences() {
-  applyUiPreferences(currentDraftUiPreferences());
-  savePreferences(currentUiPreferences());
-  state.value = await window.heroSiegeCompanion.setRunArchivePreferences(currentDraftRunArchivePreferences());
-  state.value = await window.heroSiegeCompanion.setCapturePreferences(currentDraftCapturePreferences());
-  state.value = await window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(currentDraftSatanicZoneRefreshEnabled());
-  showSettings.value = false;
-  await syncWindowMode();
-}
-
-async function exportConfiguration() {
-  try {
-    const payload = createConfigurationExportPayload(
-      currentDraftUiPreferences(),
-      currentDraftRunArchivePreferences(),
-      currentDraftCapturePreferences(),
-      currentConfigurationTransferOptions(),
-    );
-    const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2));
-    if (exported) showToast("Configuration exported");
-  } catch {
-    showToast("Configuration export failed");
-  }
-}
-
-async function importConfiguration() {
-  try {
-    const transferOptions = currentConfigurationTransferOptions();
-    const contents = await window.heroSiegeCompanion.importConfiguration(transferOptions.includeSounds);
-    if (!contents) return;
-
-    const imported = importConfigurationPayload(contents, currentUiPreferences(), transferOptions);
-    applyUiPreferences(imported.uiPreferences);
-    savePreferences(currentUiPreferences());
-
-    if (imported.runArchivePreferences) {
-      state.value = await window.heroSiegeCompanion.setRunArchivePreferences(imported.runArchivePreferences);
-    }
-    if (imported.capturePreferences) {
-      state.value = await window.heroSiegeCompanion.setCapturePreferences(imported.capturePreferences);
-    }
-
-    loadCurrentDraftPreferences();
-    await syncWindowMode();
-    showToast("Configuration imported");
-  } catch {
-    showToast("Configuration import failed");
-  }
+async function chooseGameExecutable() {
+  const selected = await window.heroSiegeCompanion.chooseGameExecutable();
+  if (selected) gameExecutablePath.value = selected;
 }
 
 async function exportTheme() {
   try {
-    const payload = createThemeExportPayload(
-      draftThemeId.value,
-      draftThemeAccents.value,
-      draftThemeTokenMaps.value,
-      draftThemeTextures.value,
-      draftThemeForegroundFills.value,
-    );
+    const payload = createThemeExportPayload(themeId.value, themeAccents.value, themeTokenMaps.value, themeTextures.value, themeForegroundFills.value);
     const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2), {
       title: "Export Hero Siege theme",
       defaultPath: "hero-siege-theme.json",
@@ -491,7 +469,7 @@ async function exportTheme() {
 
 async function exportThemeTemplate() {
   try {
-    const payload = createThemeTemplatePayload(draftThemeId.value);
+    const payload = createThemeTemplatePayload(themeId.value);
     const exported = await window.heroSiegeCompanion.exportConfiguration(JSON.stringify(payload, null, 2), {
       title: "Export Hero Siege starter theme",
       defaultPath: "hero-siege-theme-template.json",
@@ -506,32 +484,63 @@ async function importTheme() {
   try {
     const contents = await window.heroSiegeCompanion.importConfiguration();
     if (!contents) return;
-    const imported = importThemePayload(
-      contents,
-      draftThemeId.value,
-      draftThemeAccents.value,
-      draftThemeTokenMaps.value,
-      draftThemeTextures.value,
-      draftThemeForegroundFills.value,
-    );
-    draftThemeId.value = imported.themeId;
-    draftThemeAccents.value = imported.themeAccents;
-    draftThemeTokenMaps.value = imported.themeTokenMaps;
-    draftThemeTextures.value = imported.themeTextureMaps;
-    draftThemeForegroundFills.value = imported.themeForegroundFillMaps;
-    showToast("Theme imported");
+    const imported = importThemePayload(contents, themeId.value, themeAccents.value, themeTokenMaps.value, themeTextures.value, themeForegroundFills.value);
+    themeId.value = imported.themeId;
+    themeAccents.value = imported.themeAccents;
+    themeTokenMaps.value = imported.themeTokenMaps;
+    themeTextures.value = imported.themeTextureMaps;
+    themeForegroundFills.value = imported.themeForegroundFillMaps;
+    themeCustomMode.value = true;
+    showToast("Theme imported as Legacy Custom");
   } catch {
     showToast("Theme import failed");
   }
 }
 
-async function exportItemResearch(scope: ItemResearchExportScope = "all") {
+async function copyThemeTokenReference() {
   try {
-    const payload = createItemResearchExportPayload(itemResearchEntries.value, { scope });
-    const exported = await window.heroSiegeCompanion.exportItemResearch(JSON.stringify(payload, null, 2));
-    if (exported) showToast("Research JSON exported. Share a gist with sarevok9 on Reddit or Snyne on Discord.");
+    await window.heroSiegeCompanion.writeClipboardText(JSON.stringify(THEME_TOKEN_OPTIONS, null, 2));
+    showToast("Theme token reference copied");
   } catch {
-    showToast("Research export failed");
+    showToast("Theme token reference copy failed");
+  }
+}
+
+async function exportLegacyResearch() {
+  try {
+    const payload = createItemResearchExportPayload(itemResearchEntries.value, { scope: "all" });
+    const exported = await window.heroSiegeCompanion.exportItemResearch(JSON.stringify(payload, null, 2));
+    if (!exported) return;
+    itemResearchEntries.value = [];
+    persistUiPreferences();
+    showToast("Legacy research exported and removed from preferences");
+  } catch {
+    showToast("Legacy research export failed");
+  }
+}
+
+async function resetWindowPosition() {
+  try {
+    await window.heroSiegeCompanion.resetWindowBounds();
+    showToast("Window position reset");
+  } catch {
+    showToast("Window position reset failed");
+  }
+}
+
+async function factoryReset(deleteItemFilters: boolean) {
+  if (factoryResetBusy.value) return;
+  factoryResetBusy.value = true;
+  try {
+    applyUiPreferences(createFactoryResetPreferences(currentUiPreferences(), { deleteItemFilters }));
+    persistUiPreferences();
+    await window.heroSiegeCompanion.resetWindowBounds();
+    await syncWindowMode();
+    showToast(deleteItemFilters ? "Factory reset complete; item filters reset" : "Factory reset complete; item filters preserved");
+  } catch {
+    showToast("Factory reset failed");
+  } finally {
+    factoryResetBusy.value = false;
   }
 }
 
@@ -562,27 +571,22 @@ async function copyPastRunsSummary(summary: string) {
   }
 }
 
-async function chooseGameExecutable() {
-  const selected = await window.heroSiegeCompanion.chooseGameExecutable();
-  if (!selected) return;
-  draftGameExecutablePath.value = selected;
-}
-
 function toggleLog(log: LogEntry) {
   const next = new Set(expandedLogIds.value);
   if (next.has(log.id)) next.delete(log.id);
   else next.add(log.id);
   expandedLogIds.value = next;
 }
-
 </script>
 
 <template>
   <main :class="['app-shell', { compact: compactMode }]">
     <AppTitlebar
       :compact-mode="compactMode"
+      :full-window-pinned="fullWindowPinned"
       @toggle-compact-mode="toggleCompactMode"
-      @open-compact-settings="openCompactSettings"
+      @open-compact-customization="openCompactCustomization"
+      @toggle-full-window-pinned="toggleFullWindowPinned"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
       @close-window="closeWindow"
@@ -629,18 +633,24 @@ function toggleLog(log: LogEntry) {
         v-if="activeTab === 'live'"
         v-model:show-capture-details="showCaptureDetails"
         v-model:expanded-drop-rarity="expandedDropRarity"
-        v-model:timeline-limit="timelineLimit"
         v-model:timeline-type="timelineType"
         v-model:hide-socketables="hideSocketables"
         v-model:hide-keys="hideKeys"
         v-model:hide-materials="hideMaterials"
         v-model:hide-unfiltered-items="hideUnfilteredTimelineItems"
+        v-model:hidden-fixtures="hiddenDashboardPanels"
         v-model:shopping-draft-item="shoppingDraftItem"
         v-model:log-limit="logLimit"
         :state="state"
         :now="now"
         :capture-status-label="captureStatusLabel"
-        :run-tile-displays="compactRunTileDisplays"
+        :run-tile-displays="runScoreDisplays"
+        :live-run-graph-elapsed-ms="liveRunGraphElapsedMs"
+        :run-paused-label="runPausedLabel"
+        :live-run-graph-lanes="liveRunGraphLanes"
+        :live-run-graph-custom-items="liveRunGraphCustomItems"
+        :live-run-graph-enabled-standard-metrics="liveRunGraphEnabledStandardMetrics"
+        :live-run-item-name-options="shoppingAutocompleteNames"
         :zone-countdown="zoneCountdown"
         :zone-reset-label="zoneResetLabel"
         :satanic-zone-refresh-submitting="satanicZoneRefreshSubmitting"
@@ -656,7 +666,6 @@ function toggleLog(log: LogEntry) {
         :shopping-list-items="shoppingListItems"
         :shopping-suggestions="shoppingSuggestions"
         :active-shopping-item="activeShoppingItem"
-        :developer-item-research-enabled="developerItemResearchEnabled"
         :recent-logs="recentLogs"
         :expanded-log-ids="expandedLogIds"
         @copy-shopping-item="copyShoppingItem($event, false)"
@@ -664,7 +673,9 @@ function toggleLog(log: LogEntry) {
         @remove-shopping-item="removeShoppingItem"
         @open-npcap-guide="openNpcapGuide"
         @open-item-filter-group="openItemFilterGroup"
-        @identify-timeline-item="identifyTimelineItem"
+        @add-live-run-graph-item="addLiveRunGraphItem"
+        @remove-live-run-graph-item="removeLiveRunGraphItem"
+        @set-live-run-graph-standard-metric="setLiveRunGraphStandardMetric"
         @refresh-satanic-zone="refreshSatanicZone"
         @toggle-log="toggleLog"
       />
@@ -677,13 +688,13 @@ function toggleLog(log: LogEntry) {
         :item-filter-groups="itemFilterGroups"
         :recoverable-compact-filter-groups="recoverableCompactFilterGroups"
         :item-filter-sounds="itemFilterSoundOptionsList"
+        :custom-item-filter-sounds="customItemFilterSounds"
         :selected-item-filter-group="selectedItemFilterGroup"
         :selected-item-filter-grouped-items="selectedItemFilterGroupedItems"
         :item-filter-suggestions="itemFilterSuggestions"
         :item-type-options="itemTypeOptions"
-        :developer-item-research-enabled="developerItemResearchEnabled"
-        :item-research-entries="itemResearchEntries"
-        :unresolved-item-research-count="unresolvedItemResearchEntries.length"
+        :pending-item-filter-pack-import="pendingItemFilterPackImport"
+        :item-filter-pack-import-busy="itemFilterPackImportBusy"
         @add-group="addItemFilterGroup"
         @select-group="selectItemFilterGroup"
         @remove-group="removeItemFilterGroupAndReportRefs"
@@ -692,12 +703,13 @@ function toggleLog(log: LogEntry) {
         @add-item-to-group="addItemToFilterGroup"
         @remove-item-from-group="removeItemFromFilterGroup"
         @test-sound="testItemFilterSound"
-        @export-item-research="exportItemResearch"
-        @save-item-research-entry="saveItemResearchEntry"
-        @ignore-item-research-entry="ignoreItemResearchEntry"
-        @reset-item-research-entry="resetItemResearchEntry"
-        @clear-resolved-item-research-entries="clearResolvedItemResearchEntries"
-        @clear-ignored-item-research-entries="clearIgnoredItemResearchEntries"
+        @import-sounds="importItemFilterSounds"
+        @export-soundpack="exportItemFilterSoundPack"
+        @remove-sound="removeItemFilterSound"
+        @import-filter-pack="prepareItemFilterPackImport"
+        @export-filter-pack="exportItemFilterPack"
+        @confirm-filter-pack-import="confirmItemFilterPackImport"
+        @cancel-filter-pack-import="discardPendingItemFilterPackImport"
       />
 
       <PastRunsView
@@ -714,77 +726,72 @@ function toggleLog(log: LogEntry) {
         @delete-all-runs="deleteAllPastRuns"
       />
     </div>
+
     <SettingsModal
       v-if="showSettings"
-      v-model:log-limit="draftLogLimit"
-      v-model:timeline-limit="draftTimelineLimit"
-      v-model:timeline-type="draftTimelineType"
-      v-model:launch-through-steam="draftLaunchThroughSteam"
-      v-model:game-executable-path="draftGameExecutablePath"
-      v-model:show-capture-details="draftShowCaptureDetails"
-      v-model:capture-debug-logging="draftCaptureDebugLogging"
-      v-model:capture-payload-logging="draftCapturePayloadLogging"
-      v-model:capture-wide-logging="draftCaptureWideLogging"
-      v-model:satanic-zone-debug-logging="draftSatanicZoneDebugLogging"
-      v-model:satanic-zone-refresh-enabled="draftSatanicZoneRefreshEnabled"
-      v-model:always-on-top="draftAlwaysOnTop"
-      v-model:lock-compact-location="draftLockCompactLocation"
-      v-model:hide-socketables="draftHideSocketables"
-      v-model:hide-keys="draftHideKeys"
-      v-model:hide-materials="draftHideMaterials"
-      v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
-      v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
-      v-model:theme-id="draftThemeId"
-      v-model:compact-theme-id="draftCompactThemeId"
-      v-model:theme-accents="draftThemeAccents"
-      v-model:theme-textures="draftThemeTextures"
-      v-model:compact-theme-textures="draftCompactThemeTextures"
-      v-model:theme-foreground-fills="draftThemeForegroundFills"
-      v-model:compact-theme-foreground-fills="draftCompactThemeForegroundFills"
-      v-model:skip-empty-runs="draftSkipEmptyRuns"
-      v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
-      v-model:config-include-app-settings="configIncludeAppSettings"
-      v-model:config-include-run-saving="configIncludeRunSaving"
-      v-model:config-include-report-tracking="configIncludeReportTracking"
-      v-model:config-include-loot-filters="configIncludeLootFilters"
-      v-model:config-include-sounds="configIncludeSounds"
-      v-model:config-include-item-research="configIncludeItemResearch"
-      v-model:compact-run-tiles="compactRunTiles"
-      :log-limit-options="logLimitOptions"
-      :item-type-options="itemTypeOptions"
-      :item-filter-groups="itemFilterGroups"
-      :item-suggestions="shoppingAutocompleteNames"
+      v-model:launch-through-steam="launchThroughSteam"
+      v-model:game-executable-path="gameExecutablePath"
+      v-model:theme-id="themeId"
+      v-model:compact-theme-id="compactThemeId"
+      v-model:theme-custom-mode="themeCustomMode"
+      v-model:compact-theme-custom-mode="compactThemeCustomMode"
+      v-model:compact-theme-matches-app="compactThemeMatchesApp"
+      v-model:satanic-zone-refresh-enabled="satanicZoneRefreshEnabled"
       :theme-options="THEME_OPTIONS"
-      :custom-item-filter-sounds="customItemFilterSounds"
+      :legacy-theme-available="legacyThemeAvailable"
+      :legacy-compact-theme-available="legacyCompactThemeAvailable"
+      :capture-diagnostics="state.captureDiagnostics"
+      :diagnostics-now="now"
+      :diagnostics-busy-level="diagnosticsBusyLevel"
       :support-diagnostics="supportDiagnostics"
       :support-generated-files="supportDiagnosticsInfo.generatedFiles"
       :support-log-files="supportDiagnosticsInfo.logFiles"
       :support-logs-path="supportDiagnosticsInfo.logsPath"
       :support-bundle-busy="supportBundleBusy"
       :whats-new="WHATS_NEW_RELEASE"
+      :backup-preview="backupPreview"
+      :backup-busy="backupBusy"
+      :factory-reset-busy="factoryResetBusy"
+      :legacy-research-available="legacyResearchAvailable"
+      :save-status="saveStatus"
       :initial-tab="settingsInitialTab"
-      @close="closeSettings"
+      @close="showSettings = false"
       @choose-game-executable="chooseGameExecutable"
-      @update-theme-accent="updateDraftThemeAccent"
+      @reset-themes="resetThemes"
+      @export-backup="exportBackup"
+      @choose-backup="chooseBackup"
+      @confirm-restore-backup="confirmRestoreBackup"
+      @cancel-restore-backup="cancelRestoreBackup"
+      @open-support-logs-directory="openSupportLogsDirectory"
+      @save-support-diagnostics="saveSupportDiagnostics"
+      @copy-support-diagnostics-summary="copySupportDiagnosticsSummary"
+      @open-npcap-guide="openNpcapGuide"
+      @set-diagnostics-mode="setDiagnosticsMode"
+      @reset-window-position="resetWindowPosition"
+      @factory-reset="factoryReset"
       @import-theme="importTheme"
       @export-theme="exportTheme"
       @export-theme-template="exportThemeTemplate"
-      @import-sounds="importItemFilterSounds"
-      @export-sounds="exportItemFilterSoundPack"
-      @remove-sound="removeItemFilterSound"
-      @save-support-diagnostics="saveSupportDiagnostics"
-      @copy-support-diagnostics-summary="copySupportDiagnosticsSummary"
-      @open-support-logs-directory="openSupportLogsDirectory"
-      @export-configuration="exportConfiguration"
-      @import-configuration="importConfiguration"
+      @copy-theme-token-reference="copyThemeTokenReference"
+      @export-legacy-research="exportLegacyResearch"
+      @retry-save="persistUiPreferences"
       @settings-tab-change="settingsInitialTab = $event"
-      @reset="resetDraftPreferences"
-      @apply="applyDraftPreferences"
     />
-    <WhatsNewPrompt v-if="showWhatsNewPrompt && !showSettings" :version="WHATS_NEW_RELEASE.version" @open="openWhatsNewFromPrompt" @dismiss="dismissWhatsNewPrompt" />
+
+    <CompactCustomizeModal
+      v-if="showCompactCustomization"
+      v-model:compact-run-tiles="compactRunTiles"
+      :item-filter-groups="itemFilterGroups"
+      :item-suggestions="shoppingAutocompleteNames"
+      :save-status="saveStatus"
+      @close="showCompactCustomization = false"
+      @reset="showToast('Compact layout reset')"
+      @retry-save="persistUiPreferences"
+    />
+
+    <WhatsNewPrompt v-if="showWhatsNewPrompt && !showSettings && !showCompactCustomization" :version="WHATS_NEW_RELEASE.version" @open="openWhatsNewFromPrompt" @dismiss="dismissWhatsNewPrompt" />
     <div v-if="toastMessage" class="toast-bubble" role="status">{{ toastMessage }}</div>
     <span class="app-version">v{{ appVersion }}</span>
     <div class="resize-grip" aria-hidden="true"></div>
   </main>
 </template>
-

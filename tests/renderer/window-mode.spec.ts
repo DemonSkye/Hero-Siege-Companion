@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import { useWindowMode } from "../../src/renderer/src/lib/window-mode";
 
 describe("window mode runtime", () => {
-  test("syncs compact and always-on-top state through the preload API", async () => {
+  test("keeps compact pinning in main and exposes a session-only full-window pin", async () => {
     const setAlwaysOnTop = vi.fn().mockResolvedValue(undefined);
     const setCompactMode = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(window, "heroSiegeCompanion", {
@@ -18,23 +18,24 @@ describe("window mode runtime", () => {
     });
 
     const showSettings = ref(true);
-    const openSettings = vi.fn();
+    const showCompactCustomization = ref(false);
     const runtime = useWindowMode({
-      alwaysOnTop: ref(true),
-      lockCompactLocation: ref(false),
       showSettings,
-      openSettings,
+      showCompactCustomization,
     });
 
     await runtime.syncWindowMode();
+    await runtime.toggleFullWindowPinned();
     await runtime.toggleCompactMode();
-    await runtime.openCompactSettings();
+    await runtime.openCompactCustomization();
 
-    expect(setAlwaysOnTop).toHaveBeenCalledWith(true);
-    expect(setCompactMode).toHaveBeenNthCalledWith(1, false, false);
-    expect(setCompactMode).toHaveBeenNthCalledWith(2, true, false);
-    expect(setCompactMode).toHaveBeenNthCalledWith(3, false, false);
+    expect(setAlwaysOnTop).toHaveBeenNthCalledWith(1, false);
+    expect(setAlwaysOnTop).toHaveBeenNthCalledWith(2, true);
+    expect(setAlwaysOnTop).toHaveBeenNthCalledWith(3, true);
+    expect(setCompactMode).toHaveBeenNthCalledWith(1, false);
+    expect(setCompactMode).toHaveBeenNthCalledWith(2, true);
+    expect(setCompactMode).toHaveBeenNthCalledWith(3, false);
     expect(showSettings.value).toBe(false);
-    expect(openSettings).toHaveBeenCalled();
+    expect(showCompactCustomization.value).toBe(true);
   });
 });

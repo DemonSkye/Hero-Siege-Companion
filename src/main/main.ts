@@ -10,6 +10,7 @@ import {
   type CaptureRuntime,
   type CaptureUpdate,
 } from "./capture-runtime";
+import { CaptureDiagnosticsController } from "./capture-diagnostics-controller";
 import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
 import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
@@ -21,18 +22,12 @@ import { satanicZoneRelayResourcesPath } from "./satanic-zone-relay-runtime-io";
 import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
 import {
   MAX_PAST_RUNS,
-  loadCapturePreferences,
   loadPastRuns,
-  loadRunArchivePreferences,
   loadSatanicZoneCache,
   loadSatanicZoneRefreshPreferences,
   loadWindowBounds,
-  normalizeCapturePreferences,
-  normalizeRunArchivePreferences,
   normalizeSatanicZoneRefreshPreferences,
-  saveCapturePreferences,
   savePastRuns,
-  saveRunArchivePreferences,
   saveSatanicZoneCache,
   saveSatanicZoneRefreshPreferences,
   satanicZoneCachePersistenceKey,
@@ -45,12 +40,19 @@ import {
   exportLootSoundPackWithDialog,
   importLootSounds,
   installEmbeddedConfigurationSounds,
+  MAX_EMBEDDED_CONFIGURATION_BYTES,
   removeImportedLootSound,
 } from "./sound-import";
 import { ensureSupportLogsDirectory, getSupportDiagnosticsInfo, saveSupportDiagnosticsBundle } from "./support-diagnostics";
 import { saveTextFileWithDialog } from "./text-file-dialogs";
 import { MainWindowManager } from "./window-manager";
-import type { CapturePreferences, CompanionState, LogEntry, RunArchivePreferences, RunPausedReason } from "../shared/app-state";
+import type {
+  CaptureDiagnosticsLevel,
+  CaptureDiagnosticsMode,
+  CompanionState,
+  LogEntry,
+  RunPausedReason,
+} from "../shared/app-state";
 import { EVENT_NAMES } from "../shared/constants";
 import { IPC_CHANNELS, type ConfigurationExportOptions } from "../shared/ipc";
 import { createInitialCompanionState } from "../shared/initial-state";
@@ -64,7 +66,7 @@ const logs: LogEntry[] = [];
 const STATE_PUBLISH_INTERVAL_MS = 1000;
 const GITHUB_RELEASES_URL = "https://github.com/DemonSkye/Hero-Siege-Companion/releases";
 const GITHUB_NPCAP_GUIDE_URL = "https://github.com/DemonSkye/Hero-Siege-Companion#required-install-npcap";
-const MAX_CONFIGURATION_IMPORT_BYTES = 128 * 1024 * 1024;
+const MAX_CONFIGURATION_IMPORT_BYTES = MAX_EMBEDDED_CONFIGURATION_BYTES;
 
 const state: CompanionState = createInitialCompanionState(logs);
 
@@ -88,6 +90,14 @@ let lastPersistedSatanicZoneCacheKey: string | null = null;
 let crashReporterStarted = false;
 let crashReporterStartError: string | null = null;
 const archivedSessionStarts = new Set<number>();
+const captureDiagnosticsController = new CaptureDiagnosticsController({
+  onChange: (diagnosticsState, preferences) => {
+    state.captureDiagnostics = diagnosticsState;
+    state.capturePreferences = preferences;
+    captureService?.setCapturePreferences(preferences);
+    publishState();
+  },
+});
 const gameCaptureCoordinator = new GameCaptureCoordinator({
   state,
   getCaptureService: () => captureService,
@@ -173,8 +183,8 @@ function currentWindow() {
 
 function normalizeConfigurationExportOptions(options: unknown): Required<ConfigurationExportOptions> {
   const fallback = {
-    title: "Export Hero Siege Companion configuration",
-    defaultPath: "hero-siege-companion-config.json",
+    title: "Export Hero Siege Companion backup",
+    defaultPath: "hero-siege-companion-backup.json",
   };
   if (!options || typeof options !== "object" || Array.isArray(options)) return fallback;
 
@@ -292,18 +302,6 @@ function addLog(level: LogEntry["level"], message: string): void {
   logs.splice(500);
 }
 
-function captureLoggingChanges(previous: CapturePreferences, next: CapturePreferences): string[] {
-  const labels: Array<[keyof CapturePreferences, string]> = [
-    ["captureDebugLogging", "capture diagnostics"],
-    ["satanicZoneDebugLogging", "Satanic Zone diagnostics"],
-    ["capturePayloadLogging", "payload snippets"],
-    ["captureWideLogging", "verbose packet file"],
-  ];
-  return labels
-    .filter(([key]) => previous[key] !== next[key])
-    .map(([key, label]) => `${label} ${next[key] ? "on" : "off"}`);
-}
-
 function publishState(): void {
   if (statePublishTimer) return;
   statePublishTimer = setTimeout(() => {
@@ -404,7 +402,7 @@ ipcMain.handle(IPC_CHANNELS.statsReset, () => {
   state.runPausedReason = null;
   state.runPausedAt = null;
   state.runPausedDurationMs = 0;
-  addLog("info", archived ? "Run saved and session stats reset." : "Session stats reset. Run did not match save settings.");
+  addLog("info", archived ? "Run saved and session stats reset." : "Session stats reset. Empty runs are not saved.");
   publishState();
   return state;
 });
@@ -477,22 +475,6 @@ ipcMain.handle(IPC_CHANNELS.pastRunsDeleteAll, () => {
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.preferencesSetRunArchive, (_event, preferences: Partial<RunArchivePreferences>) => {
-  state.runArchivePreferences = normalizeRunArchivePreferences(preferences);
-  saveRunArchivePreferences(preferencesPath, state.runArchivePreferences, writeAppLog);
-  publishState();
-  return state;
-});
-ipcMain.handle(IPC_CHANNELS.preferencesSetCapture, (_event, preferences: Partial<CapturePreferences>) => {
-  const nextPreferences = normalizeCapturePreferences(preferences);
-  const changedLogging = captureLoggingChanges(state.capturePreferences, nextPreferences);
-  state.capturePreferences = nextPreferences;
-  captureService?.setCapturePreferences(nextPreferences);
-  saveCapturePreferences(preferencesPath, state.capturePreferences, writeAppLog);
-  if (changedLogging.length) addLog("info", `Capture logging updated: ${changedLogging.join(", ")}.`);
-  publishState();
-  return state;
-});
 ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, enabled: unknown) => {
   const preferences = normalizeSatanicZoneRefreshPreferences({ enabled });
   saveSatanicZoneRefreshPreferences(preferencesPath, preferences, writeAppLog);
@@ -523,14 +505,21 @@ ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string, op
   if (exported) addLog("success", "Configuration exported.");
   return exported;
 });
-ipcMain.handle(IPC_CHANNELS.configurationImport, async (_event, installEmbeddedSounds?: boolean) => {
+ipcMain.handle(IPC_CHANNELS.configurationImport, async () => {
   const contents = await readJsonFileWithDialog(currentWindow(), {
-    title: "Import Hero Siege Companion configuration",
+    title: "Restore Hero Siege Companion backup",
     maxBytes: MAX_CONFIGURATION_IMPORT_BYTES,
     tooLargeMessage: "Configuration file is too large.",
   });
   if (contents) addLog("info", "Configuration selected for import.");
-  return contents && installEmbeddedSounds === true ? installEmbeddedConfigurationSounds(contents, app.getPath("userData")) : contents;
+  return contents;
+});
+ipcMain.handle(IPC_CHANNELS.configurationInstallSounds, (_event, json: string) => {
+  const contents = String(json ?? "");
+  if (Buffer.byteLength(contents, "utf8") > MAX_CONFIGURATION_IMPORT_BYTES) {
+    throw new Error("Configuration file is too large.");
+  }
+  return installEmbeddedConfigurationSounds(contents, app.getPath("userData"));
 });
 ipcMain.handle(IPC_CHANNELS.itemResearchExport, async (_event, json: string) => {
   const exported = await saveJsonFileWithDialog(currentWindow(), {
@@ -612,8 +601,11 @@ ipcMain.handle(IPC_CHANNELS.windowClose, () => {
 ipcMain.handle(IPC_CHANNELS.windowSetAlwaysOnTop, (_event, enabled: boolean) => {
   windowManager?.setAlwaysOnTop(Boolean(enabled));
 });
-ipcMain.handle(IPC_CHANNELS.windowSetCompactMode, (_event, enabled: boolean, lockPositions = false) => {
-  windowManager?.setCompactMode(Boolean(enabled), Boolean(lockPositions));
+ipcMain.handle(IPC_CHANNELS.windowSetCompactMode, (_event, enabled: boolean) => {
+  windowManager?.setCompactMode(Boolean(enabled));
+});
+ipcMain.handle(IPC_CHANNELS.windowResetBounds, () => {
+  windowManager?.resetWindowBounds();
 });
 ipcMain.handle(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
   clipboard.writeText(String(value));
@@ -622,6 +614,17 @@ ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosti
 ipcMain.handle(IPC_CHANNELS.supportOpenLogsDirectory, openSupportLogsDirectory);
 ipcMain.handle(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
   saveSupportDiagnostics(String(diagnosticsSummary ?? "")),
+);
+ipcMain.handle(
+  IPC_CHANNELS.supportSetDiagnosticsMode,
+  (_event, level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode) => {
+    if ((level !== "enhanced" && level !== "deep") || (mode !== "off" && mode !== "manual" && mode !== "timed")) {
+      return state;
+    }
+    captureDiagnosticsController.setMode(level, mode);
+    addLog("info", `${level === "deep" ? "Deep" : "Enhanced"} diagnostics ${mode === "off" ? "stopped" : mode === "timed" ? "started for 10 minutes" : "enabled for this app session"}.`);
+    return state;
+  },
 );
 ipcMain.handle(IPC_CHANNELS.updatesCheck, async () => {
   if (isElectronE2eTestMode()) return null;
@@ -713,8 +716,8 @@ app.whenReady().then(async () => {
   startAppSessionHeartbeat();
   startAppDiagnosticHeartbeat();
   state.pastRuns = loadPastRuns(pastRunsPath, writeAppLog);
-  state.runArchivePreferences = loadRunArchivePreferences(preferencesPath, writeAppLog);
-  state.capturePreferences = loadCapturePreferences(preferencesPath, writeAppLog);
+  state.captureDiagnostics = captureDiagnosticsController.snapshot();
+  state.capturePreferences = captureDiagnosticsController.capturePreferences();
   const satanicZoneRefreshPreferences = loadSatanicZoneRefreshPreferences(preferencesPath, writeAppLog);
   state.satanicZone = {
     ...loadSatanicZoneCache(satanicZoneCachePath, Date.now(), writeAppLog),
@@ -843,6 +846,7 @@ function shutdownCapture(reason: string): void {
   gameCaptureCoordinator.stopMonitor();
   satanicZoneController?.dispose();
   satanicZoneRefreshProvider?.dispose();
+  captureDiagnosticsController.dispose();
   archiveCurrentRun(reason);
   try {
     captureService?.stop();
@@ -905,9 +909,7 @@ function archiveCurrentRun(reason: string): boolean {
 }
 
 function shouldArchiveRun(summary: PastRunSummary): boolean {
-  const preferences = state.runArchivePreferences;
-  if (preferences.skipEmptyRuns && !hasRunActivity(summary)) return false;
-  return summary.durationMs >= preferences.minDurationMinutes * 60_000;
+  return hasRunActivity(summary, statsEngine.snapshot().itemTimeline.length);
 }
 
 function writeAppLog(type: string, data: Record<string, unknown>): void {

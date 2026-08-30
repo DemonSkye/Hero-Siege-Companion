@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import { MATERIAL_LIKE_TIMELINE_TYPES } from "../../src/shared/constants";
+import {
+  activeItemCatalog,
+  canonicalItemCatalogKey,
+  type ItemCatalogDefinition,
+  type ItemCatalogDomain,
+  type ItemCatalogKey,
+  type ItemCatalogKeyInput,
+  type ItemCatalogResolution,
+  type ItemIdentityMode,
+} from "../../src/shared/item-catalog";
 import { lookupItemTranslationByName } from "../../src/shared/item-lookup";
 import { lookupKnownItemRarity } from "../../src/shared/item-rarity";
 import { captureMessages, identifyEvent, messageToEvents } from "../../src/shared/parser";
@@ -112,6 +122,28 @@ test("Season 11 live Satanic Zone responses reach stats unchanged", () => {
   assert.equal(snapshot.satanicZone?.zone, "Act 8: Forgotten Caves");
   assert.equal(snapshot.satanicZone?.pros.length, 3);
   assert.equal(snapshot.satanicZone?.cons.length, 2);
+});
+
+test("Season 11 Act 9 Satanic Zone responses resolve current zone names", () => {
+  const messages = captureMessages(
+    '{"status":"1","message":"success","satanicZoneName":"Act_09_02","buffs":"23|11|18","debuffs":"13|12"}',
+  );
+  const events = messageToEvents(messages);
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].name, "updateSatanicZone");
+  assert.equal(snapshot.satanicZone?.rawZone, "Act_09_02");
+  assert.equal(snapshot.satanicZone?.zone, "Act 9: Shipwreck Cove");
+  assert.deepEqual(snapshot.satanicZone?.pros.map((effect) => effect.name), [
+    "Old Town",
+    "Nether Surge",
+    "Combat Training",
+  ]);
+  assert.deepEqual(snapshot.satanicZone?.cons.map((effect) => effect.name), [
+    "Absolute Limbo",
+    "Consumed Time",
+  ]);
 });
 
 test("bare currency snapshots update gold after account mode is known", () => {
@@ -380,7 +412,7 @@ test("item parser accepts observed magic-find flag field names", () => {
   }
 });
 
-test("heroic-looking inventory weapon packets do not count without server announcement", () => {
+test("seeded inventory weapon bases do not count as Heroic without server announcement", () => {
   const events = messageToEvents([
     {
       addedItemObject: {
@@ -408,12 +440,12 @@ test("heroic-looking inventory weapon packets do not count without server announ
   const snapshot = stats.applyEvents(events);
 
   assert.equal(events[0].name, "itemAdded");
-  assert.equal(events[0].value.label, "Chainsaw");
+  assert.equal(events[0].value.label, "War Saw");
   assert.equal(events[0].value.rarityName, "Superior");
   assert.equal(events[0].value.mfDrop, 1);
   assert.equal(snapshot.items.Heroic.total, 0);
   assert.equal(snapshot.items.Heroic.mf, 0);
-  assert.equal(snapshot.itemTimeline[0].label, "Chainsaw");
+  assert.equal(snapshot.itemTimeline[0].label, "War Saw");
 });
 
 test("item stats count only selected tracked rarities", () => {
@@ -493,7 +525,7 @@ test("generated charm bases do not inherit fixed charm identities from short ids
   const snapshot = stats.applyEvents(events);
 
   assert.equal(events[0].value.label, "Grand Charm");
-  assert.equal(events[0].value.localizationId, undefined);
+  assert.equal(events[0].value.localizationId, "charms_normal_grand_charm");
   assert.equal(events[0].value.rarityName, "Superior");
   assert.equal(snapshot.items.Set.total, 0);
 });
@@ -529,7 +561,10 @@ test("generated charms use extracted base names without treating ambiguous short
 
   assert.deepEqual(events.map((event) => event.value.label), ["Large Charm", "Large Charm"]);
   assert.deepEqual(events.map((event) => event.value.seed), [345716836, 652715118]);
-  assert.deepEqual(events.map((event) => event.value.localizationId), [undefined, undefined]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [
+    "charms_normal_large_charm",
+    "charms_normal_large_charm",
+  ]);
   assert.deepEqual(events.map((event) => event.value.rarity), [4, 4]);
   assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Unknown"]);
   assert.deepEqual(snapshot.itemTimeline.map((item) => item.rarity), ["Unknown", "Unknown"]);
@@ -580,10 +615,180 @@ test("repository keeps a generated Large Charm distinct from the colliding fixed
 
   assert.deepEqual(events.map((event) => event.value.repository), ["normal", "unique"]);
   assert.deepEqual(events.map((event) => event.value.label), ["Large Charm", "Bag of Unknown Riches"]);
-  assert.deepEqual(events.map((event) => event.value.localizationId), [undefined, "charms_bag_of_unknown_riches"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [
+    "charms_normal_large_charm",
+    "charms_bag_of_unknown_riches",
+  ]);
   assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Satanic"]);
   assert.equal(snapshot.items.Set.total, 0);
   assert.equal(snapshot.items.Satanic.total, 1);
+});
+
+test("definition-shaped packets use catalog identities for fixed, seeded, stack, and runeword rows", () => {
+  const seenKeys: ItemCatalogKey[] = [];
+  const events = withItemCatalogResolver((input) => {
+    const key = requiredCatalogKey(input);
+    seenKeys.push(key);
+    const identity = catalogIdentityKey(key);
+    if (identity === "normal:0:0:5") {
+      return resolvedCatalogItem(key, {
+        identityMode: "seeded",
+        baseLocalizationId: "helmets_normal_iron_helmet",
+        baseName: "Iron Helmet",
+      });
+    }
+    if (identity === "unique:10:0:68") {
+      return resolvedCatalogItem(key, {
+        identityMode: "fixed",
+        localizationId: "charms_crows_feather",
+        name: "Crow's Feather",
+      });
+    }
+    if (identity === "normal:12:0:0") {
+      return resolvedCatalogItem(key, {
+        identityMode: "stack",
+        localizationId: "stack_basic_key",
+        name: "Basic Key",
+      });
+    }
+    if (identity === "runeword:3:0:1") {
+      return resolvedCatalogItem(key, {
+        identityMode: "runeword",
+        localizationId: "runeword_fixture_blade",
+        name: "Fixture Blade",
+      });
+    }
+    return unclassifiedCatalogItem(key);
+  }, () => messageToEvents([{
+    operations: {
+      add: {
+        "10-3909410-catalog_seeded_helmet-0": { a: 1001, b: 5, id: 999, c: 0, d: 4 },
+        "10-3909410-catalog_fixed_charm-10": { a: 1002, b: 68, c: 1, d: 4, name: "Mammoth Large Charm" },
+        "10-3909410-catalog_stack_key-12": { a: 1003, b: 0, c: 0, d: 2 },
+        "catalog-runeword": {
+          repository: "runeword",
+          type: 3,
+          id: 1,
+          weapon_type: 1,
+          rarity: 6,
+        },
+      },
+    },
+  }]));
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.deepEqual(seenKeys.map(catalogIdentityKey), [
+    "normal:0:0:5",
+    "unique:10:0:68",
+    "normal:12:0:0",
+    "runeword:3:0:1",
+  ]);
+  assert.deepEqual(events.map((event) => event.value.label), ["Iron Helmet", "Crow's Feather", "Basic Key", "Fixture Blade"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [
+    "helmets_normal_iron_helmet",
+    "charms_crows_feather",
+    "stack_basic_key",
+    "runeword_fixture_blade",
+  ]);
+  assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Satanic", "Superior", "Satanic"]);
+  assert.equal(snapshot.items.Set.total, 0);
+});
+
+test("catalog repository identity keeps omitted-c seeded rows distinct from c1 fixed rows", () => {
+  const events = withItemCatalogResolver((input) => {
+    const key = requiredCatalogKey(input);
+    if (key.repository === "normal") {
+      return resolvedCatalogItem(key, {
+        identityMode: "seeded",
+        baseLocalizationId: "charms_normal_large_charm",
+        baseName: "Large Charm",
+      });
+    }
+    return resolvedCatalogItem(key, {
+      identityMode: "fixed",
+      localizationId: "charms_bag_of_unknown_riches",
+      name: "Bag of Unknown Riches",
+    });
+  }, () => messageToEvents([{
+    operations: {
+      add: {
+        "10-3909410-catalog_default_normal_charm-10": { a: 2001, b: 33, d: 4 },
+        "10-3909410-catalog_unique_charm-10": { a: 2002, b: 33, c: 1, d: 4 },
+      },
+    },
+  }]));
+
+  assert.deepEqual(events.map((event) => event.value.repository), ["normal", "unique"]);
+  assert.deepEqual(events.map((event) => event.value.label), ["Large Charm", "Bag of Unknown Riches"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [
+    "charms_normal_large_charm",
+    "charms_bag_of_unknown_riches",
+  ]);
+  assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Satanic"]);
+});
+
+test("unresolved seeded catalog keys stay generic and never inherit legacy fixed names or Set rarity", () => {
+  const events = withItemCatalogResolver((input) => {
+    const key = requiredCatalogKey(input);
+    if (key.gameId === 50) return unresolvedCatalogItem("missing", key, "seeded");
+    if (key.gameId === 61) return unresolvedCatalogItem("quarantined", key, "seeded");
+    return unresolvedCatalogItem("out-of-range", key, "seeded");
+  }, () => messageToEvents([{
+    operations: {
+      add: {
+        "10-3909410-catalog_missing_seeded_gloves-4": {
+          a: 3001,
+          b: 50,
+          c: 0,
+          d: 4,
+          name: "Ali's Boxing Gloves",
+        },
+        "10-3909410-catalog_quarantined_seeded_gloves-4": {
+          a: 3002,
+          b: 61,
+          c: 0,
+          d: 4,
+          name: "Shade of Sand",
+        },
+        "10-3909410-catalog_out_of_range_seeded_chest-1": {
+          a: 3003,
+          b: 17,
+          c: 0,
+          d: 4,
+          name: "Pirate Captain's Shirt",
+        },
+      },
+    },
+  }]));
+  const snapshot = new StatsEngine().applyEvents(events);
+
+  assert.deepEqual(events.map((event) => event.value.label), ["Gloves #50", "Gloves #61", "Chest #17"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), [undefined, undefined, undefined]);
+  assert.deepEqual(events.map((event) => event.value.rarityName), ["Unknown", "Unknown", "Unknown"]);
+  assert.equal(snapshot.items.Set.total, 0);
+});
+
+test("classified fixed catalog gaps remain generic instead of falling through legacy rows", () => {
+  const events = withItemCatalogResolver((input) => {
+    const key = requiredCatalogKey(input);
+    return unresolvedCatalogItem("missing", key, "fixed");
+  }, () => messageToEvents([{
+    operations: {
+      add: {
+        "10-3909410-catalog_missing_fixed_gloves-4": {
+          a: 4001,
+          b: 50,
+          c: 0,
+          d: 6,
+          name: "Ali's Boxing Gloves",
+        },
+      },
+    },
+  }]));
+
+  assert.equal(events[0].value.label, "Gloves #50");
+  assert.equal(events[0].value.localizationId, undefined);
+  assert.equal(events[0].value.rarityName, "Satanic");
 });
 
 test("known fixed charm rarity overrides noisy short Set code", () => {
@@ -772,7 +977,7 @@ test("correlated c0 stack identity cannot be retyped or renamed by contradictory
   assert.deepEqual(events.map((event) => event.value.type), [12, 12]);
   assert.deepEqual(events.map((event) => event.value.id), [0, 1]);
   assert.deepEqual(events.map((event) => event.value.repository), ["normal", "normal"]);
-  assert.deepEqual(events.map((event) => event.value.localizationId), ["stack_basic_key", "stack_crystal_key"]);
+  assert.deepEqual(events.map((event) => event.value.localizationId), ["keys_key", "keys_crystal_key"]);
 });
 
 test("correlated generated itemData ignores c0 randomized equipment", () => {
@@ -946,9 +1151,9 @@ test("named weapon identity supplies its catalog subtype", () => {
 
   assert.deepEqual(events.map((event) => event.value.label), [
     "Stofflix Cooking Cleaver",
-    "Stofflix Cooking Cleaver",
+    "Chainsaw #35",
   ]);
-  assert.deepEqual(events.map((event) => event.value.weaponType), [1, 1]);
+  assert.deepEqual(events.map((event) => event.value.weaponType), [1, 7]);
   assert.deepEqual(events.map((event) => event.value.id), [35, 35]);
 });
 
@@ -1009,7 +1214,7 @@ test("heroic and angelic item identities require server just found messages", ()
   stats.applyEvents(inventoryEvents);
   const snapshot = stats.applyEvents(serverEvents);
 
-  assert.equal(inventoryEvents[0].value.label, "Axe #9");
+  assert.equal(inventoryEvents[0].value.label, "Naga");
   assert.equal(inventoryEvents[0].value.rarityName, "Common");
   assert.equal(serverEvents[0].value.label, "Aurelion Fury");
   assert.equal(serverEvents[0].value.rarityName, "Angelic");
@@ -1045,12 +1250,12 @@ test("submitted research resolves confirmed glove identities without widening he
 
   assert.deepEqual(
     events.map((event) => event.value.label),
-    ["Ali's Boxing Gloves", "Shade of Sand"],
+    ["Gloves #50", "Gloves #61"],
   );
-  assert.equal(events[0].value.rarityName, "Unknown");
-  assert.equal(events[1].value.rarityName, "Satanic");
+  assert.equal(events[0].value.rarityName, "Superior");
+  assert.equal(events[1].value.rarityName, "Superior");
   assert.equal(snapshot.items.Heroic.total, 0);
-  assert.equal(snapshot.items.Satanic.total, 1);
+  assert.equal(snapshot.items.Satanic.total, 0);
 });
 
 test("inventory item_data payloads are treated as picked up items", () => {
@@ -1123,7 +1328,7 @@ test("common inventory pickups still appear in timeline", () => {
 
   assert.equal(snapshot.itemTimeline.length, 1);
   assert.equal(snapshot.itemTimeline[0].rarity, "Common");
-  assert.equal(snapshot.itemTimeline[0].label, "Gloves #4");
+  assert.equal(snapshot.itemTimeline[0].label, "Heavy Gloves");
   assert.equal(snapshot.itemTimeline[0].type, 4);
 });
 
@@ -1240,12 +1445,12 @@ test("known heroic ring names do not override inventory packets without server a
   const stats = new StatsEngine();
   const snapshot = stats.applyEvents(events);
 
-  assert.equal(events[0].value.label, "Ring #48");
-  assert.equal(events[0].value.localizationId, undefined);
-  assert.equal(events[0].value.rarityName, "Common");
-  assert.equal(events[1].value.label, "Ring #3");
-  assert.equal(events[1].value.localizationId, undefined);
-  assert.equal(events[1].value.rarityName, "Common");
+  assert.equal(events[0].value.label, "Scourge Loop");
+  assert.equal(events[0].value.localizationId, "rings_scourge_loop");
+  assert.equal(events[0].value.rarityName, "Unknown");
+  assert.equal(events[1].value.label, "Stone of Premonition");
+  assert.equal(events[1].value.localizationId, "rings_stone_of_jordan");
+  assert.equal(events[1].value.rarityName, "Unknown");
   assert.equal(snapshot.items.Set.total, 0);
   assert.equal(snapshot.items.Heroic.total, 0);
   assert.equal(snapshot.items.Satanic.total, 0);
@@ -1395,9 +1600,9 @@ test("unknown numeric rarity codes still use known item rarity", () => {
   const stats = new StatsEngine();
   const snapshot = stats.applyEvents(events);
 
-  assert.equal(events[0].value.label, "Pirate Captain's Shirt");
-  assert.equal(events[0].value.rarityName, "Set");
-  assert.equal(snapshot.items.Set.total, 1);
+  assert.equal(events[0].value.label, "Chaos Armor");
+  assert.equal(events[0].value.rarityName, "Unknown");
+  assert.equal(snapshot.items.Set.total, 0);
 });
 
 test("known item rarity map classifies known helmets except server-announced rarities", () => {
@@ -1436,7 +1641,7 @@ test("known item rarity map classifies known helmets except server-announced rar
     events.map((event) => [event.value.label, event.value.rarityName]),
     [
       ["Lunar Prophet's Tiara", "Set"],
-      ["Helmet #49", "Common"],
+      ["Lava King's Lost Mask", "Unknown"],
     ],
   );
   assert.equal(snapshot.items.Heroic.total, 0);
@@ -1585,7 +1790,7 @@ test("inventory stack updates resolve known material and key names", () => {
 
   assert.deepEqual(
     events.map((event) => event.value.label),
-    ["Basic Key", "Jade", "Ruby", "Flawed Amethyst"],
+    ["Basic Key", "Jade Ore", "Ruby Ore", "Satanic Dust"],
   );
   assert.deepEqual(
     events.map((event) => event.value.amount),
@@ -1762,7 +1967,7 @@ test("tracked drop cards and breakdowns both count stacked item amounts", () => 
   assert.equal(snapshot.itemBreakdown.Satanic["Battle Worn Gauntlets"].mf, 2);
 });
 
-test("empty run summaries can still be archived when explicitly ended", () => {
+test("truly empty run summaries are not meaningful archive entries", () => {
   const stats = new StatsEngine();
   const summary = stats.runSummary(Date.now() + 1000);
 
@@ -1771,6 +1976,13 @@ test("empty run summaries can still be archived when explicitly ended", () => {
   assert.equal(summary.keys.length, 0);
   assert.equal(summary.ores.length, 0);
   assert.equal(hasRunActivity(summary), false);
+});
+
+test("ordinary item timeline entries make a run meaningful even without rare-drop counters", () => {
+  const stats = new StatsEngine();
+  const summary = stats.runSummary(Date.now() + 1000);
+
+  assert.equal(hasRunActivity(summary, 1), true);
 });
 
 test("run summary duration supports minimum save thresholds", () => {
@@ -1832,7 +2044,7 @@ test("manual stack lookup resolves known socketables", () => {
 
   assert.deepEqual(
     events.map((event) => event.value.label),
-    ["Ol Rune", "Ber Rune", "Flawed Amethyst", "Perfect Topaz", "Uncut Jewel of Platoon", "Agility", "Perfect Diamond"],
+    ["Ol", "Ber", "Flawed Amethyst", "Perfect Topaz", "Uncut Jewel", "Agility", "Perfect Diamond"],
   );
 });
 
@@ -2012,9 +2224,9 @@ test("definition-shaped items without c use the binary normal-repository default
     },
   ]);
 
-  assert.equal(events[0].value.label, "Ali's Boxing Gloves");
+  assert.equal(events[0].value.label, "Gloves #50");
   assert.equal(events[0].value.repository, "normal");
-  assert.equal(events[0].value.localizationId, "gloves_alis_boxing_gloves");
+  assert.equal(events[0].value.localizationId, undefined);
 });
 
 test("non-weapon items ignore stray long-form weapon subtype fields", () => {
@@ -2033,9 +2245,9 @@ test("non-weapon items ignore stray long-form weapon subtype fields", () => {
     },
   ]);
 
-  assert.equal(events[0].value.label, "Ali's Boxing Gloves");
+  assert.equal(events[0].value.label, "Gloves #50");
   assert.equal(events[0].value.weaponType, 0);
-  assert.equal(events[0].value.localizationId, "gloves_alis_boxing_gloves");
+  assert.equal(events[0].value.localizationId, undefined);
 });
 
 test("binary-proven item types stay observable even without catalog names", () => {
@@ -2051,7 +2263,7 @@ test("binary-proven item types stay observable even without catalog names", () =
     },
   ]);
 
-  assert.deepEqual(events.map((event) => event.value.label), ["Relic #155", "Type 17 #999", "Type 19 #999"]);
+  assert.deepEqual(events.map((event) => event.value.label), ["Relic #155", "Glyph #999", "Vault #999"]);
   assert.deepEqual(events.map((event) => event.value.type), [16, 17, 19]);
 });
 
@@ -2139,8 +2351,8 @@ test("present zero-based ordinals remain visible in generic labels", () => {
   ]);
 
   assert.deepEqual(events.map((event) => event.value.label), [
-    "Helmet #0",
-    "Gloves #0",
+    "Cap",
+    "Heavy Gloves",
     "Weapon Type 99 #0",
   ]);
 });
@@ -2206,5 +2418,111 @@ test("unknown fingerprint ids use item type names instead of bare ids", () => {
     },
   ]);
 
-  assert.equal(events[0].value.label, "Material #24");
+  assert.equal(events[0].value.label, "Bronze Framing");
 });
+
+type CatalogFixtureIdentity =
+  | {
+      identityMode: "seeded";
+      baseLocalizationId: string;
+      baseName: string;
+    }
+  | {
+      identityMode: "fixed" | "stack" | "runeword";
+      localizationId: string;
+      name: string;
+    };
+
+function withItemCatalogResolver<T>(
+  resolver: (input: ItemCatalogKeyInput) => ItemCatalogResolution,
+  run: () => T,
+): T {
+  const originalResolve = activeItemCatalog.resolve;
+  activeItemCatalog.resolve = resolver;
+  try {
+    return run();
+  } finally {
+    activeItemCatalog.resolve = originalResolve;
+  }
+}
+
+function requiredCatalogKey(input: ItemCatalogKeyInput): ItemCatalogKey {
+  const key = canonicalItemCatalogKey(input);
+  if (!key) throw new Error("Expected a valid parser catalog fixture key");
+  return key;
+}
+
+function catalogIdentityKey(key: ItemCatalogKey): string {
+  return `${key.repository}:${key.type}:${key.weaponType}:${key.gameId}`;
+}
+
+function catalogDomain(key: ItemCatalogKey, identityMode: ItemIdentityMode): ItemCatalogDomain {
+  return {
+    id: `parser-fixture-${key.repository}-${key.type}-${key.weaponType}`,
+    repository: key.repository,
+    type: key.type,
+    weaponType: key.weaponType,
+    defaultIdentityMode: identityMode,
+    status: "partial",
+    sourceRefs: ["parser-fixture"],
+    expectedItems: [{ gameId: key.gameId, identityMode }],
+  };
+}
+
+function resolvedCatalogItem(key: ItemCatalogKey, identity: CatalogFixtureIdentity): ItemCatalogResolution {
+  const definition = {
+    ...key,
+    ...identity,
+    provenanceRef: "parser-fixture",
+  } as ItemCatalogDefinition;
+  return {
+    status: "resolved",
+    key,
+    domain: catalogDomain(key, identity.identityMode),
+    definition,
+  };
+}
+
+function unresolvedCatalogItem(
+  status: "missing" | "quarantined" | "out-of-range",
+  key: ItemCatalogKey,
+  expectedIdentityMode: ItemIdentityMode,
+): ItemCatalogResolution {
+  const domain = catalogDomain(key, expectedIdentityMode);
+  if (status === "missing") {
+    return {
+      status,
+      key,
+      domain,
+      expectedIdentityMode,
+      missing: {
+        ...key,
+        expectedIdentityMode,
+        reason: "parser fixture missing identity",
+        sourceRefs: ["parser-fixture"],
+      },
+    };
+  }
+  if (status === "quarantined") {
+    return {
+      status,
+      key,
+      domain,
+      expectedIdentityMode,
+      quarantine: {
+        ...key,
+        expectedIdentityMode,
+        reason: "parser fixture quarantined identity",
+        candidates: [
+          { identityMode: expectedIdentityMode, provenanceRef: "parser-fixture-a" },
+          { identityMode: expectedIdentityMode, provenanceRef: "parser-fixture-b" },
+        ],
+      },
+    };
+  }
+  return { status, key, domain, expectedIdentityMode };
+}
+
+function unclassifiedCatalogItem(key: ItemCatalogKey): ItemCatalogResolution {
+  return { status: "unclassified", key, reason: "no-domain" };
+}

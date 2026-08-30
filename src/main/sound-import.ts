@@ -7,9 +7,11 @@ import { readSoundPackEntries } from "./sound-pack-archive";
 import { createZipArchive, type ZipArchiveEntry } from "./zip-archive";
 import type { ExportableSoundReference, SoundPackExportResult } from "../shared/ipc";
 
-const MAX_CUSTOM_SOUND_IMPORT_BYTES = 4 * 1024 * 1024;
+export const MAX_CUSTOM_SOUND_IMPORT_BYTES = 4 * 1024 * 1024;
 const MAX_SOUND_PACK_IMPORT_BYTES = 64 * 1024 * 1024;
-const MAX_SOUND_IMPORT_COUNT = 24;
+export const MAX_SOUND_IMPORT_COUNT = 24;
+export const MAX_EMBEDDED_CONFIGURATION_BYTES =
+  Math.ceil(MAX_CUSTOM_SOUND_IMPORT_BYTES * MAX_SOUND_IMPORT_COUNT * 4 / 3) + 16 * 1024 * 1024;
 const CONFIGURATION_SOUND_DIRECTORY = "imported-settings";
 
 const CUSTOM_SOUND_MIME_TYPES: Record<string, string> = {
@@ -121,10 +123,8 @@ export function embedConfigurationSoundData(json: string, userDataPath: string):
   return rewriteConfigurationSounds(json, (sound) => {
     const source = stringField(sound, "src");
     const fileName = stringField(sound, "fileName");
-    if (source.startsWith("data:audio/")) return sound;
-
     const audio = readSoundSource({ src: source, fileName, name: stringField(sound, "name") }, userDataPath);
-    if (!audio) return null;
+    if (!audio) throw new Error(`Custom sound could not be included in the backup: ${fileName || "unnamed sound"}.`);
     return { ...sound, fileName: audio.fileName, src: `data:${audio.mimeType};base64,${audio.data.toString("base64")}` };
   });
 }
@@ -136,7 +136,7 @@ export function installEmbeddedConfigurationSounds(json: string, userDataPath: s
     if (!source.startsWith("data:audio/")) return sound;
 
     const decoded = decodeAudioDataUrl(source, stringField(sound, "fileName"));
-    if (!decoded) return null;
+    if (!decoded) throw new Error("Configuration contains an invalid embedded sound.");
     const displayPath = normalizedDecodedSoundDisplayPath(stringField(sound, "fileName"), decoded.fileName);
     const displayParts = displayPath.split("/").filter(Boolean);
     const displayDirectory = displayParts.length > 1 ? safeDirectoryName(displayParts[0]) : CONFIGURATION_SOUND_DIRECTORY;
@@ -148,7 +148,13 @@ export function installEmbeddedConfigurationSounds(json: string, userDataPath: s
       fileName,
       contents: decoded.data,
     });
-    return target ? { ...sound, fileName: target.fileName, src: target.src } : null;
+    if (!target) throw new Error(`Embedded sound could not be installed: ${decoded.fileName}.`);
+    return { ...sound, fileName: target.fileName, src: target.src };
+  }, (sound) => {
+    const source = stringField(sound, "src");
+    if (source.startsWith("data:audio/") && !decodeAudioDataUrl(source, stringField(sound, "fileName"))) {
+      throw new Error("Configuration contains an invalid embedded sound.");
+    }
   });
 }
 
@@ -261,17 +267,33 @@ function readSoundSource(sound: ExportableSoundReference, userDataPath: string):
   }
 }
 
-function rewriteConfigurationSounds(json: string, rewriteSound: (sound: Record<string, unknown>) => Record<string, unknown> | null): string {
+function rewriteConfigurationSounds(
+  json: string,
+  rewriteSound: (sound: Record<string, unknown>) => Record<string, unknown> | null,
+  validateSound?: (sound: Record<string, unknown>) => void,
+): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
   } catch {
-    return json;
+    throw new Error("Invalid configuration JSON.");
   }
-  if (!isRecord(parsed) || !isRecord(parsed.uiPreferences) || !Array.isArray(parsed.uiPreferences.customItemFilterSounds)) return json;
+  if (!isRecord(parsed)) throw new Error("Invalid configuration payload.");
+  if (parsed.uiPreferences === undefined) return json;
+  if (!isRecord(parsed.uiPreferences)) throw new Error("Invalid configuration preferences.");
+  const sounds = parsed.uiPreferences.customItemFilterSounds;
+  if (sounds === undefined) return json;
+  if (!Array.isArray(sounds)) throw new Error("Invalid custom sound catalog.");
+  if (sounds.length > MAX_SOUND_IMPORT_COUNT) {
+    throw new Error(`Configuration contains more than ${MAX_SOUND_IMPORT_COUNT} custom sounds.`);
+  }
+  for (const sound of sounds) {
+    if (!isRecord(sound)) throw new Error("Configuration contains an invalid custom sound.");
+    validateSound?.(sound);
+  }
 
   const nextSounds: Record<string, unknown>[] = [];
-  for (const sound of parsed.uiPreferences.customItemFilterSounds) {
+  for (const sound of sounds) {
     if (!isRecord(sound)) continue;
     const nextSound = rewriteSound(sound);
     if (nextSound) nextSounds.push(nextSound);

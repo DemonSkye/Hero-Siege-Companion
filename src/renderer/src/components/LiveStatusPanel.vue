@@ -24,21 +24,30 @@ const showNpcapSetupChecklist = computed(() => !npcapServiceRunning.value || pro
     <section class="status-strip">
       <div class="status-item">
         <span :class="['status-dot', state.captureStatus]"></span>
-        <div>
+        <div class="status-copy">
           <strong>{{ state.captureStatus === "running" ? "Connected" : captureStatusLabel }}</strong>
           <span>{{ state.captureStatus === "running" ? "Capture active" : "No active capture" }}</span>
         </div>
       </div>
       <div class="status-item">
-        <strong>Packets</strong>
-        <span>{{ formatNumber(state.health.packetsSeen) }} seen &middot; {{ formatNumber(state.health.parsedEvents) }} parsed</span>
+        <div class="status-copy">
+          <strong>Packets</strong>
+          <span>{{ formatNumber(state.health.packetsSeen) }} seen &middot; {{ formatNumber(state.health.parsedEvents) }} parsed</span>
+        </div>
       </div>
-      <div class="status-item">
-        <button class="details-button" type="button" @click="showCaptureDetails = !showCaptureDetails">
-          {{ showCaptureDetails ? "Hide Details" : "Details" }}
+      <div class="status-item status-actions">
+        <slot name="actions"></slot>
+        <button
+          class="details-button"
+          type="button"
+          aria-controls="capture-details"
+          :aria-expanded="showCaptureDetails"
+          @click="showCaptureDetails = !showCaptureDetails"
+        >
+          {{ showCaptureDetails ? "Hide Capture Details" : "Capture Details" }}
         </button>
       </div>
-      <div v-if="showCaptureDetails" class="status-details">
+      <div v-if="showCaptureDetails" id="capture-details" class="status-details">
         <span>Device: {{ state.health.device || "none" }}</span>
         <span>Npcap: {{ state.health.npcapService }} &middot; WinPcap {{ state.health.winPcapCompatible ? "on" : "off" }} &middot; Admin-only {{ state.health.adminOnly ? "on" : "off" }}</span>
         <span>Filter: {{ state.health.filter || "none" }}</span>

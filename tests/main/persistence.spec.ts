@@ -4,25 +4,18 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   SATANIC_ZONE_CACHE_SCHEMA_VERSION,
-  loadCapturePreferences,
   loadPastRuns,
-  loadRunArchivePreferences,
   loadSatanicZoneCache,
   loadSatanicZoneRefreshPreferences,
   loadWindowBounds,
-  normalizeCapturePreferences,
-  normalizeRunArchivePreferences,
   normalizeSatanicZoneCache,
   normalizeSatanicZoneRefreshPreferences,
   savePastRuns,
-  saveCapturePreferences,
-  saveRunArchivePreferences,
   saveSatanicZoneCache,
   saveSatanicZoneRefreshPreferences,
   satanicZoneCachePersistenceKey,
   withMinimumBounds,
 } from "../../src/main/persistence";
-import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../../src/shared/initial-state";
 import {
   DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES,
   createInitialSatanicZoneState,
@@ -46,30 +39,6 @@ function tempFile(name: string): string {
 
 describe("main process persistence helpers", () => {
   test("normalizes stored main-process preferences", () => {
-    expect(normalizeRunArchivePreferences({ skipEmptyRuns: true, minDurationMinutes: 9999 })).toEqual({
-      skipEmptyRuns: true,
-      minDurationMinutes: 1440,
-    });
-    expect(normalizeRunArchivePreferences({ skipEmptyRuns: false, minDurationMinutes: -5 })).toEqual({
-      skipEmptyRuns: false,
-      minDurationMinutes: 0,
-    });
-    expect(normalizeCapturePreferences({ capturePayloadLogging: true, captureWideLogging: true })).toEqual({
-      captureDebugLogging: true,
-      capturePayloadLogging: true,
-      captureWideLogging: true,
-      satanicZoneDebugLogging: true,
-    });
-    expect(normalizeRunArchivePreferences(null)).toEqual({
-      skipEmptyRuns: false,
-      minDurationMinutes: 0,
-    });
-    expect(normalizeCapturePreferences(undefined)).toEqual({
-      captureDebugLogging: true,
-      capturePayloadLogging: false,
-      captureWideLogging: false,
-      satanicZoneDebugLogging: true,
-    });
     expect(normalizeSatanicZoneRefreshPreferences({ enabled: true })).toEqual({ enabled: true });
     expect(normalizeSatanicZoneRefreshPreferences({ enabled: "true" })).toEqual({ enabled: false });
   });
@@ -87,47 +56,22 @@ describe("main process persistence helpers", () => {
       "utf8",
     );
 
-    expect(loadRunArchivePreferences(preferencesPath)).toEqual({ skipEmptyRuns: true, minDurationMinutes: 5 });
-    expect(loadCapturePreferences(preferencesPath)).toEqual({
-      captureDebugLogging: false,
-      capturePayloadLogging: true,
-      captureWideLogging: true,
-      satanicZoneDebugLogging: false,
-    });
     expect(loadSatanicZoneRefreshPreferences(preferencesPath)).toEqual({ enabled: true });
 
-    saveRunArchivePreferences(preferencesPath, { skipEmptyRuns: false, minDurationMinutes: 15 });
-    saveCapturePreferences(preferencesPath, {
-      captureDebugLogging: true,
-      capturePayloadLogging: false,
-      captureWideLogging: false,
-      satanicZoneDebugLogging: true,
-    });
     saveSatanicZoneRefreshPreferences(preferencesPath, { enabled: false });
 
     expect(JSON.parse(fs.readFileSync(preferencesPath, "utf8"))).toEqual({
       untouched: { value: 42 },
-      runArchive: { skipEmptyRuns: false, minDurationMinutes: 15 },
-      capture: {
-        captureDebugLogging: true,
-        capturePayloadLogging: false,
-        captureWideLogging: false,
-        satanicZoneDebugLogging: true,
-      },
       satanicZoneRefresh: { enabled: false },
     });
   });
 
   test("loads default main-process preferences when files or sections are missing", () => {
-    expect(loadRunArchivePreferences(tempFile("missing.json"))).toEqual(DEFAULT_RUN_ARCHIVE_PREFERENCES);
-    expect(loadCapturePreferences(tempFile("missing.json"))).toEqual(DEFAULT_CAPTURE_PREFERENCES);
     expect(loadSatanicZoneRefreshPreferences(tempFile("missing.json"))).toEqual(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES);
 
     const preferencesPath = tempFile("partial-preferences.json");
     fs.writeFileSync(preferencesPath, `${JSON.stringify({ untouched: { value: 42 } })}\n`, "utf8");
 
-    expect(loadRunArchivePreferences(preferencesPath)).toEqual(DEFAULT_RUN_ARCHIVE_PREFERENCES);
-    expect(loadCapturePreferences(preferencesPath)).toEqual(DEFAULT_CAPTURE_PREFERENCES);
     expect(loadSatanicZoneRefreshPreferences(preferencesPath)).toEqual(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES);
   });
 
@@ -363,6 +307,39 @@ describe("main process persistence helpers", () => {
       schemaVersion: PAST_RUN_SCHEMA_VERSION,
       id: "saved-run",
     });
+  });
+
+  test("keeps the newest 250 non-empty run records", () => {
+    const runsPath = tempFile("past-runs-250-cap.json");
+    const runs = Array.from({ length: 275 }, (_, index) => pastRun({
+      id: `run-${index}`,
+      sessionStartedAt: 10_000 - index,
+      sessionEndedAt: 20_000 - index,
+    }));
+
+    savePastRuns(runsPath, runs);
+
+    const loaded = loadPastRuns(runsPath);
+    expect(loaded).toHaveLength(250);
+    expect(loaded[0]?.id).toBe("run-0");
+    expect(loaded.at(-1)?.id).toBe("run-249");
+  });
+
+  test("sorts unsorted run records before evicting the true oldest", () => {
+    const runsPath = tempFile("past-runs-unsorted-cap.json");
+    const runs = Array.from({ length: 251 }, (_, index) => pastRun({
+      id: `run-${index}`,
+      sessionStartedAt: index + 1,
+      sessionEndedAt: index + 2,
+    }));
+    const unsorted = [runs[250], runs[0], ...runs.slice(1, 250).reverse()];
+
+    savePastRuns(runsPath, unsorted);
+
+    const loaded = loadPastRuns(runsPath);
+    expect(loaded).toHaveLength(250);
+    expect(loaded[0]?.id).toBe("run-250");
+    expect(loaded.map((run) => run.id)).not.toContain("run-0");
   });
 
   test("normalizes and bounds saved window positions", () => {

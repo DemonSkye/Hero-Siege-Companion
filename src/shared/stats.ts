@@ -376,7 +376,7 @@ function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now(), pa
   };
 }
 
-export function hasRunActivity(summary: PastRunSummary): boolean {
+export function hasRunActivity(summary: PastRunSummary, itemTimelineCount = 0): boolean {
   const keyTotal = summary.keys.reduce((total, key) => total + key.total, 0);
   const oreTotal = summary.ores.reduce((total, ore) => total + ore.total, 0);
   const materialTotal = (summary.materials ?? []).reduce((total, material) => total + material.total, 0);
@@ -388,6 +388,7 @@ export function hasRunActivity(summary: PastRunSummary): boolean {
     (summary.satanicDrops ?? 0) > 0 ||
     summary.heroicDrops > 0 ||
     summary.angelicDrops > 0 ||
+    itemTimelineCount > 0 ||
     keyTotal > 0 ||
     oreTotal > 0 ||
     materialTotal > 0

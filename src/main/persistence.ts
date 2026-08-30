@@ -1,6 +1,4 @@
 import fs from "node:fs";
-import type { CapturePreferences, RunArchivePreferences } from "../shared/app-state";
-import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../shared/initial-state";
 import {
   DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES,
   createInitialSatanicZoneState,
@@ -9,7 +7,7 @@ import {
 } from "../shared/satanic-zone";
 import { PAST_RUN_SCHEMA_VERSION, normalizePastRunTags, type ItemDropCounter, type PastRunSummary, type ResourceCounter } from "../shared/stats";
 
-export const MAX_PAST_RUNS = 100;
+export const MAX_PAST_RUNS = 250;
 export const SATANIC_ZONE_CACHE_SCHEMA_VERSION = 3;
 const LEGACY_SATANIC_ZONE_CACHE_SCHEMA_VERSIONS = new Set([1, 2]);
 const MAX_SATANIC_ZONE_COOLDOWN_FUTURE_MS = 5 * 60_000;
@@ -98,7 +96,7 @@ export function loadPastRuns(filePath: string, log: StorageLog = noopLog): PastR
     if (!filePath || !fs.existsSync(filePath)) return [];
     const parsed = readJsonFile(filePath);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isPastRunSummary).slice(0, MAX_PAST_RUNS).map(normalizePastRunSummary);
+    return newestPastRuns(parsed.filter(isPastRunSummary).map(normalizePastRunSummary));
   } catch (error) {
     logStorageError(log, "past-runs-load-error", error);
     return [];
@@ -108,10 +106,20 @@ export function loadPastRuns(filePath: string, log: StorageLog = noopLog): PastR
 export function savePastRuns(filePath: string, runs: PastRunSummary[], log: StorageLog = noopLog): void {
   if (!filePath) return;
   try {
-    writeJsonFile(filePath, runs.slice(0, MAX_PAST_RUNS).map(normalizePastRunSummary));
+    writeJsonFile(filePath, newestPastRuns(runs.map(normalizePastRunSummary)));
   } catch (error) {
     logStorageError(log, "past-runs-save-error", error);
   }
+}
+
+function newestPastRuns(runs: PastRunSummary[]): PastRunSummary[] {
+  return runs
+    .sort((left, right) => (
+      right.sessionStartedAt - left.sessionStartedAt
+      || right.sessionEndedAt - left.sessionEndedAt
+      || right.id.localeCompare(left.id)
+    ))
+    .slice(0, MAX_PAST_RUNS);
 }
 
 export function loadWindowBounds(filePath: string, log: StorageLog = noopLog): WindowBoundsPreferences {
@@ -162,65 +170,6 @@ export function withMinimumBounds(
   };
 }
 
-export function loadRunArchivePreferences(filePath: string, log: StorageLog = noopLog): RunArchivePreferences {
-  try {
-    if (!filePath || !fs.existsSync(filePath)) return DEFAULT_RUN_ARCHIVE_PREFERENCES;
-    const parsed = loadPreferencesFile(filePath) as { runArchive?: Partial<RunArchivePreferences> };
-    return parsed.runArchive === undefined ? DEFAULT_RUN_ARCHIVE_PREFERENCES : normalizeRunArchivePreferences(parsed.runArchive);
-  } catch (error) {
-    logStorageError(log, "preferences-load-error", error);
-    return DEFAULT_RUN_ARCHIVE_PREFERENCES;
-  }
-}
-
-export function saveRunArchivePreferences(filePath: string, preferences: RunArchivePreferences, log: StorageLog = noopLog): void {
-  if (!filePath) return;
-  try {
-    savePreferencesFile(filePath, { ...loadPreferencesFile(filePath), runArchive: preferences });
-  } catch (error) {
-    logStorageError(log, "preferences-save-error", error);
-  }
-}
-
-export function normalizeRunArchivePreferences(preferences: unknown): RunArchivePreferences {
-  const record = isRecord(preferences) ? preferences : {};
-  const minDuration = Number(record.minDurationMinutes);
-  return {
-    skipEmptyRuns: Boolean(record.skipEmptyRuns),
-    minDurationMinutes: Number.isFinite(minDuration) ? Math.max(0, Math.min(1440, Math.trunc(minDuration))) : 0,
-  };
-}
-
-export function loadCapturePreferences(filePath: string, log: StorageLog = noopLog): CapturePreferences {
-  try {
-    if (!filePath || !fs.existsSync(filePath)) return DEFAULT_CAPTURE_PREFERENCES;
-    const parsed = loadPreferencesFile(filePath) as { capture?: Partial<CapturePreferences> };
-    return parsed.capture === undefined ? DEFAULT_CAPTURE_PREFERENCES : normalizeCapturePreferences(parsed.capture);
-  } catch (error) {
-    logStorageError(log, "preferences-load-error", error);
-    return DEFAULT_CAPTURE_PREFERENCES;
-  }
-}
-
-export function saveCapturePreferences(filePath: string, preferences: CapturePreferences, log: StorageLog = noopLog): void {
-  if (!filePath) return;
-  try {
-    savePreferencesFile(filePath, { ...loadPreferencesFile(filePath), capture: preferences });
-  } catch (error) {
-    logStorageError(log, "preferences-save-error", error);
-  }
-}
-
-export function normalizeCapturePreferences(preferences: unknown): CapturePreferences {
-  const record = isRecord(preferences) ? preferences : {};
-  return {
-    captureDebugLogging: booleanField(record.captureDebugLogging, DEFAULT_CAPTURE_PREFERENCES.captureDebugLogging),
-    capturePayloadLogging: booleanField(record.capturePayloadLogging, DEFAULT_CAPTURE_PREFERENCES.capturePayloadLogging),
-    captureWideLogging: booleanField(record.captureWideLogging, DEFAULT_CAPTURE_PREFERENCES.captureWideLogging),
-    satanicZoneDebugLogging: booleanField(record.satanicZoneDebugLogging, DEFAULT_CAPTURE_PREFERENCES.satanicZoneDebugLogging),
-  };
-}
-
 export function loadSatanicZoneRefreshPreferences(
   filePath: string,
   log: StorageLog = noopLog,
@@ -245,7 +194,7 @@ export function saveSatanicZoneRefreshPreferences(
   if (!filePath) return;
   try {
     savePreferencesFile(filePath, {
-      ...loadPreferencesFile(filePath),
+      ...withoutRetiredMainPreferenceSections(loadPreferencesFile(filePath)),
       satanicZoneRefresh: normalizeSatanicZoneRefreshPreferences(preferences),
     });
   } catch (error) {
@@ -269,6 +218,13 @@ export function loadPreferencesFile(filePath: string): Record<string, unknown> {
 export function savePreferencesFile(filePath: string, preferences: Record<string, unknown>): void {
   if (!filePath) return;
   writeJsonFile(filePath, preferences);
+}
+
+function withoutRetiredMainPreferenceSections(preferences: Record<string, unknown>): Record<string, unknown> {
+  const current = { ...preferences };
+  delete current.runArchive;
+  delete current.capture;
+  return current;
 }
 
 export function isPastRunSummary(value: unknown): value is StoredPastRunSummary {

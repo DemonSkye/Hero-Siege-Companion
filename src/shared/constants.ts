@@ -30,7 +30,9 @@ export const ITEM_TYPE_NAMES: Record<number, string> = {
   14: "Material",
   15: "Socketable",
   16: "Relic",
-  18: "Vial",
+  17: "Glyph",
+  18: "Flask",
+  19: "Vault",
 };
 
 export const MATERIAL_LIKE_TIMELINE_TYPES = new Set([13, 14]);
@@ -125,6 +127,7 @@ export const SATANIC_ZONE_NAMES: Record<number, string[]> = {
   6: ["Highland Graveyard", "The Cathedral", "Prison Dungeon", "Steam Train", "The Depths of Hell"],
   7: ["Deep Space", "Event Horizon", "The Black Hole", "Parallel Dimension", "Subconscious Mind"],
   8: ["Forest of the Slain", "Flooded Plains", "Forgotten Caves", "Camp of Souls", "Hellheim"],
+  9: ["Abyss Jungle", "Shipwreck Cove", "Tormented Reef", "Boreal Island", "Volcanic Island", "Abyss Realm"],
 };
 
 export const EVENT_NAMES = {

@@ -1,5 +1,15 @@
 import { describe, expect, test } from "vitest";
-import { addTag, appendSearchTag, availableTagOptions, canCreateTag, filterPastRunsBySearch, removeTag, searchTerms, uniquePastRunTags } from "../../src/renderer/src/lib/past-run-search";
+import {
+  addTag,
+  appendSearchTag,
+  availableTagOptions,
+  canCreateTag,
+  filterPastRunsBySearch,
+  pastRunSearchMatches,
+  removeTag,
+  searchTerms,
+  uniquePastRunTags,
+} from "../../src/renderer/src/lib/past-run-search";
 import {
   TRACKED_RARITY_ORDER,
   aggregatePastRuns,
@@ -36,6 +46,53 @@ describe("past run search helpers", () => {
     expect(filterPastRunsBySearch([focused, other], searchTerms("nomad keys crystal"))).toEqual([focused]);
     expect(filterPastRunsBySearch([focused, other], searchTerms("battle fragment 25 kills"))).toEqual([focused]);
     expect(filterPastRunsBySearch([focused, other], [])).toEqual([focused, other]);
+  });
+
+  test("returns stable report targets for matching fields and saved items", () => {
+    const run = pastRun({
+      accountName: "NomadFarmer",
+      tags: ["season start"],
+      itemBreakdown: {
+        Set: {},
+        Satanic: { "Hatshesput's Girdle": { name: "Hatshesput's Girdle", total: 1, mf: 1 } },
+        Heroic: {},
+        Angelic: {},
+      },
+    });
+
+    expect(pastRunSearchMatches(run, searchTerms("girdle"))).toEqual([
+      expect.objectContaining({
+        kind: "drop",
+        label: "Hatshesput's Girdle",
+        detail: "Satanic · 1 drop · 1 MF flagged",
+        matchedTerms: ["girdle"],
+        rarity: "Satanic",
+        itemName: "Hatshesput's Girdle",
+      }),
+    ]);
+
+    expect(pastRunSearchMatches(run, searchTerms("season crystal 25 kills"))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "tag", label: "#season start", matchedTerms: ["season"] }),
+      expect.objectContaining({ kind: "key", label: "Crystal Key", matchedTerms: ["crystal"], reportItemId: "metric:keys", resourceKind: "key", resourceName: "Crystal Key" }),
+      expect.objectContaining({ kind: "stat", label: "Kills", detail: "25 total", matchedTerms: ["25", "kills"], reportItemId: "metric:kills" }),
+    ]));
+    expect(pastRunSearchMatches(run, searchTerms("girdle missing"))).toEqual([]);
+  });
+
+  test("does not match materialized empty rarity buckets but keeps legacy explicit rarity totals searchable", () => {
+    const run = pastRun({
+      setDrops: 0,
+      satanicDrops: 2,
+      heroicDrops: 0,
+      angelicDrops: 0,
+      itemBreakdown: { Set: {}, Satanic: {}, Heroic: {}, Angelic: {} },
+    });
+
+    expect(filterPastRunsBySearch([run], searchTerms("angelic"))).toEqual([]);
+    expect(pastRunSearchMatches(run, searchTerms("angelic"))).toEqual([]);
+    expect(pastRunSearchMatches(run, searchTerms("satanic"))).toEqual([
+      expect.objectContaining({ label: "Satanic drops", detail: "2 tracked", reportItemId: "rarity:Satanic", rarity: "Satanic" }),
+    ]);
   });
 
   test("normalizes tag choices and query appends", () => {

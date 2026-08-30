@@ -23,6 +23,7 @@ const EXPECTED_PRELOAD_API = [
   "getState",
   "getSupportDiagnosticsInfo",
   "importConfiguration",
+  "installConfigurationSounds",
   "importSounds",
   "launchGameOrCapture",
   "minimizeWindow",
@@ -34,13 +35,13 @@ const EXPECTED_PRELOAD_API = [
   "removeSound",
   "refreshSatanicZone",
   "resetStats",
+  "resetWindowBounds",
   "resumeRun",
   "saveSupportDiagnostics",
   "setAlwaysOnTop",
-  "setCapturePreferences",
+  "setCaptureDiagnosticsMode",
   "setCompactMode",
   "setPastRunTags",
-  "setRunArchivePreferences",
   "setSatanicZoneRefreshEnabled",
   "startCapture",
   "stopCapture",
@@ -158,14 +159,6 @@ async function emitCapturePayloads(electronApp, payloads) {
   }, payloads);
 }
 
-async function setCheckboxByLabel(page, label, checked) {
-  await page.locator("label", { hasText: label }).locator("input[type='checkbox']").first().setChecked(checked);
-}
-
-async function selectOptionByTitle(page, title, value) {
-  await page.locator(`select[title="${title}"]`).selectOption(value);
-}
-
 async function getDocumentTheme(page) {
   return page.evaluate(() => ({
     theme: document.documentElement.dataset.theme,
@@ -201,8 +194,6 @@ module.exports = {
   getStoredUiPreferences,
   getStoredWhatsNewVersion,
   launchCompanionApp,
-  selectOptionByTitle,
-  setCheckboxByLabel,
   waitForRendererState,
   withCompanionApp,
 };

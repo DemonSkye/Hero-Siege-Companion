@@ -58,28 +58,32 @@ const refreshControl = computed(() =>
       </p>
     </div>
 
-    <div v-if="zone" class="zone-effects">
+    <div :class="['zone-effects', { 'zone-effects-idle': !zone }]">
       <div class="effect-column">
         <h3>Pros</h3>
-        <div v-if="zone.pros.length" class="buff-list">
-          <div v-for="buff in zone.pros" :key="buff.id" class="buff buff-pro">
+        <div v-if="zone?.pros.length" class="buff-list">
+          <div v-for="buff in zone?.pros ?? []" :key="buff.id" class="buff buff-pro">
             <strong>{{ buff.name }}</strong>
             <span>{{ buff.description }}</span>
           </div>
         </div>
-        <p v-else class="empty-copy">No positive modifiers found on the last zone packet.</p>
+        <p v-else class="empty-copy dashboard-empty-state zone-effect-empty">
+          {{ zone ? "No positive modifiers found on the last zone packet." : "Positive modifiers will appear after the next zone update." }}
+        </p>
       </div>
 
       <div class="effect-column">
         <h3>Cons</h3>
-        <div class="buff-list">
-          <div v-for="con in zone.cons" :key="con.id" class="buff buff-con">
+        <div v-if="zone?.cons.length" class="buff-list">
+          <div v-for="con in zone?.cons ?? []" :key="con.id" class="buff buff-con">
             <strong>{{ con.name }}</strong>
             <span>{{ con.description }}</span>
           </div>
         </div>
+        <p v-else class="empty-copy dashboard-empty-state zone-effect-empty">
+          {{ zone ? "No negative modifiers found on the last zone packet." : "Negative modifiers will appear after the next zone update." }}
+        </p>
       </div>
     </div>
-    <p v-else class="empty-copy">No zone details have been observed for this half-hour window yet.</p>
   </LiveDashboardCard>
 </template>

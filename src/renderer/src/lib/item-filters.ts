@@ -27,6 +27,31 @@ export interface CustomItemFilterSound extends ItemFilterSoundOption {
   fileName: string;
 }
 
+export interface ItemFilterPackPayload {
+  app: "hero-siege-companion";
+  kind: typeof ITEM_FILTER_PACK_KIND;
+  schemaVersion: typeof ITEM_FILTER_PACK_SCHEMA_VERSION;
+  exportedAt: string;
+  uiPreferences: {
+    itemFilterGroups: ItemFilterGroup[];
+    customItemFilterSounds: CustomItemFilterSound[];
+  };
+}
+
+export interface ItemFilterPackImportPreview {
+  groups: ItemFilterGroup[];
+  sounds: CustomItemFilterSound[];
+  unusedSounds: CustomItemFilterSound[];
+  missingCustomSoundIds: string[];
+}
+
+export interface ItemFilterPackMergeResult {
+  groups: ItemFilterGroup[];
+  sounds: CustomItemFilterSound[];
+  addedGroupCount: number;
+  addedSoundCount: number;
+}
+
 export interface ItemFilterGroup {
   id: string;
   name: string;
@@ -89,6 +114,9 @@ export const ITEM_FILTER_SOUNDS: ItemFilterSoundOption[] = [
 export const ITEM_FILTER_FALLBACK_SOUND_ID = ITEM_FILTER_SOUNDS[0].id;
 export const CUSTOM_SOUND_LIMIT = 24;
 export const CUSTOM_SOUND_ID_PREFIX = "custom-sound:";
+export const ITEM_FILTER_GROUP_LIMIT = 40;
+export const ITEM_FILTER_PACK_KIND = "item-filter-pack";
+export const ITEM_FILTER_PACK_SCHEMA_VERSION = 1;
 
 export const DEFAULT_ITEM_FILTER_GROUPS: ItemFilterGroup[] = [
   {
@@ -127,9 +155,16 @@ function createBaseItemFilterGroup(id: string, name: string): ItemFilterGroup {
 }
 
 export function normalizeItemFilterGroups(value: unknown, customSounds: CustomItemFilterSound[] = []): ItemFilterGroup[] {
-  const groups = Array.isArray(value) ? value : DEFAULT_ITEM_FILTER_GROUPS;
-  const normalized = groups.map((group) => normalizeItemFilterGroup(group, customSounds)).filter(Boolean) as ItemFilterGroup[];
-  return normalized.length ? normalized.slice(0, 40) : structuredCloneCompat(DEFAULT_ITEM_FILTER_GROUPS);
+  if (!Array.isArray(value)) return structuredCloneCompat(DEFAULT_ITEM_FILTER_GROUPS);
+  return normalizeItemFilterGroupList(value, customSounds);
+}
+
+function normalizeItemFilterGroupList(value: unknown, customSounds: CustomItemFilterSound[]): ItemFilterGroup[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((group) => normalizeItemFilterGroup(group, customSounds))
+    .filter((group): group is ItemFilterGroup => Boolean(group))
+    .slice(0, ITEM_FILTER_GROUP_LIMIT);
 }
 
 function normalizeItemFilterGroup(value: unknown, customSounds: CustomItemFilterSound[]): ItemFilterGroup | null {
@@ -206,6 +241,166 @@ export function customSoundDisplayName(fileName: string): string {
 
 export function itemFilterSoundOptions(customSounds: CustomItemFilterSound[] = []): ItemFilterSoundOption[] {
   return [...ITEM_FILTER_SOUNDS, ...normalizeCustomItemFilterSounds(customSounds).map(({ id, name }) => ({ id, name }))];
+}
+
+export function referencedCustomItemFilterSoundIds(groups: ItemFilterGroup[]): string[] {
+  const ids = new Set<string>();
+  for (const group of groups) {
+    if (isCustomSoundId(group.soundId)) ids.add(group.soundId);
+    for (const item of group.items) {
+      if (isCustomSoundId(item.soundId)) ids.add(item.soundId);
+    }
+  }
+  return Array.from(ids);
+}
+
+export function createItemFilterPackPayload(
+  groups: ItemFilterGroup[],
+  customSounds: CustomItemFilterSound[],
+  exportedAt = new Date().toISOString(),
+): ItemFilterPackPayload {
+  const normalizedSounds = normalizeCustomItemFilterSounds(customSounds);
+  const normalizedGroups = normalizeItemFilterGroupList(groups, normalizedSounds);
+  const referencedSoundIds = new Set(referencedCustomItemFilterSoundIds(normalizedGroups));
+  return {
+    app: "hero-siege-companion",
+    kind: ITEM_FILTER_PACK_KIND,
+    schemaVersion: ITEM_FILTER_PACK_SCHEMA_VERSION,
+    exportedAt,
+    uiPreferences: {
+      itemFilterGroups: structuredCloneCompat(normalizedGroups),
+      customItemFilterSounds: normalizedSounds.filter((sound) => referencedSoundIds.has(sound.id)),
+    },
+  };
+}
+
+export function parseItemFilterPackPayload(value: unknown): ItemFilterPackImportPreview | null {
+  const parsed = parseJsonRecord(value);
+  if (
+    !parsed ||
+    parsed.app !== "hero-siege-companion" ||
+    parsed.kind !== ITEM_FILTER_PACK_KIND ||
+    parsed.schemaVersion !== ITEM_FILTER_PACK_SCHEMA_VERSION ||
+    !isRecord(parsed.uiPreferences)
+  ) {
+    return null;
+  }
+
+  const availableSounds = normalizeCustomItemFilterSounds(parsed.uiPreferences.customItemFilterSounds);
+  const groups = normalizeItemFilterGroupList(parsed.uiPreferences.itemFilterGroups, availableSounds);
+  if (!groups.length) return null;
+  const referencedSoundIds = new Set(referencedCustomItemFilterSoundIds(groups));
+  const sounds = availableSounds.filter((sound) => referencedSoundIds.has(sound.id));
+  const availableSoundIds = new Set(sounds.map((sound) => sound.id));
+  return {
+    groups,
+    sounds,
+    unusedSounds: availableSounds.filter((sound) => !referencedSoundIds.has(sound.id)),
+    missingCustomSoundIds: Array.from(referencedSoundIds).filter((id) => !availableSoundIds.has(id)),
+  };
+}
+
+export function mergeItemFilterPack(
+  currentGroups: ItemFilterGroup[],
+  currentSounds: CustomItemFilterSound[],
+  pack: ItemFilterPackImportPreview,
+): ItemFilterPackMergeResult {
+  const normalizedCurrentSounds = normalizeCustomItemFilterSounds(currentSounds);
+  const normalizedCurrentGroups = normalizeItemFilterGroupList(currentGroups, normalizedCurrentSounds);
+  const availableGroupSlots = Math.max(0, ITEM_FILTER_GROUP_LIMIT - normalizedCurrentGroups.length);
+  const selectedImportedGroups = pack.groups.slice(0, availableGroupSlots);
+  const selectedImportedSoundIds = new Set(referencedCustomItemFilterSoundIds(selectedImportedGroups));
+  const currentSoundsById = new Map(normalizedCurrentSounds.map((sound) => [sound.id, sound]));
+  const usedSoundIds = new Set(currentSoundsById.keys());
+  const soundIdRemap = new Map<string, string>();
+  const importedSoundAdditions: CustomItemFilterSound[] = [];
+  const availableSoundSlots = Math.max(0, CUSTOM_SOUND_LIMIT - normalizedCurrentSounds.length);
+
+  for (const sound of normalizeCustomItemFilterSounds(pack.sounds)) {
+    if (!selectedImportedSoundIds.has(sound.id)) continue;
+    const currentSound = currentSoundsById.get(sound.id);
+    if (currentSound?.src === sound.src) {
+      soundIdRemap.set(sound.id, sound.id);
+      continue;
+    }
+
+    const id = currentSound ? uniqueImportedSoundId(sound.id, usedSoundIds) : sound.id;
+    soundIdRemap.set(sound.id, id);
+    usedSoundIds.add(id);
+    if (importedSoundAdditions.length < availableSoundSlots) {
+      importedSoundAdditions.push({
+        ...sound,
+        id,
+        name: id === sound.id ? sound.name : `${sound.name} (Imported)`,
+      });
+    }
+  }
+
+  for (const soundId of selectedImportedSoundIds) {
+    if (!soundIdRemap.has(soundId) && currentSoundsById.has(soundId)) {
+      soundIdRemap.set(soundId, uniqueImportedSoundId(soundId, usedSoundIds));
+    }
+  }
+  const sounds = normalizeCustomItemFilterSounds([...normalizedCurrentSounds, ...importedSoundAdditions]);
+
+  const usedGroupIds = new Set(normalizedCurrentGroups.map((group) => group.id));
+  const importedGroups = selectedImportedGroups.map((group) => {
+    const originalId = group.id;
+    const id = uniqueImportedGroupId(originalId, usedGroupIds);
+    return {
+      ...group,
+      id,
+      name: id === originalId ? group.name : `${group.name} (Imported)`,
+      soundId: soundIdRemap.get(group.soundId) ?? group.soundId,
+      items: group.items.map((item) => ({
+        ...item,
+        soundId: soundIdRemap.get(item.soundId) ?? item.soundId,
+      })),
+      rarities: [...group.rarities],
+      types: [...group.types],
+    };
+  });
+  const groups = normalizeItemFilterGroupList([...normalizedCurrentGroups, ...importedGroups], sounds);
+
+  return {
+    groups,
+    sounds,
+    addedGroupCount: groups.length - normalizedCurrentGroups.length,
+    addedSoundCount: importedSoundAdditions.length,
+  };
+}
+
+function parseJsonRecord(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function uniqueImportedGroupId(value: string, usedIds: Set<string>): string {
+  const base = value.trim() || "imported-filter";
+  if (!usedIds.has(base)) {
+    usedIds.add(base);
+    return base;
+  }
+  let suffix = 2;
+  while (usedIds.has(`${base}-imported-${suffix}`)) suffix += 1;
+  const id = `${base}-imported-${suffix}`;
+  usedIds.add(id);
+  return id;
+}
+
+function uniqueImportedSoundId(value: string, usedIds: Set<string>): string {
+  const base = value.trim() || `${CUSTOM_SOUND_ID_PREFIX}imported`;
+  let suffix = 2;
+  while (usedIds.has(`${base}-imported-${suffix}`)) suffix += 1;
+  const id = `${base}-imported-${suffix}`;
+  usedIds.add(id);
+  return id;
 }
 
 export function customSoundForId(soundId: string, customSounds: CustomItemFilterSound[] = []): CustomItemFilterSound | null {

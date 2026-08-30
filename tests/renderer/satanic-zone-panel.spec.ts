@@ -69,6 +69,9 @@ describe("SatanicZonePanel", () => {
     expect(wrapper.get('.zone-status[data-phase="unavailable"]').text()).toContain(
       "local refresh relay has not finished starting",
     );
+    expect(wrapper.findAll(".effect-column")).toHaveLength(2);
+    expect(wrapper.findAll(".zone-effect-empty")[0].text()).toContain("Positive modifiers will appear");
+    expect(wrapper.findAll(".zone-effect-empty")[1].text()).toContain("Negative modifiers will appear");
     expect(wrapper.text()).not.toContain("world-entry");
   });
 

@@ -1,302 +1,399 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import type {
+  CaptureDiagnosticsLevel,
+  CaptureDiagnosticsMode,
+  CaptureDiagnosticsState,
+} from "../../../shared/app-state";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
-import type { CompactRunTileConfig } from "../lib/compact-tiles";
-import type { CustomItemFilterSound, ItemFilterGroup } from "../lib/item-filters";
-import type { ThemeAccentMap, ThemeForegroundFillMap, ThemeId, ThemeTextureMap } from "../lib/themes";
+import type { ConfigurationImportPreview } from "../lib/preferences";
+import type { ThemeId } from "../lib/themes";
 import type { WhatsNewRelease } from "../lib/whats-new";
+import { useModalFocus } from "../lib/modal-focus";
+import SettingsActionDialog from "./SettingsActionDialog.vue";
 import SettingsAppearanceTab from "./SettingsAppearanceTab.vue";
 import SettingsCaptureTab from "./SettingsCaptureTab.vue";
 import SettingsConfigTab from "./SettingsConfigTab.vue";
-import SettingsDashboardTab from "./SettingsDashboardTab.vue";
 import SettingsGeneralTab from "./SettingsGeneralTab.vue";
-import SettingsSoundsTab from "./SettingsSoundsTab.vue";
 import SettingsSupportTab from "./SettingsSupportTab.vue";
-import SettingsWhatsNewTab from "./SettingsWhatsNewTab.vue";
-import { useModalFocus } from "../lib/modal-focus";
-
-interface ItemTypeOption {
-  value: string;
-  label: string;
-}
 
 interface ThemeOption {
   id: ThemeId;
   label: string;
-  defaultAccent: string;
 }
 
-type SettingsTab = "general" | "capture" | "appearance" | "sounds" | "dashboard" | "whatsNew" | "support" | "config";
+type SettingsSection = "app" | "appearance" | "features" | "support" | "developers";
+type SettingsDialogKind = "sz-enable" | "sz-learn-more" | "deep" | "restore" | "factory-reset";
 
-const props = defineProps<{
-  logLimitOptions: number[];
-  itemTypeOptions: ItemTypeOption[];
-  itemFilterGroups: ItemFilterGroup[];
-  itemSuggestions: string[];
+const props = withDefaults(defineProps<{
   themeOptions: readonly ThemeOption[];
-  customItemFilterSounds: CustomItemFilterSound[];
+  legacyThemeAvailable?: boolean;
+  legacyCompactThemeAvailable?: boolean;
+  captureDiagnostics: CaptureDiagnosticsState;
+  diagnosticsNow: number;
+  diagnosticsBusyLevel?: CaptureDiagnosticsLevel | null;
   supportDiagnostics: string;
   supportGeneratedFiles: SupportDiagnosticGeneratedFileInfo[];
   supportLogFiles: SupportDiagnosticLogFileInfo[];
   supportLogsPath: string;
   supportBundleBusy: boolean;
   whatsNew: WhatsNewRelease;
-  initialTab?: SettingsTab;
-}>();
+  backupPreview?: ConfigurationImportPreview | null;
+  backupBusy?: boolean;
+  factoryResetBusy?: boolean;
+  legacyResearchAvailable?: boolean;
+  saveStatus?: "saved" | "saving" | "error";
+  initialTab?: string;
+}>(), {
+  legacyThemeAvailable: false,
+  legacyCompactThemeAvailable: false,
+  diagnosticsBusyLevel: null,
+  backupPreview: null,
+  backupBusy: false,
+  factoryResetBusy: false,
+  legacyResearchAvailable: false,
+  saveStatus: "saved",
+  initialTab: "app",
+});
 
 const emit = defineEmits<{
   close: [];
   chooseGameExecutable: [];
-  updateThemeAccent: [value: string, themeId?: ThemeId];
+  resetThemes: [];
+  exportBackup: [];
+  chooseBackup: [];
+  confirmRestoreBackup: [];
+  cancelRestoreBackup: [];
+  openSupportLogsDirectory: [];
+  saveSupportDiagnostics: [];
+  copySupportDiagnosticsSummary: [];
+  openNpcapGuide: [];
+  setDiagnosticsMode: [level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode];
+  resetWindowPosition: [];
+  factoryReset: [deleteItemFilters: boolean];
   importTheme: [];
   exportTheme: [];
   exportThemeTemplate: [];
-  importSounds: [];
-  exportSounds: [];
-  removeSound: [sound: CustomItemFilterSound];
-  saveSupportDiagnostics: [];
-  copySupportDiagnosticsSummary: [];
-  openSupportLogsDirectory: [];
-  exportConfiguration: [];
-  importConfiguration: [];
-  reset: [];
-  apply: [];
-  settingsTabChange: [tab: SettingsTab];
+  copyThemeTokenReference: [];
+  exportLegacyResearch: [];
+  retrySave: [];
+  settingsTabChange: [tab: SettingsSection];
 }>();
 
-const draftLogLimit = defineModel<number>("logLimit", { required: true });
-const draftTimelineLimit = defineModel<number>("timelineLimit", { required: true });
-const draftTimelineType = defineModel<string>("timelineType", { required: true });
-const draftLaunchThroughSteam = defineModel<boolean>("launchThroughSteam", { required: true });
-const draftGameExecutablePath = defineModel<string>("gameExecutablePath", { required: true });
-const draftShowCaptureDetails = defineModel<boolean>("showCaptureDetails", { required: true });
-const draftCaptureDebugLogging = defineModel<boolean>("captureDebugLogging", { required: true });
-const draftCapturePayloadLogging = defineModel<boolean>("capturePayloadLogging", { required: true });
-const draftCaptureWideLogging = defineModel<boolean>("captureWideLogging", { required: true });
-const draftSatanicZoneDebugLogging = defineModel<boolean>("satanicZoneDebugLogging", { required: true });
-const draftSatanicZoneRefreshEnabled = defineModel<boolean>("satanicZoneRefreshEnabled", { required: true });
-const draftAlwaysOnTop = defineModel<boolean>("alwaysOnTop", { required: true });
-const draftLockCompactLocation = defineModel<boolean>("lockCompactLocation", { required: true });
-const draftHideSocketables = defineModel<boolean>("hideSocketables", { required: true });
-const draftHideKeys = defineModel<boolean>("hideKeys", { required: true });
-const draftHideMaterials = defineModel<boolean>("hideMaterials", { required: true });
-const draftSkipEmptyRuns = defineModel<boolean>("skipEmptyRuns", { required: true });
-const draftMinRunDurationMinutes = defineModel<number>("minRunDurationMinutes", { required: true });
-const draftDeveloperItemResearchEnabled = defineModel<boolean>("developerItemResearchEnabled", { required: true });
-const draftUnknownItemAudioPrompt = defineModel<boolean>("unknownItemAudioPrompt", { required: true });
-const draftThemeId = defineModel<ThemeId>("themeId", { required: true });
-const draftCompactThemeId = defineModel<ThemeId>("compactThemeId", { required: true });
-const draftThemeAccents = defineModel<ThemeAccentMap>("themeAccents", { required: true });
-const draftThemeTextures = defineModel<ThemeTextureMap>("themeTextures", { required: true });
-const draftCompactThemeTextures = defineModel<ThemeTextureMap>("compactThemeTextures", { required: true });
-const draftThemeForegroundFills = defineModel<ThemeForegroundFillMap>("themeForegroundFills", { required: true });
-const draftCompactThemeForegroundFills = defineModel<ThemeForegroundFillMap>("compactThemeForegroundFills", { required: true });
-const configIncludeAppSettings = defineModel<boolean>("configIncludeAppSettings", { required: true });
-const configIncludeRunSaving = defineModel<boolean>("configIncludeRunSaving", { required: true });
-const configIncludeReportTracking = defineModel<boolean>("configIncludeReportTracking", { required: true });
-const configIncludeLootFilters = defineModel<boolean>("configIncludeLootFilters", { required: true });
-const configIncludeSounds = defineModel<boolean>("configIncludeSounds", { required: true });
-const configIncludeItemResearch = defineModel<boolean>("configIncludeItemResearch", { required: true });
-const draftCompactRunTiles = defineModel<CompactRunTileConfig[]>("compactRunTiles", { required: true });
+const launchThroughSteam = defineModel<boolean>("launchThroughSteam", { required: true });
+const gameExecutablePath = defineModel<string>("gameExecutablePath", { required: true });
+const themeId = defineModel<ThemeId>("themeId", { required: true });
+const compactThemeId = defineModel<ThemeId>("compactThemeId", { required: true });
+const themeCustomMode = defineModel<boolean>("themeCustomMode", { required: true });
+const compactThemeCustomMode = defineModel<boolean>("compactThemeCustomMode", { required: true });
+const compactThemeMatchesApp = defineModel<boolean>("compactThemeMatchesApp", { required: true });
+const satanicZoneRefreshEnabled = defineModel<boolean>("satanicZoneRefreshEnabled", { required: true });
 
-const SETTINGS_TAB_ORDER: SettingsTab[] = ["general", "capture", "appearance", "sounds", "dashboard", "whatsNew", "support", "config"];
-const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
-  general: "General",
-  capture: "Capture",
-  appearance: "Appearance",
-  sounds: "Sounds",
-  dashboard: "Dashboard",
-  whatsNew: "What's New",
-  support: "Support",
-  config: "Import / Export",
-};
-const activeSettingsTab = ref<SettingsTab>(props.initialTab ?? "general");
+const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; group: "settings" | "resources" }> = [
+  { id: "app", label: "App", group: "settings" },
+  { id: "appearance", label: "Appearance", group: "settings" },
+  { id: "features", label: "Features", group: "settings" },
+  { id: "support", label: "Help & Support", group: "resources" },
+  { id: "developers", label: "Developers", group: "resources" },
+];
+const activeSettingsSection = ref<SettingsSection>(normalizeSettingsSection(props.initialTab));
 const settingsDialog = ref<HTMLElement | null>(null);
+const nestedDialog = ref<SettingsDialogKind | null>(props.backupPreview ? "restore" : null);
+const pendingDeepMode = ref<Exclude<CaptureDiagnosticsMode, "off">>("manual");
+const deleteItemFilters = ref(false);
 const { handleModalFocusKeydown } = useModalFocus(settingsDialog);
 
 watch(() => props.initialTab, (tab) => {
-  if (tab) setActiveSettingsTab(tab, false);
+  const normalized = normalizeSettingsSection(tab);
+  if (activeSettingsSection.value !== normalized) activeSettingsSection.value = normalized;
 });
 
-function updateThemeAccent(value: string, themeId?: ThemeId) {
-  emit("updateThemeAccent", value, themeId);
+watch(() => props.backupPreview, (preview) => {
+  if (preview) nestedDialog.value = "restore";
+  else if (nestedDialog.value === "restore") nestedDialog.value = null;
+});
+
+function normalizeSettingsSection(value: string | undefined): SettingsSection {
+  if (value === "appearance" || value === "features" || value === "support" || value === "developers" || value === "app") return value;
+  if (value === "capture") return "features";
+  if (value === "config") return "developers";
+  if (value === "whatsNew") return "support";
+  return "app";
 }
 
-function selectSettingsTab(tab: SettingsTab) {
-  setActiveSettingsTab(tab);
+function selectSettingsSection(section: SettingsSection) {
+  if (activeSettingsSection.value === section) return;
+  activeSettingsSection.value = section;
+  emit("settingsTabChange", section);
 }
 
-function setActiveSettingsTab(tab: SettingsTab, notify = true) {
-  if (activeSettingsTab.value === tab) return;
-  activeSettingsTab.value = tab;
-  if (notify) emit("settingsTabChange", tab);
-}
-
-function settingsTabButtonId(tab: SettingsTab): string {
-  return `settings-tab-${tab}`;
-}
-
-function settingsTabPanelId(tab: SettingsTab): string {
-  return `settings-panel-${tab}`;
-}
-
-function handleSettingsTabKeydown(event: KeyboardEvent) {
-  const currentIndex = SETTINGS_TAB_ORDER.indexOf(activeSettingsTab.value);
-  const lastIndex = SETTINGS_TAB_ORDER.length - 1;
-  const nextIndex =
-    event.key === "ArrowRight"
-      ? (currentIndex + 1) % SETTINGS_TAB_ORDER.length
-      : event.key === "ArrowLeft"
-        ? (currentIndex + lastIndex) % SETTINGS_TAB_ORDER.length
-        : event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? lastIndex
-            : -1;
+function handleNavigationKeydown(event: KeyboardEvent) {
+  const currentIndex = SETTINGS_SECTIONS.findIndex((section) => section.id === activeSettingsSection.value);
+  const lastIndex = SETTINGS_SECTIONS.length - 1;
+  const nextIndex = event.key === "ArrowDown" || event.key === "ArrowRight"
+    ? (currentIndex + 1) % SETTINGS_SECTIONS.length
+    : event.key === "ArrowUp" || event.key === "ArrowLeft"
+      ? (currentIndex + lastIndex) % SETTINGS_SECTIONS.length
+      : event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? lastIndex
+          : -1;
   if (nextIndex < 0) return;
   event.preventDefault();
-  const nextTab = SETTINGS_TAB_ORDER[nextIndex];
-  setActiveSettingsTab(nextTab);
-  void nextTick(() => {
-    document.querySelector<HTMLButtonElement>(`[data-settings-tab="${nextTab}"]`)?.focus();
-  });
+  const nextSection = SETTINGS_SECTIONS[nextIndex];
+  selectSettingsSection(nextSection.id);
+  void nextTick(() => document.querySelector<HTMLButtonElement>(`[data-settings-section="${nextSection.id}"]`)?.focus());
+}
+
+function requestSatanicZoneRefreshChange(enabled: boolean) {
+  if (!enabled) {
+    satanicZoneRefreshEnabled.value = false;
+    return;
+  }
+  nestedDialog.value = "sz-enable";
+}
+
+function requestDiagnosticsMode(level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode) {
+  if (level === "deep" && mode !== "off") {
+    pendingDeepMode.value = mode;
+    nestedDialog.value = "deep";
+    return;
+  }
+  emit("setDiagnosticsMode", level, mode);
+}
+
+function requestFactoryReset() {
+  deleteItemFilters.value = false;
+  nestedDialog.value = "factory-reset";
+}
+
+function closeNestedDialog() {
+  if (nestedDialog.value === "restore") emit("cancelRestoreBackup");
+  nestedDialog.value = null;
+}
+
+function confirmSatanicZoneRefresh() {
+  satanicZoneRefreshEnabled.value = true;
+  nestedDialog.value = null;
+}
+
+function confirmDeepDiagnostics() {
+  emit("setDiagnosticsMode", "deep", pendingDeepMode.value);
+  nestedDialog.value = null;
+}
+
+function confirmRestoreBackup() {
+  emit("confirmRestoreBackup");
+}
+
+function confirmFactoryReset() {
+  emit("factoryReset", deleteItemFilters.value);
+  nestedDialog.value = null;
+}
+
+function saveStatusLabel(): string {
+  if (props.saveStatus === "saving") return "Saving…";
+  if (props.saveStatus === "error") return "Couldn’t save";
+  return "Saved";
 }
 </script>
 
 <template>
-  <div class="modal-backdrop" @keydown="handleModalFocusKeydown" @keydown.esc="$emit('close')">
-    <section ref="settingsDialog" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
-      <div class="settings-heading">
+  <div class="modal-backdrop settings-ledger-backdrop" @keydown="handleModalFocusKeydown" @keydown.esc="$emit('close')">
+    <section
+      ref="settingsDialog"
+      class="settings-panel settings-ledger"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      tabindex="-1"
+    >
+      <header class="settings-ledger-header">
         <div>
           <p class="eyebrow">Preferences</p>
           <h2 id="settings-title">Settings</h2>
-          <p class="settings-note">These preferences are saved on this device and restored between sessions.</p>
+          <p>A small set of app-wide choices. Everything else lives where it is used.</p>
         </div>
-        <button class="settings-close" type="button" title="Close settings" aria-label="Close settings" @click="$emit('close')">x</button>
-      </div>
+        <div class="settings-ledger-header-actions">
+          <button
+            v-if="saveStatus === 'error'"
+            class="settings-save-state error"
+            type="button"
+            aria-live="polite"
+            @click="$emit('retrySave')"
+          >{{ saveStatusLabel() }} · Retry</button>
+          <span v-else :class="['settings-save-state', saveStatus]" role="status" aria-live="polite">{{ saveStatusLabel() }}</span>
+          <button class="settings-close" type="button" aria-label="Close settings" @click="$emit('close')">×</button>
+        </div>
+      </header>
 
-      <nav class="settings-tabs" role="tablist" aria-label="Settings sections" @keydown="handleSettingsTabKeydown">
-        <button
-          v-for="tab in SETTINGS_TAB_ORDER"
-          :id="settingsTabButtonId(tab)"
-          :key="tab"
-          :data-settings-tab="tab"
-          role="tab"
-          :aria-selected="activeSettingsTab === tab"
-          :aria-controls="settingsTabPanelId(tab)"
-          :tabindex="activeSettingsTab === tab ? 0 : -1"
-          :class="{ active: activeSettingsTab === tab }"
-          type="button"
-          @click="selectSettingsTab(tab)"
+      <div class="settings-ledger-layout">
+        <nav class="settings-ledger-nav" aria-label="Preferences and resources" @keydown="handleNavigationKeydown">
+          <span class="settings-ledger-nav-label">Settings</span>
+          <button
+            v-for="section in SETTINGS_SECTIONS.filter((candidate) => candidate.group === 'settings')"
+            :key="section.id"
+            :data-settings-section="section.id"
+            type="button"
+            :aria-current="activeSettingsSection === section.id ? 'page' : undefined"
+            @click="selectSettingsSection(section.id)"
+          >{{ section.label }}</button>
+          <span class="settings-ledger-nav-label resources">Resources</span>
+          <button
+            v-for="section in SETTINGS_SECTIONS.filter((candidate) => candidate.group === 'resources')"
+            :key="section.id"
+            :data-settings-section="section.id"
+            type="button"
+            :aria-current="activeSettingsSection === section.id ? 'page' : undefined"
+            @click="selectSettingsSection(section.id)"
+          >
+            <span>{{ section.label }}</span>
+            <span v-if="section.id === 'developers'" class="settings-nav-tag">Advanced</span>
+          </button>
+        </nav>
+
+        <section
+          :id="`settings-section-${activeSettingsSection}`"
+          class="settings-ledger-content"
+          :aria-label="`${SETTINGS_SECTIONS.find((section) => section.id === activeSettingsSection)?.label ?? 'Settings'} section`"
+          tabindex="0"
         >
-          {{ SETTINGS_TAB_LABELS[tab] }}
-        </button>
-      </nav>
-
-      <section
-        :id="settingsTabPanelId(activeSettingsTab)"
-        class="settings-tab-panel"
-        role="tabpanel"
-        :aria-labelledby="settingsTabButtonId(activeSettingsTab)"
-        tabindex="0"
-      >
-        <SettingsGeneralTab
-          v-if="activeSettingsTab === 'general'"
-          v-model:log-limit="draftLogLimit"
-          v-model:timeline-limit="draftTimelineLimit"
-          v-model:timeline-type="draftTimelineType"
-          v-model:launch-through-steam="draftLaunchThroughSteam"
-          v-model:game-executable-path="draftGameExecutablePath"
-          v-model:always-on-top="draftAlwaysOnTop"
-          v-model:lock-compact-location="draftLockCompactLocation"
-          v-model:hide-socketables="draftHideSocketables"
-          v-model:hide-keys="draftHideKeys"
-          v-model:hide-materials="draftHideMaterials"
-          :log-limit-options="logLimitOptions"
-          :item-type-options="itemTypeOptions"
-          :item-filter-groups="itemFilterGroups"
-          @choose-game-executable="$emit('chooseGameExecutable')"
-        />
-
-        <SettingsCaptureTab
-          v-else-if="activeSettingsTab === 'capture'"
-          v-model:show-capture-details="draftShowCaptureDetails"
-          v-model:capture-debug-logging="draftCaptureDebugLogging"
-          v-model:capture-payload-logging="draftCapturePayloadLogging"
-          v-model:capture-wide-logging="draftCaptureWideLogging"
-          v-model:satanic-zone-debug-logging="draftSatanicZoneDebugLogging"
-          v-model:satanic-zone-refresh-enabled="draftSatanicZoneRefreshEnabled"
-          v-model:developer-item-research-enabled="draftDeveloperItemResearchEnabled"
-          v-model:unknown-item-audio-prompt="draftUnknownItemAudioPrompt"
-          v-model:skip-empty-runs="draftSkipEmptyRuns"
-          v-model:min-run-duration-minutes="draftMinRunDurationMinutes"
-        />
-
-        <SettingsAppearanceTab
-          v-else-if="activeSettingsTab === 'appearance'"
-          v-model:theme-id="draftThemeId"
-          v-model:compact-theme-id="draftCompactThemeId"
-          v-model:theme-accents="draftThemeAccents"
-          v-model:theme-textures="draftThemeTextures"
-          v-model:compact-theme-textures="draftCompactThemeTextures"
-          v-model:theme-foreground-fills="draftThemeForegroundFills"
-          v-model:compact-theme-foreground-fills="draftCompactThemeForegroundFills"
-          :theme-options="themeOptions"
-          @update-theme-accent="updateThemeAccent"
-          @import-theme="$emit('importTheme')"
-          @export-theme="$emit('exportTheme')"
-          @export-theme-template="$emit('exportThemeTemplate')"
-        />
-
-        <SettingsSoundsTab
-          v-else-if="activeSettingsTab === 'sounds'"
-          :custom-item-filter-sounds="customItemFilterSounds"
-          @import-sounds="$emit('importSounds')"
-          @export-sounds="$emit('exportSounds')"
-          @remove-sound="$emit('removeSound', $event)"
-        />
-
-        <SettingsDashboardTab
-          v-else-if="activeSettingsTab === 'dashboard'"
-          v-model:compact-run-tiles="draftCompactRunTiles"
-          :item-filter-groups="itemFilterGroups"
-          :item-suggestions="itemSuggestions"
-        />
-
-        <SettingsWhatsNewTab
-          v-else-if="activeSettingsTab === 'whatsNew'"
-          :whats-new="whatsNew"
-        />
-
-        <SettingsSupportTab
-          v-else-if="activeSettingsTab === 'support'"
-          :support-diagnostics="supportDiagnostics"
-          :support-generated-files="supportGeneratedFiles"
-          :support-log-files="supportLogFiles"
-          :support-logs-path="supportLogsPath"
-          :support-bundle-busy="supportBundleBusy"
-          @save-support-diagnostics="$emit('saveSupportDiagnostics')"
-          @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
-          @open-support-logs-directory="$emit('openSupportLogsDirectory')"
-        />
-
-        <SettingsConfigTab
-          v-else
-          v-model:config-include-app-settings="configIncludeAppSettings"
-          v-model:config-include-run-saving="configIncludeRunSaving"
-          v-model:config-include-report-tracking="configIncludeReportTracking"
-          v-model:config-include-loot-filters="configIncludeLootFilters"
-          v-model:config-include-sounds="configIncludeSounds"
-          v-model:config-include-item-research="configIncludeItemResearch"
-          @import-configuration="$emit('importConfiguration')"
-          @export-configuration="$emit('exportConfiguration')"
-        />
-      </section>
-
-      <div class="settings-actions">
-        <button class="icon-button ghost" type="button" @click="$emit('reset')">Reset Preferences</button>
-        <button class="icon-button primary" type="button" @click="$emit('apply')">Done</button>
+          <SettingsGeneralTab
+            v-if="activeSettingsSection === 'app'"
+            v-model:launch-through-steam="launchThroughSteam"
+            v-model:game-executable-path="gameExecutablePath"
+            @choose-game-executable="$emit('chooseGameExecutable')"
+          />
+          <SettingsAppearanceTab
+            v-else-if="activeSettingsSection === 'appearance'"
+            v-model:theme-id="themeId"
+            v-model:compact-theme-id="compactThemeId"
+            v-model:theme-custom-mode="themeCustomMode"
+            v-model:compact-theme-custom-mode="compactThemeCustomMode"
+            v-model:compact-theme-matches-app="compactThemeMatchesApp"
+            :theme-options="themeOptions"
+            :legacy-theme-available="legacyThemeAvailable"
+            :legacy-compact-theme-available="legacyCompactThemeAvailable"
+            @reset-themes="$emit('resetThemes')"
+          />
+          <SettingsCaptureTab
+            v-else-if="activeSettingsSection === 'features'"
+            :satanic-zone-refresh-enabled="satanicZoneRefreshEnabled"
+            @request-satanic-zone-refresh-change="requestSatanicZoneRefreshChange"
+            @learn-more="nestedDialog = 'sz-learn-more'"
+          />
+          <SettingsSupportTab
+            v-else-if="activeSettingsSection === 'support'"
+            :capture-diagnostics="captureDiagnostics"
+            :diagnostics-now="diagnosticsNow"
+            :diagnostics-busy-level="diagnosticsBusyLevel"
+            :support-diagnostics="supportDiagnostics"
+            :support-generated-files="supportGeneratedFiles"
+            :support-log-files="supportLogFiles"
+            :support-logs-path="supportLogsPath"
+            :support-bundle-busy="supportBundleBusy"
+            :backup-busy="backupBusy"
+            :factory-reset-busy="factoryResetBusy"
+            :whats-new="whatsNew"
+            :initially-expand-whats-new="initialTab === 'whatsNew'"
+            @export-backup="$emit('exportBackup')"
+            @choose-backup="$emit('chooseBackup')"
+            @open-support-logs-directory="$emit('openSupportLogsDirectory')"
+            @save-support-diagnostics="$emit('saveSupportDiagnostics')"
+            @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
+            @open-npcap-guide="$emit('openNpcapGuide')"
+            @set-diagnostics-mode="requestDiagnosticsMode"
+            @reset-window-position="$emit('resetWindowPosition')"
+            @request-factory-reset="requestFactoryReset"
+          />
+          <SettingsConfigTab
+            v-else
+            :legacy-research-available="legacyResearchAvailable"
+            @import-theme="$emit('importTheme')"
+            @export-theme="$emit('exportTheme')"
+            @export-theme-template="$emit('exportThemeTemplate')"
+            @copy-theme-token-reference="$emit('copyThemeTokenReference')"
+            @export-legacy-research="$emit('exportLegacyResearch')"
+          />
+        </section>
       </div>
+
+      <SettingsActionDialog
+        v-if="nestedDialog === 'sz-learn-more'"
+        title="How SZ Refresh connects"
+        dismiss-only
+        @close="closeNestedDialog"
+      >
+        <p>SZ Refresh uses a managed local relay so the companion can request the current Satanic Zone between the game’s normal save queries.</p>
+        <ul>
+          <li>Changing the relay while Hero Siege is connected may disconnect that session, so reconnect before playing.</li>
+          <li>VPNs, system proxies, firewalls, and network-security tools can prevent the relay from working.</li>
+          <li>Refresh requests remain limited to once every 30 seconds.</li>
+          <li>Restoring a backup never enables SZ Refresh.</li>
+        </ul>
+      </SettingsActionDialog>
+
+      <SettingsActionDialog
+        v-else-if="nestedDialog === 'sz-enable'"
+        title="Enable SZ Refresh?"
+        confirm-label="Enable SZ Refresh"
+        @close="closeNestedDialog"
+        @confirm="confirmSatanicZoneRefresh"
+      >
+        <p>The companion will start a managed local relay. If Hero Siege is connected, changing this can disconnect the active game.</p>
+        <ul>
+          <li>Enable it before joining a game, or reconnect afterward.</li>
+          <li>Requests remain limited to once every 30 seconds.</li>
+          <li>Backup restoration never enables this feature.</li>
+        </ul>
+      </SettingsActionDialog>
+
+      <SettingsActionDialog
+        v-else-if="nestedDialog === 'deep'"
+        :title="pendingDeepMode === 'manual' ? 'Turn on deep diagnostics?' : 'Start deep diagnostics for 10 minutes?'"
+        :confirm-label="pendingDeepMode === 'manual' ? 'Turn On Deep Diagnostics' : 'Start 10 Minutes'"
+        confirm-tone="warning"
+        @close="closeNestedDialog"
+        @confirm="confirmDeepDiagnostics"
+      >
+        <p>Deep diagnostics can grow quickly and may contain character, chat, or platform metadata. Use it only while troubleshooting and share only through a generated Support bundle.</p>
+      </SettingsActionDialog>
+
+      <SettingsActionDialog
+        v-else-if="nestedDialog === 'restore' && backupPreview"
+        title="Restore this backup?"
+        confirm-label="Restore Backup"
+        :busy="backupBusy"
+        @close="closeNestedDialog"
+        @confirm="confirmRestoreBackup"
+      >
+        <p>The selected {{ backupPreview.legacyFormat ? "legacy configuration" : "backup" }} contains:</p>
+        <ul>
+          <li>{{ backupPreview.settings }} supported setting{{ backupPreview.settings === 1 ? "" : "s" }}</li>
+          <li>{{ backupPreview.filterGroups }} item filter{{ backupPreview.filterGroups === 1 ? "" : "s" }}</li>
+          <li>{{ backupPreview.sounds }} custom sound{{ backupPreview.sounds === 1 ? "" : "s" }}</li>
+          <li>{{ backupPreview.customThemes }} custom theme{{ backupPreview.customThemes === 1 ? "" : "s" }}</li>
+          <li>{{ backupPreview.compactTiles }} compact tile{{ backupPreview.compactTiles === 1 ? "" : "s" }}</li>
+        </ul>
+        <p>Retired options are ignored. SZ Refresh keeps its current state.</p>
+      </SettingsActionDialog>
+
+      <SettingsActionDialog
+        v-else-if="nestedDialog === 'factory-reset'"
+        title="Factory reset the companion?"
+        confirm-label="Factory Reset"
+        confirm-tone="danger"
+        :busy="factoryResetBusy"
+        @close="closeNestedDialog"
+        @confirm="confirmFactoryReset"
+      >
+        <p>This resets local preferences, custom themes, and layouts. Past Runs, diagnostic logs, item filters, and imported sound files are preserved by default.</p>
+        <label class="settings-dialog-option">
+          <input v-model="deleteItemFilters" type="checkbox" />
+          <span><strong>Also delete item filters</strong><small>Leave this unchecked to keep carefully configured filter groups.</small></span>
+        </label>
+      </SettingsActionDialog>
     </section>
   </div>
 </template>

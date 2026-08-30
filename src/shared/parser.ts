@@ -11,6 +11,7 @@ import {
   WEAPON_TYPE_NAMES,
 } from "./constants";
 import { asMessageObject, getMessageField, hasMessageField, intMessageField, messageEntries, type MessageObject, type MessageValue } from "./fields";
+import { resolveItemDefinition, type ItemCatalogResolution } from "./item-catalog";
 import {
   isTrustedInventoryItemTranslation,
   lookupItemTranslation,
@@ -547,16 +548,45 @@ function parseAddedItemObject(
     : packetRepository === "unknown" && !hasMessageField(item, ["c"]) && isDefinitionShaped
       ? "normal"
       : packetRepository;
-  const namedTranslationCandidate = options.trustNamedIdentity && explicitName
+  const seed = intMessageField(item, ["seed", "a"]);
+  // Resolve the serialized definition identity before consulting legacy name
+  // tables. Catalog-classified packets must never be retyped by a display name
+  // or promoted through a colliding repository/type/ordinal row.
+  const packetType = !options.trustNamedIdentity && fingerprintType !== null
+    ? fingerprintType
+    : (explicitType ?? fingerprintType ?? -1);
+  const hasPacketCanonicalType = hasExplicitType || hasFingerprintType;
+  const trustedExplicitId = options.trustNamedIdentity && hasExplicitId;
+  const hasPacketItemOrdinal = hasShortGameId || trustedExplicitId;
+  const packetId = resolvedItemId(shortGameId, hasPacketCanonicalType, trustedExplicitId ? explicitId : null);
+  // `b` is the native serialized definition ordinal. Long-form `id` is a
+  // compatibility fallback for definition-shaped packets that omit `b`.
+  const catalogItemId = shortGameId ?? explicitId ?? 0;
+  const hasCatalogItemOrdinal = hasShortGameId || hasExplicitId;
+  const packetWeaponType = packetType === 3
+    ? intMessageField(item, ["weapon_type", "weaponType"]) || intMessageField(item, ["j"])
+    : 0;
+  const catalogResolution = itemCatalogResolutionForPacket(
+    identityRepository,
+    packetType,
+    catalogItemId,
+    packetWeaponType,
+    isDefinitionShaped && hasCatalogItemOrdinal && hasPacketCanonicalType,
+  );
+  const hasClassifiedCatalogIdentity = catalogResolution !== null && catalogResolution.status !== "unclassified";
+  const allowLegacyIdentity = !hasClassifiedCatalogIdentity;
+  const namedTranslationCandidate = allowLegacyIdentity && options.trustNamedIdentity && explicitName
     ? lookupItemTranslationByName(explicitName, identityRepository === "unknown" ? undefined : identityRepository)
     : null;
-  const sharedNamedTranslationCandidate = options.trustNamedIdentity
+  const sharedNamedTranslationCandidate = allowLegacyIdentity
+    && options.trustNamedIdentity
     && explicitName
     && identityRepository === "unknown"
     && !namedTranslationCandidate
     ? lookupSharedItemTranslationByName(explicitName)
     : null;
-  const explicitNameConflictsWithRepository = options.trustNamedIdentity
+  const explicitNameConflictsWithRepository = allowLegacyIdentity
+    && options.trustNamedIdentity
     && Boolean(explicitName)
     && identityRepository !== "unknown"
     && !namedTranslationCandidate
@@ -570,47 +600,59 @@ function parseAddedItemObject(
   const namedTranslation = trustTranslationForRarity(options, repositoryCompatibleNamedTranslation, mappedRarity)
     ? repositoryCompatibleNamedTranslation
     : null;
-  const trustedExplicitName = options.trustNamedIdentity
+  const trustedExplicitName = allowLegacyIdentity
+    && options.trustNamedIdentity
     && !explicitNameConflictsWithRepository
     && (namedTranslation || trustExplicitNameForRarity(options, explicitName, mappedRarity))
     ? explicitName
     : "";
-  const seed = intMessageField(item, ["seed", "a"]);
   // A correlated c=0 generation response is admitted only because its native
   // fingerprint proves a stack/material type. Do not let contradictory payload
   // fields retype or rename that narrowly trusted identity.
-  const type = namedTranslation?.type
-    ?? (!options.trustNamedIdentity && fingerprintType !== null
-      ? fingerprintType
-      : (explicitType ?? fingerprintType ?? -1));
-  const hasCanonicalType = Boolean(namedTranslation) || hasExplicitType || hasFingerprintType;
-  const trustedExplicitId = options.trustNamedIdentity && hasExplicitId;
-  const hasItemOrdinal = hasShortGameId || trustedExplicitId;
+  const type = hasClassifiedCatalogIdentity ? catalogResolution.key.type : (namedTranslation?.type ?? packetType);
+  const hasCanonicalType = hasClassifiedCatalogIdentity || Boolean(namedTranslation) || hasPacketCanonicalType;
+  const hasItemOrdinal = hasClassifiedCatalogIdentity ? hasPacketItemOrdinal : (hasShortGameId || trustedExplicitId);
   const hasResolvedItemOrdinal = hasItemOrdinal && hasCanonicalType;
-  const id = namedTranslation?.gameId
-    ?? resolvedItemId(shortGameId, hasCanonicalType, trustedExplicitId ? explicitId : null);
+  const id = hasClassifiedCatalogIdentity ? catalogResolution.key.gameId : (namedTranslation?.gameId ?? packetId);
   // Game save/load treats an omitted `c` as the normal repository. Preserve an
   // explicit-name-only server announcement as unknown/derived instead of
   // pretending that announcement was an item-definition struct.
-  const repository = sharedNamedTranslationCandidate
-    ? "unknown"
-    : identityRepository === "unknown"
-    ? (namedTranslation?.repository ?? "unknown")
-    : identityRepository;
+  const repository = hasClassifiedCatalogIdentity
+    ? catalogResolution.key.repository
+    : sharedNamedTranslationCandidate
+      ? "unknown"
+      : identityRepository === "unknown"
+        ? (namedTranslation?.repository ?? "unknown")
+        : identityRepository;
   // The binary schema uses weapon subtype only for type 3. Ignore stray
   // long-form weapon_type fields on armor/material records so they cannot split
   // one catalog identity into impossible variants.
-  const weaponType = namedTranslation?.weaponType ?? (type === 3
-    ? intMessageField(item, ["weapon_type", "weaponType"]) || intMessageField(item, ["j"])
-    : 0);
+  const weaponType = hasClassifiedCatalogIdentity
+    ? catalogResolution.key.weaponType
+    : (namedTranslation?.weaponType ?? (type === 3 ? packetWeaponType : 0));
   const dropQuality = intMessageField(item, ["drop_quality", "dropQuality"]) || (type === 3 ? 0 : intMessageField(item, ["j"]));
-  const translationCandidate =
-    namedTranslation ??
-    itemTranslationForSource(options, type, id, weaponType, repository, hasItemOrdinal, hasCanonicalType);
-  const translation = trustTranslationForRarity(options, translationCandidate, mappedRarity) ? translationCandidate : null;
-  const generatedNormalBase = !translation && repository === "normal" && hasResolvedItemOrdinal
+  const catalogDefinition = catalogResolution?.status === "resolved" ? catalogResolution.definition : null;
+  const catalogTranslation: ItemTranslation | null = catalogDefinition && catalogDefinition.identityMode !== "seeded"
+    ? {
+        repository: catalogDefinition.repository,
+        type: catalogDefinition.type,
+        gameId: catalogDefinition.gameId,
+        weaponType: catalogDefinition.weaponType,
+        localizationId: catalogDefinition.localizationId,
+        name: catalogDefinition.name,
+      }
+    : null;
+  const legacyTranslationCandidate = allowLegacyIdentity
+    ? namedTranslation ?? itemTranslationForSource(options, type, id, weaponType, repository, hasItemOrdinal, hasCanonicalType)
+    : null;
+  const legacyTranslation = trustTranslationForRarity(options, legacyTranslationCandidate, mappedRarity)
+    ? legacyTranslationCandidate
+    : null;
+  const translation = catalogTranslation ?? legacyTranslation;
+  const generatedNormalBase = allowLegacyIdentity && !translation && repository === "normal" && hasResolvedItemOrdinal
     ? lookupGeneratedNormalItemBase(type, id)
     : null;
+  const seededCatalogIdentity = isSeededCatalogResolution(catalogResolution);
   const rarityName = inferItemRarityName(
     rarity,
     item,
@@ -619,7 +661,7 @@ function parseAddedItemObject(
     trustedExplicitName,
     options.trustNamedIdentity,
     options.trustServerAnnouncedRarity,
-    Boolean(generatedNormalBase),
+    seededCatalogIdentity || Boolean(generatedNormalBase),
   );
 
   return {
@@ -634,9 +676,13 @@ function parseAddedItemObject(
       dropQuality,
       seed,
       fingerprint,
-      translationName: translation?.name || trustedExplicitName || generatedNormalBase?.baseName,
+      translationName: translation?.name
+        || (catalogDefinition?.identityMode === "seeded" ? catalogDefinition.baseName : "")
+        || trustedExplicitName
+        || generatedNormalBase?.baseName,
     }),
-    localizationId: translation?.localizationId,
+    localizationId: translation?.localizationId
+      ?? (catalogDefinition?.identityMode === "seeded" ? catalogDefinition.baseLocalizationId : undefined),
     seed,
     id,
     tokenLevel: intMessageField(item, ["token_level", "tokenLevel", "e"]),
@@ -671,6 +717,23 @@ function resolvedItemId(
   if (explicitId !== null) return explicitId;
   if (hasCanonicalType && shortGameId !== null) return shortGameId;
   return 0;
+}
+
+function itemCatalogResolutionForPacket(
+  repository: ItemRepository | "unknown",
+  type: number,
+  gameId: number,
+  weaponType: number,
+  hasResolvedDefinitionIdentity: boolean,
+): ItemCatalogResolution | null {
+  if (!hasResolvedDefinitionIdentity || repository === "unknown") return null;
+  return resolveItemDefinition({ repository, type, gameId, weaponType });
+}
+
+function isSeededCatalogResolution(resolution: ItemCatalogResolution | null): boolean {
+  if (!resolution || resolution.status === "unclassified") return false;
+  if (resolution.status === "resolved") return resolution.definition.identityMode === "seeded";
+  return resolution.expectedIdentityMode === "seeded";
 }
 
 function nonNegativeIntegerMessageField(item: MessageObject, names: string[]): number | null {
@@ -728,9 +791,10 @@ function inferItemRarityName(
   ) {
     return "Unknown";
   }
-  // Generated normal charms overload short code d=4 across at least Superior
-  // and Rare tooltips. It is therefore neither a trustworthy Set marker nor an
-  // exact generated rarity without replaying the seed-driven item rules.
+  // Seed-generated definitions overload short code d=4; paired charm captures
+  // prove that it can describe both Superior and Rare tooltips. It is therefore
+  // neither a trustworthy Set marker nor an exact generated rarity without
+  // replaying the seed-driven item rules.
   if (
     !translation
     && (hasGeneratedNormalBase || isGeneratedShortNormalCharm(item, type))

@@ -1,0 +1,364 @@
+.run-pace-panel {
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.run-pace-panel .live-dashboard-card-body {
+  display: grid;
+  gap: 12px;
+}
+
+.run-pace-status {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.run-pace-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--app-muted);
+}
+
+.run-pace-status.is-live {
+  border-color: color-mix(in srgb, var(--effect-benefit) 34%, transparent);
+  color: var(--effect-benefit);
+}
+
+.run-pace-status.is-live .run-pace-status-dot {
+  background: var(--effect-benefit);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--effect-benefit) 14%, transparent);
+}
+
+.run-pace-status.is-paused {
+  border-color: color-mix(in srgb, var(--warning) 36%, transparent);
+  color: var(--warning);
+}
+
+.run-pace-status.is-paused .run-pace-status-dot {
+  background: var(--warning);
+}
+
+.run-pace-tracker {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(175px, 0.45fr) auto minmax(280px, 1fr);
+  align-items: center;
+  gap: 12px 18px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.run-pace-tracker-copy,
+.run-pace-tracker-copy strong,
+.run-pace-tracker-copy small {
+  display: block;
+}
+
+.run-pace-tracker-copy strong {
+  color: var(--app-heading);
+  font-size: 13px;
+}
+
+.run-pace-tracker-copy small {
+  margin-top: 3px;
+  color: var(--app-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.run-pace-tracker-copy small.is-warning {
+  color: var(--warning);
+}
+
+.run-pace-standard-lanes {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.run-pace-standard-lanes label {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-cell);
+  color: var(--app-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.run-pace-standard-lanes label:has(input:checked) {
+  border-color: var(--accent-border);
+  background: var(--surface-selected);
+  color: var(--app-heading);
+}
+
+.run-pace-standard-lanes input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--user-accent);
+}
+
+.run-pace-standard-lanes label:focus-within {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+}
+
+.run-pace-tracker-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.run-pace-item-field,
+.run-pace-item-field input {
+  min-width: 0;
+  width: 100%;
+}
+
+.run-pace-item-field input {
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  outline: 0;
+  background: var(--input-bg);
+  color: var(--app-text);
+  font: inherit;
+}
+
+.run-pace-item-field input:hover {
+  background: color-mix(in srgb, var(--surface-input-hover) 72%, var(--input-bg));
+}
+
+.run-pace-item-field input:focus-visible {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--surface-input-hover);
+}
+
+.run-pace-add {
+  white-space: nowrap;
+}
+
+.run-pace-suggestions {
+  grid-column: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.run-pace-suggestions button,
+.run-pace-remove {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-cell);
+  color: var(--app-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.run-pace-suggestions button:hover,
+.run-pace-suggestions button:focus-visible,
+.run-pace-remove:hover,
+.run-pace-remove:focus-visible {
+  border-color: var(--accent-border);
+  background: var(--surface-selected);
+  color: var(--app-heading);
+}
+
+.run-pace-scope-note {
+  margin: -3px 2px 0;
+  color: var(--app-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.run-pace-empty-state {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface-cell);
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.run-pace-lanes {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--border);
+}
+
+.run-pace-lane {
+  --run-pace-line: var(--user-accent);
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 70px;
+  align-items: stretch;
+  background: var(--surface-cell);
+}
+
+.run-pace-lane-gold {
+  --run-pace-line: var(--warning);
+}
+
+.run-pace-lane-kills {
+  --run-pace-line: var(--danger);
+}
+
+.run-pace-lane-items {
+  --run-pace-line: var(--effect-benefit);
+}
+
+.run-pace-lane.is-custom {
+  --run-pace-line: var(--accent-warm);
+  background: color-mix(in srgb, var(--surface-selected) 48%, var(--surface-cell));
+}
+
+.run-pace-lane-summary {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  padding: 9px 12px;
+  border-right: 1px solid var(--border);
+}
+
+.run-pace-lane-label {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-pace-lane-summary strong {
+  margin-top: 2px;
+  color: var(--app-heading);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.run-pace-lane-summary small {
+  margin-top: 3px;
+  color: var(--app-muted);
+  font-size: 10px;
+}
+
+.run-pace-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 25px;
+  padding: 0 7px;
+}
+
+.run-pace-lane.is-custom .run-pace-lane-label,
+.run-pace-lane.is-custom .run-pace-lane-summary strong {
+  padding-right: 58px;
+}
+
+.run-pace-plot {
+  min-width: 0;
+  padding: 8px 12px;
+  background:
+    linear-gradient(to right, transparent 49.9%, color-mix(in srgb, var(--border) 72%, transparent) 50%, transparent 50.1%),
+    linear-gradient(to right, transparent 24.9%, color-mix(in srgb, var(--border) 54%, transparent) 25%, transparent 25.1%, transparent 74.9%, color-mix(in srgb, var(--border) 54%, transparent) 75%, transparent 75.1%);
+}
+
+.run-pace-plot-surface {
+  position: relative;
+  height: 52px;
+}
+
+.run-pace-plot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.run-pace-grid-line {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.run-pace-grid-line-mid {
+  opacity: 0.45;
+  stroke-dasharray: 3 5;
+}
+
+.run-pace-line {
+  fill: none;
+  stroke: var(--run-pace-line);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.run-pace-line.is-custom {
+  stroke-dasharray: 6 5;
+}
+
+@media (max-width: 760px) {
+  .run-pace-tracker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .run-pace-suggestions {
+    grid-column: 1;
+  }
+
+  .run-pace-lane {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .run-pace-lane-summary {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 520px) {
+  .run-pace-tracker-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .run-pace-add {
+    width: 100%;
+  }
+}

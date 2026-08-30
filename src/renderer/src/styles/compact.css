@@ -574,48 +574,6 @@
   height: 14px;
 }
 
-.compact-settings-section {
-  display: grid;
-  gap: 8px;
-  padding: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.compact-settings-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.compact-settings-heading strong {
-  color: #ffffff;
-  font-size: 12px;
-}
-
-.compact-settings-heading span {
-  color: #9fa8b8;
-  font-size: 10px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.compact-settings-chip-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.settings-compact-run-section {
-  align-content: start;
-}
-
-.compact-settings-chip-grid-wide {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .compact-preset-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -659,29 +617,5 @@
 .compact-custom-tile-list {
   display: grid;
   gap: 7px;
-}
-
-.compact-custom-tile-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(88px, 0.7fr) minmax(0, 1fr) 26px;
-  gap: 6px;
-  align-items: center;
-}
-
-.compact-custom-tile-row input,
-.compact-custom-tile-row select {
-  min-width: 0;
-  height: 28px;
-  padding: 0 7px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  background: rgba(12, 15, 20, 0.82);
-  color: #e8edf5;
-  font: inherit;
-  font-size: 11px;
-}
-
-.settings-custom-tile-row {
-  grid-template-columns: minmax(140px, 1fr) minmax(110px, 0.7fr) minmax(180px, 1.2fr) 26px;
 }
 

@@ -1,187 +1,68 @@
 import { ref, type Ref } from "vue";
-import type { CapturePreferences, RunArchivePreferences } from "../../../shared/app-state";
-import { DEFAULT_CAPTURE_PREFERENCES, DEFAULT_RUN_ARCHIVE_PREFERENCES } from "../../../shared/initial-state";
-import { DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES } from "../../../shared/satanic-zone";
-import type { CompactRunTileConfig } from "./compact-tiles";
-import type { CustomItemFilterSound, ItemFilterGroup } from "./item-filters";
-import type { ItemResearchEntry } from "./item-research";
+import { normalizeCompactRunTiles } from "./compact-tiles";
+import {
+  normalizeCustomItemFilterSounds,
+  normalizeItemFilterGroups,
+} from "./item-filters";
 import {
   defaultPreferences,
-  normalizeRunDurationMinutes,
-  UI_PREFERENCES_SCHEMA_VERSION,
-  type ConfigurationTransferOptions,
+  normalizePreferences,
   type UiPreferences,
 } from "./preferences";
 import { normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
-import {
-  DEFAULT_THEME_ACCENTS,
-  normalizeThemeAccent,
-  type ThemeAccentMap,
-  type ThemeForegroundFillMap,
-  type ThemeId,
-  type ThemeTextureMap,
-  type ThemeTokenMaps,
-} from "./themes";
 
-export interface AppPreferencesState {
-  logLimit: Ref<number>;
-  timelineLimit: Ref<number>;
-  showCaptureDetails: Ref<boolean>;
-  alwaysOnTop: Ref<boolean>;
-  lockCompactLocation: Ref<boolean>;
-  hideSocketables: Ref<boolean>;
-  hideKeys: Ref<boolean>;
-  hideMaterials: Ref<boolean>;
-  timelineType: Ref<string>;
-  gameExecutablePath: Ref<string>;
-  launchThroughSteam: Ref<boolean>;
-  themeId: Ref<ThemeId>;
-  compactThemeId: Ref<ThemeId>;
-  themeAccents: Ref<ThemeAccentMap>;
-  themeTextures: Ref<ThemeTextureMap>;
-  compactThemeTextures: Ref<ThemeTextureMap>;
-  themeForegroundFills: Ref<ThemeForegroundFillMap>;
-  compactThemeForegroundFills: Ref<ThemeForegroundFillMap>;
-  themeTokenMaps: Ref<ThemeTokenMaps>;
-  itemFilterGroups: Ref<ItemFilterGroup[]>;
-  itemFilterMuted: Ref<boolean>;
-  customItemFilterSounds: Ref<CustomItemFilterSound[]>;
-  postRunReport: Ref<PostRunReportConfig>;
-  compactRunTiles: Ref<CompactRunTileConfig[]>;
-  developerItemResearchEnabled: Ref<boolean>;
-  unknownItemAudioPrompt: Ref<boolean>;
-  itemResearchEntries: Ref<ItemResearchEntry[]>;
-  draftLogLimit: Ref<number>;
-  draftTimelineLimit: Ref<number>;
-  draftShowCaptureDetails: Ref<boolean>;
-  draftAlwaysOnTop: Ref<boolean>;
-  draftLockCompactLocation: Ref<boolean>;
-  draftHideSocketables: Ref<boolean>;
-  draftHideKeys: Ref<boolean>;
-  draftHideMaterials: Ref<boolean>;
-  draftDeveloperItemResearchEnabled: Ref<boolean>;
-  draftUnknownItemAudioPrompt: Ref<boolean>;
-  draftTimelineType: Ref<string>;
-  draftGameExecutablePath: Ref<string>;
-  draftLaunchThroughSteam: Ref<boolean>;
-  draftThemeId: Ref<ThemeId>;
-  draftCompactThemeId: Ref<ThemeId>;
-  draftThemeAccents: Ref<ThemeAccentMap>;
-  draftThemeTextures: Ref<ThemeTextureMap>;
-  draftCompactThemeTextures: Ref<ThemeTextureMap>;
-  draftThemeForegroundFills: Ref<ThemeForegroundFillMap>;
-  draftCompactThemeForegroundFills: Ref<ThemeForegroundFillMap>;
-  draftThemeTokenMaps: Ref<ThemeTokenMaps>;
-  draftCaptureDebugLogging: Ref<boolean>;
-  draftCapturePayloadLogging: Ref<boolean>;
-  draftCaptureWideLogging: Ref<boolean>;
-  draftSatanicZoneDebugLogging: Ref<boolean>;
-  draftSatanicZoneRefreshEnabled: Ref<boolean>;
-  draftSkipEmptyRuns: Ref<boolean>;
-  draftMinRunDurationMinutes: Ref<number>;
-  configIncludeAppSettings: Ref<boolean>;
-  configIncludeRunSaving: Ref<boolean>;
-  configIncludeReportTracking: Ref<boolean>;
-  configIncludeLootFilters: Ref<boolean>;
-  configIncludeSounds: Ref<boolean>;
-  configIncludeItemResearch: Ref<boolean>;
-  preferenceWatchSources: Array<Ref<unknown>>;
-  currentPreferences(shoppingListItems: string[]): UiPreferences;
-  applyPreferences(preferences: UiPreferences): void;
-  currentDraftPreferences(shoppingListItems: string[]): UiPreferences;
-  loadDraftPreferences(
-    preferences: UiPreferences,
-    runArchivePreferences: RunArchivePreferences,
-    capturePreferences: CapturePreferences,
-    satanicZoneRefreshEnabled: boolean,
-  ): void;
-  currentDraftRunArchivePreferences(): RunArchivePreferences;
-  currentDraftCapturePreferences(): CapturePreferences;
-  currentDraftSatanicZoneRefreshEnabled(): boolean;
-  currentConfigurationTransferOptions(): ConfigurationTransferOptions;
-  updateDraftThemeAccent(value: string, targetThemeId?: ThemeId): void;
-  updatePostRunReportConfig(value: PostRunReportConfig): void;
-}
+/**
+ * Owns the renderer's durable preference refs. View-only disclosure state stays
+ * with the view that uses it; this module is deliberately not a Settings draft.
+ */
+export function useAppPreferences() {
+  const initial = normalizePreferences(defaultPreferences);
 
-export function useAppPreferences(): AppPreferencesState {
-  const logLimit = ref(defaultPreferences.logLimit);
-  const timelineLimit = ref(defaultPreferences.timelineLimit);
-  const showCaptureDetails = ref(defaultPreferences.showCaptureDetails);
-  const alwaysOnTop = ref(defaultPreferences.alwaysOnTop);
-  const lockCompactLocation = ref(defaultPreferences.lockCompactLocation);
-  const hideSocketables = ref(defaultPreferences.hideSocketables);
-  const hideKeys = ref(defaultPreferences.hideKeys);
-  const hideMaterials = ref(defaultPreferences.hideMaterials);
-  const timelineType = ref(defaultPreferences.timelineType);
-  const gameExecutablePath = ref(defaultPreferences.gameExecutablePath);
-  const launchThroughSteam = ref(defaultPreferences.launchThroughSteam);
-  const themeId = ref<ThemeId>(defaultPreferences.themeId);
-  const compactThemeId = ref<ThemeId>(defaultPreferences.compactThemeId);
-  const themeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
-  const themeTextures = ref<ThemeTextureMap>({ ...defaultPreferences.themeTextures });
-  const compactThemeTextures = ref<ThemeTextureMap>({ ...defaultPreferences.compactThemeTextures });
-  const themeForegroundFills = ref<ThemeForegroundFillMap>({ ...defaultPreferences.themeForegroundFills });
-  const compactThemeForegroundFills = ref<ThemeForegroundFillMap>({ ...defaultPreferences.compactThemeForegroundFills });
-  const themeTokenMaps = ref<ThemeTokenMaps>({ ...defaultPreferences.themeTokenMaps });
-  const itemFilterGroups = ref<ItemFilterGroup[]>([]);
-  const itemFilterMuted = ref(false);
-  const customItemFilterSounds = ref<CustomItemFilterSound[]>([]);
-  const postRunReport = ref<PostRunReportConfig>(defaultPreferences.postRunReport);
-  const compactRunTiles = ref<CompactRunTileConfig[]>(defaultPreferences.compactRunTiles);
-  const developerItemResearchEnabled = ref(false);
-  const unknownItemAudioPrompt = ref(false);
-  const itemResearchEntries = ref<ItemResearchEntry[]>([]);
+  const logLimit = ref(initial.logLimit);
+  const showCaptureDetails = ref(false);
+  const hideSocketables = ref(initial.hideSocketables);
+  const hideKeys = ref(initial.hideKeys);
+  const hideMaterials = ref(initial.hideMaterials);
+  const hideUnfilteredTimelineItems = ref(initial.hideUnfilteredTimelineItems);
+  const timelineType = ref(initial.timelineType);
+  const gameExecutablePath = ref(initial.gameExecutablePath);
+  const launchThroughSteam = ref(initial.launchThroughSteam);
+  const themeId = ref(initial.themeId);
+  const compactThemeId = ref(initial.compactThemeId);
+  const themeCustomMode = ref(initial.themeCustomMode);
+  const compactThemeCustomMode = ref(initial.compactThemeCustomMode);
+  const compactThemeMatchesApp = ref(initial.compactThemeMatchesApp);
+  const themeAccents = ref(initial.themeAccents);
+  const themeTextures = ref(initial.themeTextures);
+  const compactThemeTextures = ref(initial.compactThemeTextures);
+  const themeForegroundFills = ref(initial.themeForegroundFills);
+  const compactThemeForegroundFills = ref(initial.compactThemeForegroundFills);
+  const themeTokenMaps = ref(initial.themeTokenMaps);
+  const itemFilterGroups = ref(initial.itemFilterGroups);
+  const itemFilterMuted = ref(initial.itemFilterMuted);
+  const customItemFilterSounds = ref(initial.customItemFilterSounds);
+  const postRunReport = ref(initial.postRunReport);
+  const compactRunTiles = ref(initial.compactRunTiles);
+  const hiddenDashboardPanels = ref<Array<"item-timeline" | "live-log">>(
+    initial.hiddenDashboardPanels.filter((panel): panel is "item-timeline" | "live-log" => (
+      panel === "item-timeline" || panel === "live-log"
+    )),
+  );
+  const itemResearchEntries = ref(initial.itemResearchEntries);
 
-  const draftLogLimit = ref(defaultPreferences.logLimit);
-  const draftTimelineLimit = ref(defaultPreferences.timelineLimit);
-  const draftShowCaptureDetails = ref(defaultPreferences.showCaptureDetails);
-  const draftAlwaysOnTop = ref(defaultPreferences.alwaysOnTop);
-  const draftLockCompactLocation = ref(defaultPreferences.lockCompactLocation);
-  const draftHideSocketables = ref(defaultPreferences.hideSocketables);
-  const draftHideKeys = ref(defaultPreferences.hideKeys);
-  const draftHideMaterials = ref(defaultPreferences.hideMaterials);
-  const draftDeveloperItemResearchEnabled = ref(defaultPreferences.developerItemResearchEnabled);
-  const draftUnknownItemAudioPrompt = ref(defaultPreferences.unknownItemAudioPrompt);
-  const draftTimelineType = ref(defaultPreferences.timelineType);
-  const draftGameExecutablePath = ref(defaultPreferences.gameExecutablePath);
-  const draftLaunchThroughSteam = ref(defaultPreferences.launchThroughSteam);
-  const draftThemeId = ref<ThemeId>(defaultPreferences.themeId);
-  const draftCompactThemeId = ref<ThemeId>(defaultPreferences.compactThemeId);
-  const draftThemeAccents = ref<ThemeAccentMap>({ ...DEFAULT_THEME_ACCENTS });
-  const draftThemeTextures = ref<ThemeTextureMap>({ ...defaultPreferences.themeTextures });
-  const draftCompactThemeTextures = ref<ThemeTextureMap>({ ...defaultPreferences.compactThemeTextures });
-  const draftThemeForegroundFills = ref<ThemeForegroundFillMap>({ ...defaultPreferences.themeForegroundFills });
-  const draftCompactThemeForegroundFills = ref<ThemeForegroundFillMap>({ ...defaultPreferences.compactThemeForegroundFills });
-  const draftThemeTokenMaps = ref<ThemeTokenMaps>({ ...defaultPreferences.themeTokenMaps });
-  const draftCaptureDebugLogging = ref(DEFAULT_CAPTURE_PREFERENCES.captureDebugLogging);
-  const draftCapturePayloadLogging = ref(DEFAULT_CAPTURE_PREFERENCES.capturePayloadLogging);
-  const draftCaptureWideLogging = ref(DEFAULT_CAPTURE_PREFERENCES.captureWideLogging);
-  const draftSatanicZoneDebugLogging = ref(DEFAULT_CAPTURE_PREFERENCES.satanicZoneDebugLogging);
-  const draftSatanicZoneRefreshEnabled = ref(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled);
-  const draftSkipEmptyRuns = ref(DEFAULT_RUN_ARCHIVE_PREFERENCES.skipEmptyRuns);
-  const draftMinRunDurationMinutes = ref(DEFAULT_RUN_ARCHIVE_PREFERENCES.minDurationMinutes);
-
-  const configIncludeAppSettings = ref(true);
-  const configIncludeRunSaving = ref(true);
-  const configIncludeReportTracking = ref(true);
-  const configIncludeLootFilters = ref(true);
-  const configIncludeSounds = ref(true);
-  const configIncludeItemResearch = ref(false);
-
-  const preferenceWatchSources: Array<Ref<unknown>> = [
-    logLimit,
-    timelineLimit,
-    showCaptureDetails,
-    alwaysOnTop,
-    lockCompactLocation,
+  const preferenceWatchSources: Ref<unknown>[] = [
     hideSocketables,
     hideKeys,
     hideMaterials,
+    hideUnfilteredTimelineItems,
     timelineType,
     gameExecutablePath,
     launchThroughSteam,
     themeId,
     compactThemeId,
+    themeCustomMode,
+    compactThemeCustomMode,
+    compactThemeMatchesApp,
     themeAccents,
     themeTextures,
     compactThemeTextures,
@@ -193,28 +74,26 @@ export function useAppPreferences(): AppPreferencesState {
     customItemFilterSounds,
     postRunReport,
     compactRunTiles,
-    developerItemResearchEnabled,
-    unknownItemAudioPrompt,
+    hiddenDashboardPanels,
     itemResearchEntries,
   ];
 
   function currentPreferences(shoppingListItems: string[]): UiPreferences {
-    return {
-      schemaVersion: UI_PREFERENCES_SCHEMA_VERSION,
-      logLimit: logLimit.value,
-      timelineLimit: timelineLimit.value,
-      showCaptureDetails: showCaptureDetails.value,
-      alwaysOnTop: alwaysOnTop.value,
-      lockCompactLocation: lockCompactLocation.value,
+    return normalizePreferences({
+      ...defaultPreferences,
       hideSocketables: hideSocketables.value,
       hideKeys: hideKeys.value,
       hideMaterials: hideMaterials.value,
+      hideUnfilteredTimelineItems: hideUnfilteredTimelineItems.value,
       timelineType: timelineType.value,
       shoppingListItems,
       gameExecutablePath: gameExecutablePath.value,
       launchThroughSteam: launchThroughSteam.value,
       themeId: themeId.value,
       compactThemeId: compactThemeId.value,
+      themeCustomMode: themeCustomMode.value,
+      compactThemeCustomMode: compactThemeCustomMode.value,
+      compactThemeMatchesApp: compactThemeMatchesApp.value,
       themeAccents: themeAccents.value,
       themeTextures: themeTextures.value,
       compactThemeTextures: compactThemeTextures.value,
@@ -226,167 +105,63 @@ export function useAppPreferences(): AppPreferencesState {
       customItemFilterSounds: customItemFilterSounds.value,
       postRunReport: postRunReport.value,
       compactRunTiles: compactRunTiles.value,
-      developerItemResearchEnabled: developerItemResearchEnabled.value,
-      unknownItemAudioPrompt: unknownItemAudioPrompt.value,
+      hiddenDashboardPanels: hiddenDashboardPanels.value,
       itemResearchEntries: itemResearchEntries.value,
-    };
+    });
   }
 
   function applyPreferences(preferences: UiPreferences): void {
-    logLimit.value = preferences.logLimit;
-    timelineLimit.value = preferences.timelineLimit;
-    showCaptureDetails.value = preferences.showCaptureDetails;
-    alwaysOnTop.value = preferences.alwaysOnTop;
-    lockCompactLocation.value = preferences.lockCompactLocation;
-    hideSocketables.value = preferences.hideSocketables;
-    hideKeys.value = preferences.hideKeys;
-    hideMaterials.value = preferences.hideMaterials;
-    timelineType.value = preferences.timelineType;
-    gameExecutablePath.value = preferences.gameExecutablePath;
-    launchThroughSteam.value = preferences.launchThroughSteam;
-    themeId.value = preferences.themeId;
-    compactThemeId.value = preferences.compactThemeId;
-    themeAccents.value = preferences.themeAccents;
-    themeTextures.value = preferences.themeTextures;
-    compactThemeTextures.value = preferences.compactThemeTextures;
-    themeForegroundFills.value = preferences.themeForegroundFills;
-    compactThemeForegroundFills.value = preferences.compactThemeForegroundFills;
-    themeTokenMaps.value = preferences.themeTokenMaps;
-    itemFilterGroups.value = preferences.itemFilterGroups;
-    itemFilterMuted.value = preferences.itemFilterMuted;
-    customItemFilterSounds.value = preferences.customItemFilterSounds;
-    postRunReport.value = preferences.postRunReport;
-    compactRunTiles.value = preferences.compactRunTiles;
-    developerItemResearchEnabled.value = preferences.developerItemResearchEnabled;
-    unknownItemAudioPrompt.value = preferences.unknownItemAudioPrompt;
-    itemResearchEntries.value = preferences.itemResearchEntries;
+    const next = normalizePreferences(preferences);
+    logLimit.value = next.logLimit;
+    showCaptureDetails.value = false;
+    hideSocketables.value = next.hideSocketables;
+    hideKeys.value = next.hideKeys;
+    hideMaterials.value = next.hideMaterials;
+    hideUnfilteredTimelineItems.value = next.hideUnfilteredTimelineItems;
+    timelineType.value = next.timelineType;
+    gameExecutablePath.value = next.gameExecutablePath;
+    launchThroughSteam.value = next.launchThroughSteam;
+    themeId.value = next.themeId;
+    compactThemeId.value = next.compactThemeId;
+    themeCustomMode.value = next.themeCustomMode;
+    compactThemeCustomMode.value = next.compactThemeCustomMode;
+    compactThemeMatchesApp.value = next.compactThemeMatchesApp;
+    themeAccents.value = { ...next.themeAccents };
+    themeTextures.value = { ...next.themeTextures };
+    compactThemeTextures.value = { ...next.compactThemeTextures };
+    themeForegroundFills.value = { ...next.themeForegroundFills };
+    compactThemeForegroundFills.value = { ...next.compactThemeForegroundFills };
+    themeTokenMaps.value = { ...next.themeTokenMaps };
+    customItemFilterSounds.value = normalizeCustomItemFilterSounds(next.customItemFilterSounds);
+    itemFilterGroups.value = normalizeItemFilterGroups(next.itemFilterGroups, customItemFilterSounds.value);
+    itemFilterMuted.value = next.itemFilterMuted;
+    postRunReport.value = normalizePostRunReportConfig(next.postRunReport);
+    compactRunTiles.value = normalizeCompactRunTiles(next.compactRunTiles);
+    hiddenDashboardPanels.value = next.hiddenDashboardPanels.filter((panel): panel is "item-timeline" | "live-log" => (
+      panel === "item-timeline" || panel === "live-log"
+    ));
+    itemResearchEntries.value = [...next.itemResearchEntries];
   }
 
-  function currentDraftPreferences(shoppingListItems: string[]): UiPreferences {
-    return {
-      schemaVersion: UI_PREFERENCES_SCHEMA_VERSION,
-      logLimit: draftLogLimit.value,
-      timelineLimit: draftTimelineLimit.value,
-      showCaptureDetails: draftShowCaptureDetails.value,
-      alwaysOnTop: draftAlwaysOnTop.value,
-      lockCompactLocation: draftLockCompactLocation.value,
-      hideSocketables: draftHideSocketables.value,
-      hideKeys: draftHideKeys.value,
-      hideMaterials: draftHideMaterials.value,
-      timelineType: draftTimelineType.value,
-      shoppingListItems,
-      gameExecutablePath: draftGameExecutablePath.value.trim(),
-      launchThroughSteam: draftLaunchThroughSteam.value,
-      themeId: draftThemeId.value,
-      compactThemeId: draftCompactThemeId.value,
-      themeAccents: draftThemeAccents.value,
-      themeTextures: draftThemeTextures.value,
-      compactThemeTextures: draftCompactThemeTextures.value,
-      themeForegroundFills: draftThemeForegroundFills.value,
-      compactThemeForegroundFills: draftCompactThemeForegroundFills.value,
-      themeTokenMaps: draftThemeTokenMaps.value,
-      itemFilterGroups: itemFilterGroups.value,
-      itemFilterMuted: itemFilterMuted.value,
-      customItemFilterSounds: customItemFilterSounds.value,
-      postRunReport: postRunReport.value,
-      compactRunTiles: compactRunTiles.value,
-      developerItemResearchEnabled: draftDeveloperItemResearchEnabled.value,
-      unknownItemAudioPrompt: draftDeveloperItemResearchEnabled.value && draftUnknownItemAudioPrompt.value,
-      itemResearchEntries: itemResearchEntries.value,
-    };
-  }
-
-  function loadDraftPreferences(
-    preferences: UiPreferences,
-    runArchivePreferences: RunArchivePreferences,
-    capturePreferences: CapturePreferences,
-    satanicZoneRefreshEnabled: boolean,
-  ): void {
-    draftLogLimit.value = preferences.logLimit;
-    draftTimelineLimit.value = preferences.timelineLimit;
-    draftShowCaptureDetails.value = preferences.showCaptureDetails;
-    draftAlwaysOnTop.value = preferences.alwaysOnTop;
-    draftLockCompactLocation.value = preferences.lockCompactLocation;
-    draftHideSocketables.value = preferences.hideSocketables;
-    draftHideKeys.value = preferences.hideKeys;
-    draftHideMaterials.value = preferences.hideMaterials;
-    draftDeveloperItemResearchEnabled.value = preferences.developerItemResearchEnabled;
-    draftUnknownItemAudioPrompt.value = preferences.unknownItemAudioPrompt;
-    draftTimelineType.value = preferences.timelineType;
-    draftGameExecutablePath.value = preferences.gameExecutablePath;
-    draftLaunchThroughSteam.value = preferences.launchThroughSteam;
-    draftThemeId.value = preferences.themeId;
-    draftCompactThemeId.value = preferences.compactThemeId;
-    draftThemeAccents.value = { ...preferences.themeAccents };
-    draftThemeTextures.value = { ...preferences.themeTextures };
-    draftCompactThemeTextures.value = { ...preferences.compactThemeTextures };
-    draftThemeForegroundFills.value = { ...preferences.themeForegroundFills };
-    draftCompactThemeForegroundFills.value = { ...preferences.compactThemeForegroundFills };
-    draftThemeTokenMaps.value = { ...preferences.themeTokenMaps };
-    draftCaptureDebugLogging.value = capturePreferences.captureDebugLogging;
-    draftCapturePayloadLogging.value = capturePreferences.capturePayloadLogging;
-    draftCaptureWideLogging.value = capturePreferences.captureWideLogging;
-    draftSatanicZoneDebugLogging.value = capturePreferences.satanicZoneDebugLogging;
-    draftSatanicZoneRefreshEnabled.value = satanicZoneRefreshEnabled === true;
-    draftSkipEmptyRuns.value = runArchivePreferences.skipEmptyRuns;
-    draftMinRunDurationMinutes.value = runArchivePreferences.minDurationMinutes;
-  }
-
-  function currentDraftRunArchivePreferences(): RunArchivePreferences {
-    return {
-      skipEmptyRuns: draftSkipEmptyRuns.value,
-      minDurationMinutes: normalizeRunDurationMinutes(draftMinRunDurationMinutes.value),
-    };
-  }
-
-  function currentDraftCapturePreferences(): CapturePreferences {
-    return {
-      captureDebugLogging: draftCaptureDebugLogging.value,
-      capturePayloadLogging: draftCaptureDebugLogging.value && draftCapturePayloadLogging.value,
-      captureWideLogging: draftCaptureWideLogging.value,
-      satanicZoneDebugLogging: draftCaptureDebugLogging.value && draftSatanicZoneDebugLogging.value,
-    };
-  }
-
-  function currentDraftSatanicZoneRefreshEnabled(): boolean {
-    return draftSatanicZoneRefreshEnabled.value;
-  }
-
-  function currentConfigurationTransferOptions(): ConfigurationTransferOptions {
-    return {
-      includeAppSettings: configIncludeAppSettings.value,
-      includeRunSaving: configIncludeRunSaving.value,
-      includeReportTracking: configIncludeReportTracking.value,
-      includeLootFilters: configIncludeLootFilters.value,
-      includeSounds: configIncludeSounds.value,
-      includeItemResearch: configIncludeItemResearch.value,
-    };
-  }
-
-  function updateDraftThemeAccent(value: string, targetThemeId = draftThemeId.value): void {
-    const normalized = normalizeThemeAccent(value);
-    if (!normalized) return;
-    draftThemeAccents.value = { ...draftThemeAccents.value, [targetThemeId]: normalized };
-  }
-
-  function updatePostRunReportConfig(value: PostRunReportConfig): void {
-    postRunReport.value = normalizePostRunReportConfig(value);
+  function updatePostRunReportConfig(next: PostRunReportConfig): void {
+    postRunReport.value = normalizePostRunReportConfig(next);
   }
 
   return {
     logLimit,
-    timelineLimit,
     showCaptureDetails,
-    alwaysOnTop,
-    lockCompactLocation,
     hideSocketables,
     hideKeys,
     hideMaterials,
+    hideUnfilteredTimelineItems,
     timelineType,
     gameExecutablePath,
     launchThroughSteam,
     themeId,
     compactThemeId,
+    themeCustomMode,
+    compactThemeCustomMode,
+    compactThemeMatchesApp,
     themeAccents,
     themeTextures,
     compactThemeTextures,
@@ -398,53 +173,11 @@ export function useAppPreferences(): AppPreferencesState {
     customItemFilterSounds,
     postRunReport,
     compactRunTiles,
-    developerItemResearchEnabled,
-    unknownItemAudioPrompt,
+    hiddenDashboardPanels,
     itemResearchEntries,
-    draftLogLimit,
-    draftTimelineLimit,
-    draftShowCaptureDetails,
-    draftAlwaysOnTop,
-    draftLockCompactLocation,
-    draftHideSocketables,
-    draftHideKeys,
-    draftHideMaterials,
-    draftDeveloperItemResearchEnabled,
-    draftUnknownItemAudioPrompt,
-    draftTimelineType,
-    draftGameExecutablePath,
-    draftLaunchThroughSteam,
-    draftThemeId,
-    draftCompactThemeId,
-    draftThemeAccents,
-    draftThemeTextures,
-    draftCompactThemeTextures,
-    draftThemeForegroundFills,
-    draftCompactThemeForegroundFills,
-    draftThemeTokenMaps,
-    draftCaptureDebugLogging,
-    draftCapturePayloadLogging,
-    draftCaptureWideLogging,
-    draftSatanicZoneDebugLogging,
-    draftSatanicZoneRefreshEnabled,
-    draftSkipEmptyRuns,
-    draftMinRunDurationMinutes,
-    configIncludeAppSettings,
-    configIncludeRunSaving,
-    configIncludeReportTracking,
-    configIncludeLootFilters,
-    configIncludeSounds,
-    configIncludeItemResearch,
     preferenceWatchSources,
     currentPreferences,
     applyPreferences,
-    currentDraftPreferences,
-    loadDraftPreferences,
-    currentDraftRunArchivePreferences,
-    currentDraftCapturePreferences,
-    currentDraftSatanicZoneRefreshEnabled,
-    currentConfigurationTransferOptions,
-    updateDraftThemeAccent,
     updatePostRunReportConfig,
   };
 }

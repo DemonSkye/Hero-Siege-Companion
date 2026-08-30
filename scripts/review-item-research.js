@@ -4,11 +4,16 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const ITEM_LOOKUP_PATH = path.join(ROOT, "src", "shared", "item-lookup.ts");
 const STACK_LOOKUP_PATH = path.join(ROOT, "src", "shared", "stack-item-lookup.ts");
+const ITEM_CATALOG_PATH = path.join(ROOT, "src", "shared", "item-catalog.ts");
 const STACK_TYPES = new Set([12, 13, 14, 15]);
-const POTENTIALLY_GENERATED_NORMAL_EQUIPMENT_TYPES = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 10]);
 const REPOSITORIES = new Set(["normal", "unique", "runeword", "unknown"]);
 const CLASSIFICATIONS = new Set(["unknown-normal", "stack-item", "material-collectible", "generated-placeholder", "known-missing-icon"]);
 const GENERIC_LABEL_PATTERN = /(?:^|\s)(?:type|item|weapon|helmet|chest|boots|gloves|amulet|shield|ring|belt|charm|consumable|vial|collectible|material|relic|socketable|key|sword|dagger|mace|axe|claw|polearm|chainsaw|staff|cane|wand|book|spellblade|bow|gun|flask|throwing|novelty)(?:\s+type)?(?:\s+\d+)?\s+#\d+/i;
+
+const {
+  activeItemCatalog,
+  requiresItemIdentification,
+} = loadSharedItemCatalog();
 
 function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
@@ -114,7 +119,8 @@ function normalizeEntry(entry, filePath) {
   };
 }
 
-function buildResearchReview(files) {
+function buildResearchReview(files, options = {}) {
+  const catalogResolver = options.catalogResolver ?? activeItemCatalog;
   const existing = readExistingLookupIndex();
   const groups = new Map();
   const noisyEntries = [];
@@ -184,10 +190,38 @@ function buildResearchReview(files) {
       continue;
     }
 
-    if (isPotentiallyGeneratedNormalEquipmentGroup(group, existing)) {
+    const catalogResolution = resolveCatalogGroup(group, classification, catalogResolver);
+    if (catalogResolution.status === "resolved") {
+      const catalogName = catalogDefinitionName(catalogResolution.definition);
+      if (catalogResolution.definition.identityMode === "seeded") {
+        noisyEntries.push({
+          entry: group.entries[0],
+          reason: "seeded catalog identity; rolled names are instance-specific",
+        });
+        continue;
+      }
+
+      const catalogNameKey = normalizeNameKey(catalogName);
+      const conflictingNames = resolvedKeys.filter((nameKey) => nameKey !== catalogNameKey);
+      if (conflictingNames.length > 0) {
+        conflicts.push(groupSummary(
+          group,
+          `resolved name conflicts with catalog identity: ${catalogName}`,
+        ));
+      } else {
+        alreadyKnown.push({
+          ...groupSummary(group, "already known from generated catalog"),
+          resolvedName: catalogName,
+          existingName: catalogName,
+        });
+      }
+      continue;
+    }
+
+    if (!requiresItemIdentification(catalogResolution)) {
       noisyEntries.push({
         entry: group.entries[0],
-        reason: "normal equipment requires seed-aware/manual identity analysis",
+        reason: `seeded catalog ${catalogResolution.status}; rolled names cannot become fixed lookup suggestions`,
       });
       continue;
     }
@@ -311,12 +345,6 @@ function catalogTargetKey(group) {
   return identityKey(group.repository, group.type, group.id, group.weaponType);
 }
 
-function isPotentiallyGeneratedNormalEquipmentGroup(group, existing) {
-  return group.repository === "normal"
-    && POTENTIALLY_GENERATED_NORMAL_EQUIPMENT_TYPES.has(group.type)
-    && !(existing.byIdentity.get(identityKey(group.repository, group.type, group.id, group.weaponType)) ?? []).length;
-}
-
 function mergeIdentityGroups(groups) {
   if (groups.length === 1) return groups[0];
   const sorted = [...groups].sort(compareGroups);
@@ -422,6 +450,25 @@ function parseLookupRows(source, arrayName, defaultRepository) {
 
 function addExistingLookup(byIdentity, row) {
   byIdentity.set(lookupRowIdentityKey(row), [row.name]);
+}
+
+function resolveCatalogGroup(group, classification, catalogResolver) {
+  const repository = group.repository === "unknown" && classification === "unknown-normal"
+    ? "normal"
+    : group.repository;
+  if (repository === "unknown") {
+    return { status: "unclassified", key: null, reason: "no-domain" };
+  }
+  return catalogResolver.resolve({
+    repository,
+    type: group.type,
+    gameId: group.id,
+    weaponType: group.type === 3 ? group.weaponType : 0,
+  });
+}
+
+function catalogDefinitionName(definition) {
+  return definition.identityMode === "seeded" ? definition.baseName : definition.name;
 }
 
 function lookupRowIdentityKey(row) {
@@ -611,6 +658,29 @@ function parseTsString(value) {
 
 function escapeTsString(value) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function loadSharedItemCatalog() {
+  const typescript = require("typescript");
+  const previousTsLoader = require.extensions[".ts"];
+  require.extensions[".ts"] = (module, filename) => {
+    const source = fs.readFileSync(filename, "utf8");
+    const output = typescript.transpileModule(source, {
+      compilerOptions: {
+        module: typescript.ModuleKind.CommonJS,
+        target: typescript.ScriptTarget.ES2022,
+      },
+      fileName: filename,
+    }).outputText;
+    module._compile(output, filename);
+  };
+
+  try {
+    return require(ITEM_CATALOG_PATH);
+  } finally {
+    if (previousTsLoader) require.extensions[".ts"] = previousTsLoader;
+    else delete require.extensions[".ts"];
+  }
 }
 
 if (require.main === module) {

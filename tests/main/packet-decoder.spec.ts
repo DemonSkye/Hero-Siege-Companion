@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { getPayload, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "../../src/main/packet-decoder";
 import { captureMessages, messageToEvents } from "../../src/shared/parser";
+import { StatsEngine } from "../../src/shared/stats";
 
 interface TcpPacketOptions {
   seq?: number;
@@ -77,6 +78,16 @@ function apiFrame(bodyValue: string | Buffer, token = "9db046d0b41c"): Buffer {
 
 function genericFrame(bodyValue: string | Buffer, token = "7e96"): Buffer {
   return lengthPrefixedFrame(bodyValue, token);
+}
+
+function opaqueGenericFrame(
+  bodyValue: string | Buffer,
+  prefix = Buffer.from([0x81, 0x92, 0xa3, 0xb4]),
+): Buffer {
+  const body = typeof bodyValue === "string" ? Buffer.from(bodyValue, "utf8") : bodyValue;
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(body.length);
+  return Buffer.concat([prefix, header, body]);
 }
 
 function lengthPrefixedFrame(bodyValue: string | Buffer, token: string): Buffer {
@@ -293,6 +304,318 @@ describe("packet decoder", () => {
     expect(completed.map((payload) => payload.packet.seq)).toEqual([8_000, 8_000 + request.length]);
     expect(messageToEvents(captureMessages(completed[0].text))).toEqual([]);
     expect(messageToEvents(captureMessages(completed[1].text))).toHaveLength(1);
+  });
+
+  test("decodes the live inbound response envelope with an opaque four-byte prefix", () => {
+    const responseJson = JSON.stringify({
+      status: "1",
+      message: "success",
+      satanicZoneName: "Act_06_02",
+      buffs: "6|23",
+      debuffs: "13|11",
+    });
+    const body = Buffer.concat([Buffer.from("R"), Buffer.alloc(2), Buffer.from(responseJson)]);
+    const frame = opaqueGenericFrame(body);
+    const completed = new PacketBuffers().push(parsedPayload(frame, { seq: 10_000 }));
+
+    expect(frame).toHaveLength(108);
+    expect([...frame].filter((byte) => byte === 0)).toHaveLength(5);
+    expect(completed.map((payload) => payload.text)).toEqual([`R ${responseJson}`]);
+    expect(messageToEvents(captureMessages(completed[0].text))).toMatchObject([
+      {
+        name: "updateSatanicZone",
+        value: {
+          rawZone: "Act_06_02",
+        },
+      },
+    ]);
+  });
+
+  test("waits for the complete generic header when an opaque prefix is printable", () => {
+    const body = Buffer.concat([Buffer.from([0x01, 0, 0]), Buffer.from('{"gold":100}')]);
+    const frame = opaqueGenericFrame(body, Buffer.from("wxyz"));
+
+    for (let splitAt = 1; splitAt < 8; splitAt += 1) {
+      const buffers = new PacketBuffers();
+      expect(buffers.push(parsedPayload(frame.subarray(0, splitAt), {
+        seq: 11_000,
+        flags: 0x10,
+      })), `split at byte ${splitAt}`).toEqual([]);
+      expect(buffers.push(parsedPayload(frame.subarray(splitAt), {
+        seq: 11_000 + splitAt,
+      })).map((payload) => payload.text), `split at byte ${splitAt}`).toEqual([
+        '\u0001 {"gold":100}',
+      ]);
+    }
+  });
+
+  test("reassembles a live-shaped Zeus pickup and records it in the item timeline", () => {
+    const fingerprint = "10-3909410-659df5d59c0a70003-1";
+    const responseJson = JSON.stringify({
+      status: 1,
+      message: "Success on inventory update ext",
+      goldAmount: 0,
+      operations: {
+        add: {
+          [fingerprint]: {
+            d: 4,
+            b: 15,
+            c: 1,
+            e: 11,
+            price: 603,
+            m: 1,
+            j: 0,
+            stats: {
+              154: 136,
+              179: 75,
+              147: 5,
+              rarity: 6,
+              180: 8,
+              29: 147,
+              20: 4,
+              tier: 3,
+              146: 10,
+              145: 17,
+            },
+            mask: 1073745935,
+            a: 560494998,
+            sh: "450ee7c568b2",
+          },
+        },
+        log_ids: {
+          [fingerprint]: {
+            m: "1073745935",
+            a: 2,
+          },
+        },
+      },
+      newHashes: {},
+    });
+    const body = Buffer.concat([Buffer.from([0x01, 0, 0]), Buffer.from(responseJson)]);
+    const frame = opaqueGenericFrame(body);
+    const splitAt = 7;
+    const inboundFlow = {
+      src: "198.58.103.158",
+      srcPort: 6669,
+      dst: "192.168.1.154",
+      dstPort: 57769,
+    };
+    const buffers = new PacketBuffers();
+
+    expect(frame).toHaveLength(426);
+    expect([...frame].filter((byte) => byte === 0)).toHaveLength(4);
+    expect(buffers.push(parsedPayload(frame.subarray(0, splitAt), {
+      ...inboundFlow,
+      seq: 13_000,
+      flags: 0x10,
+    }))).toEqual([]);
+    const completed = buffers.push(parsedPayload(frame.subarray(splitAt), {
+      ...inboundFlow,
+      seq: 13_000 + splitAt,
+    }));
+    const events = messageToEvents(captureMessages(completed[0].text));
+    const snapshot = new StatsEngine().applyEvents(events);
+
+    expect(completed).toHaveLength(1);
+    expect(events).toMatchObject([
+      {
+        name: "itemAdded",
+        value: {
+          source: "inventory",
+          repository: "unique",
+          fingerprint,
+          label: "Zeus' Body Armor",
+          id: 15,
+          type: 1,
+          weaponType: 0,
+          rarityName: "Set",
+        },
+      },
+    ]);
+    expect(snapshot.itemTimeline).toMatchObject([
+      {
+        source: "inventory",
+        repository: "unique",
+        rarity: "Set",
+        label: "Zeus' Body Armor",
+        id: 15,
+        type: 1,
+        weaponType: 0,
+        fingerprint,
+      },
+    ]);
+    expect(snapshot.items.Set.total).toBe(1);
+  });
+
+  test("does not lock onto an incomplete hex suffix while looking for a frame boundary", () => {
+    const buffers = new PacketBuffers();
+    const prefix = Buffer.from("unframed dead");
+    const json = Buffer.from('\0{"gold":100}\0');
+
+    expect(buffers.push(parsedPayload(prefix, { seq: 14_000, flags: 0x10 }))).toEqual([]);
+    expect(buffers.push(parsedPayload(json, { seq: 14_000 + prefix.length })).map((payload) => payload.text)).toEqual([
+      '{"gold":100}',
+    ]);
+  });
+
+  test("recovers from legacy-looking noise into a later opaque Zeus response", () => {
+    const noise = Buffer.from("legacy-looking bytes without a delimiter");
+    const fingerprint = "10-3909410-659df5d59c0a70003-1";
+    const responseJson = JSON.stringify({
+      operations: {
+        add: {
+          [fingerprint]: {
+            d: 4,
+            b: 15,
+            c: 1,
+            e: 11,
+            a: 560494998,
+          },
+        },
+      },
+    });
+    const body = Buffer.concat([Buffer.from([0x01, 0, 0]), Buffer.from(responseJson)]);
+    const frame = opaqueGenericFrame(body, Buffer.from("wxyz"));
+    const frameSequence = 15_000 + noise.length;
+
+    for (let splitAt = 1; splitAt < 8; splitAt += 1) {
+      const buffers = new PacketBuffers();
+      expect(buffers.push(parsedPayload(noise, { seq: 15_000, flags: 0x10 })), `split at byte ${splitAt}`).toEqual([]);
+      expect(buffers.push(parsedPayload(frame.subarray(0, splitAt), {
+        seq: frameSequence,
+        flags: 0x10,
+      })), `split at byte ${splitAt}`).toEqual([]);
+      expect(buffers.push(parsedPayload(frame.subarray(splitAt, 8), {
+        seq: frameSequence + splitAt,
+        flags: 0x10,
+      })), `split at byte ${splitAt}`).toEqual([]);
+      const completed = buffers.push(parsedPayload(frame.subarray(8), {
+        seq: frameSequence + 8,
+      }));
+      const events = messageToEvents(captureMessages(completed[0].text));
+
+      expect(completed, `split at byte ${splitAt}`).toHaveLength(1);
+      expect(completed[0].packet.seq, `split at byte ${splitAt}`).toBe(frameSequence);
+      expect(events, `split at byte ${splitAt}`).toMatchObject([
+        {
+          name: "itemAdded",
+          value: {
+            fingerprint,
+            label: "Zeus' Body Armor",
+            rarityName: "Set",
+          },
+        },
+      ]);
+    }
+  });
+
+  test("rechecks the current packet boundary after rejecting an old tentative header", () => {
+    const buffers = new PacketBuffers();
+    const noise = Buffer.from("legacy noise");
+    const shortContinuation = Buffer.from("xy");
+    const body = Buffer.concat([Buffer.from([0x01, 0, 0]), Buffer.from('{"gold":100}')]);
+    const frame = opaqueGenericFrame(body, Buffer.from("wxyz"));
+    const frameSequence = 16_000 + noise.length + shortContinuation.length;
+
+    expect(buffers.push(parsedPayload(noise, { seq: 16_000, flags: 0x10 }))).toEqual([]);
+    expect(buffers.push(parsedPayload(shortContinuation, {
+      seq: 16_000 + noise.length,
+      flags: 0x10,
+    }))).toEqual([]);
+    const completed = buffers.push(parsedPayload(frame, { seq: frameSequence }));
+
+    expect(completed.map((payload) => payload.text)).toEqual(['\u0001 {"gold":100}']);
+    expect(completed[0].packet.seq).toBe(frameSequence);
+  });
+
+  test("recovers account and currency frames after capture restarts mid-frame on a plausible opaque length", () => {
+    for (const prefix of [Buffer.from("wxyz"), Buffer.from([0x81, 0x92, 0xa3, 0xb4])]) {
+      const buffers = new PacketBuffers();
+      const falseHeader = Buffer.alloc(8);
+      prefix.copy(falseHeader);
+      falseHeader.writeUInt32LE(1_000, 4);
+      const midFrame = Buffer.concat([falseHeader, Buffer.alloc(900, 0x61)]);
+      const accountFrame = opaqueGenericFrame(
+        Buffer.concat([
+          Buffer.from([0x01, 0, 0]),
+          Buffer.from(JSON.stringify({ name: "Dante", experience: 5, season: 11, hardcore: 0 })),
+        ]),
+        prefix,
+      );
+      const currencyFrame = opaqueGenericFrame(
+        Buffer.concat([Buffer.from([0x01, 0, 0]), Buffer.from(JSON.stringify({ currencyData: { GSS: 100 } }))]),
+        prefix,
+      );
+      const accountSequence = 17_000 + midFrame.length;
+      const currencySequence = accountSequence + accountFrame.length;
+
+      expect(buffers.push(parsedPayload(midFrame, { seq: 17_000, flags: 0x10 }))).toEqual([]);
+      const accountPayloads = buffers.push(parsedPayload(accountFrame, { seq: accountSequence }));
+      const currencyPayloads = buffers.push(parsedPayload(currencyFrame, { seq: currencySequence }));
+
+      expect(accountPayloads, `prefix ${prefix.toString("hex")}`).toHaveLength(1);
+      expect(accountPayloads[0].packet.seq, `prefix ${prefix.toString("hex")}`).toBe(accountSequence);
+      expect(currencyPayloads, `prefix ${prefix.toString("hex")}`).toHaveLength(1);
+      expect(currencyPayloads[0].packet.seq, `prefix ${prefix.toString("hex")}`).toBe(currencySequence);
+
+      const events = [...accountPayloads, ...currencyPayloads].flatMap((payload) => messageToEvents(captureMessages(payload.text)));
+      expect(events, `prefix ${prefix.toString("hex")}`).toMatchObject([
+        { name: "updateAccount", value: { name: "Dante", seasonMode: "GSS" } },
+        { name: "updateGold", value: { GSS: 100 } },
+      ]);
+
+      const stats = new StatsEngine();
+      const snapshot = stats.applyEvents(events);
+      expect(snapshot.accountName, `prefix ${prefix.toString("hex")}`).toBe("Dante");
+      expect(snapshot.totalGold, `prefix ${prefix.toString("hex")}`).toBe(100);
+      expect(buffers.stats(), `prefix ${prefix.toString("hex")}`).toEqual({
+        streams: 1,
+        pendingSegments: 0,
+        bufferedBytes: 0,
+      });
+    }
+  });
+
+  test("rejects a complete opaque false frame before recovering the next packet boundary", () => {
+    const buffers = new PacketBuffers();
+    const falseBody = Buffer.alloc(24, 0x7a);
+    const falseFrame = opaqueGenericFrame(falseBody, Buffer.from("wxyz"));
+    const accountFrame = opaqueGenericFrame(
+      Buffer.concat([
+        Buffer.from([0x01, 0, 0]),
+        Buffer.from(JSON.stringify({ name: "Dante", experience: 5, season: 11, hardcore: 0 })),
+      ]),
+      Buffer.from("wxyz"),
+    );
+    const accountSequence = 18_000 + falseFrame.length;
+
+    expect(buffers.push(parsedPayload(falseFrame, { seq: 18_000, flags: 0x10 }))).toEqual([]);
+    const completed = buffers.push(parsedPayload(accountFrame, { seq: accountSequence }));
+
+    expect(completed.map((payload) => payload.text)).toEqual([
+      `\u0001 ${JSON.stringify({ name: "Dante", experience: 5, season: 11, hardcore: 0 })}`,
+    ]);
+    expect(completed[0].packet.seq).toBe(accountSequence);
+    expect(messageToEvents(captureMessages(completed[0].text))).toMatchObject([
+      { name: "updateAccount", value: { name: "Dante", seasonMode: "GSS" } },
+    ]);
+    expect(buffers.stats().bufferedBytes).toBe(0);
+  });
+
+  test("rejects zero and oversized opaque response lengths without losing later legacy JSON", () => {
+    for (const bodyLength of [0, 64 * 1024 + 1]) {
+      const length = Buffer.alloc(4);
+      length.writeUInt32LE(bodyLength);
+      const malformed = Buffer.concat([
+        Buffer.from([0x81, 0x92, 0xa3, 0xb4]),
+        length,
+        Buffer.from('\0{"gold":100}\0'),
+      ]);
+
+      expect(new PacketBuffers().push(parsedPayload(malformed)).map((payload) => payload.text)).toEqual([
+        '{"gold":100}',
+      ]);
+    }
   });
 
   test("keeps ordinary current API routes that include the protocol marker", () => {

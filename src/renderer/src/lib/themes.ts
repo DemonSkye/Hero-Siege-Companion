@@ -179,6 +179,21 @@ export function effectiveThemeForegroundFill(themeId: ThemeId, fills: ThemeForeg
   return fills[themeId] ?? DEFAULT_THEME_FOREGROUND_FILLS[themeId];
 }
 
+export function themeHasCustomization(
+  themeId: ThemeId,
+  accents: ThemeAccentMap,
+  tokenMaps: ThemeTokenMaps = {},
+  textureMaps: ThemeTextureMap = {},
+  foregroundFillMaps: ThemeForegroundFillMap = {},
+): boolean {
+  return (
+    accents[themeId] !== DEFAULT_THEME_ACCENTS[themeId]
+    || effectiveThemeTexture(themeId, textureMaps) !== DEFAULT_THEME_TEXTURES[themeId]
+    || effectiveThemeForegroundFill(themeId, foregroundFillMaps) !== DEFAULT_THEME_FOREGROUND_FILLS[themeId]
+    || Object.keys(normalizeThemeTokens(tokenMaps[themeId])).length > 0
+  );
+}
+
 export function normalizeThemeTokenMaps(value: unknown): ThemeTokenMaps {
   const source = isRecord(value) ? value : {};
   const next: ThemeTokenMaps = {};

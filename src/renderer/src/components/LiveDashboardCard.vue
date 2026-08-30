@@ -5,6 +5,11 @@ const props = defineProps<{
   id: string;
   title: string;
   panelClass?: string;
+  hideable?: boolean;
+}>();
+
+defineEmits<{
+  hide: [];
 }>();
 
 const collapsed = ref(false);
@@ -13,7 +18,7 @@ const toggleLabel = computed(() => `${collapsed.value ? "Expand" : "Collapse"} $
 </script>
 
 <template>
-  <article :class="['panel', 'live-dashboard-card', panelClass, { collapsed }]">
+  <article :id="id" :class="['panel', 'live-dashboard-card', panelClass, { collapsed }]">
     <div class="panel-heading live-dashboard-card-heading">
       <div class="live-dashboard-card-title">
         <p class="eyebrow"><slot name="eyebrow"></slot></p>
@@ -21,6 +26,16 @@ const toggleLabel = computed(() => `${collapsed.value ? "Expand" : "Collapse"} $
       </div>
       <div class="live-dashboard-card-actions">
         <slot name="actions"></slot>
+        <button
+          v-if="hideable"
+          class="dashboard-card-hide"
+          type="button"
+          :aria-label="`Hide ${title}`"
+          :title="`Hide ${title}`"
+          @click="$emit('hide')"
+        >
+          Hide
+        </button>
         <button
           class="dashboard-card-toggle"
           type="button"

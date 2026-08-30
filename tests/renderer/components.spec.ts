@@ -12,11 +12,10 @@ import PastRunReportConfigModal from "../../src/renderer/src/components/PastRunR
 import SettingsModal from "../../src/renderer/src/components/SettingsModal.vue";
 import UpdateBanner from "../../src/renderer/src/components/UpdateBanner.vue";
 import WhatsNewPrompt from "../../src/renderer/src/components/WhatsNewPrompt.vue";
-import { defaultCompactRunTiles } from "../../src/renderer/src/lib/compact-tiles";
 import { TRANSPARENT_PIXEL_URL } from "../../src/renderer/src/lib/item-assets";
 import { itemTimelineKey } from "../../src/renderer/src/lib/item-filters";
 import { defaultPostRunReportConfig, withPostRunReportSummaryItems } from "../../src/renderer/src/lib/report-config";
-import { DEFAULT_THEME_ACCENTS, THEME_OPTIONS } from "../../src/renderer/src/lib/themes";
+import { THEME_OPTIONS } from "../../src/renderer/src/lib/themes";
 import { WHATS_NEW_RELEASE } from "../../src/renderer/src/lib/whats-new";
 import { baseTime, companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
 
@@ -25,18 +24,29 @@ describe("Vue component contracts", () => {
     const wrapper = mount(AppTitlebar, {
       props: {
         compactMode: true,
+        fullWindowPinned: false,
       },
     });
 
+    expect(wrapper.findAll(".window-controls button")).toHaveLength(4);
+
     await wrapper.get('button[aria-label="Exit compact mode"]').trigger("click");
-    await wrapper.get('button[aria-label="Settings"]').trigger("click");
+    await wrapper.get('button[aria-label="Customize compact mode"]').trigger("click");
     await wrapper.get('button[aria-label="Minimize"]').trigger("click");
     await wrapper.get('button[aria-label="Close"]').trigger("click");
 
     expect(wrapper.emitted("toggle-compact-mode")).toHaveLength(1);
-    expect(wrapper.emitted("open-compact-settings")).toHaveLength(1);
+    expect(wrapper.emitted("open-compact-customization")).toHaveLength(1);
     expect(wrapper.emitted("minimize-window")).toHaveLength(1);
     expect(wrapper.emitted("close-window")).toHaveLength(1);
+
+    await wrapper.setProps({ compactMode: false });
+    expect(wrapper.findAll(".window-controls button")).toHaveLength(5);
+    await wrapper.get('button[aria-label="Pin window on top"]').trigger("click");
+    await wrapper.get('button[aria-label="Maximize or restore"]').trigger("click");
+
+    expect(wrapper.emitted("toggle-full-window-pinned")).toHaveLength(1);
+    expect(wrapper.emitted("toggle-maximize-window")).toHaveLength(1);
   });
 
   test("LiveSessionHeader exposes primary live-session actions", async () => {
@@ -239,107 +249,92 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
   });
 
-  test("ItemFilterView exercises group editing, mute state, suggestions, and rule toggles", async () => {
+  test("ItemFilterView exposes the collapsible Filter Stack and contextual pack and sound actions", async () => {
     const group = itemFilterGroup();
-    const researchEntry = {
-      signature: "4:55:0:gloves #55",
-      label: "Gloves #55",
-      rarity: "Satanic",
-      repository: "unique",
-      type: 4,
-      id: 55,
-      weaponType: 0,
-      dropQuality: 0,
-      classification: "unknown-normal",
-      count: 1,
-      firstSeenAt: Date.now(),
-      lastSeenAt: Date.now(),
-      resolvedName: "",
-      notes: "",
-      ignored: false,
+    const customSound = {
+      id: "custom-sound:boss",
+      name: "Boss Drop",
+      fileName: "boss.wav",
+      src: "file:///sounds/boss.wav",
     };
     const wrapper = mount(ItemFilterView, {
       attachTo: document.body,
       props: {
         itemFilterGroups: [group],
         recoverableCompactFilterGroups: [{ id: "merc-items", name: "Merc Items", tileCount: 1 }],
-        itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }, { id: "deep-gong", name: "Deep Gong" }],
+        itemFilterSounds: [
+          { id: "crystal-tink", name: "Crystal Tink" },
+          { id: "deep-gong", name: "Deep Gong" },
+          { id: customSound.id, name: customSound.name },
+        ],
+        customItemFilterSounds: [customSound],
         selectedItemFilterGroup: group,
-        selectedItemFilterGroupedItems: [{ typeLabel: "Belt", items: group.items }],
         itemFilterDraftGroupName: "",
         itemFilterDraftItem: "sash",
         itemFilterSuggestions: ["Sash of the Magi"],
         itemTypeOptions: [{ value: "6", label: "Belt" }],
         itemFilterMuted: false,
-        developerItemResearchEnabled: true,
-        itemResearchEntries: [researchEntry],
-        unresolvedItemResearchCount: 1,
       },
     });
 
-    expect(wrapper.text()).toContain("Loot Alerts");
-    expect(wrapper.text()).toContain("Merc Items");
-    expect(wrapper.text()).toContain("Sash of the Magi");
-    expect(wrapper.text()).toContain("Item Research");
-    expect(wrapper.text()).toContain("Gloves #55");
-    expect(wrapper.text()).toContain("Unknown normal item");
+    expect(wrapper.text()).toContain("Filter Stack");
+    expect(wrapper.text()).toContain("On · 1 rarity · 1 type · 1 watched · Crystal Tink");
+    expect(wrapper.text()).not.toContain("Item Research");
 
-    await buttonByText(wrapper, "Mute All").trigger("click");
+    const groupToggle = wrapper.get(".filter-stack-toggle");
+    expect(groupToggle.attributes("aria-expanded")).toBe("true");
+    await groupToggle.trigger("click");
+    expect(groupToggle.attributes("aria-expanded")).toBe("false");
+    expect(wrapper.find(".filter-stack-card-body").exists()).toBe(false);
+    await groupToggle.trigger("click");
+
+    await buttonByText(wrapper, "Mute all").trigger("click");
     await wrapper.get(".item-filter-add-group").trigger("submit");
     await buttonByText(wrapper, "Restore Merc Items").trigger("click");
     await buttonByText(wrapper, "Sash of the Magi").trigger("click");
     await checkboxByLabel(wrapper, "Satanic").setValue(false);
     await checkboxByLabel(wrapper, "Belt").setValue(false);
-    await buttonByText(wrapper, "Export Research JSON").trigger("click");
-    await buttonByText(wrapper, "Export Resolved").trigger("click");
-    await buttonByText(wrapper, "Export Unresolved").trigger("click");
-    const researchInputs = wrapper.findAll(".item-research-row input");
-    await researchInputs[0].setValue("Mystery Thing");
-    expect(wrapper.text()).toContain("Name is not in known item options.");
-    await researchInputs[0].setValue("Sash of the Magi");
-    await researchInputs[1].setValue("confirmed");
-    await buttonByText(wrapper, "Save").trigger("click");
-    await wrapper.setProps({ itemResearchEntries: [{ ...researchEntry, resolvedName: "Sash of the Magi", notes: "confirmed" }] });
-    await buttonByText(wrapper, "Clear Resolved").trigger("click");
-    await buttonByText(wrapper, "Reset").trigger("click");
-    await wrapper.setProps({ itemResearchEntries: [{ ...researchEntry, ignored: true }] });
-    await buttonByText(wrapper, "Clear Ignored").trigger("click");
-    await wrapper.setProps({ itemResearchEntries: [researchEntry] });
-    expect((wrapper.findAll(".item-research-row input")[0].element as HTMLInputElement).value).toBe("");
-    await buttonByText(wrapper, "Remove Group").trigger("click");
+    await buttonByText(wrapper, "Import pack").trigger("click");
+    await buttonByText(wrapper, "Export pack").trigger("click");
 
-    expect(wrapper.text()).toContain('Remove "Loot Alerts"?');
+    await wrapper.get(".filter-stack-utility-toggle").trigger("click");
+    expect(wrapper.text()).toContain("Loot alert sounds");
+    expect(wrapper.text()).toContain("Boss Drop");
+    await buttonByText(wrapper, "Import sounds").trigger("click");
+    await buttonByText(wrapper, "Export soundpack").trigger("click");
+
+    await wrapper.setProps({
+      pendingItemFilterPackImport: {
+        groups: [itemFilterGroup({ id: "shared-drops", name: "Shared Drops" })],
+        sounds: [],
+        unusedSounds: [],
+        missingCustomSoundIds: [],
+      },
+    });
+    await nextTick();
+    expect(wrapper.text()).toContain("Add this pack?");
+    expect(wrapper.text()).toContain("Shared Drops");
+    await buttonByText(wrapper, "Add pack").trigger("click");
+
+    await buttonByText(wrapper, "Remove group").trigger("click");
+    expect(wrapper.text()).toContain('Remove “Loot Alerts”?');
     expect(wrapper.emitted("removeGroup")).toBeUndefined();
     const removeDialog = wrapper.get('[aria-labelledby="remove-filter-group-title"]');
     await nextTick();
     expect(document.activeElement).toBe(removeDialog.element);
-
-    const removeButton = wrapper.get(".item-filter-confirm-remove");
-    const closeButton = wrapper.get('button[aria-label="Cancel remove group"]');
-    (removeButton.element as HTMLButtonElement).focus();
-    await wrapper.get(".modal-backdrop").trigger("keydown", { key: "Tab" });
-    expect(document.activeElement).toBe(closeButton.element);
-    await wrapper.get(".modal-backdrop").trigger("keydown", { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(removeButton.element);
-
-    await removeDialog.trigger("keydown", { key: "Escape" });
-    await nextTick();
-    expect(wrapper.text()).not.toContain('Remove "Loot Alerts"?');
-    expect(document.activeElement).toBe(buttonByText(wrapper, "Remove Group").element);
-
-    await buttonByText(wrapper, "Remove Group").trigger("click");
     await wrapper.get(".item-filter-confirm-remove").trigger("click");
 
     expect(wrapper.emitted("update:itemFilterMuted")).toEqual([[true]]);
+    expect(wrapper.emitted("selectGroup")?.at(-1)).toEqual([group]);
     expect(wrapper.emitted("addGroup")).toHaveLength(1);
     expect(wrapper.emitted("restoreMissingGroup")?.[0]?.[0]).toEqual({ id: "merc-items", name: "Merc Items", tileCount: 1 });
     expect(wrapper.emitted("removeGroup")?.[0]).toEqual([group]);
     expect(wrapper.emitted("addItemToGroup")?.[0]).toEqual([group, "Sash of the Magi"]);
-    expect(wrapper.emitted("exportItemResearch")).toEqual([[], ["resolved"], ["unresolved"]]);
-    expect(wrapper.emitted("saveItemResearchEntry")?.[0]).toEqual(["4:55:0:gloves #55", { resolvedName: "Sash of the Magi", notes: "confirmed" }]);
-    expect(wrapper.emitted("resetItemResearchEntry")?.[0]).toEqual(["4:55:0:gloves #55"]);
-    expect(wrapper.emitted("clearResolvedItemResearchEntries")).toHaveLength(1);
-    expect(wrapper.emitted("clearIgnoredItemResearchEntries")).toHaveLength(1);
+    expect(wrapper.emitted("importFilterPack")).toHaveLength(1);
+    expect(wrapper.emitted("exportFilterPack")).toHaveLength(1);
+    expect(wrapper.emitted("confirmFilterPackImport")).toHaveLength(1);
+    expect(wrapper.emitted("importSounds")).toHaveLength(1);
+    expect(wrapper.emitted("exportSoundpack")).toHaveLength(1);
     expect(wrapper.emitted("updateGroup")).toContainEqual([{ ...group, rarities: [] }]);
     expect(wrapper.emitted("updateGroup")).toContainEqual([{ ...group, types: [] }]);
     expect(group.rarities).toEqual(["Satanic"]);
@@ -357,239 +352,33 @@ describe("Vue component contracts", () => {
         itemFilterGroups: [group],
         itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }, { id: "deep-gong", name: "Deep Gong" }],
         selectedItemFilterGroup: group,
-        selectedItemFilterGroupedItems: [{ typeLabel: "Belt", items: group.items }],
         itemFilterDraftGroupName: "",
         itemFilterDraftItem: "",
         itemFilterSuggestions: [],
         itemTypeOptions: [{ value: "6", label: "Belt" }],
         itemFilterMuted: false,
-        developerItemResearchEnabled: false,
-        itemResearchEntries: [],
-        unresolvedItemResearchCount: 0,
       },
     });
 
-    expect(wrapper.text()).toContain("Enabled · Missing custom sound - uses Crystal Tink");
-    expect(wrapper.text()).toContain("Missing custom sound. Alerts use Crystal Tink until another sound is selected or the sound is re-imported.");
+    expect(wrapper.text()).toContain("On · 1 rarity · 1 type · 1 watched · Crystal Tink fallback");
+    expect(wrapper.text()).toContain("The original custom sound is missing. Alerts use Crystal Tink until you choose another.");
     expect(wrapper.text()).toContain("Uses Crystal Tink until another sound is selected.");
 
-    await wrapper.get('button[aria-label="Play selected group sound"]').trigger("click");
+    await wrapper.get('button[aria-label="Preview Loot Alerts sound"]').trigger("click");
 
     expect(wrapper.emitted("testSound")?.[0]).toEqual(["custom-sound:missing-group", 75]);
   });
 
-  test("ItemFilterView filters item research rows by status, type, and rarity", async () => {
-    const group = itemFilterGroup();
-    const baseEntry = {
-      signature: "4:55:0:gloves #55",
-      label: "Gloves #55",
-      rarity: "Satanic",
-      repository: "unique",
-      type: 4,
-      id: 55,
-      weaponType: 0,
-      dropQuality: 0,
-      classification: "unknown-normal",
-      count: 1,
-      firstSeenAt: Date.now(),
-      lastSeenAt: Date.now(),
-      resolvedName: "",
-      notes: "",
-      ignored: false,
-    };
-    const wrapper = mount(ItemFilterView, {
-      props: {
-        itemFilterGroups: [group],
-        itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }],
-        selectedItemFilterGroup: null,
-        selectedItemFilterGroupedItems: [],
-        itemFilterDraftGroupName: "",
-        itemFilterDraftItem: "",
-        itemFilterSuggestions: [],
-        itemTypeOptions: [{ value: "3", label: "Weapon" }, { value: "4", label: "Gloves" }, { value: "13", label: "Collectible" }],
-        itemFilterMuted: false,
-        developerItemResearchEnabled: true,
-        itemResearchEntries: [
-          baseEntry,
-          { ...baseEntry, signature: "3:10:0:weapon #10", label: "Weapon #10", type: 3, id: 10, resolvedName: "Mystery Blade" },
-          { ...baseEntry, signature: "13:24:0:collectible #24", label: "Collectible #24", rarity: "Superior", type: 13, id: 24, classification: "material-collectible", ignored: true },
-        ],
-        unresolvedItemResearchCount: 1,
-      },
-    });
-
-    const filters = wrapper.findAll(".item-research-toolbar select");
-    await filters[0].setValue("resolved");
-    expect(wrapper.text()).toContain("Mystery Blade");
-    expect(wrapper.text()).not.toContain("Gloves #55");
-
-    await filters[0].setValue("all");
-    await filters[1].setValue("13");
-    expect(wrapper.text()).toContain("Collectible #24");
-    expect(wrapper.text()).not.toContain("Weapon #10");
-
-    await filters[1].setValue("all");
-    await filters[2].setValue("Satanic");
-    expect(wrapper.text()).toContain("Gloves #55");
-    expect(wrapper.text()).toContain("Mystery Blade");
-    expect(wrapper.text()).not.toContain("Collectible #24");
-  });
-
-  test("ItemFilterView presents known missing icons as maintainer backlog", async () => {
-    const group = itemFilterGroup();
-    const missingIconEntry = {
-      signature: "3:11:0:angel",
-      label: "Angel",
-      rarity: "Set",
-      type: 3,
-      id: 11,
-      dropQuality: 0,
-      classification: "known-missing-icon",
-      count: 1,
-      firstSeenAt: Date.now(),
-      lastSeenAt: Date.now(),
-      resolvedName: "",
-      notes: "",
-      ignored: false,
-    };
-    const wrapper = mount(ItemFilterView, {
-      props: {
-        itemFilterGroups: [group],
-        itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }],
-        selectedItemFilterGroup: null,
-        selectedItemFilterGroupedItems: [],
-        itemFilterDraftGroupName: "",
-        itemFilterDraftItem: "",
-        itemFilterSuggestions: [],
-        itemTypeOptions: [{ value: "3", label: "Weapon" }],
-        itemFilterMuted: false,
-        developerItemResearchEnabled: true,
-        itemResearchEntries: [missingIconEntry],
-        unresolvedItemResearchCount: 0,
-      },
-    });
-
-    expect(wrapper.text()).toContain("0 need naming \u00b7 1 app icon backlog \u00b7 developer notebook");
-    expect(wrapper.find(".item-research-row.missing-icon").exists()).toBe(false);
-    await buttonByText(wrapper, "Show Research").trigger("click");
-    const row = wrapper.get(".item-research-row.missing-icon");
-    expect(row.text()).toContain("App icon missing");
-    expect(row.text()).toContain("No player action needed");
-    expect(row.get("a").attributes("href")).toBe("https://herosiege.wiki.gg/wiki/Angel");
-    expect(row.find('input[placeholder="Actual item name"]').exists()).toBe(false);
-    expect(row.find('input[placeholder="Notes"]').exists()).toBe(false);
-    await buttonByText(wrapper, "Dismiss").trigger("click");
-    expect(wrapper.emitted("ignoreItemResearchEntry")?.[0]).toEqual(["3:11:0:angel"]);
-
-    const filters = wrapper.findAll(".item-research-toolbar select");
-    await filters[0].setValue("unresolved");
-    expect(wrapper.text()).toContain("No research entries match the current filters.");
-    await filters[0].setValue("missing-icon");
-    expect(wrapper.text()).toContain("Angel");
-  });
-
-  test("ItemFilterView presents generated normal and legacy equipment research as no-player-action", async () => {
-    const group = itemFilterGroup();
-    const generatedEntries = [
-      {
-        signature: "normal:0:0:0:0:helmet #0",
-        label: "Helmet #0",
-        rarity: "Unknown",
-        repository: "normal",
-        type: 0,
-        id: 0,
-        weaponType: 0,
-        dropQuality: 0,
-        classification: "unknown-normal",
-        count: 1,
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-        resolvedName: "",
-        notes: "",
-        ignored: false,
-      },
-      {
-        signature: "unknown:10:33:0:0:charm #33",
-        label: "Charm #33",
-        rarity: "Unknown",
-        repository: "unknown",
-        type: 10,
-        id: 33,
-        weaponType: 0,
-        dropQuality: 0,
-        classification: "unknown-normal",
-        count: 1,
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-        resolvedName: "",
-        notes: "",
-        ignored: false,
-      },
-      {
-        signature: "unknown:0:999:0:0:helmet #999",
-        label: "Helmet #999",
-        rarity: "Unknown",
-        repository: "unknown",
-        type: 0,
-        id: 999,
-        weaponType: 0,
-        dropQuality: 0,
-        classification: "unknown-normal",
-        count: 1,
-        firstSeenAt: Date.now(),
-        lastSeenAt: Date.now(),
-        resolvedName: "",
-        notes: "",
-        ignored: false,
-      },
-    ];
-    const wrapper = mount(ItemFilterView, {
-      props: {
-        itemFilterGroups: [group],
-        itemFilterSounds: [{ id: "crystal-tink", name: "Crystal Tink" }],
-        selectedItemFilterGroup: null,
-        selectedItemFilterGroupedItems: [],
-        itemFilterDraftGroupName: "",
-        itemFilterDraftItem: "",
-        itemFilterSuggestions: [],
-        itemTypeOptions: [{ value: "0", label: "Helmet" }, { value: "10", label: "Charm" }],
-        itemFilterMuted: false,
-        developerItemResearchEnabled: true,
-        itemResearchEntries: generatedEntries,
-        unresolvedItemResearchCount: 0,
-      },
-    });
-
-    expect(wrapper.text()).toContain("0 need naming");
-    await buttonByText(wrapper, "Show Research").trigger("click");
-    const rows = wrapper.findAll(".item-research-row.generated-normal");
-    expect(rows).toHaveLength(3);
-    expect(rows.every((row) => row.text().includes("Generated normal item"))).toBe(true);
-    expect(rows.every((row) => row.text().includes("No player action needed"))).toBe(true);
-    expect(rows.every((row) => !row.find('input[placeholder="Actual item name"]').exists())).toBe(true);
-    expect(rows.every((row) => !row.find('input[placeholder="Notes"]').exists())).toBe(true);
-    expect(rows.every((row) => !row.text().includes("Save"))).toBe(true);
-
-    await rows[0].get("button").trigger("click");
-    expect(wrapper.emitted("ignoreItemResearchEntry")?.[0]).toEqual(["normal:0:0:0:0:helmet #0"]);
-
-    const filters = wrapper.findAll(".item-research-toolbar select");
-    await filters[0].setValue("unresolved");
-    expect(wrapper.text()).toContain("No research entries match the current filters.");
-  });
-
-  test("SettingsModal keeps persisted settings explicit and emits application actions", async () => {
+  test("SettingsModal exposes the unified autosaving settings ledger and support actions", async () => {
     const wrapper = mount(SettingsModal, {
       props: {
-        logLimitOptions: [10, 20, 50],
-        itemTypeOptions: [{ value: "6", label: "Belt" }],
-        itemFilterGroups: [itemFilterGroup()],
-        itemSuggestions: ["Sash of the Magi"],
-        themeOptions: THEME_OPTIONS,
-        customItemFilterSounds: [{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }],
+        ...settingsModalProps(),
+        legacyThemeAvailable: true,
+        legacyCompactThemeAvailable: true,
+        legacyResearchAvailable: true,
         supportDiagnostics: [
           "Hero Siege Companion capture diagnostics",
-          "App version: 0.1.6",
+          "App version: 0.2.8",
           "Npcap service: Running",
           "Adapter: \\Device\\NPF_Test",
           "Parser errors: 0",
@@ -618,184 +407,151 @@ describe("Vue component contracts", () => {
             updatedAt: null,
           },
         ],
-        supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\logs",
-        supportBundleBusy: false,
-        whatsNew: WHATS_NEW_RELEASE,
-        logLimit: 20,
-        timelineLimit: 10,
-        timelineType: "all",
-        launchThroughSteam: false,
         gameExecutablePath: "C:\\Games\\Hero Siege\\Hero_Siege.exe",
-        showCaptureDetails: false,
-        captureDebugLogging: true,
-        capturePayloadLogging: false,
-        captureWideLogging: false,
-        satanicZoneDebugLogging: true,
-        satanicZoneRefreshEnabled: false,
-        alwaysOnTop: true,
-        lockCompactLocation: false,
-        hideSocketables: false,
-        hideKeys: false,
-        hideMaterials: false,
-        developerItemResearchEnabled: true,
-        unknownItemAudioPrompt: false,
-        themeId: "dark",
-        compactThemeId: "dark",
-        themeAccents: { ...DEFAULT_THEME_ACCENTS },
-        themeTextures: {},
-        compactThemeTextures: {},
-        themeForegroundFills: {},
-        compactThemeForegroundFills: {},
-        skipEmptyRuns: true,
-        minRunDurationMinutes: 5,
-        configIncludeAppSettings: true,
-        configIncludeRunSaving: true,
-        configIncludeReportTracking: true,
-        configIncludeLootFilters: true,
-        configIncludeSounds: true,
-        configIncludeItemResearch: false,
-        compactRunTiles: defaultCompactRunTiles,
       },
     });
 
-    expect(wrapper.text()).toContain("Settings");
-    await buttonByText(wrapper, "Capture").trigger("click");
-    expect(wrapper.text()).toContain("Verbose packet file");
-    const satanicZoneRefreshCheckbox = checkboxByLabel(wrapper, "Enable manual Satanic Zone refresh");
-    const satanicZoneRefreshNote = wrapper.get("#satanic-zone-refresh-note");
-    expect(satanicZoneRefreshNote.text()).toBe(
-      "Uses a local proxy relay. Enabling or disabling this option while connected will disconnect the game in progress; enable it before joining a game. Some VPNs, system proxy setups, and network-security tools may conflict with it.",
-    );
-    expect(satanicZoneRefreshCheckbox.attributes("aria-describedby")).toBe("satanic-zone-refresh-note");
-    expect(satanicZoneRefreshCheckbox.attributes("aria-label")).toBe("Enable manual Satanic Zone refresh");
-    expect(
-      satanicZoneRefreshCheckbox.element.closest("label")?.querySelector(".info-bubble")?.getAttribute("data-tip"),
-    ).toContain("will disconnect the game in progress");
-    await satanicZoneRefreshCheckbox.setValue(true);
-    await wrapper.get('nav[role="tablist"]').trigger("keydown", { key: "ArrowRight" });
-    expect(wrapper.text()).toContain("Rarity colors stay game-matched.");
+    expect(wrapper.text()).toContain("A small set of app-wide choices");
+    expect(wrapper.text()).toContain("Saved");
+    expect(wrapper.text()).not.toContain("Done");
+    expect(wrapper.text()).not.toContain("Apply");
+    expect(wrapper.text()).not.toContain("Game executable");
 
-    await buttonByText(wrapper, "General").trigger("click");
-    expect((wrapper.get(".path-setting input").element as HTMLInputElement).value).toBe("C:\\Games\\Hero Siege\\Hero_Siege.exe");
-    await wrapper.get('select[title="Visible log history"]').setValue("50");
+    await wrapper.get('input[type="radio"][value="false"]').setValue(true);
+    expect(wrapper.emitted("update:launchThroughSteam")?.[0]).toEqual([false]);
+    await wrapper.setProps({ launchThroughSteam: false });
+    expect((wrapper.get("#settings-game-executable").element as HTMLInputElement).value).toBe("C:\\Games\\Hero Siege\\Hero_Siege.exe");
+    await buttonByText(wrapper, "Browse").trigger("click");
 
-    await buttonByText(wrapper, "Appearance").trigger("click");
-    expect(wrapper.text()).toContain("Rarity colors stay game-matched.");
-    await wrapper.get('select[title="Application theme"]').setValue("cyberpunk");
-    await wrapper.get('input[title="Theme accent color"]').setValue("#00f0ff");
-    await wrapper.get('select[title="Full app background texture"]').setValue("carbon-fiber");
-    await wrapper.get('input[title="Full app foreground fill"]').setValue("62");
-    await wrapper.get('select[title="Compact mode theme"]').setValue("light");
-    await wrapper.get('input[title="Compact theme accent color"]').setValue("#ffffff");
-    await wrapper.get('select[title="Compact background texture"]').setValue("brushed-metal");
-    await wrapper.get('input[title="Compact foreground fill"]').setValue("91");
-    expect(wrapper.text()).toContain("Theme file reference");
-    expect(wrapper.text()).toContain("Export Starter Theme");
-    expect(wrapper.text()).toContain("buttonPrimary");
-    expect(wrapper.text()).toContain("--button-primary");
-    await buttonByText(wrapper, "Export Theme").trigger("click");
-    await buttonByText(wrapper, "Export Starter Theme").trigger("click");
-    await buttonByText(wrapper, "Import Theme").trigger("click");
+    await wrapper.get('[data-settings-section="appearance"]').trigger("click");
+    expect(wrapper.findAll("option").filter((option) => option.text().includes("Legacy Custom"))).toHaveLength(2);
+    await wrapper.get("#settings-app-theme").setValue("cyberpunk");
+    await wrapper.get("#settings-compact-theme").setValue("light");
+    await buttonByText(wrapper, "Reset Themes").trigger("click");
 
-    await buttonByText(wrapper, "Sounds").trigger("click");
-    expect(wrapper.text()).toContain("Loot alert sounds");
-    expect(wrapper.text()).toContain("Boss Drop");
-    await buttonByText(wrapper, "Import Sounds").trigger("click");
-    await buttonByText(wrapper, "Export Soundpack").trigger("click");
-    await wrapper.get('button[aria-label="Remove Boss Drop"]').trigger("click");
+    await wrapper.get('[data-settings-section="features"]').trigger("click");
+    await wrapper.get(".settings-switch input").trigger("change");
+    expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toBeUndefined();
+    expect(wrapper.text()).not.toContain("Exclusive");
+    await buttonByText(wrapper, "Enable SZ Refresh").trigger("click");
+    await buttonByText(wrapper, "Learn More").trigger("click");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("VPNs, system proxies, firewalls, and network-security tools");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("once every 30 seconds");
+    await buttonByText(wrapper, "Close").trigger("click");
 
-    await buttonByText(wrapper, "Import / Export").trigger("click");
-    await checkboxByLabel(wrapper, "Sounds").setValue(false);
-    await checkboxByLabel(wrapper, "Research data").setValue(true);
-    await buttonByText(wrapper, "Import JSON").trigger("click");
-    await buttonByText(wrapper, "Export JSON").trigger("click");
+    await wrapper.get('[data-settings-section="support"]').trigger("click");
+    expect(wrapper.text()).toContain("Backup & Restore");
+    expect(wrapper.text()).toContain("Enhanced diagnostics");
+    expect(wrapper.text()).toContain("Deep diagnostics");
+    await buttonByText(wrapper, "Export Backup").trigger("click");
+    await buttonByText(wrapper, "Restore Backup").trigger("click");
+    await buttonByText(wrapper, "Turn On").trigger("click");
+    await buttonByText(wrapper, "Start 10 min").trigger("click");
+    const deepDisclosure = wrapper.findAll("details").find((details) => details.text().includes("Deep diagnostics"));
+    if (!deepDisclosure) throw new Error("Expected deep diagnostics disclosure");
+    await deepDisclosure.get("summary").trigger("click");
+    await buttonByText(wrapper, "Start 10 min…").trigger("click");
+    expect(wrapper.emitted("setDiagnosticsMode")).toHaveLength(2);
+    await buttonByText(wrapper, "Start 10 Minutes").trigger("click");
+    await buttonByText(wrapper, "Open Log Folder").trigger("click");
+    await buttonByText(wrapper, "Create Support Bundle").trigger("click");
+    await buttonByText(wrapper, "Reset Window Position").trigger("click");
 
-    await buttonByText(wrapper, "Dashboard").trigger("click");
-    expect(wrapper.text()).toContain("Tile presets");
-    expect(wrapper.text()).toContain("Resource Focused");
-    await buttonByText(wrapper, "Add Custom").trigger("click");
-    await buttonByText(wrapper, "Resource Focused").trigger("click");
-    expect(wrapper.text()).toContain("Resource Focused will replace existing custom dashboard tiles.");
-    await buttonByText(wrapper, "Replace").trigger("click");
+    await wrapper.setProps({
+      backupPreview: {
+        sourceVersion: 2,
+        settings: 4,
+        filterGroups: 3,
+        sounds: 2,
+        customThemes: 1,
+        compactTiles: 6,
+        legacyFormat: false,
+      },
+    });
+    await nextTick();
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("3 item filters");
+    await exactButtonByText(wrapper, "Restore Backup").trigger("click");
+    await wrapper.setProps({ backupPreview: null });
 
-    await buttonByText(wrapper, "What's New").trigger("click");
-    expect(wrapper.text()).toContain(`What's New in ${WHATS_NEW_RELEASE.version}`);
+    await buttonByText(wrapper, "Factory Reset").trigger("click");
+    await checkboxByLabel(wrapper, "Also delete item filters").setValue(true);
+    await exactButtonByText(wrapper, "Factory Reset").trigger("click");
+
+    expect(wrapper.text()).toContain(`Hero Siege Companion ${WHATS_NEW_RELEASE.version}`);
     expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.title);
+    expect(wrapper.text()).toContain("Refined Live Session by removing the separate Run Command banner");
+    expect(wrapper.text()).toContain("Added a full-width collapsible Run Pace graph");
+    expect(wrapper.text()).toContain("Redesigned Item Filters as a collapsible Filter Stack");
+    expect(wrapper.text()).toContain("Redesigned Past Runs as Report Desk");
+    expect(wrapper.text()).toContain("Rebuilt Settings as one autosaving");
+    expect(wrapper.text()).toContain("Past Runs now keeps up to 250 meaningful runs");
+    expect(wrapper.text()).toContain("Retired the player-facing Item Research notebook");
     expect(wrapper.text()).toContain("Added experimental manual Satanic Zone refresh.");
-    expect(wrapper.text()).toContain("enabling or disabling it while connected will disconnect the game in progress.");
+    expect(wrapper.text()).toContain("changing it while connected can disconnect the active game.");
     expect(wrapper.text()).toContain("Patched stability issues across capture startup, packet handling, diagnostics, and native shutdown.");
     expect(wrapper.text()).toContain("Updated the tracked Hero Siege season number to Season 11.");
     expect(wrapper.text()).toContain(
-      "Fixed generated item handling so ambiguous charm rarity codes no longer inflate Set totals or trigger manual Identify tasks, while named Satanic and Set charms keep their correct rarity.",
+      "Added automatic item recognition using the game's own item list, so most named drops no longer need to be identified by hand.",
+    );
+    expect(wrapper.text()).toContain(
+      "Fixed ordinary randomly generated items, including charms, being mistaken for Set items. They now show their correct base type and no longer inflate Set totals.",
+    );
+    expect(wrapper.text()).toContain(
+      "Fixed captured item drops disappearing before they reached the timeline, including Satanic and Set items while the optional relay is active.",
+    );
+    expect(wrapper.text()).toContain(
+      "Added the current Act 9 Satanic Zone names, so zones such as Shipwreck Cove no longer appear as raw map codes.",
     );
     expect(wrapper.text()).toContain("Various bug fixes and reliability improvements.");
     expect(wrapper.text()).toContain("Npcap is still required for capture.");
-    expect(WHATS_NEW_RELEASE.items).toHaveLength(6);
+    expect(WHATS_NEW_RELEASE.items).toHaveLength(17);
     expect(WHATS_NEW_RELEASE.sections).toHaveLength(0);
     expect(wrapper.text()).toContain("Highlights");
-    expect(wrapper.text()).not.toContain("Themes And Appearance");
-    expect(wrapper.text()).not.toContain("Past Runs");
-    expect(wrapper.text()).not.toContain("Added The Hierophant for collectible type 13 / id 40.");
+    const whatsNew = wrapper.get(".settings-whats-new");
+    expect(whatsNew.text()).not.toContain("Themes And Appearance");
+    expect(whatsNew.text()).not.toContain("Added The Hierophant for collectible type 13 / id 40.");
 
-    await buttonByText(wrapper, "Support").trigger("click");
-    expect(wrapper.text()).toContain("Diagnostics bundle");
-    expect(wrapper.text()).toContain("does not include packet captures");
-    expect(wrapper.text()).toContain("Npcap service: Running");
-    expect(wrapper.text()).toContain("app-debug.log");
-    expect(wrapper.text()).not.toContain("capture-debug.log.old");
-    expect(wrapper.text()).not.toContain("Missing");
-    await buttonByText(wrapper, "Copy Summary").trigger("click");
-    await buttonByText(wrapper, "Open Folder").trigger("click");
-    await buttonByText(wrapper, "Save ZIP").trigger("click");
+    await wrapper.get('[data-settings-section="developers"]').trigger("click");
+    expect(wrapper.text()).toContain("Advanced theme-authoring resources");
+    expect(wrapper.text()).toContain("Player-facing Item Research has been retired.");
+    await buttonByText(wrapper, "Import Theme").trigger("click");
+    await buttonByText(wrapper, "Export Current Theme").trigger("click");
+    await buttonByText(wrapper, "Download Starter Theme").trigger("click");
+    await buttonByText(wrapper, "Copy Reference").trigger("click");
+    await buttonByText(wrapper, "Export Legacy Research").trigger("click");
 
-    await buttonByText(wrapper, "General").trigger("click");
-    await buttonByText(wrapper, "Browse").trigger("click");
-    await buttonByText(wrapper, "Reset Preferences").trigger("click");
-    await wrapper.get(".modal-backdrop").trigger("click");
-    expect(wrapper.find('nav[role="tablist"]').exists()).toBe(true);
-    expect(wrapper.findAll('button[role="tab"]').some((tab) => tab.attributes("aria-selected") === "true")).toBe(true);
     await wrapper.get(".modal-backdrop").trigger("keydown", { key: "Escape" });
-    await buttonByText(wrapper, "Done").trigger("click");
 
-    expect(wrapper.emitted("update:logLimit")).toEqual([[50]]);
     expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toEqual([[true]]);
     expect(wrapper.emitted("update:themeId")).toEqual([["cyberpunk"]]);
     expect(wrapper.emitted("update:compactThemeId")).toEqual([["light"]]);
-    expect(wrapper.emitted("update:themeTextures")).toEqual([[{ cyberpunk: "carbon-fiber" }]]);
-    expect(wrapper.emitted("update:compactThemeTextures")).toEqual([[{ light: "brushed-metal" }]]);
-    expect(wrapper.emitted("update:themeForegroundFills")).toEqual([[{ cyberpunk: 62 }]]);
-    expect(wrapper.emitted("update:compactThemeForegroundFills")).toEqual([[{ light: 91 }]]);
-    expect(wrapper.emitted("updateThemeAccent")).toEqual([["#00f0ff", "cyberpunk"], ["#ffffff", "light"]]);
+    expect(wrapper.emitted("resetThemes")).toHaveLength(1);
+    expect(wrapper.emitted("setDiagnosticsMode")).toEqual([
+      ["enhanced", "manual"],
+      ["enhanced", "timed"],
+      ["deep", "timed"],
+    ]);
+    expect(wrapper.emitted("exportBackup")).toHaveLength(1);
+    expect(wrapper.emitted("chooseBackup")).toHaveLength(1);
+    expect(wrapper.emitted("confirmRestoreBackup")).toHaveLength(1);
+    expect(wrapper.emitted("factoryReset")).toEqual([[true]]);
     expect(wrapper.emitted("exportTheme")).toHaveLength(1);
     expect(wrapper.emitted("exportThemeTemplate")).toHaveLength(1);
     expect(wrapper.emitted("importTheme")).toHaveLength(1);
     const settingsTabChanges = wrapper.emitted("settingsTabChange");
-    expect(settingsTabChanges).toContainEqual(["capture"]);
     expect(settingsTabChanges).toContainEqual(["appearance"]);
-    expect(settingsTabChanges).toContainEqual(["sounds"]);
-    expect(settingsTabChanges).toContainEqual(["whatsNew"]);
     expect(settingsTabChanges).toContainEqual(["support"]);
-    expect(wrapper.emitted("update:configIncludeSounds")).toEqual([[false]]);
-    expect(wrapper.emitted("update:configIncludeItemResearch")).toEqual([[true]]);
-    const compactTileUpdates = wrapper.emitted("update:compactRunTiles");
-    expect(compactTileUpdates?.[0]?.[0]).toHaveLength(defaultCompactRunTiles.length + 1);
-    const resourcePresetTiles = compactTileUpdates?.[1]?.[0] as Array<{ kind: string }>;
-    expect(resourcePresetTiles.map((tile) => tile.kind)).toEqual(["duration", "gold", "keys", "ores", "materials", "sz"]);
+    expect(settingsTabChanges).toContainEqual(["developers"]);
     expect(wrapper.emitted("chooseGameExecutable")).toHaveLength(1);
-    expect(wrapper.emitted("importSounds")).toHaveLength(1);
-    expect(wrapper.emitted("exportSounds")).toHaveLength(1);
-    expect(wrapper.emitted("removeSound")?.[0]?.[0]).toMatchObject({ id: "custom-sound:boss" });
-    expect(wrapper.emitted("copySupportDiagnosticsSummary")).toHaveLength(1);
     expect(wrapper.emitted("openSupportLogsDirectory")).toHaveLength(1);
     expect(wrapper.emitted("saveSupportDiagnostics")).toHaveLength(1);
-    expect(wrapper.emitted("importConfiguration")).toHaveLength(1);
-    expect(wrapper.emitted("exportConfiguration")).toHaveLength(1);
-    expect(wrapper.emitted("reset")).toHaveLength(1);
+    expect(wrapper.emitted("resetWindowPosition")).toHaveLength(1);
+    expect(wrapper.emitted("copyThemeTokenReference")).toHaveLength(1);
+    expect(wrapper.emitted("exportLegacyResearch")).toHaveLength(1);
     expect(wrapper.emitted("close")).toHaveLength(1);
-    expect(wrapper.emitted("apply")).toHaveLength(1);
   });
 
-  test("SettingsModal focuses the dialog and links tabs to panels", async () => {
+  test("SettingsModal focuses the dialog and keyboard-navigates its ledger sections", async () => {
     const opener = document.createElement("button");
     opener.textContent = "Open settings";
     document.body.appendChild(opener);
@@ -807,17 +563,18 @@ describe("Vue component contracts", () => {
 
     await nextTick();
     const dialog = wrapper.get('[role="dialog"]');
-    const generalTab = wrapper.get('[data-settings-tab="general"]');
+    const appSection = wrapper.get('[data-settings-section="app"]');
     expect(document.activeElement).toBe(dialog.element);
-    expect(generalTab.attributes("aria-controls")).toBe("settings-panel-general");
-    expect(wrapper.get('[role="tabpanel"]').attributes("aria-labelledby")).toBe("settings-tab-general");
-    expect(wrapper.get('[role="tabpanel"]').classes()).toContain("settings-tab-panel");
+    expect(appSection.attributes("aria-current")).toBe("page");
+    expect(wrapper.get(".settings-ledger-content").attributes("aria-label")).toBe("App section");
 
     await dialog.trigger("keydown", { key: "Tab" });
     expect(document.activeElement).toBe(wrapper.get(".settings-close").element);
 
-    await wrapper.get(".modal-backdrop").trigger("keydown", { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(buttonByText(wrapper, "Done").element);
+    await wrapper.get(".settings-ledger-nav").trigger("keydown", { key: "ArrowRight" });
+    await nextTick();
+    expect(wrapper.get('[data-settings-section="appearance"]').attributes("aria-current")).toBe("page");
+    expect(wrapper.get(".settings-ledger-content").attributes("aria-label")).toBe("Appearance section");
 
     await dialog.trigger("keydown", { key: "Escape" });
 
@@ -827,7 +584,7 @@ describe("Vue component contracts", () => {
     opener.remove();
   });
 
-  test("PastRunsView aggregates saved runs and expands selected report item details", async () => {
+  test("PastRunsView presents the Report Desk aggregate and same-view run detail", async () => {
     const missingIconDrop = "A Missing Icon Regression Item";
     const run = pastRun({ tags: ["Dungeons"] });
     run.itemBreakdown.Heroic[missingIconDrop] = { name: missingIconDrop, total: 1, mf: 0 };
@@ -839,7 +596,8 @@ describe("Vue component contracts", () => {
       },
     });
 
-    expect(wrapper.text()).toContain("2/100 saved");
+    expect(wrapper.text()).toContain("Report Desk");
+    expect(wrapper.text()).toContain("2 saved");
     expect(wrapper.text()).toContain("All Runs");
     expect(wrapper.text()).toContain("magic-find flagged is the server flag count");
     expect(wrapper.text()).toContain("Heroic");
@@ -852,31 +610,35 @@ describe("Vue component contracts", () => {
     expect(placeholderIcon.attributes("alt")).toBe("");
     expect(missingAggregateDrop.get(".drop-breakdown-name").text()).toBe(missingIconDrop);
 
-    await buttonByText(wrapper, "Details").trigger("click");
-    expect(buttonByText(wrapper, "Hide Details").attributes("aria-controls")).toContain("past-run-details-");
-    expect(wrapper.text()).toContain("Copper Ore");
-    expect(wrapper.text()).toContain("Scourge Loop");
-
     await wrapper.get(".past-run-copy-filtered-summary").trigger("click");
     await wrapper.get(".past-run-export-csv").trigger("click");
+    await wrapper.get(".past-run-export-json").trigger("click");
+
+    await wrapper.findAll(".past-run-card-primary-action")[0].trigger("click");
+    expect(wrapper.get(".past-run-single-report").text()).toContain("TestHero");
+    expect(wrapper.get(".past-run-details").text()).toContain("Copper Ore");
+    expect(wrapper.get(".past-run-details").text()).toContain("Scourge Loop");
+    await wrapper.get(".past-run-copy-selected-summary").trigger("click");
+
+    await wrapper.get('button[aria-label="More actions for TestHero"]').trigger("click");
+    expect(wrapper.get(".past-run-action-menu").attributes("role")).toBe("menu");
     await wrapper.get(".past-run-copy-summary").trigger("click");
-
-    await wrapper.get(".past-run-search input").setValue("dungeons");
-    expect(wrapper.text()).toContain("1/2 shown");
-    expect(wrapper.findAll(".past-run-card")).toHaveLength(1);
-
-    await wrapper.get(".past-run-search input").setValue("");
-    await wrapper.get(".tag-selector-button").trigger("click");
-    expect(wrapper.get(".tag-selector-button").attributes("aria-controls")).toContain("run-tag-menu-");
+    await wrapper.get('button[aria-label="More actions for TestHero"]').trigger("click");
+    await buttonByText(wrapper, "Edit Tags").trigger("click");
     expect(wrapper.get(".run-tag-menu").attributes("role")).toBe("menu");
     const codexOption = wrapper.findAll(".run-tag-option").find((option) => option.text().includes("#Codex"));
     if (!codexOption) throw new Error("Expected Codex tag option");
     await codexOption.trigger("click");
 
+    await wrapper.get(".past-run-search input").setValue("dungeons");
+    expect(wrapper.text()).toContain("1/2 shown");
+    expect(wrapper.findAll(".past-run-library-card")).toHaveLength(1);
+
+    await wrapper.get(".past-run-search input").setValue("");
+    await wrapper.get(".past-run-library-aggregate").trigger("click");
+
     await buttonByText(wrapper, "Configure Report").trigger("click");
     expect(wrapper.text()).toContain("Configure Report");
-
-    await buttonByText(wrapper, "Export JSON").trigger("click");
 
     expect(wrapper.emitted("update-run-tags")).toEqual([[run.id, ["Dungeons", "Codex"]]]);
     expect(wrapper.emitted("export-runs-json")?.[0]?.[0]).toMatchObject({
@@ -885,11 +647,14 @@ describe("Vue component contracts", () => {
     });
     expect(wrapper.emitted("export-runs-csv")?.[0]?.[0]).toContain("section,label,value,mf_flagged,unique,detail");
     expect(wrapper.emitted("export-runs-csv")?.[0]?.[0]).toContain("rarity,Heroic");
-    expect(wrapper.emitted("copy-summary")?.[0]?.[0]).toContain("**Hero Siege Past Runs - All Runs**");
-    expect(wrapper.emitted("copy-summary")?.[1]?.[0]).toContain("**Hero Siege Run - TestHero**");
+    const copiedSummaries = wrapper.emitted("copy-summary")?.map((entry) => entry[0] as string) ?? [];
+    expect(copiedSummaries).toEqual(expect.arrayContaining([
+      expect.stringContaining("**Hero Siege Past Runs - All Runs**"),
+      expect.stringContaining("**Hero Siege Run - TestHero**"),
+    ]));
   });
 
-  test("PastRunsView keeps empty selected gear buckets out of expanded details", async () => {
+  test("PastRunsView keeps empty selected gear buckets out of the run detail report", async () => {
     const wrapper = mount(PastRunsView, {
       props: {
         pastRuns: [pastRun()],
@@ -906,10 +671,12 @@ describe("Vue component contracts", () => {
       },
     });
 
+    expect(wrapper.get(".aggregate-metrics").text()).toContain("Merc Items");
+    expect(wrapper.get(".aggregate-detail-grid").text()).not.toContain("Merc Items");
+
+    await wrapper.get(".past-run-card-primary-action").trigger("click");
+
     expect(wrapper.get(".past-run-metrics").text()).toContain("Merc Items");
-
-    await buttonByText(wrapper, "Details").trigger("click");
-
     const details = wrapper.get(".past-run-details");
     expect(details.text()).toContain("Satanic");
     expect(details.text()).not.toContain("Merc Items");
@@ -942,12 +709,11 @@ describe("Vue component contracts", () => {
     await wrapper.get(".past-run-confirm-delete-all").trigger("click");
     expect(wrapper.emitted("delete-all-runs")).toEqual([[]]);
 
-    const deleteRunButton = wrapper.get('button[aria-label="Delete Run Alpha"]');
-    expect(deleteRunButton.find(".trash-icon").exists()).toBe(true);
-
-    await deleteRunButton.trigger("click");
+    await wrapper.get('button[aria-label="More actions for Run Alpha"]').trigger("click");
+    expect(wrapper.get('[aria-label="Actions for Run Alpha"]').attributes("role")).toBe("menu");
+    await buttonByText(wrapper, "Delete").trigger("click");
     expect(wrapper.emitted("delete-run")).toBeUndefined();
-    expect(wrapper.get('[aria-label="Confirm delete Run Alpha"]').text()).toContain("Delete?");
+    expect(wrapper.get('[aria-label="Confirm delete Run Alpha"]').text()).toContain("Delete this run?");
 
     await wrapper.get(".past-run-confirm-delete").trigger("click");
     expect(wrapper.emitted("delete-run")).toEqual([["run-alpha"]]);
@@ -1127,19 +893,25 @@ describe("Vue component contracts", () => {
       errorCode: null,
     };
     const filteredDrop = itemTimelineEntry({ label: "Sash of the Magi", rarity: "Satanic", mfDrop: true });
-    const researchDrop = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
+    const ordinaryDrop = itemTimelineEntry({ label: "Collectible #24", rarity: "Superior", type: 13, id: 24, fingerprint: "collectible-24" });
     const filterGroup = itemFilterGroup();
     const wrapper = mount(LiveView, {
       props: {
         state,
         now,
         captureStatusLabel: "Capturing",
+        liveRunGraphElapsedMs: 600_000,
+        runPausedLabel: "Paused",
         runTileDisplays: [
           { id: "duration", kind: "duration", label: "This Run", value: "10m", detail: "TestHero" },
           { id: "gold", kind: "gold", label: "Gold", value: "10k", detail: "60,000/h - Current 1,010,000" },
           { id: "xp", kind: "xp", label: "XP", value: "30k/h", detail: "5,000 earned" },
           { id: "kills", kind: "kills", label: "Kills", value: "25", detail: "150/h" },
         ],
+        liveRunGraphLanes: [],
+        liveRunGraphCustomItems: [],
+        liveRunGraphEnabledStandardMetrics: ["xp", "gold", "kills", "items"],
+        liveRunItemNameOptions: ["Aurelion Fury"],
         zoneCountdown: "20m",
         zoneResetLabel: "12:30 PM",
         satanicZoneRefreshSubmitting: false,
@@ -1149,7 +921,7 @@ describe("Vue component contracts", () => {
         ],
         keyDropTotal: 2,
         oreDropTotal: 5,
-        visibleItemTimeline: [filteredDrop, researchDrop],
+        visibleItemTimeline: [filteredDrop, ordinaryDrop],
         itemTimelineCount: 2,
         itemFilterMatchHistory: [
           {
@@ -1167,12 +939,10 @@ describe("Vue component contracts", () => {
         shoppingListItems: ["Copper Ore"],
         shoppingSuggestions: ["Ruby"],
         activeShoppingItem: "Copper Ore",
-        developerItemResearchEnabled: true,
         recentLogs: state.logs,
         expandedLogIds: new Set<string>(),
         showCaptureDetails: false,
         expandedDropRarity: null,
-        timelineLimit: 10,
         timelineType: "all",
         hideSocketables: false,
         hideKeys: false,
@@ -1180,6 +950,7 @@ describe("Vue component contracts", () => {
         hideUnfilteredItems: false,
         shoppingDraftItem: "",
         logLimit: 20,
+        hiddenFixtures: [],
       },
     });
 
@@ -1191,6 +962,17 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Loot Alerts");
     expect(wrapper.text()).toContain("1 MF flagged");
     expect(wrapper.text()).toContain("Magic-find flagged");
+    expect(wrapper.text()).not.toContain("Run command");
+    expect(wrapper.text()).toContain("Run Pace");
+    expect(wrapper.get('summary[aria-label="Customize dashboard"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("Identify");
+    expect(wrapper.findAll(".run-score-cell")).toHaveLength(4);
+    expect(wrapper.findAll(".run-score-cell").map((cell) => cell.classes().find((name) => name.startsWith("run-score-") && name !== "run-score-cell"))).toEqual([
+      "run-score-duration",
+      "run-score-gold",
+      "run-score-xp",
+      "run-score-kills",
+    ]);
     expect(wrapper.get('select[title="Filter item timeline by type or item filter"]').text()).toContain("Filter: Loot Alerts");
     expect(wrapper.find("#item-filter-card").exists()).toBe(false);
     const dashboardColumns = wrapper.findAll(".dashboard-column");
@@ -1217,20 +999,26 @@ describe("Vue component contracts", () => {
     await buttonByText(wrapper, "Details").trigger("click");
     await buttonByText(wrapper, "Satanic").trigger("click");
     await wrapper.get(".shopping-form").trigger("submit");
-    await checkboxByLabel(wrapper, "Hide unfiltered").setValue(true);
+    await checkboxByLabel(wrapper, "Hide unfiltered items").setValue(true);
     await buttonByText(wrapper, "Loot Alerts").trigger("click");
-    await buttonByText(wrapper, "Identify").trigger("click");
     await wrapper.get('button[aria-label="Refresh Satanic Zone"]').trigger("click");
     await wrapper.get(".logs button").trigger("click");
+    await wrapper.get('button[aria-label="Hide Live Log"]').trigger("click");
 
     expect(wrapper.emitted("update:showCaptureDetails")).toEqual([[true]]);
     expect(wrapper.emitted("update:expandedDropRarity")).toEqual([["Satanic"]]);
     expect(wrapper.emitted("update:hideUnfilteredItems")).toEqual([[true]]);
     expect(wrapper.emitted("addShoppingItem")).toHaveLength(1);
     expect(wrapper.emitted("openItemFilterGroup")).toEqual([["loot-alerts"]]);
-    expect(wrapper.emitted("identifyTimelineItem")?.[0]?.[0]).toMatchObject({ label: "Collectible #24", type: 13, id: 24 });
     expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
     expect(wrapper.emitted("toggleLog")?.[0]).toEqual([state.logs[0]]);
+    expect(wrapper.emitted("update:hiddenFixtures")?.[0]).toEqual([["live-log"]]);
+
+    await wrapper.setProps({ hiddenFixtures: ["live-log"] });
+    expect(wrapper.find("#live-log-card").exists()).toBe(false);
+    expect(wrapper.get(".dashboard-hidden-count").text()).toBe("1");
+    await checkboxByLabel(wrapper, "Live Log").setValue(true);
+    expect(wrapper.emitted("update:hiddenFixtures")?.at(-1)).toEqual([[]]);
   });
 
   test("LiveView surfaces the Npcap setup checklist when first-run prerequisites are wrong", async () => {
@@ -1260,7 +1048,13 @@ describe("Vue component contracts", () => {
         state,
         now,
         captureStatusLabel: "Needs attention",
+        liveRunGraphElapsedMs: 0,
+        runPausedLabel: "Paused",
         runTileDisplays: [],
+        liveRunGraphLanes: [],
+        liveRunGraphCustomItems: [],
+        liveRunGraphEnabledStandardMetrics: ["xp", "gold", "kills", "items"],
+        liveRunItemNameOptions: [],
         zoneCountdown: "20m",
         zoneResetLabel: "12:30 PM",
         satanicZoneRefreshSubmitting: false,
@@ -1276,12 +1070,10 @@ describe("Vue component contracts", () => {
         shoppingListItems: [],
         shoppingSuggestions: [],
         activeShoppingItem: "",
-        developerItemResearchEnabled: false,
         recentLogs: [],
         expandedLogIds: new Set<string>(),
         showCaptureDetails: false,
         expandedDropRarity: null,
-        timelineLimit: 10,
         timelineType: "all",
         hideSocketables: false,
         hideKeys: false,
@@ -1289,6 +1081,7 @@ describe("Vue component contracts", () => {
         hideUnfilteredItems: false,
         shoppingDraftItem: "",
         logLimit: 20,
+        hiddenFixtures: [],
       },
     });
 
@@ -1309,6 +1102,12 @@ function buttonByText(wrapper: ReturnType<typeof mount>, text: string) {
   return button;
 }
 
+function exactButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
+  const button = wrapper.findAll("button").find((candidate) => candidate.text().trim() === text);
+  if (!button) throw new Error(`Unable to find button with text: ${text}`);
+  return button;
+}
+
 function checkboxByLabel(wrapper: ReturnType<typeof mount>, text: string) {
   const label = wrapper.findAll("label").find((candidate) => candidate.text().includes(text) && candidate.find("input").exists());
   if (!label) throw new Error(`Unable to find label containing text: ${text}`);
@@ -1317,51 +1116,25 @@ function checkboxByLabel(wrapper: ReturnType<typeof mount>, text: string) {
 
 function settingsModalProps() {
   return {
-    logLimitOptions: [10, 20, 50],
-    itemTypeOptions: [{ value: "6", label: "Belt" }],
-    itemFilterGroups: [itemFilterGroup()],
-    itemSuggestions: ["Sash of the Magi"],
     themeOptions: THEME_OPTIONS,
-    customItemFilterSounds: [],
+    captureDiagnostics: {
+      enhanced: { mode: "off" as const, timedUntil: null },
+      deep: { mode: "off" as const, timedUntil: null },
+    },
+    diagnosticsNow: baseTime,
     supportDiagnostics: "Hero Siege Companion capture diagnostics",
     supportGeneratedFiles: [],
     supportLogFiles: [],
     supportLogsPath: "C:\\Users\\Tester\\AppData\\Roaming\\Hero Siege Companion\\logs",
     supportBundleBusy: false,
     whatsNew: WHATS_NEW_RELEASE,
-    logLimit: 20,
-    timelineLimit: 10,
-    timelineType: "all",
-    launchThroughSteam: false,
+    launchThroughSteam: true,
     gameExecutablePath: "",
-    showCaptureDetails: false,
-    captureDebugLogging: true,
-    capturePayloadLogging: false,
-    captureWideLogging: false,
-    satanicZoneDebugLogging: true,
     satanicZoneRefreshEnabled: false,
-    alwaysOnTop: true,
-    lockCompactLocation: false,
-    hideSocketables: false,
-    hideKeys: false,
-    hideMaterials: false,
-    developerItemResearchEnabled: true,
-    unknownItemAudioPrompt: false,
-    themeId: "dark",
-    compactThemeId: "dark",
-    themeAccents: { ...DEFAULT_THEME_ACCENTS },
-    themeTextures: {},
-    compactThemeTextures: {},
-    themeForegroundFills: {},
-    compactThemeForegroundFills: {},
-    skipEmptyRuns: true,
-    minRunDurationMinutes: 5,
-    configIncludeAppSettings: true,
-    configIncludeRunSaving: true,
-    configIncludeReportTracking: true,
-    configIncludeLootFilters: true,
-    configIncludeSounds: true,
-    configIncludeItemResearch: false,
-    compactRunTiles: defaultCompactRunTiles,
+    themeId: "voidglass" as const,
+    compactThemeId: "voidglass" as const,
+    themeCustomMode: false,
+    compactThemeCustomMode: false,
+    compactThemeMatchesApp: true,
   };
 }

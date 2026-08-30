@@ -1,7 +1,6 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
+import { activeItemCatalog, type ItemCatalogDefinition } from "../../../shared/item-catalog";
 import { allItemIconNames } from "../../../shared/item-icons";
-import { allItemTranslations } from "../../../shared/item-lookup";
-import { allStackItemTranslations } from "../../../shared/stack-item-lookup";
 import { normalizeLookupText, normalizeSortText } from "./text";
 
 interface ItemNameOption {
@@ -18,11 +17,14 @@ export const ITEM_TYPE_OPTIONS = Object.entries(ITEM_TYPE_NAMES)
   .map(([value, label]) => ({ value, label }))
   .sort((a, b) => a.label.localeCompare(b.label));
 
-const itemNameOptions = itemNameOptionList();
+const itemNameOptions = createItemNameOptions(activeItemCatalog.allDefinitions());
 export const itemNameOptionByNormalizedName = new Map(itemNameOptions.map((option) => [normalizeLookupText(option.name), option]));
 export const shoppingAutocompleteNames = itemNameOptions.map((option) => option.name);
 
-function itemNameOptionList(): ItemNameOption[] {
+export function createItemNameOptions(
+  catalogDefinitions: readonly ItemCatalogDefinition[],
+  iconNames: readonly string[] = allItemIconNames(),
+): ItemNameOption[] {
   const options = new Map<string, ItemNameOption>();
   const addOption = (name: string, type: number | null) => {
     const trimmed = name.trim();
@@ -36,9 +38,11 @@ function itemNameOptionList(): ItemNameOption[] {
   };
 
   for (const name of DEFAULT_SHOPPING_LIST) addOption(name, inferredItemTypeValue(name));
-  for (const item of allStackItemTranslations()) addOption(item.name, item.type);
-  for (const item of allItemTranslations()) addOption(item.name, item.type);
-  for (const name of allItemIconNames()) addOption(name, inferredItemTypeValue(name));
+  for (const name of iconNames) addOption(name, inferredItemTypeValue(name));
+  for (const definition of catalogDefinitions) {
+    const name = definition.identityMode === "seeded" ? definition.baseName : definition.name;
+    addOption(name, definition.type);
+  }
 
   return Array.from(options.values()).sort((a, b) => a.typeLabel.localeCompare(b.typeLabel) || a.sortName.localeCompare(b.sortName));
 }

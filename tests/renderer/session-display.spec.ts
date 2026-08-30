@@ -14,7 +14,6 @@ describe("session display runtime", () => {
       itemFilterGroups: ref([itemFilterGroup()]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(1),
-      timelineLimit: ref(5),
       timelineType: ref("all"),
       hideUnfilteredTimelineItems: ref(false),
       hideKeys: ref(false),
@@ -31,6 +30,8 @@ describe("session display runtime", () => {
     expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Keys", "2"]);
     expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Ore", "5"]);
     expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Materials", "3"]);
+    expect(display.runScoreDisplays.value.map((tile) => tile.kind)).toEqual(["duration", "gold", "xp", "kills"]);
+    expect(display.runScoreDisplays.value.map((tile) => tile.kind)).not.toContain("keys");
     expect(display.keyDropTotal.value).toBe(2);
     expect(display.oreDropTotal.value).toBe(5);
     expect(display.visibleItemTimeline.value.map((item) => item.label)).toEqual(["Sash of the Magi"]);
@@ -47,7 +48,6 @@ describe("session display runtime", () => {
       itemFilterGroups: ref([]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(10),
-      timelineLimit: ref(10),
       timelineType: ref("all"),
       hideUnfilteredTimelineItems: ref(false),
       hideKeys: ref(false),
@@ -68,7 +68,6 @@ describe("session display runtime", () => {
       itemFilterGroups: ref([group]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(10),
-      timelineLimit: ref(10),
       timelineType: ref(itemFilterTimelineValue(group)),
       hideUnfilteredTimelineItems: ref(false),
       hideKeys: ref(false),
@@ -105,7 +104,6 @@ describe("session display runtime", () => {
         },
       ]),
       logLimit: ref(10),
-      timelineLimit: ref(10),
       timelineType: ref("all"),
       hideUnfilteredTimelineItems: ref(true),
       hideKeys: ref(false),
@@ -115,5 +113,29 @@ describe("session display runtime", () => {
 
     expect(display.itemTimelineSourceCount.value).toBe(1);
     expect(display.visibleItemTimeline.value.map((item) => item.label)).toEqual(["Aurelion Fury"]);
+  });
+
+  test("shows the bounded session timeline newest-first", () => {
+    const state = companionState();
+    state.stats.itemTimeline = [
+      itemTimelineEntry({ label: "Oldest", fingerprint: "oldest", createdAt: baseTime - 2_000 }),
+      itemTimelineEntry({ label: "Newest", fingerprint: "newest", createdAt: baseTime }),
+      itemTimelineEntry({ label: "Middle", fingerprint: "middle", createdAt: baseTime - 1_000 }),
+    ];
+    const display = useSessionDisplay({
+      state: ref(state),
+      now: ref(baseTime),
+      compactRunTiles: ref([]),
+      itemFilterGroups: ref([]),
+      itemFilterMatchHistory: ref([]),
+      logLimit: ref(10),
+      timelineType: ref("all"),
+      hideUnfilteredTimelineItems: ref(false),
+      hideKeys: ref(false),
+      hideMaterials: ref(false),
+      hideSocketables: ref(false),
+    });
+
+    expect(display.visibleItemTimeline.value.map((item) => item.label)).toEqual(["Newest", "Middle", "Oldest"]);
   });
 });

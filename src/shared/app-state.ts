@@ -44,6 +44,19 @@ export interface CapturePreferences {
   satanicZoneDebugLogging: boolean;
 }
 
+export type CaptureDiagnosticsLevel = "enhanced" | "deep";
+export type CaptureDiagnosticsMode = "off" | "manual" | "timed";
+
+export interface CaptureDiagnosticsModeState {
+  mode: CaptureDiagnosticsMode;
+  timedUntil: number | null;
+}
+
+export interface CaptureDiagnosticsState {
+  enhanced: CaptureDiagnosticsModeState;
+  deep: CaptureDiagnosticsModeState;
+}
+
 export interface ReleaseUpdateInfo {
   version: string;
   currentVersion: string;
@@ -70,5 +83,6 @@ export interface CompanionState {
   pastRuns: PastRunSummary[];
   runArchivePreferences: RunArchivePreferences;
   capturePreferences: CapturePreferences;
+  captureDiagnostics: CaptureDiagnosticsState;
   logs: LogEntry[];
 }

@@ -84,8 +84,7 @@
 :root[data-theme="light"] .compact-cover-head strong,
 :root[data-theme="light"] .compact-cover-grid strong,
 :root[data-theme="light"] .compact-primary strong,
-:root[data-theme="light"] .compact-drop strong,
-:root[data-theme="light"] .compact-settings-heading strong {
+:root[data-theme="light"] .compact-drop strong {
   color: var(--app-heading);
 }
 
@@ -145,15 +144,8 @@
 :root[data-theme="light"] .compact-shopping-head span,
 :root[data-theme="light"] .shopping-count,
 :root[data-theme="light"] .compact-shopping-empty,
-:root[data-theme="light"] .compact-zone-effects p,
-:root[data-theme="light"] .compact-settings-heading span {
+:root[data-theme="light"] .compact-zone-effects p {
   color: var(--app-muted);
-}
-
-:root[data-theme="light"] .compact-settings-section {
-  box-shadow:
-    0 8px 22px rgba(42, 54, 64, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 :root[data-theme="light"] .compact-primary div,
@@ -173,8 +165,7 @@
 }
 
 :root[data-theme="light"] .compact-run-cover,
-:root[data-theme="light"] .compact-zone-tray,
-:root[data-theme="light"] .compact-settings-section {
+:root[data-theme="light"] .compact-zone-tray {
   border-color: rgba(70, 86, 98, 0.25);
   background:
     linear-gradient(180deg, rgba(218, 225, 229, 0.92), rgba(193, 203, 209, 0.9)),

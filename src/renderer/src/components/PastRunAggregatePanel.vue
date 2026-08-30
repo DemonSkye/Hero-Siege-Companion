@@ -25,7 +25,8 @@ const detailRows = computed(() => aggregateRows.value.filter((row) => hasReportI
   <section class="past-run-aggregate">
     <div class="aggregate-heading">
       <div>
-        <h3>{{ title }}</h3>
+        <p class="eyebrow">Filtered run report</p>
+        <h2 tabindex="-1" data-past-run-report-heading>{{ title }}</h2>
         <span>{{ subtitle }} &middot; Average duration {{ formatDuration(aggregate.averageDurationMs) }}</span>
       </div>
       <div class="aggregate-duration-total">

@@ -6,6 +6,7 @@ import type { ItemDropCounter, ItemTimelineEntry } from "../../../shared/stats";
 import {
   COMPACT_RUN_TILE_LIMIT,
   compactRunTileDisplay,
+  standardTile,
   type CompactRunTileConfig,
 } from "./compact-tiles";
 import { formatDuration, formatNumber } from "./format";
@@ -28,13 +29,19 @@ interface UseSessionDisplayOptions {
   itemFilterGroups: Ref<ItemFilterGroup[]>;
   itemFilterMatchHistory: Ref<ItemFilterMatchHistoryEntry[]>;
   logLimit: Ref<number>;
-  timelineLimit: Ref<number>;
   timelineType: Ref<string>;
   hideUnfilteredTimelineItems: Ref<boolean>;
   hideKeys: Ref<boolean>;
   hideMaterials: Ref<boolean>;
   hideSocketables: Ref<boolean>;
 }
+
+const RUN_COMMAND_SCORE_TILES: CompactRunTileConfig[] = [
+  standardTile("duration"),
+  standardTile("gold"),
+  standardTile("xp"),
+  standardTile("kills"),
+];
 
 export function useSessionDisplay({
   state,
@@ -43,7 +50,6 @@ export function useSessionDisplay({
   itemFilterGroups,
   itemFilterMatchHistory,
   logLimit,
-  timelineLimit,
   timelineType,
   hideUnfilteredTimelineItems,
   hideKeys,
@@ -106,23 +112,27 @@ export function useSessionDisplay({
 
     return state.value.stats.itemTimeline.filter((item) => itemPassesTimelineFilters(item));
   });
-  const visibleItemTimeline = computed(() => filteredItemTimeline.value.slice(0, timelineLimit.value));
+  const visibleItemTimeline = computed(() =>
+    [...filteredItemTimeline.value].sort((left, right) => right.createdAt - left.createdAt),
+  );
   const recentLogs = computed(() => state.value.logs.slice(0, logLimit.value));
   const pastRuns = computed(() => state.value.pastRuns ?? []);
+  const runTileDisplayContext = computed(() => ({
+    stats: state.value.stats,
+    runStatus: state.value.runStatus,
+    sessionDuration: sessionDuration.value,
+    runPausedLabel: runPausedLabel.value,
+    currentGoldLabel: currentGoldLabel.value,
+    zoneCountdown: zoneCountdown.value,
+    zoneResetLabel: zoneResetLabel.value,
+    itemFilterGroups: itemFilterGroups.value,
+  }));
+  const runScoreDisplays = computed(() =>
+    RUN_COMMAND_SCORE_TILES.map((tile) => compactRunTileDisplay(tile, runTileDisplayContext.value)),
+  );
   const compactRunTileDisplays = computed(() =>
     compactRunTiles.value
-      .map((tile) =>
-        compactRunTileDisplay(tile, {
-          stats: state.value.stats,
-          runStatus: state.value.runStatus,
-          sessionDuration: sessionDuration.value,
-          runPausedLabel: runPausedLabel.value,
-          currentGoldLabel: currentGoldLabel.value,
-          zoneCountdown: zoneCountdown.value,
-          zoneResetLabel: zoneResetLabel.value,
-          itemFilterGroups: itemFilterGroups.value,
-        }),
-      )
+      .map((tile) => compactRunTileDisplay(tile, runTileDisplayContext.value))
       .slice(0, COMPACT_RUN_TILE_LIMIT),
   );
 
@@ -131,6 +141,7 @@ export function useSessionDisplay({
     runElapsedMs,
     sessionDuration,
     currentGoldLabel,
+    runScoreDisplays,
     compactRunTileDisplays,
     runPausedLabel,
     canToggleRunPaused,

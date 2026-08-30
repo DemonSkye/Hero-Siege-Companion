@@ -82,7 +82,6 @@
 }
 
 :root[data-theme="light"] .view-tabs,
-:root[data-theme="light"] .settings-tabs,
 :root[data-theme="light"] .window-controls {
   border-color: rgba(48, 64, 74, 0.16);
   background:
@@ -96,13 +95,11 @@
   backdrop-filter: blur(14px) saturate(1.2);
 }
 
-:root[data-theme="light"] .view-tabs button,
-:root[data-theme="light"] .settings-tabs button {
+:root[data-theme="light"] .view-tabs button {
   color: #52616b;
 }
 
-:root[data-theme="light"] .view-tabs button.active,
-:root[data-theme="light"] .settings-tabs button.active {
+:root[data-theme="light"] .view-tabs button.active {
   border-color: rgba(76, 118, 136, 0.34);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(196, 214, 224, 0.58)),
@@ -138,10 +135,6 @@
 }
 
 :root[data-theme="light"] .settings-row,
-:root[data-theme="light"] .settings-check,
-:root[data-theme="light"] .settings-stack,
-:root[data-theme="light"] .settings-launch-row,
-:root[data-theme="light"] .settings-config-row,
 :root[data-theme="light"] .filter-box,
 :root[data-theme="light"] .item-filter-rule-section,
 :root[data-theme="light"] .item-filter-group-button,
@@ -163,8 +156,7 @@
 :root[data-theme="light"] .drop-breakdown,
 :root[data-theme="light"] .drop-resource-counter,
 :root[data-theme="light"] .timeline-row,
-:root[data-theme="light"] .log,
-:root[data-theme="light"] .settings-sound-row {
+:root[data-theme="light"] .log {
   border-color: rgba(48, 64, 74, 0.13);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(232, 239, 243, 0.58)),
@@ -188,7 +180,6 @@
 :root[data-theme="light"] select,
 :root[data-theme="light"] textarea,
 :root[data-theme="light"] .shopping-input-wrap input,
-:root[data-theme="light"] .path-setting input,
 :root[data-theme="light"] .timeline-type-filter select,
 :root[data-theme="light"] .log-limit select,
 :root[data-theme="light"] .timeline-limit select {
@@ -424,7 +415,6 @@
 }
 
 :root[data-theme="light"] .app-scroll,
-:root[data-theme="light"] .settings-grid,
 :root[data-theme="light"] .timeline,
 :root[data-theme="light"] .logs,
 :root[data-theme="light"] .shopping-list,
@@ -495,7 +485,6 @@
 :root[data-theme="light"] .panel,
 :root[data-theme="light"] .metric,
 :root[data-theme="light"] .settings-panel,
-:root[data-theme="light"] .settings-tab-panel,
 :root[data-theme="light"] .item-research-panel,
 :root[data-theme="light"] .item-filter-editor,
 :root[data-theme="light"] .item-filter-rule-section,
@@ -510,10 +499,7 @@
 :root[data-theme="light"] .drop-breakdown,
 :root[data-theme="light"] .shopping-list,
 :root[data-theme="light"] .timeline,
-:root[data-theme="light"] .logs,
-:root[data-theme="light"] .settings-stack,
-:root[data-theme="light"] .settings-config-row,
-:root[data-theme="light"] .settings-launch-row {
+:root[data-theme="light"] .logs {
   border-color: var(--quicksilver-border);
   background:
     linear-gradient(180deg, rgba(218, 225, 229, 0.92), rgba(193, 203, 209, 0.9)),
@@ -525,7 +511,6 @@
 }
 
 :root[data-theme="light"] .view-tabs,
-:root[data-theme="light"] .settings-tabs,
 :root[data-theme="light"] .window-controls {
   border-color: rgba(70, 86, 98, 0.22);
   background:
@@ -538,7 +523,6 @@
 }
 
 :root[data-theme="light"] .settings-row,
-:root[data-theme="light"] .settings-check,
 :root[data-theme="light"] .filter-box,
 :root[data-theme="light"] .item-filter-group-button,
 :root[data-theme="light"] .item-filter-suggestions button,
@@ -559,7 +543,6 @@
 :root[data-theme="light"] .drop-resource-counter,
 :root[data-theme="light"] .timeline-row,
 :root[data-theme="light"] .log,
-:root[data-theme="light"] .settings-sound-row,
 :root[data-theme="light"] .icon-button.ghost,
 :root[data-theme="light"] .details-button,
 :root[data-theme="light"] .sound-test-button,
@@ -579,7 +562,6 @@
 :root[data-theme="light"] select,
 :root[data-theme="light"] textarea,
 :root[data-theme="light"] .shopping-input-wrap input,
-:root[data-theme="light"] .path-setting input,
 :root[data-theme="light"] .item-filter-add-group input,
 :root[data-theme="light"] .item-filter-add-item input,
 :root[data-theme="light"] .item-filter-editor-grid input[type="text"],
@@ -665,19 +647,13 @@
   background: rgba(214, 223, 228, 0.72);
 }
 
-:root[data-theme="light"] .settings-label,
-:root[data-theme="light"] .settings-stack > span,
-:root[data-theme="light"] .settings-row,
-:root[data-theme="light"] .settings-check,
-:root[data-theme="light"] .settings-launch-row,
-:root[data-theme="light"] .settings-config-row {
+:root[data-theme="light"] .settings-row {
   color: #263742;
   font-weight: 800;
 }
 
 :root[data-theme="light"] .settings-note,
-:root[data-theme="light"] .settings-panel p,
-:root[data-theme="light"] .settings-stack small {
+:root[data-theme="light"] .settings-panel p {
   color: #536570;
 }
 
@@ -715,7 +691,6 @@
 :root[data-theme="light"] .app-shell:not(.compact) .panel,
 :root[data-theme="light"] .app-shell:not(.compact) .metric,
 :root[data-theme="light"] .app-shell:not(.compact) .settings-panel,
-:root[data-theme="light"] .app-shell:not(.compact) .settings-tab-panel,
 :root[data-theme="light"] .app-shell:not(.compact) .item-research-panel,
 :root[data-theme="light"] .app-shell:not(.compact) .item-filter-editor,
 :root[data-theme="light"] .app-shell:not(.compact) .item-filter-rule-section,
@@ -733,7 +708,6 @@
 }
 
 :root[data-theme="light"] .app-shell:not(.compact) .settings-row,
-:root[data-theme="light"] .app-shell:not(.compact) .settings-check,
 :root[data-theme="light"] .app-shell:not(.compact) .filter-box,
 :root[data-theme="light"] .app-shell:not(.compact) .item-filter-group-button,
 :root[data-theme="light"] .app-shell:not(.compact) .item-filter-suggestions button,
@@ -751,7 +725,6 @@
 :root[data-theme="light"] .app-shell:not(.compact) .drop-resource-counter,
 :root[data-theme="light"] .app-shell:not(.compact) .timeline-row,
 :root[data-theme="light"] .app-shell:not(.compact) .log,
-:root[data-theme="light"] .app-shell:not(.compact) .settings-sound-row,
 :root[data-theme="light"] .app-shell:not(.compact) .icon-button.ghost,
 :root[data-theme="light"] .app-shell:not(.compact) .details-button,
 :root[data-theme="light"] .app-shell:not(.compact) .sound-test-button,

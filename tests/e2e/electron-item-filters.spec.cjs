@@ -16,15 +16,15 @@ test("builds, exercises, and removes an item filter group against mocked drop tr
 
     const addGroupForm = page.locator(".item-filter-add-group");
     await addGroupForm.locator("input").fill("E2E Loot Alerts");
-    await addGroupForm.getByRole("button", { name: "Add" }).click();
+    await addGroupForm.getByRole("button", { name: "Add group" }).click();
 
-    const groupButton = page.locator(".item-filter-group-button", { hasText: "E2E Loot Alerts" });
+    const groupButton = page.locator(".filter-stack-toggle", { hasText: "E2E Loot Alerts" });
     await expect(groupButton).toBeVisible();
 
-    const rarities = page.locator(".item-filter-rule-section", { hasText: "Rarities" });
+    const rarities = page.locator(".filter-stack-rule-section", { hasText: "Rarities" });
     await rarities.locator("label", { hasText: "Heroic" }).locator("input").setChecked(true);
 
-    const search = page.getByPlaceholder("Search item name");
+    const search = page.getByPlaceholder("Search known item name");
     await search.fill("aurelion");
     await page.locator(".item-filter-suggestions").getByRole("button", { name: "Aurelion Fury" }).click();
 
@@ -56,23 +56,24 @@ test("builds, exercises, and removes an item filter group against mocked drop tr
     );
 
     const timelineCard = page.locator(".timeline-panel.live-dashboard-card");
+    await timelineCard.locator(".timeline-filter-trigger").click();
     await timelineCard.locator('select[title="Filter item timeline by type or item filter"]').selectOption({ label: "Filter: E2E Loot Alerts" });
     await timelineCard.getByLabel("Hide unfiltered").setChecked(true);
+    await timelineCard.locator(".timeline-filter-trigger").click();
     await expect(timelineCard.locator(".timeline-row", { hasText: "E2E Loot Alerts" }).filter({ hasText: "Aurelion Fury" })).toBeVisible();
     await expect(timelineCard.locator(".timeline-row", { hasText: "Fumacinha's Favela Flipflop" })).toHaveCount(0);
     await timelineCard.getByRole("button", { name: "Open E2E Loot Alerts item filter" }).first().click();
     await expect(page.getByRole("heading", { name: "Item Filter", level: 1 })).toBeVisible();
 
-    await groupButton.click();
-    await page.getByRole("button", { name: "Remove Group" }).click();
+    await page.getByRole("button", { name: "Remove group" }).click();
 
-    const confirmation = page.getByRole("dialog", { name: 'Remove "E2E Loot Alerts"?' });
+    const confirmation = page.getByRole("dialog", { name: /Remove .E2E Loot Alerts./ });
     await expect(confirmation).toBeVisible();
     await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(groupButton).toBeVisible();
 
-    await page.getByRole("button", { name: "Remove Group" }).click();
-    await confirmation.getByRole("button", { name: "Remove Group", exact: true }).click();
+    await page.getByRole("button", { name: "Remove group" }).click();
+    await confirmation.getByRole("button", { name: "Remove group", exact: true }).click();
     await expect(groupButton).toHaveCount(0);
 
     await expect.poll(async () => {

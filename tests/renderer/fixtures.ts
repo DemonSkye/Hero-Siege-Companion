@@ -111,6 +111,10 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
       captureWideLogging: false,
       satanicZoneDebugLogging: true,
     },
+    captureDiagnostics: {
+      enhanced: { mode: "off", timedUntil: null },
+      deep: { mode: "off", timedUntil: null },
+    },
     logs: [logEntry({ id: "log-1", level: "success", message: "Capture opened." })],
     ...overrides,
   };

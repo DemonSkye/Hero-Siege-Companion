@@ -244,42 +244,6 @@
   gap: 8px;
 }
 
-.timeline {
-  max-height: 360px;
-  overflow: auto;
-  padding-right: 6px;
-  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
-  scrollbar-width: thin;
-}
-
-.timeline-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: -4px 0 12px;
-}
-
-.timeline-type-filter {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  gap: 8px;
-  color: #9fa8b8;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.timeline-type-filter select {
-  height: 32px;
-  min-width: 170px;
-  max-width: 240px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 7px;
-  background: #181b22;
-  color: #e9edf4;
-  font: inherit;
-}
-
 .filter-box {
   display: inline-flex;
   min-height: 32px;
@@ -415,8 +379,7 @@
   text-align: left;
 }
 
-.log-limit,
-.timeline-limit {
+.log-limit {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -425,8 +388,7 @@
   font-weight: 700;
 }
 
-.log-limit select,
-.timeline-limit select {
+.log-limit select {
   height: 30px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 7px;

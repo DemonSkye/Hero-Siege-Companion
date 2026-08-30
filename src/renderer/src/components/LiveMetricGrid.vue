@@ -28,8 +28,19 @@ function toggleMetricCard(id: string) {
 </script>
 
 <template>
-  <section class="metric-grid">
-    <article v-for="tile in runTileDisplays" :key="`desktop-${tile.id}`" :class="['metric', 'collapsible-metric', { collapsed: isMetricCollapsed(tile.id) }]" :title="tile.title">
+  <section class="metric-grid run-score-strip" aria-label="Run score">
+    <article
+      v-for="tile in runTileDisplays"
+      :key="`desktop-${tile.id}`"
+      :class="[
+        'metric',
+        'collapsible-metric',
+        'run-score-cell',
+        `run-score-${tile.kind}`,
+        { collapsed: isMetricCollapsed(tile.id), 'run-score-identity': tile.kind === 'duration' },
+      ]"
+      :title="tile.title"
+    >
       <div class="metric-heading">
         <span class="metric-label">
           {{ tile.kind === "duration" ? "This Run" : tile.label }}

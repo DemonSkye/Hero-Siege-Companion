@@ -22,6 +22,8 @@ export function createSupportDiagnosticsSummary(state: CompanionState, info: Sup
     `Capture status: ${state.captureStatus}`,
     `Capture error: ${state.captureError || "none"}`,
     `Capture running: ${state.captureRunning ? "yes" : "no"}`,
+    `Enhanced diagnostics: ${state.captureDiagnostics.enhanced.mode}`,
+    `Deep diagnostics: ${state.captureDiagnostics.deep.mode}`,
     `Npcap service: ${health.npcapService || "Unknown"}`,
     `WinPcap compatible: ${health.winPcapCompatible ? "yes" : "no"}`,
     `Admin-only Npcap: ${health.adminOnly ? "yes" : "no"}`,

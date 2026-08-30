@@ -146,7 +146,6 @@
 
 :root[data-theme="reliquary"] .icon-button.primary,
 :root[data-theme="reliquary"] .view-tabs button.active,
-:root[data-theme="reliquary"] .settings-tabs button.active,
 :root[data-theme="reliquary"] .shopping-item.active,
 :root[data-theme="reliquary"] .shopping-item-row.active .shopping-item {
   box-shadow:

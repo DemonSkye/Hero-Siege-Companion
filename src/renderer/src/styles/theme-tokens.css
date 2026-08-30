@@ -9,8 +9,7 @@ body,
 .compact-primary span,
 .compact-drop span,
 .settings-note,
-.number-setting small,
-.settings-tabs button {
+.number-setting small {
   color: var(--app-muted);
 }
 
@@ -19,14 +18,12 @@ h2,
 .update-banner strong,
 .compact-status strong,
 .compact-primary strong,
-.compact-drop strong,
-.settings-stack > span {
+.compact-drop strong {
   color: var(--app-heading);
 }
 
 .eyebrow,
 .app-mark,
-.compact-settings-heading strong,
 .item-research-share a {
   color: var(--user-accent);
 }
@@ -55,14 +52,11 @@ h2,
   background: var(--surface-strong);
 }
 
-.settings-tabs,
 .window-controls {
   border-color: var(--border-strong);
   background: var(--surface-soft);
 }
 
-.settings-tabs button:hover,
-.settings-tabs button.active,
 .view-tabs button.active {
   border-color: color-mix(in srgb, var(--user-accent) 24%, transparent);
   background: color-mix(in srgb, var(--user-accent) 13%, transparent);
@@ -128,17 +122,12 @@ h2,
 }
 
 .settings-row,
-.settings-check,
-.settings-stack,
-.settings-launch-row,
-.settings-config-row,
 .filter-box,
 .item-filter-rule-section,
 .item-filter-group-button,
 .item-filter-recovery-panel,
 .item-research-panel,
-.item-research-row,
-.compact-settings-section {
+.item-research-row {
   border-color: var(--border);
   background: var(--surface-soft);
   color: var(--app-text);
@@ -156,10 +145,8 @@ input,
 select,
 textarea,
 .settings-row select,
-.settings-stack textarea,
 .number-setting input,
 .shopping-input-wrap input,
-.path-setting input,
 .item-filter-add-group input,
 .item-filter-add-item input,
 .item-filter-editor-grid input[type="text"],
@@ -173,121 +160,6 @@ textarea,
 
 input[type="checkbox"] {
   accent-color: var(--user-accent);
-}
-
-.settings-theme-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.settings-theme-sections {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.settings-theme-group {
-  display: grid;
-  min-width: 0;
-  align-content: start;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-cell);
-}
-
-.settings-theme-group-heading {
-  display: flex;
-  min-height: 18px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.settings-theme-group-heading strong {
-  color: var(--app-heading);
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0;
-}
-
-.settings-theme-group-grid {
-  display: grid;
-  gap: 8px;
-}
-
-.settings-theme-group .settings-row {
-  min-height: 46px;
-  background: var(--surface-soft);
-}
-
-.settings-color-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.settings-color-control input {
-  width: 42px;
-  min-width: 42px;
-  height: 30px;
-  padding: 2px;
-  border-radius: 7px;
-}
-
-.settings-color-control code {
-  color: var(--app-muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.settings-wide-note {
-  max-width: none;
-}
-
-.settings-theme-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.settings-theme-help {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface-cell);
-  color: var(--app-muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.settings-theme-help summary {
-  color: var(--app-heading);
-  cursor: pointer;
-  font-weight: 900;
-}
-
-.settings-theme-help p {
-  margin: 8px 0 0;
-}
-
-.settings-theme-help pre {
-  display: block;
-  margin: 8px 0 0;
-  padding: 8px;
-  border-radius: 6px;
-  background: var(--input-bg);
-  color: var(--user-accent);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-x: auto;
-  white-space: pre;
 }
 
 .settings-theme-token-list {
@@ -385,23 +257,6 @@ input[type="checkbox"] {
   text-align: right;
 }
 
-.settings-support-preview-heading {
-  margin-top: 14px;
-}
-
-.settings-support-actions,
-.settings-sound-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.settings-sound-button {
-  justify-content: center;
-  width: 170px;
-}
-
 .settings-support-bundle {
   overflow: auto;
   max-height: 260px;
@@ -415,47 +270,6 @@ input[type="checkbox"] {
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
-}
-
-.settings-sound-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.settings-sound-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 9px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface-cell);
-}
-
-.settings-sound-row div {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.settings-sound-row strong,
-.settings-sound-row span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-sound-row strong {
-  color: var(--app-heading);
-  font-size: 13px;
-}
-
-.settings-sound-row span,
-.settings-sound-empty {
-  color: var(--app-muted);
 }
 
 .update-banner,
@@ -485,8 +299,7 @@ input[type="checkbox"] {
 .drop-breakdown-row,
 .drop-resource-counter,
 .timeline-row,
-.log,
-.settings-sound-row {
+.log {
   background: var(--surface-cell);
 }
 
@@ -533,7 +346,6 @@ input[type="checkbox"] {
 .log span,
 .drop-breakdown-head span,
 .drop-resource-counter span,
-.compact-settings-heading span,
 .aggregate-duration-total span {
   color: var(--app-muted);
 }
@@ -701,8 +513,6 @@ input[type="checkbox"] {
 .timeline-limit select,
 .past-run-search input,
 .run-tag-search input,
-.compact-custom-tile-row input,
-.compact-custom-tile-row select,
 .item-research-row input {
   border-color: var(--border-strong);
   background: var(--input-bg);
@@ -725,15 +535,11 @@ input[type="checkbox"] {
 }
 
 .app-scroll,
-.settings-grid,
-.whats-new-settings,
 .compact-shopping-list {
   scrollbar-color: var(--scrollbar) color-mix(in srgb, var(--surface-strong) 76%, transparent);
 }
 
 .app-scroll::-webkit-scrollbar-thumb,
-.settings-grid::-webkit-scrollbar-thumb,
-.whats-new-settings::-webkit-scrollbar-thumb,
 .compact-shopping-list::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
 }
