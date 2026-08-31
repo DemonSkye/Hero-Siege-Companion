@@ -5,7 +5,19 @@ import {
   type SatanicZoneRefreshPreferences,
   type SatanicZoneState,
 } from "../shared/satanic-zone";
-import { PAST_RUN_SCHEMA_VERSION, normalizePastRunTags, type ItemDropCounter, type PastRunSummary, type ResourceCounter } from "../shared/stats";
+import {
+  MAX_PAST_RUN_ITEM_NAME_LENGTH,
+  MAX_PAST_RUN_ITEM_TOTALS,
+  PAST_RUN_SCHEMA_VERSION,
+  normalizePastRunItemName,
+  normalizePastRunTags,
+  pastRunItemNameKey,
+  pastRunOreTrackerName,
+  type ItemDropCounter,
+  type PastRunSummary,
+  type ResourceCounter,
+} from "../shared/stats";
+import { normalizePastRunPace } from "../shared/run-pace";
 
 export const MAX_PAST_RUNS = 250;
 export const SATANIC_ZONE_CACHE_SCHEMA_VERSION = 3;
@@ -240,13 +252,20 @@ export function isPastRunSummary(value: unknown): value is StoredPastRunSummary 
 }
 
 export function normalizePastRunSummary(run: StoredPastRunSummary): PastRunSummary {
+  const durationMs = numberField(run.durationMs);
   const itemBreakdown = normalizeItemBreakdown(run.itemBreakdown);
+  const keys = normalizeResourceList(run.keys);
+  const ores = normalizeResourceList(run.ores);
+  const materials = normalizeResourceList(run.materials);
+  const itemTotals = run.itemTotals === undefined
+    ? synthesizeLegacyItemTotals(itemBreakdown, keys, ores, materials)
+    : normalizeItemTotals(run.itemTotals);
   return {
     schemaVersion: PAST_RUN_SCHEMA_VERSION,
     id: run.id.trim(),
     sessionStartedAt: timestampField(run.sessionStartedAt),
     sessionEndedAt: timestampField(run.sessionEndedAt),
-    durationMs: numberField(run.durationMs),
+    durationMs,
     accountName: typeof run.accountName === "string" ? run.accountName : "",
     tags: normalizePastRunTags(run.tags),
     totalGoldGained: numberField(run.totalGoldGained),
@@ -256,11 +275,86 @@ export function normalizePastRunSummary(run: StoredPastRunSummary): PastRunSumma
     satanicDrops: dropTotal(run.satanicDrops, itemBreakdown.Satanic),
     heroicDrops: dropTotal(run.heroicDrops, itemBreakdown.Heroic),
     angelicDrops: dropTotal(run.angelicDrops, itemBreakdown.Angelic),
+    itemTotals,
     itemBreakdown,
-    keys: normalizeResourceList(run.keys),
-    ores: normalizeResourceList(run.ores),
-    materials: normalizeResourceList(run.materials),
+    keys,
+    ores,
+    materials,
+    runPace: normalizePastRunPace(run.runPace, durationMs),
   };
+}
+
+function normalizeItemTotals(value: unknown): ItemDropCounter[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = new Map<string, ItemDropCounter>();
+  for (const candidate of value) {
+    const item = normalizeItemTotal(candidate);
+    if (!item) continue;
+    const key = pastRunItemNameKey(item.name);
+    const existing = normalized.get(key);
+    if (existing) {
+      existing.total = boundedItemTotal(existing.total + item.total);
+      existing.mf = Math.min(boundedItemTotal(existing.mf + item.mf), existing.total);
+      continue;
+    }
+    normalized.set(key, item);
+  }
+  return [...normalized.values()]
+    .sort((left, right) => pastRunItemNameKey(left.name).localeCompare(pastRunItemNameKey(right.name)))
+    .slice(0, MAX_PAST_RUN_ITEM_TOTALS);
+}
+
+function normalizeItemTotal(value: unknown): ItemDropCounter | null {
+  if (!isRecord(value) || typeof value.name !== "string" || !value.name.trim()) return null;
+  const total = positiveItemTotal(value.total);
+  if (total === null) return null;
+  if (
+    value.mf !== undefined
+    && (typeof value.mf !== "number" || !Number.isFinite(value.mf) || value.mf < 0)
+  ) return null;
+  const mf = value.mf === undefined ? 0 : Math.min(boundedItemTotal(value.mf), total);
+  return {
+    name: normalizePastRunItemName(value.name).slice(0, MAX_PAST_RUN_ITEM_NAME_LENGTH),
+    total,
+    mf,
+  };
+}
+
+function synthesizeLegacyItemTotals(
+  itemBreakdown: Record<string, Record<string, ItemDropCounter>>,
+  keys: ResourceCounter[],
+  ores: ResourceCounter[],
+  materials: ResourceCounter[],
+): ItemDropCounter[] {
+  const breakdownTotals = normalizeItemTotals(
+    Object.values(itemBreakdown).flatMap((breakdown) => Object.values(breakdown)),
+  );
+  const resourceTotals = normalizeItemTotals(
+    [
+      ...keys,
+      ...ores.map((resource) => ({ ...resource, name: pastRunOreTrackerName(resource.name, resource.id) })),
+      ...materials,
+    ].map((resource) => ({
+      name: resource.name,
+      total: resource.total,
+      mf: 0,
+    })),
+  );
+  const resourceKeys = new Set(resourceTotals.map((item) => pastRunItemNameKey(item.name)));
+  return normalizeItemTotals([
+    ...resourceTotals,
+    ...breakdownTotals.filter((item) => !resourceKeys.has(pastRunItemNameKey(item.name))),
+  ]);
+}
+
+function positiveItemTotal(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const normalized = boundedItemTotal(value);
+  return normalized > 0 ? normalized : null;
+}
+
+function boundedItemTotal(value: number): number {
+  return Math.min(Math.max(Math.trunc(value), 0), Number.MAX_SAFE_INTEGER);
 }
 
 function normalizeItemBreakdown(value: unknown): Record<string, Record<string, ItemDropCounter>> {

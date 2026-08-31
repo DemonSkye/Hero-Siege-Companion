@@ -215,6 +215,7 @@ describe("renderer preferences persistence", () => {
       dropRarities: ["Satanic"],
       resourceDrawers: ["materials"],
       topDropLimit: 10,
+      exactTrackedItems: [],
       trackedItems: [],
       itemFilterGroupIds: [],
       itemGroups: [
@@ -256,6 +257,34 @@ describe("renderer preferences persistence", () => {
       dropRarities: [],
       resourceDrawers: [],
     });
+  });
+
+  test("normalizes and persists four exact Past Runs trackers without losing them during summary edits", () => {
+    window.localStorage.setItem(
+      "hero-siege-companion:preferences:v1",
+      JSON.stringify({
+        postRunReport: {
+          ...defaultPostRunReportConfig,
+          exactTrackedItems: [
+            "  Tarethíel   Signet  ",
+            "tarethiel signet",
+            42,
+            "Copper Ore",
+            "Ruby Ore",
+            "Devil’s Key",
+            "Jade",
+            "Ruby",
+          ],
+        },
+      }),
+    );
+
+    const report = loadPreferences().postRunReport;
+    expect(report.exactTrackedItems).toEqual(["Tarethíel Signet", "Copper Ore", "Ruby Ore", "Devil’s Key"]);
+    expect(withPostRunReportSummaryItems(report, ["metric:gold"]).exactTrackedItems).toEqual(report.exactTrackedItems);
+
+    savePreferences({ ...defaultPreferences, postRunReport: report });
+    expect(loadPreferences().postRunReport.exactTrackedItems).toEqual(report.exactTrackedItems);
   });
 
   test("keeps legacy custom report groups selected when the summary row is full", () => {

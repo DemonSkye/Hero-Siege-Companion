@@ -1,5 +1,11 @@
 import { EVENT_NAMES } from "./constants";
 import type { AccountInfo, AddedItemObject, CurrencyData, ParsedEvent, SatanicZoneInfo } from "./parser";
+import {
+  canonicalRunPaceItemKey,
+  createRunPaceRecorder,
+  type PastRunPace,
+  type RunPaceRecorder,
+} from "./run-pace";
 import { nextSatanicZoneBoundary } from "./satanic-zone";
 
 export interface ItemCounter {
@@ -76,16 +82,20 @@ export interface PastRunSummary {
   satanicDrops: number;
   heroicDrops: number;
   angelicDrops: number;
+  itemTotals: ItemDropCounter[];
   itemBreakdown: Record<string, Record<string, ItemDropCounter>>;
   keys: ResourceCounter[];
   ores: ResourceCounter[];
   materials: ResourceCounter[];
+  runPace: PastRunPace | null;
 }
 
 const TRACKED_RARITIES = ["Set", "Satanic", "Heroic", "Angelic"];
 const UNTRACKED_ITEM_TYPES = new Set([12, 13, 14, 15]);
 const MAX_ITEM_TIMELINE_ENTRIES = 500;
-export const PAST_RUN_SCHEMA_VERSION = 1;
+export const PAST_RUN_SCHEMA_VERSION = 3;
+export const MAX_PAST_RUN_ITEM_TOTALS = 2_048;
+export const MAX_PAST_RUN_ITEM_NAME_LENGTH = 120;
 export const MAX_PAST_RUN_TAGS = 12;
 export const MAX_PAST_RUN_TAG_LENGTH = 36;
 const BASIC_KEY_ID = 0;
@@ -101,7 +111,9 @@ const ORE_MATERIALS: Record<number, string> = {
 
 export class StatsEngine {
   private stats: CompanionStats = createInitialStats();
+  private runPace: RunPaceRecorder = createRunPaceRecorder();
   private seenItemFingerprints = new Set<string>();
+  private itemTotals = new Map<string, ItemDropCounter>();
   private lastCurrencyData: CurrencyData | null = null;
   private goldMode: string | null = null;
   private pausedAt: number | null = null;
@@ -109,7 +121,9 @@ export class StatsEngine {
 
   reset(): CompanionStats {
     this.stats = createInitialStats();
+    this.runPace = createRunPaceRecorder();
     this.seenItemFingerprints.clear();
+    this.itemTotals.clear();
     this.lastCurrencyData = null;
     this.goldMode = null;
     this.pausedAt = null;
@@ -140,7 +154,22 @@ export class StatsEngine {
 
   runSummary(sessionEndedAt = Date.now()): PastRunSummary {
     const snapshot = this.snapshot();
-    return createRunSummary(snapshot, sessionEndedAt, this.pausedDurationMs(sessionEndedAt));
+    const pausedDurationMs = this.pausedDurationMs(sessionEndedAt);
+    const itemTotals = itemTotalList(this.itemTotals);
+    const durationMs = Math.max(sessionEndedAt - snapshot.sessionStartedAt - pausedDurationMs, 0);
+    return createRunSummary(
+      snapshot,
+      sessionEndedAt,
+      pausedDurationMs,
+      itemTotals,
+      this.runPace.snapshot({
+        elapsedMs: durationMs,
+        xp: snapshot.totalXpEarned,
+        gold: snapshot.totalGoldEarned,
+        kills: snapshot.totalKillsEarned,
+        itemTotals,
+      }),
+    );
   }
 
   pausedDurationMs(timestamp = Date.now()): number {
@@ -149,6 +178,7 @@ export class StatsEngine {
 
   private applyEvent(event: ParsedEvent): void {
     this.stats.lastEventAt = event.createdAt;
+    let runPaceItem: { name: string; amount: number } | undefined;
 
     if (event.name === EVENT_NAMES.account || event.name === EVENT_NAMES.accountMode) {
       const account = event.value as AccountInfo;
@@ -168,10 +198,21 @@ export class StatsEngine {
     } else if (event.name === EVENT_NAMES.mail) {
       this.stats.hasMail = Boolean(event.value);
     } else if (event.name === EVENT_NAMES.item || event.name === EVENT_NAMES.itemDrop) {
-      this.updateItem(event.value as AddedItemObject, event.createdAt);
+      const item = event.value as AddedItemObject;
+      if (this.updateItem(item, event.createdAt)) {
+        runPaceItem = { name: item.label, amount: Math.max(item.amount || 1, 1) };
+      }
     } else if (event.name === EVENT_NAMES.satanicZone) {
       this.updateSatanicZone(event.value as SatanicZoneInfo);
     }
+
+    this.runPace.record({
+      elapsedMs: Math.max(event.createdAt - this.stats.sessionStartedAt - this.pausedDurationMs(event.createdAt), 0),
+      xp: this.stats.totalXpEarned,
+      gold: this.stats.totalGoldEarned,
+      kills: this.stats.totalKillsEarned,
+      item: runPaceItem,
+    });
   }
 
   private updateGold(currency: CurrencyData): void {
@@ -214,14 +255,17 @@ export class StatsEngine {
     this.stats.totalKills = totalKills;
   }
 
-  private updateItem(item: AddedItemObject, createdAt: number): void {
+  private updateItem(item: AddedItemObject, createdAt: number): boolean {
     const rarity = item.rarityName;
     const trackedRarity = UNTRACKED_ITEM_TYPES.has(item.type) ? null : normalizeTrackedRarity(rarity);
     const itemAmount = Math.max(item.amount || 1, 1);
     if (item.fingerprint) {
-      if (this.seenItemFingerprints.has(item.fingerprint)) return;
+      if (this.seenItemFingerprints.has(item.fingerprint)) return false;
       this.seenItemFingerprints.add(item.fingerprint);
     }
+
+    const oreName = item.type === 14 ? ORE_MATERIALS[item.id] : undefined;
+    incrementItemTotal(this.itemTotals, item.label, itemAmount, item.mfDrop === 1);
 
     if (trackedRarity) {
       this.stats.items[trackedRarity].total += itemAmount;
@@ -233,7 +277,6 @@ export class StatsEngine {
       incrementResource(this.stats.keys, item.id, item.label, item.amount);
     }
 
-    const oreName = item.type === 14 ? ORE_MATERIALS[item.id] : undefined;
     if (oreName) {
       incrementResource(this.stats.ores, item.id, oreName, itemAmount);
     } else if (item.type === 13 || item.type === 14) {
@@ -257,6 +300,7 @@ export class StatsEngine {
       createdAt,
     });
     this.stats.itemTimeline = this.stats.itemTimeline.slice(0, MAX_ITEM_TIMELINE_ENTRIES);
+    return true;
   }
 
   private updateSatanicZone(zone: SatanicZoneInfo): void {
@@ -353,7 +397,44 @@ export function normalizePastRunTags(tags: unknown): string[] {
   return normalizedTags;
 }
 
-function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now(), pausedDurationMs = 0): PastRunSummary {
+export function normalizePastRunItemName(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_PAST_RUN_ITEM_NAME_LENGTH)
+    .trim() || "Unknown item";
+}
+
+export function pastRunItemNameKey(value: unknown): string {
+  return canonicalRunPaceItemKey(value);
+}
+
+export function canonicalPastRunTrackerName(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_PAST_RUN_ITEM_NAME_LENGTH)
+    .trim();
+}
+
+export function pastRunOreTrackerName(value: unknown, id?: number): string {
+  const name = canonicalPastRunTrackerName(value);
+  if (id === 30) return "Ruby Ore";
+  if (id === 31) return "Jade Ore";
+  switch (pastRunItemNameKey(name)) {
+    case "ruby": return "Ruby Ore";
+    case "jade": return "Jade Ore";
+    default: return name;
+  }
+}
+
+function createRunSummary(
+  stats: CompanionStats,
+  sessionEndedAt = Date.now(),
+  pausedDurationMs = 0,
+  itemTotals: ItemDropCounter[] = [],
+  runPace: PastRunPace | null = null,
+): PastRunSummary {
   return {
     schemaVersion: PAST_RUN_SCHEMA_VERSION,
     id: `${stats.sessionStartedAt}-${sessionEndedAt}`,
@@ -369,14 +450,17 @@ function createRunSummary(stats: CompanionStats, sessionEndedAt = Date.now(), pa
     satanicDrops: stats.items.Satanic?.total ?? 0,
     heroicDrops: stats.items.Heroic?.total ?? 0,
     angelicDrops: stats.items.Angelic?.total ?? 0,
+    itemTotals: structuredCloneCompat(itemTotals),
     itemBreakdown: structuredCloneCompat(stats.itemBreakdown),
     keys: resourceList(stats.keys),
     ores: resourceList(stats.ores),
     materials: resourceList(stats.materials),
+    runPace,
   };
 }
 
 export function hasRunActivity(summary: PastRunSummary, itemTimelineCount = 0): boolean {
+  const hasItemTotal = (summary.itemTotals ?? []).some((item) => item.total > 0);
   const keyTotal = summary.keys.reduce((total, key) => total + key.total, 0);
   const oreTotal = summary.ores.reduce((total, ore) => total + ore.total, 0);
   const materialTotal = (summary.materials ?? []).reduce((total, material) => total + material.total, 0);
@@ -388,11 +472,30 @@ export function hasRunActivity(summary: PastRunSummary, itemTimelineCount = 0): 
     (summary.satanicDrops ?? 0) > 0 ||
     summary.heroicDrops > 0 ||
     summary.angelicDrops > 0 ||
+    hasItemTotal ||
     itemTimelineCount > 0 ||
     keyTotal > 0 ||
     oreTotal > 0 ||
     materialTotal > 0
   );
+}
+
+function incrementItemTotal(
+  items: Map<string, ItemDropCounter>,
+  name: string,
+  amount: number,
+  magicFind: boolean,
+): void {
+  const normalizedName = normalizePastRunItemName(name);
+  const key = pastRunItemNameKey(normalizedName);
+  const total = Math.max(amount || 1, 1);
+  const existing = items.get(key);
+  if (existing) {
+    existing.total += total;
+    if (magicFind) existing.mf += total;
+    return;
+  }
+  items.set(key, { name: normalizedName, total, mf: magicFind ? total : 0 });
 }
 
 function incrementResource(resources: Record<string, ResourceCounter>, id: number, name: string, amount: number): void {
@@ -413,6 +516,13 @@ function resourceList(resources: Record<string, ResourceCounter>): ResourceCount
   return Object.values(resources)
     .filter((resource) => resource.total > 0)
     .sort((a, b) => a.id - b.id);
+}
+
+function itemTotalList(items: Map<string, ItemDropCounter>): ItemDropCounter[] {
+  return [...items.values()]
+    .filter((item) => item.total > 0)
+    .sort((a, b) => pastRunItemNameKey(a.name).localeCompare(pastRunItemNameKey(b.name)))
+    .slice(0, MAX_PAST_RUN_ITEM_TOTALS);
 }
 
 function structuredCloneCompat<T>(value: T): T {

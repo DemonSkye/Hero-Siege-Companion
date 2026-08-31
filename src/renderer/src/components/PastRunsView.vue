@@ -366,7 +366,12 @@ function groupRunsByDate(runs: PastRunSummary[]): PastRunDateGroup[] {
           <p v-else class="empty-copy past-run-filter-empty">No saved runs match this search.</p>
         </aside>
 
-        <article ref="reportPaper" class="past-run-report-paper" aria-label="Past run report">
+        <article
+          ref="reportPaper"
+          class="past-run-report-paper"
+          :class="{ 'is-aggregate-report': !selectedRun }"
+          aria-label="Past run report"
+        >
           <button class="icon-button ghost past-run-mobile-back" type="button" @click="showRunLibrary">&larr; Back to run library</button>
 
           <template v-if="filteredPastRuns.length">
@@ -394,6 +399,7 @@ function groupRunsByDate(runs: PastRunSummary[]): PastRunDateGroup[] {
                 :aggregate="filteredRunAggregate"
                 :report-config="reportConfig"
                 :item-filter-groups="itemFilterGroups"
+                @update:report-config="$emit('update:reportConfig', $event)"
               />
               <footer class="past-run-report-footer">
                 <span>Report scope: current search and filters</span>

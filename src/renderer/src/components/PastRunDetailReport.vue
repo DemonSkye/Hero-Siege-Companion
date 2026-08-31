@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { pastRunPaceElapsedMs } from "../../../shared/run-pace";
 import type { PastRunSummary } from "../../../shared/stats";
 import { formatDateTime, formatDuration, formatNumber, formatTime } from "../lib/format";
 import { itemIconUrl, resourceImage } from "../lib/item-assets";
+import { projectPastRunPaceChartLanes } from "../lib/live-run-history";
 import { pastRunSearchMatches, pastRunTitle, runTags, searchTerms } from "../lib/past-run-search";
 import { hasReportItemDetailEntries, runReportItemRows, type PastRunReportItemRow } from "../lib/past-runs";
 import type { ItemFilterGroup } from "../lib/item-filters";
 import type { PostRunReportConfig } from "../lib/report-config";
+import RunPaceChart from "./RunPaceChart.vue";
 
 const props = defineProps<{
   run: PastRunSummary;
@@ -16,6 +19,10 @@ const props = defineProps<{
 }>();
 
 const reportRows = computed(() => runReportItemRows(props.run, props.reportConfig, props.itemFilterGroups));
+const runPaceLanes = computed(() => props.run.runPace
+  ? projectPastRunPaceChartLanes(props.run.runPace, props.reportConfig.exactTrackedItems)
+  : []);
+const runPaceElapsedMs = computed(() => props.run.runPace ? pastRunPaceElapsedMs(props.run.runPace) : 0);
 const searchMatches = computed(() => pastRunSearchMatches(props.run, searchTerms(props.searchQuery)));
 const matchedSearchIds = computed(() => new Set(searchMatches.value.map((match) => match.id)));
 
@@ -29,8 +36,24 @@ const standardSearchRows = computed(() => {
   return reportRowsForSearch(searchIds);
 });
 
+const matchedExactRows = computed(() => {
+  const configuredIds = new Set(reportRows.value.map((row) => row.id));
+  const names = Array.from(new Map(searchMatches.value
+    .filter((match) => match.itemName && !match.rarity && match.reportItemId?.startsWith("exact:"))
+    .filter((match) => !configuredIds.has(match.reportItemId ?? ""))
+    .map((match) => [match.reportItemId, match.itemName] as const))
+    .values())
+    .filter((name): name is string => Boolean(name));
+  if (!names.length) return [];
+  return runReportItemRows(
+    props.run,
+    { ...props.reportConfig, summaryItems: [], exactTrackedItems: names },
+    props.itemFilterGroups,
+  );
+});
+
 const matchedDropRows = computed(() => {
-  const alreadyVisible = visibleDropNames([...reportRows.value, ...standardSearchRows.value]);
+  const alreadyVisible = visibleDropNames([...reportRows.value, ...standardSearchRows.value, ...matchedExactRows.value]);
   const groups = new Map<string, Set<string>>();
   for (const match of searchMatches.value) {
     if (!match.itemName || !match.rarity || alreadyVisible.has(normalizeMatchValue(match.itemName))) continue;
@@ -53,6 +76,7 @@ const matchedDropRows = computed(() => {
     {
       ...props.reportConfig,
       summaryItems: itemGroups.map((group) => `group:${group.id}`),
+      exactTrackedItems: [],
       itemGroups,
     },
     props.itemFilterGroups,
@@ -60,14 +84,23 @@ const matchedDropRows = computed(() => {
 });
 
 const searchOnlyRowIds = computed(() => new Set(
-  [...standardSearchRows.value, ...matchedDropRows.value].map((row) => row.id),
+  [...standardSearchRows.value, ...matchedExactRows.value, ...matchedDropRows.value].map((row) => row.id),
 ));
-const visibleReportRows = computed(() => [...reportRows.value, ...standardSearchRows.value, ...matchedDropRows.value]);
+const visibleReportRows = computed(() => [
+  ...reportRows.value,
+  ...standardSearchRows.value,
+  ...matchedExactRows.value,
+  ...matchedDropRows.value,
+]);
 const detailRows = computed(() => visibleReportRows.value.filter((row) => hasReportItemDetailEntries(row.detailPanel)));
 
 function reportRowsForSearch(summaryItems: string[]): PastRunReportItemRow[] {
   if (!summaryItems.length) return [];
-  return runReportItemRows(props.run, { ...props.reportConfig, summaryItems }, props.itemFilterGroups);
+  return runReportItemRows(
+    props.run,
+    { ...props.reportConfig, summaryItems, exactTrackedItems: [] },
+    props.itemFilterGroups,
+  );
 }
 
 function visibleDropNames(rows: PastRunReportItemRow[]): Set<string> {
@@ -152,6 +185,26 @@ function normalizeMatchValue(value: string): string {
     </header>
 
     <p v-if="searchMatches.length" class="past-run-search-results-label">Search results for <strong>&ldquo;{{ searchQuery.trim() }}&rdquo;</strong></p>
+
+    <section v-if="runPaceLanes.length" class="past-run-pace-history" :aria-labelledby="`${run.id}-pace-title`">
+      <div class="past-run-pace-heading">
+        <div>
+          <p class="eyebrow">Saved run</p>
+          <h3 :id="`${run.id}-pace-title`">Run Pace</h3>
+        </div>
+        <span>Archived history</span>
+      </div>
+      <RunPaceChart
+        :lanes="runPaceLanes"
+        :elapsed-ms="runPaceElapsedMs"
+        :history-key="run.id"
+        chart-label="Archived run pace charts"
+        axis-label="Run elapsed"
+        inspection-context="into this run"
+        inspection-control-label="Inspect exact saved values by elapsed run time"
+        trend-origin="the run began"
+      />
+    </section>
 
     <div v-if="visibleReportRows.length" class="past-run-metrics dynamic-metrics" aria-label="Run report summary">
       <div

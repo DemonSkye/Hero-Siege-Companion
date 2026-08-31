@@ -8,6 +8,52 @@
   gap: 12px;
 }
 
+.run-pace-chart {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.past-run-pace-history {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin: 16px 16px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
+
+.past-run-pace-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.past-run-pace-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.past-run-pace-heading h3,
+.past-run-pace-heading p {
+  margin: 0;
+}
+
+.past-run-pace-heading h3 {
+  color: var(--app-heading);
+  font-size: 16px;
+}
+
+.past-run-pace-heading > span {
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .run-pace-status {
   display: inline-flex;
   min-height: 30px;
@@ -285,8 +331,8 @@
   padding: 0 7px;
 }
 
-.run-pace-lane.is-custom .run-pace-lane-label,
-.run-pace-lane.is-custom .run-pace-lane-summary strong {
+.run-pace-lane.has-removal .run-pace-lane-label,
+.run-pace-lane.has-removal .run-pace-lane-summary strong {
   padding-right: 58px;
 }
 
@@ -354,6 +400,17 @@
 }
 
 @media (max-width: 520px) {
+  .past-run-pace-history {
+    margin-inline: 10px;
+    padding: 10px;
+  }
+
+  .past-run-pace-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .run-pace-tracker-form {
     grid-template-columns: minmax(0, 1fr);
   }

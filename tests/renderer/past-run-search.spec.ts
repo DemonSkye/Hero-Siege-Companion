@@ -48,6 +48,43 @@ describe("past run search helpers", () => {
     expect(filterPastRunsBySearch([focused, other], [])).toEqual([focused, other]);
   });
 
+  test("searches schema-v2 ordinary item totals without duplicating archived rarity or resource names", () => {
+    const run = pastRun({
+      id: "ordinary-item-search",
+      itemTotals: [
+        { name: "Heavy Gloves", total: 2, mf: 1 },
+        { name: "Sash of the Magi", total: 2, mf: 1 },
+        { name: "Copper Ore", total: 5, mf: 0 },
+      ],
+    });
+
+    expect(filterPastRunsBySearch([run], searchTerms("heavy gloves"))).toEqual([run]);
+    expect(pastRunSearchMatches(run, searchTerms("heavy gloves"))).toEqual([
+      expect.objectContaining({
+        kind: "drop",
+        label: "Heavy Gloves",
+        detail: "2 saved drops · 1 MF flagged",
+        reportItemId: "exact:heavy%20gloves",
+      }),
+    ]);
+    expect(pastRunSearchMatches(run, searchTerms("sash of the magi")).filter((match) => match.label === "Sash of the Magi")).toHaveLength(1);
+    expect(pastRunSearchMatches(run, searchTerms("copper ore")).filter((match) => match.label === "Copper Ore")).toHaveLength(1);
+
+    const collisionRun = pastRun({
+      id: "ruby-collision-search",
+      itemTotals: [
+        { name: "Ruby", total: 5, mf: 1 },
+        { name: "Ruby Ore", total: 3, mf: 0 },
+      ],
+      ores: [{ id: 30, name: "Ruby", total: 3 }],
+    });
+    expect(pastRunSearchMatches(collisionRun, searchTerms("ruby")).filter((match) => match.label === "Ruby")).toEqual([
+      expect.objectContaining({ reportItemId: "exact:ruby", detail: "5 saved drops · 1 MF flagged" }),
+    ]);
+    expect(filterPastRunsBySearch([collisionRun], searchTerms("ruby ore"))).toEqual([collisionRun]);
+    expect(pastRunSearchMatches(collisionRun, searchTerms("ruby ore")).filter((match) => match.label === "Ruby Ore")).toHaveLength(1);
+  });
+
   test("returns stable report targets for matching fields and saved items", () => {
     const run = pastRun({
       accountName: "NomadFarmer",
@@ -217,6 +254,89 @@ describe("past run search helpers", () => {
     expect(aggregateSummary.split("\n")).not.toEqual(expect.arrayContaining([expect.stringMatching(/^Drops:/)]));
     expect(runSummary).toContain("Report: Gold: 100,000");
     expect(runSummary).toContain("Top drops: Sash of the Magi x2, +1 more");
+  });
+
+  test("adds exact item totals without filtering the aggregate and matches saved drops and resources", () => {
+    const shortRun = pastRun({
+      id: "short",
+      durationMs: 30 * 60_000,
+      itemTotals: [
+        { name: "Tarethíel Signet", total: 4, mf: 1 },
+        { name: "Tarethiel Signet Replica", total: 50, mf: 0 },
+        { name: "Copper Ore", total: 7, mf: 0 },
+        { name: "Ruby", total: 4, mf: 1 },
+        { name: "Ruby Ore", total: 2, mf: 0 },
+      ],
+      ores: [
+        { id: 27, name: "Copper Ore", total: 7 },
+        { id: 30, name: "Ruby", total: 2 },
+      ],
+    });
+    const longRun = pastRun({
+      id: "long",
+      durationMs: 90 * 60_000,
+      itemTotals: [
+        { name: "Tarethiel Signet", total: 2, mf: 0 },
+        { name: "Tarethiel Signet Replica", total: 50, mf: 0 },
+        { name: "Copper Ore", total: 5, mf: 0 },
+      ],
+      ores: [{ id: 27, name: "Copper Ore", total: 5 }],
+    });
+    const reportConfig = {
+      ...defaultPostRunReportConfig,
+      exactTrackedItems: ["Tarethiel Signet", "Copper Ore", "Never Seen", "Ruby Ore"],
+    };
+    const aggregate = aggregatePastRuns([shortRun, longRun]);
+    const rows = aggregateReportItemRows([shortRun, longRun], aggregate, reportConfig);
+
+    expect(aggregate.runCount).toBe(2);
+    expect(aggregate.totalGold).toBe(shortRun.totalGoldGained + longRun.totalGoldGained);
+    expect(rows.find((row) => row.label === "Tarethiel Signet")).toMatchObject({
+      value: 6,
+      detail: "3/h - 3/run - 1 MF flagged",
+    });
+    expect(rows.find((row) => row.label === "Copper Ore")).toMatchObject({
+      value: 12,
+      detail: "6/h - 6/run - Saved resource",
+    });
+    expect(rows.find((row) => row.label === "Never Seen")).toMatchObject({ value: 0, detail: "No saved matches" });
+    expect(rows.find((row) => row.label === "Ruby Ore")).toMatchObject({
+      value: 2,
+      detail: "1/h - 1/run - Saved resource",
+    });
+
+    const identityRows = aggregateReportItemRows([shortRun, longRun], aggregate, {
+      ...defaultPostRunReportConfig,
+      exactTrackedItems: ["Ruby", "Ruby Ore"],
+    });
+    expect(identityRows.find((row) => row.label === "Ruby")).toMatchObject({ value: 4, mf: 1 });
+    expect(identityRows.find((row) => row.label === "Ruby Ore")).toMatchObject({ value: 2 });
+
+    const shortRows = runReportItemRows(shortRun, reportConfig);
+    expect(shortRows.find((row) => row.label === "Tarethiel Signet")).toMatchObject({ value: 4, detail: "8/h - 1 MF flagged" });
+    expect(shortRows.find((row) => row.label === "Copper Ore")).toMatchObject({ value: 7, detail: "14/h - Saved resource" });
+
+    const csv = createPastRunsAggregateCsv({ title: "Tracked Runs", query: "", runs: [shortRun, longRun], aggregate, reportConfig });
+    const summary = createPastRunsDiscordSummary({ title: "Tracked Runs", query: "", runs: [shortRun, longRun], aggregate, reportConfig });
+    expect(csv).toContain("report_item,Tarethiel Signet,6,1,,3/h - 3/run - 1 MF flagged");
+    expect(summary).toContain("Tarethiel Signet: 6 (3/h - 3/run - 1 MF flagged)");
+
+    const zeroDurationRun = pastRun({ durationMs: 0, itemTotals: [{ name: "Tarethiel Signet", total: 2, mf: 0 }] });
+    const zeroDurationRow = runReportItemRows(zeroDurationRun, reportConfig).find((row) => row.label === "Tarethiel Signet");
+    expect(zeroDurationRow?.detail).toBe("0/h - 0 MF flagged");
+
+    const legacyAliasRun = pastRun({
+      itemTotals: [],
+      ores: [{ id: 31, name: "Jade", total: 3 }],
+    });
+    const aliasRows = runReportItemRows(legacyAliasRun, {
+      ...defaultPostRunReportConfig,
+      exactTrackedItems: ["Jade Ore"],
+    });
+    expect(aliasRows.find((row) => row.label === "Jade Ore")).toMatchObject({
+      value: 3,
+      detail: "18/h - Saved resource",
+    });
   });
 
   test("applies item-filter-style rarity, type, and exact item rules to drop recaps", () => {

@@ -53,6 +53,7 @@ import type {
   LogEntry,
   RunPausedReason,
 } from "../shared/app-state";
+import { createCompanionStateUpdate } from "../shared/app-state";
 import { EVENT_NAMES } from "../shared/constants";
 import { IPC_CHANNELS, type ConfigurationExportOptions } from "../shared/ipc";
 import { createInitialCompanionState } from "../shared/initial-state";
@@ -82,6 +83,7 @@ let satanicZoneCachePath = "";
 let forceExitTimer: NodeJS.Timeout | null = null;
 let windowBounds: WindowBoundsPreferences = {};
 let statePublishTimer: NodeJS.Timeout | null = null;
+let pastRunsPendingPublish = false;
 let lastPendingCaptureEventsLogAt = 0;
 let appDiagnostics: AppDiagnostics | null = null;
 let satanicZoneController: SatanicZoneController | null = null;
@@ -315,7 +317,15 @@ function publishStateNow(): void {
   applyPendingCaptureEvents();
   const window = currentWindow();
   if (!window || window.isDestroyed()) return;
-  window.webContents.send(IPC_CHANNELS.stateUpdated, state);
+  window.webContents.send(
+    IPC_CHANNELS.stateUpdated,
+    createCompanionStateUpdate(state, { includePastRuns: pastRunsPendingPublish }),
+  );
+  pastRunsPendingPublish = false;
+}
+
+function markPastRunsForPublish(): void {
+  pastRunsPendingPublish = true;
 }
 
 function applySatanicZoneState(nextState: SatanicZoneState): void {
@@ -450,6 +460,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsSetTags, (_event, runId: string, tags: unkno
 
   state.pastRuns = state.pastRuns.map((run) => (run.id === normalizedRunId ? { ...run, tags: nextTags } : run));
   savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
+  markPastRunsForPublish();
   publishState();
   return state;
 });
@@ -463,6 +474,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsDelete, (_event, runId: string) => {
 
   savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
   addLog("info", "Past run deleted.");
+  markPastRunsForPublish();
   publishState();
   return state;
 });
@@ -472,6 +484,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsDeleteAll, () => {
   state.pastRuns = [];
   savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
   addLog("info", "All past runs deleted.");
+  markPastRunsForPublish();
   publishState();
   return state;
 });
@@ -903,6 +916,7 @@ function archiveCurrentRun(reason: string): boolean {
   archivedSessionStarts.add(summary.sessionStartedAt);
   state.pastRuns = [summary, ...state.pastRuns.filter((run) => run.sessionStartedAt !== summary.sessionStartedAt)].slice(0, MAX_PAST_RUNS);
   savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
+  markPastRunsForPublish();
   writeAppLog("run-archived", { reason, id: summary.id });
   addLog("success", `Archived run summary: ${summary.totalGoldGained.toLocaleString()} gold, ${summary.totalXpGained.toLocaleString()} XP, ${(summary.totalKillsGained ?? 0).toLocaleString()} kills.`);
   return true;

@@ -370,6 +370,7 @@
 
 .past-run-aggregate {
   display: grid;
+  align-content: start;
   gap: 10px;
   min-width: 0;
   padding: 12px;
@@ -466,6 +467,94 @@
   color: #9fa8b8;
   font-size: 11px;
   font-weight: 700;
+}
+
+.past-run-exact-tracker {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.65fr) minmax(280px, 1.35fr);
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.past-run-exact-tracker-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.past-run-exact-tracker-copy strong {
+  color: var(--app-heading);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.past-run-exact-tracker-copy small,
+.past-run-exact-tracker-help {
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.past-run-exact-tracker-copy small.is-warning {
+  color: var(--warning);
+}
+
+.past-run-exact-tracker-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.past-run-exact-tracker-form label,
+.past-run-exact-tracker-form input {
+  min-width: 0;
+  width: 100%;
+}
+
+.past-run-exact-tracker-form input {
+  min-height: 36px;
+}
+
+.past-run-exact-tracker-help {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.aggregate-exact-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.aggregate-exact-metrics > div {
+  position: relative;
+  padding-right: 68px;
+}
+
+.aggregate-exact-metrics button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-cell);
+  color: var(--app-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.aggregate-exact-metrics button:hover,
+.aggregate-exact-metrics button:focus-visible {
+  border-color: var(--accent-border);
+  background: var(--surface-hover);
+  color: var(--app-heading);
 }
 
 .aggregate-detail-grid {
@@ -1347,12 +1436,26 @@
   overflow-y: auto;
 }
 
+.past-run-report-paper.is-aggregate-report {
+  align-self: start;
+  overflow: visible;
+}
+
 .past-run-report-paper > .past-run-aggregate {
   flex: 1 0 auto;
   padding: 16px;
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.past-run-report-paper.is-aggregate-report > .past-run-aggregate {
+  flex: none;
+  align-content: start;
+}
+
+.past-run-report-paper.is-aggregate-report > .past-run-report-footer {
+  margin-top: 0;
 }
 
 .past-run-report-header {
@@ -1635,6 +1738,10 @@
     min-height: min(620px, calc(100vh - 310px));
   }
 
+  .past-run-report-desk .past-run-report-paper.is-aggregate-report {
+    min-height: 0;
+  }
+
   .past-run-report-desk.mobile-report-open .past-run-library,
   .past-run-report-desk:not(.mobile-report-open) .past-run-report-paper {
     display: none;
@@ -1665,6 +1772,14 @@
 
   .past-run-report-footer > div .icon-button {
     flex: 1 1 auto;
+  }
+
+  .past-run-exact-tracker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .past-run-exact-tracker-help {
+    grid-column: 1;
   }
 }
 

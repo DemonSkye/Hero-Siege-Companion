@@ -20,7 +20,15 @@ import {
   DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES,
   createInitialSatanicZoneState,
 } from "../../src/shared/satanic-zone";
-import { PAST_RUN_SCHEMA_VERSION } from "../../src/shared/stats";
+import {
+  MAX_PAST_RUN_ITEM_NAME_LENGTH,
+  MAX_PAST_RUN_ITEM_TOTALS,
+  PAST_RUN_SCHEMA_VERSION,
+} from "../../src/shared/stats";
+import {
+  MAX_RUN_PACE_ITEM_NAME_LENGTH,
+  RUN_PACE_SCHEMA_VERSION,
+} from "../../src/shared/run-pace";
 import { pastRun } from "../renderer/fixtures";
 
 let tempDir = "";
@@ -264,6 +272,8 @@ describe("main process persistence helpers", () => {
       satanicDrops: undefined,
       heroicDrops: undefined,
       angelicDrops: undefined,
+      itemTotals: undefined,
+      runPace: undefined,
       itemBreakdown: undefined,
       keys: undefined,
       ores: undefined,
@@ -281,12 +291,180 @@ describe("main process persistence helpers", () => {
         satanicDrops: 0,
         heroicDrops: 0,
         angelicDrops: 0,
+        itemTotals: [],
         itemBreakdown: { Set: {}, Satanic: {}, Heroic: {}, Angelic: {} },
         keys: [],
         ores: [],
         materials: [],
+        runPace: null,
       }),
     ]);
+  });
+
+  test("round-trips normalized Run Pace history and drops malformed history without losing the run", () => {
+    const runsPath = tempFile("past-runs-run-pace.json");
+    const longName = "x".repeat(MAX_RUN_PACE_ITEM_NAME_LENGTH + 20);
+    fs.writeFileSync(runsPath, `${JSON.stringify([
+      {
+        ...pastRun({ id: "paced-run", durationMs: 60_000 }),
+        runPace: {
+          schemaVersion: RUN_PACE_SCHEMA_VERSION,
+          samples: [
+            { elapsedMs: 60_000, xp: 100, gold: 1_000, kills: 10, items: 3 },
+            { elapsedMs: 0, xp: 0, gold: 0, kills: 0, items: 0 },
+            { elapsedMs: 30_000, xp: 50, gold: 500, kills: 5, items: 1 },
+          ],
+          itemSeries: [{
+            name: longName,
+            points: [
+              { elapsedMs: 30_000, value: 1 },
+              { elapsedMs: 60_000, value: 3 },
+            ],
+          }],
+          itemSeriesTruncated: false,
+        },
+      },
+      {
+        ...pastRun({ id: "malformed-pace" }),
+        runPace: { schemaVersion: RUN_PACE_SCHEMA_VERSION, samples: "not-an-array" },
+      },
+    ], null, 2)}\n`, "utf8");
+
+    const loaded = loadPastRuns(runsPath);
+    expect(loaded.find((run) => run.id === "paced-run")?.runPace).toEqual({
+      schemaVersion: RUN_PACE_SCHEMA_VERSION,
+      samples: [
+        { elapsedMs: 0, xp: 0, gold: 0, kills: 0, items: 0 },
+        { elapsedMs: 30_000, xp: 50, gold: 500, kills: 5, items: 1 },
+        { elapsedMs: 60_000, xp: 100, gold: 1_000, kills: 10, items: 3 },
+      ],
+      itemSeries: [{
+        name: longName.slice(0, MAX_RUN_PACE_ITEM_NAME_LENGTH),
+        points: [
+          { elapsedMs: 30_000, value: 1 },
+          { elapsedMs: 60_000, value: 3 },
+        ],
+      }],
+      itemSeriesTruncated: false,
+    });
+    expect(loaded.find((run) => run.id === "malformed-pace")?.runPace).toBeNull();
+
+    savePastRuns(runsPath, loaded);
+    expect(loadPastRuns(runsPath).find((run) => run.id === "paced-run")?.runPace?.samples.at(-1)).toEqual({
+      elapsedMs: 60_000,
+      xp: 100,
+      gold: 1_000,
+      kills: 10,
+      items: 3,
+    });
+  });
+
+  test("normalizes current item totals and merges equivalent names", () => {
+    const runsPath = tempFile("past-runs-item-totals.json");
+    const run = {
+      ...pastRun({ id: "current-item-totals" }),
+      itemTotals: [
+        { name: "  Túndra   Warrior’s Girdle  ", total: 2.9, mf: 8 },
+        { name: "tundra warriors girdle", total: 3, mf: 1 },
+        { name: "Crème Brûlée", total: 4, mf: 2 },
+        { name: "creme brulee", total: 1, mf: 0 },
+        null,
+        { name: "", total: 1, mf: 0 },
+        { name: "Zero", total: 0, mf: 0 },
+        { name: "Negative", total: -1, mf: 0 },
+        { name: "String total", total: "2", mf: 0 },
+        { name: "Bad magic find", total: 2, mf: -1 },
+      ],
+    };
+    fs.writeFileSync(runsPath, `${JSON.stringify([run])}\n`, "utf8");
+
+    expect(loadPastRuns(runsPath)[0]?.itemTotals).toEqual([
+      { name: "Crème Brûlée", total: 5, mf: 2 },
+      { name: "Túndra Warrior’s Girdle", total: 5, mf: 3 },
+    ]);
+  });
+
+  test("bounds persisted item totals and item names", () => {
+    const runsPath = tempFile("past-runs-item-total-bounds.json");
+    const longName = "a".repeat(MAX_PAST_RUN_ITEM_NAME_LENGTH + 20);
+    const itemTotals = [
+      { name: longName, total: Number.MAX_SAFE_INTEGER + 100, mf: Number.MAX_SAFE_INTEGER + 100 },
+      ...Array.from({ length: MAX_PAST_RUN_ITEM_TOTALS }, (_, index) => ({
+        name: `Item ${index}`,
+        total: 1,
+        mf: 0,
+      })),
+      { name: "ITEM 0", total: 2, mf: 1 },
+    ];
+    fs.writeFileSync(
+      runsPath,
+      `${JSON.stringify([{ ...pastRun({ id: "bounded-item-totals" }), itemTotals }])}\n`,
+      "utf8",
+    );
+
+    const loaded = loadPastRuns(runsPath)[0]?.itemTotals ?? [];
+    expect(loaded).toHaveLength(MAX_PAST_RUN_ITEM_TOTALS);
+    expect(loaded.find((item) => item.name === longName.slice(0, MAX_PAST_RUN_ITEM_NAME_LENGTH))).toEqual({
+      name: longName.slice(0, MAX_PAST_RUN_ITEM_NAME_LENGTH),
+      total: Number.MAX_SAFE_INTEGER,
+      mf: Number.MAX_SAFE_INTEGER,
+    });
+    expect(loaded.find((item) => item.name === "Item 0")).toEqual({ name: "Item 0", total: 3, mf: 1 });
+    expect(loaded.filter((item) => item.name.startsWith("Item "))).toHaveLength(MAX_PAST_RUN_ITEM_TOTALS - 1);
+  });
+
+  test("synthesizes legacy item totals without double-counting resource projections", () => {
+    const runsPath = tempFile("past-runs-legacy-item-totals.json");
+    const legacyRun = {
+      ...pastRun({
+        id: "legacy-item-totals",
+        itemBreakdown: {
+          Set: {
+            first: { name: "Túndra Warrior’s Girdle", total: 2, mf: 1 },
+            resourceProjection: { name: "Jadé O’re", total: 99, mf: 88 },
+          },
+          Satanic: {
+            second: { name: "tundra warriors girdle", total: 3, mf: 2 },
+          },
+          Heroic: {},
+          Angelic: {},
+        },
+        keys: [
+          { id: 1, name: "Mára’s Key", total: 2 },
+          { id: 2, name: "maras key", total: 3 },
+        ],
+        ores: [
+          { id: 30, name: "Ruby", total: 2 },
+          { id: 31, name: "Jade Ore", total: 4 },
+        ],
+        materials: [
+          { id: 98, name: "Ruby", total: 7 },
+          { id: 99, name: "jade ore", total: 1 },
+        ],
+      }),
+      schemaVersion: 1,
+      itemTotals: undefined,
+    };
+    fs.writeFileSync(runsPath, `${JSON.stringify([legacyRun])}\n`, "utf8");
+
+    expect(loadPastRuns(runsPath)[0]?.itemTotals).toEqual([
+      { name: "Jade Ore", total: 5, mf: 0 },
+      { name: "Mára’s Key", total: 5, mf: 0 },
+      { name: "Ruby", total: 7, mf: 0 },
+      { name: "Ruby Ore", total: 2, mf: 0 },
+      { name: "Túndra Warrior’s Girdle", total: 5, mf: 3 },
+    ]);
+  });
+
+  test("does not replace an explicit current item-total list with legacy projections", () => {
+    const runsPath = tempFile("past-runs-empty-current-item-totals.json");
+    fs.writeFileSync(
+      runsPath,
+      `${JSON.stringify([{ ...pastRun({ id: "empty-current-item-totals" }), itemTotals: [] }])}\n`,
+      "utf8",
+    );
+
+    expect(loadPastRuns(runsPath)[0]?.itemTotals).toEqual([]);
   });
 
   test("filters invalid past runs before applying the archive cap", () => {

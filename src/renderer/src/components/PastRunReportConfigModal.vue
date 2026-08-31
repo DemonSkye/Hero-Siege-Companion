@@ -121,7 +121,10 @@ function cancelReportPreset() {
 }
 
 function applyReportPreset(preset: PostRunReportPreset) {
-  emit("update:reportConfig", clonePostRunReportConfig(preset.config));
+  emit("update:reportConfig", {
+    ...clonePostRunReportConfig(preset.config),
+    exactTrackedItems: [...props.reportConfig.exactTrackedItems],
+  });
   reportDraftItem.value = "";
   reportDraftGroupName.value = "";
   selectedReportGroupId.value = "";
@@ -277,7 +280,7 @@ function groupedReportItems(group: ReportItemGroup | null): Array<{ typeLabel: s
           <section class="item-filter-rule-section report-preset-section">
             <div class="item-filter-rule-heading">
               <strong>Report presets</strong>
-              <span>Replace the report items, custom groups, and top-drop limit.</span>
+              <span>Replace report items, custom groups, and the top-drop limit. Exact tracked items stay.</span>
             </div>
             <div class="report-preset-grid">
               <button v-for="preset in reportPresets" :key="preset.id" class="report-preset-button" type="button" @click="chooseReportPreset(preset)">

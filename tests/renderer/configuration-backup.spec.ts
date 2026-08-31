@@ -36,6 +36,10 @@ describe("full configuration backups", () => {
         gameExecutablePath: "C:/Games/Hero Siege/Hero_Siege.exe",
         hiddenDashboardPanels: ["live-log"],
         hideUnfilteredTimelineItems: true,
+        postRunReport: {
+          ...defaultPreferences.postRunReport,
+          exactTrackedItems: ["Ruby Ore", "Heavy Gloves"],
+        },
         itemResearchEntries: [{
           signature: "legacy-entry",
           label: "Legacy",
@@ -61,10 +65,14 @@ describe("full configuration backups", () => {
       launchThroughSteam: false,
       hiddenDashboardPanels: ["live-log"],
       hideUnfilteredTimelineItems: true,
+      postRunReport: expect.objectContaining({ exactTrackedItems: ["Ruby Ore", "Heavy Gloves"] }),
     });
     expect(payload.uiPreferences).not.toHaveProperty("itemResearchEntries");
     expect(payload).not.toHaveProperty("runArchivePreferences");
     expect(payload).not.toHaveProperty("capturePreferences");
+
+    const restored = importConfigurationPayload(payload, normalizePreferences(defaultPreferences)).uiPreferences;
+    expect(restored.postRunReport.exactTrackedItems).toEqual(["Ruby Ore", "Heavy Gloves"]);
   });
 
   test("previews old configurations and restores supported data without reviving retired switches", () => {

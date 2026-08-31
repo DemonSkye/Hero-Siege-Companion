@@ -38,14 +38,15 @@ export function inspectLiveRunChartLanes(
 export function formatLiveRunChartInspectionSummary(
   elapsedMs: number,
   values: readonly { label: string; value: number }[],
+  context = "since graph tracking began",
 ): string {
   return [
-    `${formatDuration(elapsedMs)} since graph tracking began`,
+    `${formatDuration(elapsedMs)} ${context}`,
     ...values.map(({ label, value }) => `${label} ${formatNumber(value)}`),
   ].join(", ");
 }
 
-export function summarizeLiveRunLaneTrend(lane: LiveRunChartLane): string {
+export function summarizeLiveRunLaneTrend(lane: LiveRunChartLane, origin = "graph tracking began"): string {
   const firstPoint = lane.points[0];
   const lastPoint = lane.points.at(-1);
   if (!firstPoint || !lastPoint) return `${lane.label} has no graph history yet.`;
@@ -58,7 +59,7 @@ export function summarizeLiveRunLaneTrend(lane: LiveRunChartLane): string {
 
   const latestChange = changes.at(-1)!;
   const latestChangeAt = formatDuration(Math.max(latestChange.elapsedMs - firstPoint.elapsedMs, 0));
-  return `${lane.label} is ${formatNumber(lane.latestValue)} after ${changes.length} recorded ${changes.length === 1 ? "change" : "changes"}; the latest was ${latestChangeAt} after graph tracking began.`;
+  return `${lane.label} is ${formatNumber(lane.latestValue)} after ${changes.length} recorded ${changes.length === 1 ? "change" : "changes"}; the latest was ${latestChangeAt} after ${origin}.`;
 }
 
 export function clampLiveRunTooltipPosition(

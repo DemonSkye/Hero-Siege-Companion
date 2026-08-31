@@ -2,6 +2,7 @@ import type {
   CaptureDiagnosticsLevel,
   CaptureDiagnosticsMode,
   CompanionState,
+  CompanionStateUpdate,
   ReleaseUpdateInfo,
 } from "./app-state";
 import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "./support-diagnostics";
@@ -155,5 +156,5 @@ export interface HeroSiegeCompanionApi {
   checkForUpdate: () => Promise<ReleaseUpdateInfo | null>;
   openRelease: (url?: string) => Promise<void>;
   openNpcapGuide: () => Promise<void>;
-  onStateUpdated: (callback: (state: CompanionState) => void) => () => void;
+  onStateUpdated: (callback: (state: CompanionStateUpdate) => void) => () => void;
 }

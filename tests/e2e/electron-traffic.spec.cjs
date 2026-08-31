@@ -1,7 +1,11 @@
 const { test, expect } = require("@playwright/test");
 const {
+  cleanupUserDataDir,
+  closeCompanionApp,
+  createUserDataDir,
   emitCapturePayloads,
   getRendererState,
+  launchCompanionApp,
   waitForRendererState,
   withCompanionApp,
 } = require("./support/companion-app.cjs");
@@ -97,4 +101,43 @@ test("classifies heroic and angelic drops from mocked traffic messages", async (
     await page.locator("button.item-counter.angelic").click();
     await expect(page.locator("#tracked-drops-card-body").getByText("Aurelion Fury")).toBeVisible();
   });
+});
+
+test("archives Run Pace history and restores its exact lanes after relaunch", async () => {
+  const userDataDir = createUserDataDir();
+  let appSession = null;
+  try {
+    appSession = await launchCompanionApp({ userDataDir });
+    await emitCapturePayloads(appSession.electronApp, e2eTrafficPayloads());
+    await waitForRendererState(
+      appSession.page,
+      (state) => state.stats.accountName === "E2E Packet Runner" && state.stats.itemTimeline.some((item) => item.label === "Aurelion Fury"),
+      { message: "mocked traffic should produce an archivable exact item series" },
+    );
+
+    await appSession.page.getByRole("button", { name: "End Run" }).click();
+    await expect(appSession.page.getByRole("heading", { name: "Report Desk" })).toBeVisible();
+    const tracker = appSession.page.locator(".past-run-exact-tracker-form");
+    await tracker.getByPlaceholder("Enter an exact item name").fill("Aurelion Fury");
+    await tracker.getByRole("button", { name: "Track item" }).click();
+    await appSession.page.locator(".past-run-card-primary-action").first().click();
+
+    const archivedChart = appSession.page.locator(".past-run-pace-history");
+    await expect(archivedChart).toBeVisible();
+    await expect(archivedChart.locator('[data-lane-id="items"] .run-pace-lane-summary strong')).toHaveText("1");
+    await expect(archivedChart.locator('[data-lane-id="item:aurelion fury"] .run-pace-lane-summary strong')).toHaveText("1");
+
+    await closeCompanionApp(appSession);
+    appSession = await launchCompanionApp({ userDataDir });
+    await appSession.page.getByRole("tab", { name: "Past Runs" }).click();
+    await appSession.page.locator(".past-run-card-primary-action").first().click();
+
+    const restoredChart = appSession.page.locator(".past-run-pace-history");
+    await expect(restoredChart).toBeVisible();
+    await expect(restoredChart.locator('[data-lane-id="items"] .run-pace-lane-summary strong')).toHaveText("1");
+    await expect(restoredChart.locator('[data-lane-id="item:aurelion fury"] .run-pace-lane-summary strong')).toHaveText("1");
+  } finally {
+    if (appSession) await closeCompanionApp(appSession);
+    cleanupUserDataDir(userDataDir);
+  }
 });

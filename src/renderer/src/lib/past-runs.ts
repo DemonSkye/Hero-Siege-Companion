@@ -1,4 +1,11 @@
-import type { ItemDropCounter, PastRunSummary, ResourceCounter } from "../../../shared/stats";
+import {
+  canonicalPastRunTrackerName,
+  pastRunItemNameKey,
+  pastRunOreTrackerName,
+  type ItemDropCounter,
+  type PastRunSummary,
+  type ResourceCounter,
+} from "../../../shared/stats";
 import {
   MAGIC_FIND_FLAG_METRIC_LABEL,
   formatDateTime,
@@ -70,6 +77,7 @@ export interface PastRunReportItemRow {
   label: string;
   value: number;
   detail: string;
+  mf?: number;
   detailPanel?: PastRunReportItemDetail;
 }
 
@@ -141,11 +149,120 @@ export function runMetricRows(
 }
 
 export function runReportItemRows(run: PastRunSummary, config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[] = []): PastRunReportItemRow[] {
-  return config.summaryItems.map((itemId) => runReportItemRow(run, config, itemFilterGroups, itemId)).filter(Boolean) as PastRunReportItemRow[];
+  const summaryRows = config.summaryItems.map((itemId) => runReportItemRow(run, config, itemFilterGroups, itemId)).filter(Boolean) as PastRunReportItemRow[];
+  return [...summaryRows, ...exactTrackedItemNames(config).map((name) => runExactTrackedItemRow(run, name))];
 }
 
 export function aggregateReportItemRows(runs: PastRunSummary[], aggregate: PastRunAggregate, config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[] = []): PastRunReportItemRow[] {
-  return config.summaryItems.map((itemId) => aggregateReportItemRow(runs, aggregate, config, itemFilterGroups, itemId)).filter(Boolean) as PastRunReportItemRow[];
+  const summaryRows = config.summaryItems.map((itemId) => aggregateReportItemRow(runs, aggregate, config, itemFilterGroups, itemId)).filter(Boolean) as PastRunReportItemRow[];
+  return [...summaryRows, ...exactTrackedItemNames(config).map((name) => aggregateExactTrackedItemRow(runs, aggregate, name))];
+}
+
+export function exactTrackedItemRowId(name: string): ReportSummaryItemId {
+  return `exact:${encodeURIComponent(pastRunItemNameKey(canonicalPastRunTrackerName(name)))}`;
+}
+
+export function runExactTrackedItemCount(run: PastRunSummary, name: string): { total: number; mf: number; source: "drop" | "resource" | "none" } {
+  const target = pastRunItemNameKey(canonicalPastRunTrackerName(name));
+  if (!target) return { total: 0, mf: 0, source: "none" };
+
+  let total = 0;
+  let mf = 0;
+  let matched = false;
+  for (const item of run.itemTotals ?? []) {
+    if (pastRunItemNameKey(canonicalPastRunTrackerName(item.name)) !== target) continue;
+    matched = true;
+    total += Math.max(item.total, 0);
+    mf += Math.max(Math.min(item.mf, item.total), 0);
+  }
+
+  let resourceTotal = 0;
+  let resourceMatched = false;
+  for (const resource of [...run.keys, ...(run.materials ?? [])]) {
+    if (pastRunItemNameKey(canonicalPastRunTrackerName(resource.name)) !== target) continue;
+    resourceMatched = true;
+    resourceTotal += Math.max(resource.total, 0);
+  }
+  for (const resource of run.ores) {
+    if (pastRunItemNameKey(pastRunOreTrackerName(resource.name, resource.id)) !== target) continue;
+    resourceMatched = true;
+    resourceTotal += Math.max(resource.total, 0);
+  }
+  if (matched) {
+    const resourceOnly = resourceMatched && total === resourceTotal && mf === 0;
+    return { total, mf, source: resourceOnly ? "resource" : "drop" };
+  }
+  if (resourceMatched) return { total: resourceTotal, mf: 0, source: "resource" };
+
+  for (const breakdown of Object.values(run.itemBreakdown ?? {})) {
+    for (const item of Object.values(breakdown)) {
+      if (pastRunItemNameKey(canonicalPastRunTrackerName(item.name)) !== target) continue;
+      matched = true;
+      total += Math.max(item.total, 0);
+      mf += Math.max(Math.min(item.mf, item.total), 0);
+    }
+  }
+  return matched ? { total, mf, source: "drop" } : { total: 0, mf: 0, source: "none" };
+}
+
+function exactTrackedItemNames(config: PostRunReportConfig): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const rawName of config.exactTrackedItems ?? []) {
+    const name = canonicalPastRunTrackerName(rawName);
+    const key = pastRunItemNameKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
+function runExactTrackedItemRow(run: PastRunSummary, name: string): PastRunReportItemRow {
+  const count = runExactTrackedItemCount(run, name);
+  const rate = ratePerHour(count.total, run.durationMs);
+  const detail = count.source === "none"
+    ? "No saved matches"
+    : count.source === "resource"
+      ? `${formatNumber(rate)}/h - Saved resource`
+      : `${formatNumber(rate)}/h - ${formatMagicFindFlagCount(count.mf, { short: true })}`;
+  return {
+    id: exactTrackedItemRowId(name),
+    label: name,
+    value: count.total,
+    detail,
+    ...(count.source === "drop" ? { mf: count.mf } : {}),
+  };
+}
+
+function aggregateExactTrackedItemRow(runs: PastRunSummary[], aggregate: PastRunAggregate, name: string): PastRunReportItemRow {
+  let total = 0;
+  let mf = 0;
+  let hasDrop = false;
+  let hasResource = false;
+  for (const run of runs) {
+    const count = runExactTrackedItemCount(run, name);
+    total += count.total;
+    mf += count.mf;
+    if (count.source === "drop") hasDrop = true;
+    if (count.source === "resource") hasResource = true;
+  }
+  if (total <= 0) return { id: exactTrackedItemRowId(name), label: name, value: 0, detail: "No saved matches" };
+
+  const rate = formatNumber(ratePerHour(total, aggregate.totalDurationMs));
+  const average = formatNumber(averagePerRun(total, aggregate.runCount));
+  const sourceDetail = hasResource && !hasDrop
+    ? "Saved resource"
+    : hasDrop && !hasResource
+      ? formatMagicFindFlagCount(mf, { short: true })
+      : "Saved entries";
+  return {
+    id: exactTrackedItemRowId(name),
+    label: name,
+    value: total,
+    detail: `${rate}/h - ${average}/run - ${sourceDetail}`,
+    ...(hasDrop ? { mf } : {}),
+  };
 }
 
 function runReportItemRow(run: PastRunSummary, config: PostRunReportConfig, itemFilterGroups: ItemFilterGroup[], itemId: ReportSummaryItemId): PastRunReportItemRow | null {
@@ -502,7 +619,11 @@ function aggregateShareReportRows(options: PastRunsAggregateShareOptions): PastR
 }
 
 function reportItemCsvRow(row: PastRunReportItemRow): string[] {
-  const mf = row.detailPanel?.kind === "drops" ? String(breakdownItemMf(row.detailPanel.drops)) : "";
+  const mf = row.mf !== undefined
+    ? String(Math.trunc(row.mf))
+    : row.detailPanel?.kind === "drops"
+      ? String(breakdownItemMf(row.detailPanel.drops))
+      : "";
   const unique = row.detailPanel
     ? String(row.detailPanel.kind === "drops" ? row.detailPanel.drops.length : row.detailPanel.resources.length)
     : "";

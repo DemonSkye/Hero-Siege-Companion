@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CaptureDiagnosticsLevel, CaptureDiagnosticsMode, CompanionState, LogEntry } from "../../shared/app-state";
+import { mergeCompanionStateUpdate } from "../../shared/app-state";
 import { createInitialCompanionState } from "../../shared/initial-state";
 import AppTitlebar from "./components/AppTitlebar.vue";
 import CompactView from "./components/CompactView.vue";
@@ -289,7 +290,7 @@ onMounted(async () => {
   void refreshSupportDiagnosticsInfo();
   unsubscribe = window.heroSiegeCompanion.onStateUpdated((nextState) => {
     processItemFilterTimeline(nextState.stats.itemTimeline);
-    state.value = nextState;
+    state.value = mergeCompanionStateUpdate(state.value, nextState);
   });
   void checkForUpdateNotice();
   clock = window.setInterval(() => { now.value = Date.now(); }, 1000);

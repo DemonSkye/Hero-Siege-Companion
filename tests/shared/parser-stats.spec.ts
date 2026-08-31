@@ -15,7 +15,7 @@ import {
 import { lookupItemTranslationByName } from "../../src/shared/item-lookup";
 import { lookupKnownItemRarity } from "../../src/shared/item-rarity";
 import { captureMessages, identifyEvent, messageToEvents } from "../../src/shared/parser";
-import { hasRunActivity, StatsEngine } from "../../src/shared/stats";
+import { hasRunActivity, PAST_RUN_SCHEMA_VERSION, StatsEngine } from "../../src/shared/stats";
 
 // These specs are packet-shaped on purpose. They preserve the odd payloads and
 // edge cases we have seen in Hero Siege traffic so parser changes break here
@@ -1938,6 +1938,64 @@ test("run summaries track non-basic keys ore and selected drops", () => {
   assert.equal(summary.angelicDrops, 1);
   assert.equal(Object.values(summary.itemBreakdown.Set).reduce((total, drop) => total + drop.total, 0), 1);
   assert.equal(Object.values(summary.itemBreakdown.Satanic).reduce((total, drop) => total + drop.total, 0), 1);
+});
+
+test("run summaries retain deduped ordinary items and canonical resources for exact tracking", () => {
+  const ordinaryItemMessage = {
+    status: 1,
+    message: "Success on inventory update ext",
+    operations: {
+      add: {
+        "10-3909410-common-4": {
+          e: 10,
+          a: 1,
+          b: 4,
+          d: 1,
+          m: 1,
+          c: 0,
+        },
+      },
+    },
+  };
+  const resourceMessage = {
+    operations: {
+      stack: {
+        "10-3909410-copper_ore_27-14": {
+          pickup_add_data: { a: 4, b: 27, d: 1, o: 7 },
+        },
+        "10-3909410-ruby_ore_30-14": {
+          pickup_add_data: { a: 5, b: 30, d: 1, o: 3 },
+        },
+        "10-3909410-socketable_48-15": {
+          pickup_add_data: { a: 6, b: 48, d: 1, o: 2 },
+        },
+      },
+    },
+  };
+  const events = messageToEvents([
+    ordinaryItemMessage,
+    ordinaryItemMessage,
+    resourceMessage,
+    resourceMessage,
+  ]);
+  const stats = new StatsEngine();
+
+  stats.applyEvents(events);
+  const summary = stats.runSummary();
+
+  assert.equal(events.length, 8);
+  assert.equal(summary.schemaVersion, PAST_RUN_SCHEMA_VERSION);
+  assert.equal(summary.schemaVersion, 3);
+  assert.deepEqual(summary.itemTotals, [
+    { name: "Copper Ore", total: 7, mf: 0 },
+    { name: "Heavy Gloves", total: 1, mf: 1 },
+    { name: "Ruby", total: 2, mf: 0 },
+    { name: "Ruby Ore", total: 3, mf: 0 },
+  ]);
+  assert.equal(hasRunActivity(summary), true);
+
+  stats.reset();
+  assert.deepEqual(stats.runSummary().itemTotals, []);
 });
 
 test("tracked drop cards and breakdowns both count stacked item amounts", () => {

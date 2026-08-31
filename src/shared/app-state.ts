@@ -86,3 +86,26 @@ export interface CompanionState {
   captureDiagnostics: CaptureDiagnosticsState;
   logs: LogEntry[];
 }
+
+export type CompanionStateUpdate = Omit<CompanionState, "pastRuns"> & {
+  pastRuns?: PastRunSummary[];
+};
+
+export function createCompanionStateUpdate(
+  state: CompanionState,
+  options: { includePastRuns: boolean },
+): CompanionStateUpdate {
+  const { pastRuns, ...liveState } = state;
+  return options.includePastRuns ? { ...liveState, pastRuns } : liveState;
+}
+
+export function mergeCompanionStateUpdate(
+  current: CompanionState,
+  update: CompanionStateUpdate,
+): CompanionState {
+  return {
+    ...current,
+    ...update,
+    pastRuns: update.pastRuns ?? current.pastRuns,
+  };
+}

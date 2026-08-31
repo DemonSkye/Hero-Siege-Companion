@@ -1,5 +1,11 @@
 import { computed, readonly, shallowRef, watch, type Ref } from "vue";
 import type { CompanionState } from "../../../shared/app-state";
+import {
+  canonicalRunPaceItemKey,
+  normalizeRunPaceItemName,
+  type PastRunPace,
+  type RunPaceItemPoint,
+} from "../../../shared/run-pace";
 import type { ItemTimelineEntry } from "../../../shared/stats";
 
 export type LiveRunStandardMetric = "xp" | "gold" | "kills" | "items";
@@ -319,6 +325,73 @@ export function projectLiveRunChartLanes(
   }
 }
 
+export function projectPastRunPaceChartLanes(
+  pace: PastRunPace,
+  exactItemNames: readonly string[],
+  width = DEFAULT_LIVE_RUN_CHART_WIDTH,
+  height = DEFAULT_LIVE_RUN_CHART_HEIGHT,
+): readonly LiveRunChartLane[] {
+  const chartWidth = Math.max(finiteNonNegative(width), 1);
+  const chartHeight = Math.max(finiteNonNegative(height), 1);
+  const elapsedStart = pace.samples[0]?.elapsedMs ?? 0;
+  const elapsedEnd = Math.max(pace.samples.at(-1)?.elapsedMs ?? elapsedStart, elapsedStart);
+  const lanes = LIVE_RUN_STANDARD_LANES.map(({ metric, label }) => chartLaneFromPoints(
+    metric,
+    metric,
+    label,
+    null,
+    pace.samples.map((sample) => ({ elapsedMs: sample.elapsedMs, value: sample[metric] })),
+  ));
+
+  const seriesByKey = new Map(pace.itemSeries.map((series) => [canonicalRunPaceItemKey(series.name), series]));
+  const seen = new Set<string>();
+  for (const rawName of exactItemNames) {
+    const name = normalizeLiveRunItemName(rawName);
+    const key = canonicalRunPaceItemKey(name);
+    if (!name || !key || seen.has(key) || seen.size >= DEFAULT_LIVE_RUN_MAX_CUSTOM_ITEMS) continue;
+    seen.add(key);
+    const series = seriesByKey.get(key);
+    if (!series && pace.itemSeriesTruncated) continue;
+    const itemPoints = savedItemSeriesPoints(series?.points ?? [], elapsedStart, elapsedEnd);
+    lanes.push(chartLaneFromPoints(`item:${key}`, "custom-item", series?.name ?? name, series?.name ?? name, itemPoints));
+  }
+  return lanes;
+
+  function chartLaneFromPoints(
+    id: string,
+    metric: LiveRunChartLane["metric"],
+    label: string,
+    itemName: string | null,
+    rawPoints: readonly { elapsedMs: number; value: number }[],
+  ): LiveRunChartLane {
+    const elapsedSpan = Math.max(elapsedEnd - elapsedStart, 1);
+    const values = rawPoints.map((point) => finiteNonNegative(point.value));
+    const maxValue = Math.max(...values, 0);
+    const scaleMax = Math.max(maxValue, 1);
+    const points = rawPoints.map((point, index) => {
+      const value = values[index] ?? 0;
+      return {
+        elapsedMs: point.elapsedMs,
+        value,
+        x: ((point.elapsedMs - elapsedStart) / elapsedSpan) * chartWidth,
+        y: chartHeight - (value / scaleMax) * chartHeight,
+      };
+    });
+    return {
+      id,
+      metric,
+      label,
+      itemName,
+      chartWidth,
+      chartHeight,
+      latestValue: values.at(-1) ?? 0,
+      maxValue,
+      points,
+      svgPoints: points.map((point) => `${roundedCoordinate(point.x)},${roundedCoordinate(point.y)}`).join(" "),
+    };
+  }
+}
+
 export function useLiveRunHistory({
   state,
   now,
@@ -380,14 +453,25 @@ export function useLiveRunHistory({
 }
 
 export function normalizeLiveRunItemName(value: string): string {
-  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_CUSTOM_ITEM_NAME_LENGTH);
+  return normalizeRunPaceItemName(value).slice(0, MAX_CUSTOM_ITEM_NAME_LENGTH);
 }
 
 export function canonicalLiveRunItemKey(value: string): string {
-  return normalizeLiveRunItemName(value)
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .toLocaleLowerCase();
+  return canonicalRunPaceItemKey(value);
+}
+
+function savedItemSeriesPoints(
+  points: readonly RunPaceItemPoint[],
+  elapsedStart: number,
+  elapsedEnd: number,
+): readonly RunPaceItemPoint[] {
+  const output: RunPaceItemPoint[] = [];
+  const first = points[0];
+  if (!first || first.elapsedMs > elapsedStart) output.push({ elapsedMs: elapsedStart, value: 0 });
+  output.push(...points.map((point) => ({ ...point })));
+  const last = output.at(-1);
+  if (!last || last.elapsedMs < elapsedEnd) output.push({ elapsedMs: elapsedEnd, value: last?.value ?? 0 });
+  return output;
 }
 
 function itemEntryIdentity(entry: ItemTimelineEntry): string {

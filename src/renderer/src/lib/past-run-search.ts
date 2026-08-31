@@ -1,5 +1,13 @@
-import { MAX_PAST_RUN_TAGS, normalizePastRunTags, type PastRunSummary } from "../../../shared/stats";
+import {
+  MAX_PAST_RUN_TAGS,
+  canonicalPastRunTrackerName,
+  normalizePastRunTags,
+  pastRunItemNameKey,
+  pastRunOreTrackerName,
+  type PastRunSummary,
+} from "../../../shared/stats";
 import { formatDateTime, formatDuration, formatNumber, formatTime } from "./format";
+import { exactTrackedItemRowId } from "./past-runs";
 
 export type PastRunSearchMatchKind = "character" | "date" | "duration" | "stat" | "tag" | "drop" | "key" | "ore" | "material";
 
@@ -18,6 +26,12 @@ export interface PastRunSearchMatch {
 
 interface PastRunSearchCandidate extends Omit<PastRunSearchMatch, "matchedTerms"> {
   searchText: string;
+}
+
+interface RepresentedPastRunItem {
+  total: number;
+  mf: number;
+  candidateIds: string[];
 }
 
 export function pastRunTitle(run: PastRunSummary): string {
@@ -126,6 +140,7 @@ function runSearchCandidates(run: PastRunSummary): PastRunSearchCandidate[] {
       searchText: `${tag} #${tag}`,
     })),
   ];
+  const representedItems = new Map<string, RepresentedPastRunItem>();
 
   for (const [rarity, breakdown] of Object.entries(run.itemBreakdown ?? {})) {
     const drops = Object.values(breakdown);
@@ -143,8 +158,10 @@ function runSearchCandidates(run: PastRunSummary): PastRunSearchCandidate[] {
       });
     }
     for (const [index, drop] of drops.entries()) {
+      const id = `drop:${normalizeSearchValue(rarity)}:${index}:${normalizeSearchValue(drop.name)}`;
+      recordRepresentedItem(representedItems, drop.name, drop.total, drop.mf, id);
       candidates.push({
-        id: `drop:${normalizeSearchValue(rarity)}:${index}:${normalizeSearchValue(drop.name)}`,
+        id,
         kind: "drop",
         label: drop.name,
         detail: `${rarity} · ${formatNumber(drop.total)} ${drop.total === 1 ? "drop" : "drops"}${drop.mf > 0 ? ` · ${formatNumber(drop.mf)} MF flagged` : ""}`,
@@ -155,9 +172,47 @@ function runSearchCandidates(run: PastRunSummary): PastRunSearchCandidate[] {
     }
   }
 
-  appendResourceCandidates(candidates, "key", run.keys);
-  appendResourceCandidates(candidates, "ore", run.ores);
-  appendResourceCandidates(candidates, "material", run.materials ?? []);
+  appendResourceCandidates(candidates, "key", run.keys, representedItems);
+  appendResourceCandidates(candidates, "ore", run.ores, representedItems);
+  appendResourceCandidates(candidates, "material", run.materials ?? [], representedItems);
+
+  const authoritativeItems = new Map<string, { name: string; total: number; mf: number; index: number }>();
+  for (const [index, item] of (run.itemTotals ?? []).entries()) {
+    const name = canonicalPastRunTrackerName(item.name);
+    const key = pastRunItemNameKey(name);
+    if (!key || item.total <= 0) continue;
+    const existing = authoritativeItems.get(key);
+    if (existing) {
+      existing.total += Math.max(item.total, 0);
+      existing.mf += Math.max(Math.min(item.mf, item.total), 0);
+    } else {
+      authoritativeItems.set(key, {
+        name,
+        total: Math.max(item.total, 0),
+        mf: Math.max(Math.min(item.mf, item.total), 0),
+        index,
+      });
+    }
+  }
+  for (const [key, item] of authoritativeItems) {
+    const represented = representedItems.get(key);
+    if (represented && represented.total === item.total && represented.mf === item.mf) continue;
+    if (represented) {
+      const replacedIds = new Set(represented.candidateIds);
+      for (let index = candidates.length - 1; index >= 0; index -= 1) {
+        if (replacedIds.has(candidates[index].id)) candidates.splice(index, 1);
+      }
+    }
+    candidates.push({
+      id: `item-total:${item.index}:${key}`,
+      kind: "drop",
+      label: item.name,
+      detail: `${formatNumber(item.total)} saved ${item.total === 1 ? "drop" : "drops"}${item.mf > 0 ? ` · ${formatNumber(item.mf)} MF flagged` : ""}`,
+      searchText: [item.name, `${item.total} ${item.name}`, item.mf > 0 ? `${item.name} mf` : ""].filter(Boolean).join(" "),
+      reportItemId: exactTrackedItemRowId(item.name),
+      itemName: item.name,
+    });
+  }
   return candidates;
 }
 
@@ -175,20 +230,47 @@ function appendResourceCandidates(
   candidates: PastRunSearchCandidate[],
   kind: "key" | "ore" | "material",
   resources: PastRunSummary["keys"],
+  representedItems: Map<string, RepresentedPastRunItem>,
 ) {
   for (const [index, resource] of resources.entries()) {
+    const id = `${kind}:${index}:${normalizeSearchValue(resource.name)}`;
+    const itemName = kind === "ore" ? pastRunOreTrackerName(resource.name, resource.id) : resource.name;
+    recordRepresentedItem(representedItems, itemName, resource.total, 0, id);
     const metric = kind === "key" ? "keys" : kind === "ore" ? "ores" : "materials";
     candidates.push({
-      id: `${kind}:${index}:${normalizeSearchValue(resource.name)}`,
+      id,
       kind,
-      label: resource.name,
+      label: itemName,
       detail: `${formatNumber(resource.total)} collected`,
-      searchText: `${resource.name} ${resource.total} ${resource.name}`,
+      searchText: `${itemName} ${resource.total} ${resource.name}`,
       reportItemId: `metric:${metric}`,
       resourceKind: kind,
       resourceName: resource.name,
     });
   }
+}
+
+function recordRepresentedItem(
+  representedItems: Map<string, RepresentedPastRunItem>,
+  name: string,
+  total: number,
+  mf: number,
+  candidateId: string,
+): void {
+  const key = pastRunItemNameKey(canonicalPastRunTrackerName(name));
+  if (!key) return;
+  const represented = representedItems.get(key);
+  if (represented) {
+    represented.total += Math.max(total, 0);
+    represented.mf += Math.max(Math.min(mf, total), 0);
+    represented.candidateIds.push(candidateId);
+    return;
+  }
+  representedItems.set(key, {
+    total: Math.max(total, 0),
+    mf: Math.max(Math.min(mf, total), 0),
+    candidateIds: [candidateId],
+  });
 }
 
 function runMatchesSearchTerms(candidates: PastRunSearchCandidate[], terms: string[]): boolean {

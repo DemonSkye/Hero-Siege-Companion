@@ -170,6 +170,14 @@ export function pastRun(overrides: Partial<PastRunSummary> = {}): PastRunSummary
     satanicDrops: 2,
     heroicDrops: 1,
     angelicDrops: 0,
+    itemTotals: [
+      { name: "Earth Shaper's Boots", total: 1, mf: 0 },
+      { name: "Sash of the Magi", total: 2, mf: 1 },
+      { name: "Scourge Loop", total: 1, mf: 1 },
+      { name: "Crystal Key", total: 2, mf: 0 },
+      { name: "Copper Ore", total: 5, mf: 0 },
+      { name: "Battle Fragment", total: 3, mf: 0 },
+    ],
     itemBreakdown: {
       Set: { "Earth Shaper's Boots": { name: "Earth Shaper's Boots", total: 1, mf: 0 } },
       Satanic: { "Sash of the Magi": { name: "Sash of the Magi", total: 2, mf: 1 } },
@@ -179,6 +187,7 @@ export function pastRun(overrides: Partial<PastRunSummary> = {}): PastRunSummary
     keys: [{ id: 10, name: "Crystal Key", total: 2 }],
     ores: [{ id: 27, name: "Copper Ore", total: 5 }],
     materials: [{ id: 0, name: "Battle Fragment", total: 3 }],
+    runPace: null,
     ...overrides,
   };
 }

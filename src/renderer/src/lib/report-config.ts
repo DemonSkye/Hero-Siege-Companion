@@ -1,4 +1,5 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
+import { canonicalPastRunTrackerName, pastRunItemNameKey } from "../../../shared/stats";
 import { MAGIC_FIND_FLAG_METRIC_LABEL } from "./format";
 import { TRACKED_RARITY_ORDER } from "./past-runs";
 
@@ -21,6 +22,7 @@ export interface PostRunReportConfig {
   dropRarities: string[];
   resourceDrawers: ReportResourceDrawerId[];
   topDropLimit: number;
+  exactTrackedItems: string[];
   trackedItems: string[];
   itemGroups: ReportItemGroup[];
   itemFilterGroupIds: string[];
@@ -51,6 +53,7 @@ export const REPORT_RESOURCE_DRAWER_OPTIONS: Array<{ id: ReportResourceDrawerId;
 
 export const REPORT_TOP_DROP_LIMIT_OPTIONS = [3, 5, 8, 10, 15];
 export const REPORT_SUMMARY_ITEM_LIMIT = 8;
+export const REPORT_EXACT_TRACKED_ITEM_LIMIT = 4;
 const REPORT_RESOURCE_DRAWER_METRICS: Record<ReportResourceDrawerId, ReportMetricId> = {
   materials: "materials",
   keys: "keys",
@@ -124,6 +127,7 @@ export const defaultPostRunReportConfig: PostRunReportConfig = {
   dropRarities: ["Heroic", "Angelic"],
   resourceDrawers: ["ores"],
   topDropLimit: 8,
+  exactTrackedItems: [],
   trackedItems: [],
   itemGroups: [],
   itemFilterGroupIds: [],
@@ -171,6 +175,7 @@ export const POST_RUN_REPORT_PRESETS: PostRunReportPreset[] = [
 export function normalizePostRunReportConfig(value: unknown): PostRunReportConfig {
   const candidate = value && typeof value === "object" && !Array.isArray(value) ? (value as Partial<PostRunReportConfig>) : {};
   const legacyTrackedItems = normalizeTrackedItems(candidate.trackedItems);
+  const exactTrackedItems = normalizeExactTrackedItems(candidate.exactTrackedItems);
   const itemGroups = normalizeReportItemGroups(candidate.itemGroups, legacyTrackedItems);
   const legacySummaryMetrics = normalizeOptionList(candidate.summaryMetrics, REPORT_METRIC_OPTIONS.map((option) => option.id), defaultPostRunReportConfig.summaryMetrics, true);
   const legacyDropRarities = normalizeOptionList(candidate.dropRarities, TRACKED_RARITY_ORDER, defaultPostRunReportConfig.dropRarities, true);
@@ -189,6 +194,7 @@ export function normalizePostRunReportConfig(value: unknown): PostRunReportConfi
     topDropLimit: REPORT_TOP_DROP_LIMIT_OPTIONS.includes(Number(candidate.topDropLimit))
       ? Number(candidate.topDropLimit)
       : defaultPostRunReportConfig.topDropLimit,
+    exactTrackedItems,
     trackedItems: itemGroups.length ? [] : legacyTrackedItems,
     itemGroups,
     itemFilterGroupIds: hasCanonicalSummaryItems ? itemFilterGroupIdsFromSummaryItems(summaryItems) : legacyItemFilterGroupIds,
@@ -202,6 +208,7 @@ export function clonePostRunReportConfig(config: PostRunReportConfig): PostRunRe
     dropRarities: [...config.dropRarities],
     resourceDrawers: [...config.resourceDrawers],
     topDropLimit: config.topDropLimit,
+    exactTrackedItems: [...(config.exactTrackedItems ?? [])],
     trackedItems: [...config.trackedItems],
     itemGroups: config.itemGroups.map((group) => ({
       ...group,
@@ -225,6 +232,13 @@ export function withPostRunReportSummaryItems(config: PostRunReportConfig, summa
   };
 }
 
+export function withPostRunReportExactTrackedItems(config: PostRunReportConfig, items: string[]): PostRunReportConfig {
+  return {
+    ...clonePostRunReportConfig(config),
+    exactTrackedItems: normalizeExactTrackedItems(items),
+  };
+}
+
 export function hasMeaningfulPostRunReportGroups(config: PostRunReportConfig): boolean {
   return config.trackedItems.length > 0 || config.itemFilterGroupIds.length > 0 || config.itemGroups.length > 0;
 }
@@ -245,6 +259,7 @@ export function isDefaultPostRunReportConfig(config: PostRunReportConfig): boole
     sameStringList(config.dropRarities, defaultPostRunReportConfig.dropRarities) &&
     sameStringList(config.resourceDrawers, defaultPostRunReportConfig.resourceDrawers) &&
     config.topDropLimit === defaultPostRunReportConfig.topDropLimit &&
+    (config.exactTrackedItems?.length ?? 0) === 0 &&
     config.trackedItems.length === 0 &&
     config.itemGroups.length === 0 &&
     (config.itemFilterGroupIds?.length ?? 0) === 0
@@ -263,6 +278,7 @@ function reportPresetConfig(
     dropRarities: dropRaritiesFromSummaryItems(summaryItems),
     resourceDrawers: resourceDrawersFromSummaryItems(summaryItems),
     topDropLimit,
+    exactTrackedItems: [],
     trackedItems: [],
     itemGroups: [],
     itemFilterGroupIds: [],
@@ -374,6 +390,22 @@ function normalizeTrackedItems(value: unknown): string[] {
     items.push(name);
   }
   return items.slice(0, 150);
+}
+
+function normalizeExactTrackedItems(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const item of values) {
+    if (typeof item !== "string") continue;
+    const name = canonicalPastRunTrackerName(item);
+    const key = pastRunItemNameKey(name);
+    if (!name || !key || seen.has(key)) continue;
+    seen.add(key);
+    items.push(name);
+    if (items.length >= REPORT_EXACT_TRACKED_ITEM_LIMIT) break;
+  }
+  return items;
 }
 
 function normalizeTypeList(value: unknown): number[] {

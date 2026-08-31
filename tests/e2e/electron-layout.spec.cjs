@@ -225,6 +225,75 @@ test("keeps Run Pace and dashboard customization usable at the minimum full-wind
   });
 });
 
+test("keeps the aggregate Report Desk paper content-sized and exact tracking usable", async () => {
+  await withCompanionApp({ seedPastRuns: true }, async ({ electronApp, page }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1_600, 920, false);
+    });
+    await page.getByRole("tab", { name: "Past Runs" }).click();
+    await expect(page.getByRole("heading", { name: "Report Desk", level: 2 })).toBeVisible();
+
+    const layout = await page.evaluate(() => {
+      const desk = document.querySelector(".past-run-report-desk");
+      const library = document.querySelector(".past-run-library");
+      const paper = document.querySelector(".past-run-report-paper.is-aggregate-report");
+      const aggregate = paper?.querySelector(".past-run-aggregate");
+      const heading = aggregate?.querySelector(".aggregate-heading");
+      const summary = aggregate?.querySelector(".aggregate-metrics:not(.aggregate-exact-metrics)");
+      const tracker = aggregate?.querySelector(".past-run-exact-tracker");
+      const footer = paper?.querySelector(".past-run-report-footer");
+      const metricCells = Array.from(summary?.children ?? []);
+      const lastAggregateChild = aggregate?.lastElementChild;
+      if (!(desk instanceof HTMLElement)
+        || !(library instanceof HTMLElement)
+        || !(paper instanceof HTMLElement)
+        || !(aggregate instanceof HTMLElement)
+        || !(heading instanceof HTMLElement)
+        || !(summary instanceof HTMLElement)
+        || !(tracker instanceof HTMLElement)
+        || !(footer instanceof HTMLElement)
+        || !(lastAggregateChild instanceof HTMLElement)) {
+        throw new Error("Aggregate Report Desk layout fixtures are missing");
+      }
+
+      const libraryRect = library.getBoundingClientRect();
+      const paperRect = paper.getBoundingClientRect();
+      const headingRect = heading.getBoundingClientRect();
+      const summaryRect = summary.getBoundingClientRect();
+      const trackerRect = tracker.getBoundingClientRect();
+      const footerRect = footer.getBoundingClientRect();
+      const lastChildRect = lastAggregateChild.getBoundingClientRect();
+      return {
+        headingToSummaryGap: summaryRect.top - headingRect.bottom,
+        horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        libraryHeight: libraryRect.height,
+        lastContentToFooterGap: footerRect.top - lastChildRect.bottom,
+        maxMetricHeight: Math.max(...metricCells.map((cell) => cell.getBoundingClientRect().height)),
+        paperBottomGap: paperRect.bottom - footerRect.bottom,
+        paperHeight: paperRect.height,
+        sideBySide: libraryRect.right <= paperRect.left + 1,
+        summaryToTrackerGap: trackerRect.top - summaryRect.bottom,
+      };
+    });
+
+    expect(layout.sideBySide).toBe(true);
+    expect(layout.horizontalOverflow).toBeLessThanOrEqual(4);
+    expect(layout.headingToSummaryGap).toBeLessThanOrEqual(20);
+    expect(layout.summaryToTrackerGap).toBeLessThanOrEqual(20);
+    expect(layout.lastContentToFooterGap).toBeLessThanOrEqual(32);
+    expect(layout.maxMetricHeight).toBeLessThan(120);
+    expect(layout.paperBottomGap).toBeLessThanOrEqual(2);
+    expect(layout.paperHeight).toBeLessThan(layout.libraryHeight);
+
+    await page.getByPlaceholder("Enter an exact item name").fill("Copper Ore");
+    await page.getByRole("button", { name: "Track item" }).click();
+    const exactItem = page.locator('[data-report-item-id="exact:copper%20ore"]');
+    await expect(exactItem).toContainText("Copper Ore");
+    await expect(exactItem).toContainText("9");
+    await expect(page.getByRole("button", { name: "Stop tracking Copper Ore" })).toBeVisible();
+  });
+});
+
 test("keeps Settings header and navigation fixed while Help and Support scrolls as one pane", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {

@@ -762,6 +762,7 @@ describe("Vue component contracts", () => {
   test("PastRunReportConfigModal applies presets and confirms before replacing groups", async () => {
     const customReport = {
       ...defaultPostRunReportConfig,
+      exactTrackedItems: ["Copper Ore"],
       itemGroups: [{
         id: "bosses",
         name: "Bosses",
@@ -797,6 +798,7 @@ describe("Vue component contracts", () => {
       dropRarities: ["Satanic", "Heroic", "Angelic"],
       resourceDrawers: [],
       topDropLimit: 10,
+      exactTrackedItems: ["Copper Ore"],
       itemGroups: [],
       itemFilterGroupIds: [],
     });

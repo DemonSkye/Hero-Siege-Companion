@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CompanionState } from "../shared/app-state";
+import type { CompanionState, CompanionStateUpdate } from "../shared/app-state";
 import { IpcChannel, type HeroSiegeCompanionApi } from "../shared/ipc";
 
 const api: HeroSiegeCompanionApi = {
@@ -42,8 +42,8 @@ const api: HeroSiegeCompanionApi = {
   checkForUpdate: () => ipcRenderer.invoke(IpcChannel.updatesCheck),
   openRelease: (url) => ipcRenderer.invoke(IpcChannel.updatesOpenRelease, url),
   openNpcapGuide: () => ipcRenderer.invoke(IpcChannel.docsOpenNpcapGuide),
-  onStateUpdated: (callback: (state: CompanionState) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, state: CompanionState) => callback(state);
+  onStateUpdated: (callback: (state: CompanionStateUpdate) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: CompanionStateUpdate) => callback(state);
     ipcRenderer.on(IpcChannel.stateUpdated, listener);
     return () => ipcRenderer.removeListener(IpcChannel.stateUpdated, listener);
   },

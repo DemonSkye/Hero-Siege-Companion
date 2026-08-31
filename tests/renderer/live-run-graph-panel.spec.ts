@@ -2,6 +2,7 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, test, vi } from "vitest";
 
 import LiveRunGraphPanel from "../../src/renderer/src/components/LiveRunGraphPanel.vue";
+import RunPaceChart from "../../src/renderer/src/components/RunPaceChart.vue";
 import type {
   LiveRunChartLane,
   LiveRunChartPoint,
@@ -42,7 +43,7 @@ describe("LiveRunGraphPanel", () => {
     expect(wrapper.get('[data-lane-id="xp"] .run-pace-lane-summary').text()).toContain("12,345");
     expect(wrapper.get('[data-lane-id="gold"] .run-pace-lane-summary').text()).toContain("1,000");
     expect(wrapper.get('[data-lane-id="xp"] [data-run-pace-trend-summary]').text()).toContain("after 2 recorded changes");
-    expect(wrapper.get(".run-pace-scope-note").text()).toContain("graphs are not saved to Past Runs");
+    expect(wrapper.get(".run-pace-scope-note").text()).toContain("saved when the run is archived");
     expect(wrapper.get(".run-pace-time-axis").text()).toContain("0:00");
     expect(wrapper.get(".run-pace-time-axis").text()).toContain("2:00");
     expect(wrapper.get(".run-pace-time-axis").text()).toContain("Since graph started");
@@ -319,6 +320,35 @@ describe("LiveRunGraphPanel", () => {
     expect(tooltip.attributes("style")).toContain("top: 618px");
     widthSpy.mockRestore();
     heightSpy.mockRestore();
+  });
+
+  test("reuses exact inspection for saved-run wording and clears it when history changes", async () => {
+    const wrapper = mount(RunPaceChart, {
+      props: {
+        lanes: [timedLane("xp", "XP", [[0, 0], [30_000, 50], [60_000, 100]])],
+        elapsedMs: 60_000,
+        historyKey: "run-one",
+        axisLabel: "Run elapsed",
+        inspectionContext: "into this run",
+        inspectionControlLabel: "Inspect exact saved values by elapsed run time",
+        trendOrigin: "the run began",
+      },
+      global: { stubs: { Teleport: true } },
+    });
+
+    expect(wrapper.get(".run-pace-time-copy").text()).toContain("Run elapsed");
+    expect(wrapper.find(".run-pace-remove").exists()).toBe(false);
+    expect(wrapper.get("[data-run-pace-trend-summary]").text()).toContain("after the run began");
+
+    const range = wrapper.get('.run-pace-time-inspector input[type="range"]');
+    expect(range.element.previousElementSibling?.textContent).toContain("saved values");
+    await range.trigger("focus");
+    await range.setValue("30");
+    expect(wrapper.get("[data-run-pace-inspection]").text()).toContain("0:30 into this run");
+    expect(range.attributes("aria-valuetext")).toContain("XP 50");
+
+    await wrapper.setProps({ historyKey: "run-two" });
+    expect(wrapper.find("[data-run-pace-inspection]").exists()).toBe(false);
   });
 
   test("labels waiting, paused, and live states and keeps the whole card collapsible", async () => {
