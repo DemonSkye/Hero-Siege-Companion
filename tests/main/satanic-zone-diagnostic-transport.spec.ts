@@ -19,11 +19,13 @@ class MockSocket extends EventEmitter {
   connected!: () => void;
   expired!: () => void;
   writeError: Error | null = null;
+  destroyed = false;
   connect = vi.fn((_port: number, _address: string, callback: () => void) => { this.connected = callback; return this; });
-  setTimeout = vi.fn((_ms: number, callback: () => void) => { this.expired = callback; return this; });
+  setTimeout = vi.fn((_ms: number, callback?: () => void) => { if (callback) this.expired = callback; return this; });
   write(bytes: Buffer, callback: (error?: Error) => void) { this.writes.push(Buffer.from(bytes)); callback(this.writeError ?? undefined); return true; }
-  destroy = vi.fn(() => { this.emit("close"); return this; });
-  end = vi.fn(() => { this.emit("close"); return this; });
+  destroy = vi.fn(() => { if (!this.destroyed) { this.destroyed = true; this.emit("close"); } return this; });
+  // Sending FIN does not require a peer to close its half of the connection.
+  end = vi.fn(() => this);
 }
 function fixture(observer?: (event: DirectSatanicZoneTransportTrace) => void, signal?: AbortSignal, bufferBudget?: SatanicZoneDiagnosticBufferBudget) {
   const socket = new MockSocket(); const logs: unknown[] = [];
@@ -42,7 +44,7 @@ describe("production SZ diagnostic transport with mocked sockets only", () => {
     expect(f.socket.writes[1]).toEqual(buildDirectSatanicZoneFrame(context, 1));
     f.socket.emit("data", Buffer.concat([pong, response.subarray(0, 11)])); f.socket.emit("data", response.subarray(11));
     expect(await f.request.outcome).toMatchObject({ rawZone: "Act_04_03" });
-    expect(kinds).toContain("connected"); expect(kinds).toContain("bootstrapped"); expect(f.socket.end).toHaveBeenCalledTimes(1);
+    expect(kinds).toContain("connected"); expect(kinds).toContain("bootstrapped"); expect(f.socket.destroy).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(f.logs)).not.toMatch(/CANARY|198\.51|192\.0|unique_account|crossregion|scopeKey|payload/);
   });
   test("observer exceptions never enter logs or interrupt success", async () => {
@@ -86,5 +88,22 @@ describe("production SZ diagnostic transport with mocked sockets only", () => {
     const budget = new SatanicZoneDiagnosticBufferBudget(256); const g = fixture(undefined, undefined, budget);
     g.socket.connected(); g.socket.emit("data", pong); await g.request.dispatched; g.socket.emit("data", Buffer.alloc(200));
     await expect(g.request.outcome).rejects.toThrow(); expect(budget.usedBytes).toBe(0); expect(budget.exceeded).toBe(true); expect(g.socket.writes).toHaveLength(2);
+  });
+  test("a successful response destroys the owned socket even when the peer keeps its half open", async () => {
+    const budget = new SatanicZoneDiagnosticBufferBudget(256); const f = fixture(undefined, undefined, budget);
+    f.socket.connected(); f.socket.emit("data", pong); await f.request.dispatched; f.socket.emit("data", response);
+    expect(await f.request.outcome).toMatchObject({ rawZone: "Act_04_03" });
+    expect(f.socket.destroyed).toBe(true); expect(f.socket.destroy).toHaveBeenCalledTimes(1);
+    expect(f.socket.end).not.toHaveBeenCalled(); expect(f.socket.setTimeout).toHaveBeenLastCalledWith(0); expect(budget.usedBytes).toBe(0);
+  });
+  test("late abort, timeout and peer events preserve settled success with cleanup already complete", async () => {
+    const signal = new AbortController(); const f = fixture(undefined, signal.signal); const lateTimeout = f.socket.expired;
+    f.socket.connected(); f.socket.emit("data", pong); await f.request.dispatched; f.socket.emit("data", response);
+    const observed = await f.request.outcome;
+    signal.abort(); f.request.abort(); lateTimeout(); f.socket.emit("data", response); f.socket.emit("error", new Error("CANARY_PEER"));
+    expect(await f.request.outcome).toEqual(observed); expect(f.socket.destroyed).toBe(true); expect(f.socket.destroy).toHaveBeenCalledTimes(1);
+    expect(f.logs.filter((entry) => (entry as { details: { status: string } }).details.status === "succeeded")).toHaveLength(1);
+    expect(f.logs.filter((entry) => (entry as { details: { status: string } }).details.status === "failed")).toHaveLength(0);
+    expect(JSON.stringify(f.logs)).not.toContain("CANARY");
   });
 });

@@ -158,6 +158,7 @@ export function createDirectSatanicZoneTransport(
   let outcomeResolve!: (zone: SatanicZoneInfo) => void;
   let outcomeReject!: (error: Error) => void;
   let settled = false;
+  let cleanedUp = false;
   const trace = (event: DirectSatanicZoneTransportTrace) => {
     try { options.trace?.(event); } catch { /* Observers cannot alter transport or leak exceptions. */ }
   };
@@ -179,15 +180,21 @@ export function createDirectSatanicZoneTransport(
       dispatched: wasDispatched,
     });
   };
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    socket.setTimeout(0);
+    pingDecoder.dispose(); decoder.dispose();
+    parentSignal?.removeEventListener("abort", abort);
+    socket.destroy();
+  };
   const fail = (error: Error, reason: string) => {
-    if (settled) return;
+    if (settled) { cleanup(); return; }
     settled = true;
     report("failed", reason);
     dispatchedReject(error);
     outcomeReject(error);
-    pingDecoder.dispose(); decoder.dispose();
-    parentSignal?.removeEventListener("abort", abort);
-    socket.destroy();
+    cleanup();
   };
   const abort = () => fail(new Error("cancelled"), "cancelled");
   report("started");
@@ -205,9 +212,7 @@ export function createDirectSatanicZoneTransport(
       settled = true;
       report("succeeded");
       outcomeResolve(zone);
-      pingDecoder.dispose(); decoder.dispose();
-      parentSignal?.removeEventListener("abort", abort);
-      socket.end();
+      cleanup();
     } catch {
       fail(new Error("invalid-response"), "response-too-large");
     }
