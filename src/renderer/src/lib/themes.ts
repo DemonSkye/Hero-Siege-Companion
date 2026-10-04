@@ -264,7 +264,7 @@ export function createThemeTemplatePayload(themeId: ThemeId = DEFAULT_THEME_ID):
       "Use hex, rgb(), rgba(), linear-gradient(), or radial-gradient() values. Invalid token values are ignored.",
     ],
     tokenReference: THEME_TOKEN_OPTIONS.map(({ key, cssVar, label }) => ({ key, cssVar, label })),
-    note: "Starter theme template. Edit values, remove tokens, textures, and foreground fills you do not want to override, then import this JSON with Settings > Appearance > Import Theme. Rarity colors stay game-matched.",
+    note: "Starter theme template. Edit values, remove tokens, textures, and foreground fills you do not want to override, then import this JSON with Settings > Developers > Import Theme. Rarity colors stay game-matched.",
   };
 }
 

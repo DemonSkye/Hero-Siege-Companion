@@ -1,0 +1,294 @@
+/* Shared presentation comes last. Feature files still own layout and breakpoints. */
+:root[data-theme] {
+  font-size: var(--type-body);
+}
+
+:root[data-theme] :is(button, input, select, textarea, summary, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+:root[data-theme] :is(button, summary) {
+  -webkit-app-region: no-drag;
+}
+
+.view-panel {
+  min-width: 0;
+}
+
+:root[data-theme] .topbar {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--elevation-panel);
+}
+
+.topbar-title {
+  min-width: 0;
+}
+
+.topbar h1 {
+  font-size: var(--type-title);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.topbar .eyebrow {
+  margin-bottom: var(--space-1);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+}
+
+:root[data-theme] .view-tabs {
+  gap: var(--space-1);
+  margin-top: var(--space-4);
+  padding: var(--space-1);
+  border-color: var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+:root[data-theme] .view-tabs button {
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--app-muted);
+  font-size: var(--type-label);
+  font-weight: 600;
+}
+
+:root[data-theme] .view-tabs button:hover {
+  background: var(--surface-hover);
+  color: var(--app-heading);
+}
+
+:root[data-theme] .view-tabs button.active {
+  border-color: var(--accent-border);
+  background: var(--surface-selected);
+  color: var(--app-heading);
+  box-shadow: inset 0 -2px var(--user-accent);
+}
+
+:root[data-theme] .icon-button {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  font-size: var(--type-label);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+:root[data-theme] .icon-button.ghost {
+  border-color: var(--border-strong);
+  background: var(--surface-soft);
+  color: var(--app-text);
+}
+
+:root[data-theme] .icon-button.ghost:enabled:hover {
+  border-color: var(--accent-border);
+  background: var(--surface-hover);
+}
+
+:root[data-theme] .icon-button.primary {
+  border-color: transparent;
+  background: var(--button-primary);
+  color: var(--button-primary-text);
+}
+
+:root[data-theme] .icon-button.primary:enabled:hover {
+  background: var(--button-primary-hover);
+}
+
+:root[data-theme] .icon-button:is(.danger, .warning) {
+  border-color: var(--status-danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+:root[data-theme] .icon-button.warning {
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--border));
+  background: var(--accent-warm-bg);
+  color: var(--warning);
+}
+
+:root[data-theme] .icon-button.danger:enabled:hover {
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface-strong));
+  color: var(--danger);
+}
+
+:root[data-theme] .icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+:root[data-theme] :is(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, textarea) {
+  border-color: var(--border-strong);
+  border-radius: var(--radius-control);
+  color: var(--app-text);
+  font: inherit;
+}
+
+:root[data-theme] input::placeholder,
+:root[data-theme] textarea::placeholder {
+  color: var(--app-muted);
+  opacity: 1;
+}
+
+:root[data-theme] :is(.live-view, .panel, .metric, .status-strip) {
+  border-radius: var(--radius-panel);
+  box-shadow: var(--elevation-panel);
+}
+
+:root[data-theme] .live-view {
+  padding: var(--space-4);
+}
+
+:root[data-theme] .live-view :is(.panel, .metric, .status-strip) {
+  box-shadow: none;
+}
+
+.panel-heading h2,
+.settings-heading h2 {
+  font-size: var(--type-section);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.panel-heading p,
+.settings-heading p,
+.empty-copy {
+  line-height: var(--line-body);
+}
+
+:root[data-theme] .empty-copy {
+  color: var(--app-muted);
+}
+
+.run-score-cell > strong,
+.compact-cover-grid strong,
+.market-search-price-grid strong,
+.past-run-metrics strong,
+.aggregate-metrics strong {
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-theme] .run-score-cell > strong {
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+:root[data-theme] .run-score-cell.run-score-identity {
+  border-color: var(--accent-border);
+}
+
+:root[data-theme] .zone-effects .effect-column h3 {
+  color: var(--app-heading);
+}
+
+:root[data-theme] :is(.filter-pack-bar, .past-run-toolbar) {
+  padding: var(--space-3) var(--space-4);
+  border-color: var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface-cell);
+}
+
+:root[data-theme] .past-run-report-paper {
+  border-color: var(--border-strong);
+  box-shadow: var(--elevation-panel);
+}
+
+:root[data-theme] :is(.settings-panel, .settings-action-dialog) {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface-strong);
+  color: var(--app-text);
+  box-shadow: var(--elevation-dialog);
+}
+
+:root[data-theme] .settings-action-dialog-content {
+  color: var(--app-text);
+  line-height: var(--line-body);
+}
+
+:root[data-theme] .settings-action-dialog-heading h2 {
+  line-height: 1.3;
+}
+
+:root[data-theme] :is(.settings-heading, .settings-action-dialog-heading) {
+  border-bottom-color: var(--border);
+}
+
+:root[data-theme] :is(.settings-actions, .settings-action-dialog-actions, .market-search-actions) {
+  border-top-color: var(--border);
+}
+
+:root[data-theme] .settings-close {
+  border-radius: var(--radius-control);
+  color: var(--app-muted);
+}
+
+:root[data-theme] .settings-close:enabled:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* Legacy theme paragraph rules must not override Market's semantic states. */
+:root[data-theme] .market-search-dialog .market-search-cache-note {
+  color: var(--app-muted);
+}
+
+:root[data-theme] .market-search-dialog .market-readiness p {
+  color: var(--app-text);
+}
+
+.info-bubble:focus-visible::after {
+  display: block;
+  opacity: 1;
+  visibility: visible;
+}
+
+.compact-zone-tray .compact-shopping-head > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+:root[data-theme] .compact-zone-tray .compact-shopping-head span {
+  color: var(--app-muted);
+  font-size: 10px;
+}
+
+:root[data-theme] .compact-zone-tray .compact-shopping-close {
+  min-width: 28px;
+  min-height: 28px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-soft);
+  color: var(--app-text);
+}
+
+@media (max-width: 840px) {
+  :root[data-theme] .topbar {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .topbar h1 {
+    font-size: 22px;
+  }
+
+  :root[data-theme] .topbar .actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme] *,
+  :root[data-theme] *::before,
+  :root[data-theme] *::after {
+    scroll-behavior: auto;
+    transition-duration: 0s;
+    animation-duration: 0s;
+  }
+}
