@@ -26,6 +26,10 @@ Current release target follows the `version` field in `package.json`.
 4. If desired, opt into **experimental** manual Satanic Zone refresh in **Settings > Features**; see its current status below.
 5. Use `End Run` when a run is complete and should be saved to Past Runs.
 
+`Stop Capture` keeps capture stopped for the current Companion launch, including when the game restarts. Use `Start Capture` or `Launch Game` to resume; automatic capture is enabled again on the next Companion launch.
+
+If `End Run` cannot save the archive, the current run stays available for another save attempt. A failed backup restore keeps its preview available for retry and leaves the current settings in place.
+
 Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later passive/manual update.
 
 Market and manual Satanic Zone requests become ready after Npcap observes the current account, mode, and short-lived session identifiers in ordinary game traffic. The game may be launched normally and Companion may attach during play; when attaching late, leave capture running until later qualifying traffic arrives.

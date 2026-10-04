@@ -9,6 +9,73 @@ const {
 } = require("./support/companion-app.cjs");
 const { e2eCaptureEvents, e2eTrafficPayloads } = require("./support/fixtures.cjs");
 
+test("preserves compact mode and the session pin when the renderer reloads", async () => {
+  await withCompanionApp(async ({ page }) => {
+    await page.getByRole("button", { name: "Pin window on top" }).click();
+    await page.getByRole("button", { name: "Compact mode" }).click();
+    await expect(page.locator(".compact-view")).toBeVisible();
+    expect(await page.evaluate(() => window.heroSiegeCompanion.getWindowMode())).toEqual({ compactMode: true, fullWindowPinned: true });
+    await page.reload();
+    await expect(page.locator(".compact-view")).toBeVisible();
+    expect(await page.evaluate(() => window.heroSiegeCompanion.getWindowMode())).toEqual({ compactMode: true, fullWindowPinned: true });
+    await page.getByRole("button", { name: "Exit compact mode" }).click();
+    await expect(page.getByRole("button", { name: "Unpin window" })).toBeVisible();
+  });
+});
+
+test("failed End Run storage retains live stats and permits a durable retry", async () => {
+  await withCompanionApp(async ({ electronApp, page, userDataDir }) => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    await expect(page.getByRole("button", { name: "Stop Capture" })).toBeVisible();
+    await emitCaptureEvents(electronApp, e2eCaptureEvents());
+    const before = await getRendererState(page);
+    await electronApp.evaluate(({ app }) => {
+      const fs = process.getBuiltinModule("fs");
+      const archivePath = process.getBuiltinModule("path").join(app.getPath("userData"), "past-runs.json");
+      const originalRename = fs.renameSync;
+      globalThis.__hscRestoreArchiveWrite = () => { fs.renameSync = originalRename; };
+      fs.renameSync = (source, destination) => {
+        if (destination === archivePath) throw new Error("synthetic archive replacement failure");
+        return originalRename(source, destination);
+      };
+    });
+    try {
+      const failed = await page.evaluate(async () => {
+        try { await window.heroSiegeCompanion.resetStats(); return false; }
+        catch { return true; }
+      });
+      expect(failed).toBe(true);
+      const retained = await getRendererState(page);
+      expect(retained.stats.sessionStartedAt).toBe(before.stats.sessionStartedAt);
+      expect(retained.stats.itemTimeline).toEqual(before.stats.itemTimeline);
+      expect(retained.pastRuns).toEqual(before.pastRuns);
+      expect(fs.existsSync(path.join(userDataDir, "past-runs.json"))).toBe(false);
+    } finally {
+      await electronApp.evaluate(() => globalThis.__hscRestoreArchiveWrite());
+    }
+    await page.evaluate(() => window.heroSiegeCompanion.resetStats());
+    const after = await getRendererState(page);
+    expect(after.pastRuns).toHaveLength(before.pastRuns.length + 1);
+    expect(after.stats.itemTimeline).toHaveLength(0);
+    const stored = JSON.parse(fs.readFileSync(path.join(userDataDir, "past-runs.json"), "utf8"));
+    expect(stored[0].sessionStartedAt).toBe(before.stats.sessionStartedAt);
+    expect(stored[0].angelicDrops).toBe(before.stats.items.Angelic.total);
+  });
+});
+
+test("manual capture stop survives a real monitor interval until explicit restart", async () => {
+  await withCompanionApp(async ({ electronApp, page }) => {
+    await expect(page.getByRole("button", { name: "Stop Capture" })).toBeVisible();
+    await page.evaluate(() => window.heroSiegeCompanion.stopCapture());
+    // Exercise the actual 12-second monitor interval; all capture here is synthetic.
+    await electronApp.evaluate(() => new Promise((resolve) => setTimeout(resolve, 12_100)));
+    expect((await getRendererState(page)).captureRunning).toBe(false);
+    await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+    expect((await getRendererState(page)).captureRunning).toBe(true);
+  });
+});
+
 test("exposes the complete preload bridge before renderer actions run", async () => {
   await withCompanionApp(async ({ page }) => {
     const report = await getPreloadBridgeReport(page);

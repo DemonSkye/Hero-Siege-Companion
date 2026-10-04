@@ -630,6 +630,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsExportCsv, async (_event, csv: string) => {
 ipcMain.handle(IPC_CHANNELS.windowMinimize, () => {
   windowManager?.minimize();
 });
+ipcMain.handle(IPC_CHANNELS.windowGetMode, () => windowManager?.windowModeState() ?? { compactMode: false, fullWindowPinned: false });
 ipcMain.handle(IPC_CHANNELS.windowToggleMaximize, () => {
   windowManager?.toggleMaximize();
 });

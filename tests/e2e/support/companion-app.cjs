@@ -21,6 +21,7 @@ const EXPECTED_PRELOAD_API = [
   "exportPastRunsJson",
   "exportSoundPack",
   "getState",
+  "getWindowMode",
   "getSupportDiagnosticsInfo",
   "importConfiguration",
   "installConfigurationSounds",

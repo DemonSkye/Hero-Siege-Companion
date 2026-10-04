@@ -211,6 +211,15 @@ function createManager(windowBounds: WindowBoundsPreferences = {}, overrides: Pa
 }
 
 describe("main window manager", () => {
+  test("new-process window defaults and saved full bounds are owned by main", () => {
+    const manager = createManager({ normal: { x: 12, y: 34, width: 1200, height: 700 } });
+    const window = manager.create();
+    expect(manager.windowModeState()).toEqual({ compactMode: false, fullWindowPinned: false });
+    expect(window.getBounds()).toEqual({ x: 12, y: 34, width: 1200, height: 700 });
+    manager.setAlwaysOnTop(true);
+    manager.setCompactMode(true);
+    expect(manager.windowModeState()).toEqual({ compactMode: true, fullWindowPinned: true });
+  });
   beforeEach(() => {
     electronMock.instances.length = 0;
     electronMock.shell.openExternal.mockClear();

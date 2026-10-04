@@ -2,6 +2,7 @@ import { BrowserWindow, nativeImage, shell } from "electron";
 import { pathToFileURL } from "node:url";
 import { saveWindowBounds, withMinimumBounds, type WindowBoundsPreferences } from "./persistence";
 import type { LogEntry } from "../shared/app-state";
+import type { WindowModeState } from "../shared/ipc";
 
 const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeight: 620 };
 const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
@@ -46,6 +47,10 @@ export class MainWindowManager {
     return this.compactWindowMode;
   }
 
+  windowModeState(): WindowModeState {
+    return { compactMode: this.compactWindowMode, fullWindowPinned: this.fullWindowAlwaysOnTop };
+  }
+
   create(): BrowserWindow {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.focusExistingWindow();
@@ -71,6 +76,7 @@ export class MainWindowManager {
     });
 
     this.attachWindowHandlers(this.mainWindow);
+    this.setCompactMode(false);
     this.loadRenderer(this.mainWindow);
     this.options.writeAppLog("window-created", { id: this.mainWindow.id, bounds: this.mainWindow.getBounds() });
     return this.mainWindow;

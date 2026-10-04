@@ -30,6 +30,7 @@ const api: HeroSiegeCompanionApi = {
   exportPastRunsJson: (json) => ipcRenderer.invoke(IpcChannel.pastRunsExportJson, json),
   exportPastRunsCsv: (csv) => ipcRenderer.invoke(IpcChannel.pastRunsExportCsv, csv),
   minimizeWindow: () => ipcRenderer.invoke(IpcChannel.windowMinimize),
+  getWindowMode: () => ipcRenderer.invoke(IpcChannel.windowGetMode),
   toggleMaximizeWindow: () => ipcRenderer.invoke(IpcChannel.windowToggleMaximize),
   closeWindow: () => ipcRenderer.invoke(IpcChannel.windowClose),
   setAlwaysOnTop: (enabled) => ipcRenderer.invoke(IpcChannel.windowSetAlwaysOnTop, enabled),

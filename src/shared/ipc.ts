@@ -34,6 +34,7 @@ export const enum IpcChannel {
   pastRunsExportJson = "past-runs:export-json",
   pastRunsExportCsv = "past-runs:export-csv",
   windowMinimize = "window:minimize",
+  windowGetMode = "window:get-mode",
   windowToggleMaximize = "window:toggle-maximize",
   windowClose = "window:close",
   windowSetAlwaysOnTop = "window:set-always-on-top",
@@ -75,6 +76,7 @@ export const IPC_CHANNELS = {
   pastRunsExportJson: IpcChannel.pastRunsExportJson,
   pastRunsExportCsv: IpcChannel.pastRunsExportCsv,
   windowMinimize: IpcChannel.windowMinimize,
+  windowGetMode: IpcChannel.windowGetMode,
   windowToggleMaximize: IpcChannel.windowToggleMaximize,
   windowClose: IpcChannel.windowClose,
   windowSetAlwaysOnTop: IpcChannel.windowSetAlwaysOnTop,
@@ -119,6 +121,11 @@ export interface ConfigurationExportOptions {
   defaultPath?: string;
 }
 
+export interface WindowModeState {
+  compactMode: boolean;
+  fullWindowPinned: boolean;
+}
+
 export interface HeroSiegeCompanionApi {
   getState: () => Promise<CompanionState>;
   startCapture: () => Promise<CompanionState>;
@@ -144,6 +151,7 @@ export interface HeroSiegeCompanionApi {
   exportPastRunsJson: (json: string) => Promise<boolean>;
   exportPastRunsCsv: (csv: string) => Promise<boolean>;
   minimizeWindow: () => Promise<void>;
+  getWindowMode: () => Promise<WindowModeState>;
   toggleMaximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
   setAlwaysOnTop: (enabled: boolean) => Promise<void>;
