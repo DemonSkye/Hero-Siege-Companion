@@ -23,7 +23,7 @@ Current release target follows the `version` field in `package.json`.
 1. Install [Npcap](https://npcap.com/#download) using the options shown below.
 2. Launch `Hero Siege Companion.exe`.
 3. Start Hero Siege and leave capture running while you play.
-4. Enable manual Satanic Zone refresh in **Settings > Features** if desired.
+4. If desired, opt into **experimental** manual Satanic Zone refresh in **Settings > Features**; see its current status below.
 5. Use `End Run` when a run is complete and should be saved to Past Runs.
 
 Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later passive/manual update.
@@ -59,6 +59,8 @@ The full-width, collapsible **Run Pace** graph sits between the score strip and 
 Item Timeline and Live Log are collapsible dashboard fixtures. Ordinary card collapse lasts for the current session. Hiding either fixture is a saved choice, and a gear-only dashboard customizer in the capture status row restores hidden fixtures. Item Timeline filters are also saved, including the socketable, key, material, unfiltered, type, and linked-filter choices. Eligible normal and unique drop rows also expose a `Market` action for an on-demand comparable-listing check.
 
 Satanic Zone details use the same current-run source data in full and compact mode: zone name, remaining time, pros, and cons come from fresh parsed game packets or the optional sanitized manual-refresh result. The Companion does not restore a prior zone, effects, source, or observation time when it launches. `End Run` also clears the current Satanic Zone details for the next run; the next passive or manual response repopulates them.
+
+> **Current source status:** passive Satanic Zone display works from observed game packets. Companion-triggered refresh over a fresh TCP socket remains experimental and has not passed live server acceptance. Offline protocol parity tests and source checkpoints do not prove that the server accepts this request or returns a fresh zone.
 
 Manual refresh is enabled from **Settings > Features** and remains off until you choose it. The opt-in is stored by the main process and restored across Companion launches. While it is off, the dashboard and compact overlay show no manual-refresh control or enablement guidance. While it is on, an accessible recycle-style icon appears beside the full-view SZ countdown and, when that tile is configured, beside the compact SZ timer. Every allowed click requests a fresh result, even when the displayed result is still current. The main process requires current Npcap-observed session identifiers and opens one short-lived, Companion-owned TCP connection, completes the native credential-free control ping/pong, and sends one zone request; it never inserts a packet into the game's TCP stream. The 30-second cooldown begins only after the zone request is actually dispatched, unavailable/bootstrap failures do not consume it, and a still-active cooldown can survive a Companion restart. The feature has one request in flight, bounded waits, and no polling, automatic retry, certificate, proxy, privileged service, reconnect, or special game-launch requirement.
 
@@ -141,6 +143,8 @@ If capture does not start, reinstall Npcap with the WinPcap-compatible option en
 ## Direct Network Features
 
 Market checks and manual SZ Refresh use Npcap only to passively observe current game-owned API context. Product capture continues to exclude ports 80 and 443 and never writes or injects raw packets. Each feature owns its separate outbound request: Market uses direct HTTPS, and manual SZ uses a short-lived direct TCP connection with the retained native API frame. Neither feature launches a helper process or modifies the game's connection.
+
+Market checks retain their working status. The fresh-socket manual SZ path is experimental, with live server acceptance still unverified as described under Live Dashboard.
 
 No mitmproxy installation, local CA certificate, WinDivert redirector, interception UAC prompt, privileged service, proxy configuration, reconnect, or requirement to launch Hero Siege through Companion remains. Requests fail closed when current context is incomplete, stale, changes while work is in flight, or produces an invalid response. Attaching during play remains supported, but packets sent before Npcap began cannot be recovered.
 
