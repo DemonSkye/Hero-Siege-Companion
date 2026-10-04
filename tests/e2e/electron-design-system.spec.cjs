@@ -172,14 +172,26 @@ test("themes Timeline Market readiness, results and errors with native disclosur
     await search.click();
     await expect(market.locator(".market-search-price-grid")).toContainText("125,000 gold");
     await summary.click();
+    const priceContrasts = [];
     for (const theme of THEMES) {
-      await page.evaluate((id) => { document.documentElement.dataset.theme = id; }, theme);
+      await market.getByRole("button", { name: "Close market search" }).click();
+      await chooseTheme(page, theme);
+      await marketButton.click();
+      await search.click();
+      await expect(market.locator(".market-search-price-grid")).toContainText("125,000 gold");
       const colors = await semanticMarketColors(page);
       expect(colors.note, theme).toBe(colors.muted);
-      expect(colors.price, theme).toBe(colors.warm);
+      expect(colors.price, theme).toBe(colors.priceText);
       expect(colors.readiness, theme).toBe(colors.text);
       await expect(market.locator(".market-search-price-grid article").first()).toBeVisible();
+      for (const index of [0, 1]) {
+        const article = market.locator(".market-search-price-grid article").nth(index);
+        const contrast = await renderedTextContrast(page, article.locator("strong"), article);
+        priceContrasts.push({ theme, listing: index + 1, ...contrast });
+        expect.soft(contrast.minimum, `${theme}: rendered Market price ${index + 1}`).toBeGreaterThanOrEqual(4.5);
+      }
     }
+    await recordContrastReport(testInfo, "market-price-contrast.json", priceContrasts);
     await screenshot(page, testInfo, "market-results-light.png");
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler("market:search");
@@ -199,9 +211,7 @@ test("themes Timeline Market readiness, results and errors with native disclosur
       contrastReports.push({ theme, ...contrast });
       expect.soft(contrast.minimum, `${theme}: rendered normal error text`).toBeGreaterThanOrEqual(4.5);
     }
-    const contrastPath = testInfo.outputPath("market-error-contrast.json");
-    fs.writeFileSync(contrastPath, JSON.stringify(contrastReports, null, 2));
-    await testInfo.attach("market-error-contrast.json", { path: contrastPath, contentType: "application/json" });
+    await recordContrastReport(testInfo, "market-error-contrast.json", contrastReports);
     await screenshot(page, testInfo, "market-error-light.png");
   });
 });
@@ -240,6 +250,7 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
     await expect(customization.getByRole("button", { name: "Add Tile", exact: true })).toBeDisabled();
     await expect(customization.getByRole("button", { name: "Remove Duration", exact: true })).toHaveCount(0);
     await customization.getByRole("button", { name: "Close compact customization" }).click();
+    const zoneContrasts = [];
     for (const theme of THEMES) {
       const exitCompact = page.getByRole("button", { name: "Exit compact mode", exact: true });
       if (await exitCompact.isVisible()) await exitCompact.click();
@@ -251,7 +262,20 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
       await expect(page.getByRole("button", { name: "Pause Run", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "End Run", exact: true })).toBeVisible();
       await screenshot(page, testInfo, `compact-eight-${theme}.png`);
+      await page.getByRole("button", { name: "SZ Details", exact: true }).click();
+      const zone = page.getByLabel("Satanic zone details");
+      for (const effect of ["pros", "cons"]) {
+        const column = zone.locator(`.compact-zone-${effect}`);
+        for (const part of ["span", "strong"]) {
+          const contrast = await renderedTextContrast(page, column.locator(part).first(), column);
+          zoneContrasts.push({ theme, effect, part, ...contrast });
+          expect.soft(contrast.minimum, `${theme}: rendered compact Zone ${effect} ${part}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      await screenshot(page, testInfo, `compact-zone-${theme}.png`);
+      await page.getByRole("button", { name: "Dismiss zone details", exact: true }).click();
     }
+    await recordContrastReport(testInfo, "compact-zone-contrast.json", zoneContrasts);
   });
 });
 
@@ -286,13 +310,13 @@ async function assertVisibleLayout(page, selector, label) {
   expect(layout.overlaps, label).toBe(false);
 }
 
-// Sample actual composited pixels inside the alert's right padding, clear of text
+// Sample actual composited pixels at the surface's right edge, clear of text
 // and borders. Computed text color is rasterized by Chromium so modern CSS color
 // syntax is supported. This catches alpha/backdrop/theme interactions as well as
 // token values; it covers supplied palettes, not arbitrary imported overrides.
-async function renderedTextContrast(page, alert) {
-  const foreground = await alert.evaluate((element) => getComputedStyle(element).color);
-  const png = await alert.screenshot({ animations: "disabled", scale: "css" });
+async function renderedTextContrast(page, text, surface = text) {
+  const foreground = await text.evaluate((element) => getComputedStyle(element).color);
+  const png = await surface.screenshot({ animations: "disabled", scale: "css" });
   return page.evaluate(async ({ foreground, png }) => {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -302,8 +326,9 @@ async function renderedTextContrast(page, alert) {
     canvas.width = image.width;
     canvas.height = image.height;
     context.drawImage(image, 0, 0);
-    const backgrounds = [0.25, 0.5, 0.75].flatMap((fraction) => [5, 8, 11].map((inset) =>
-      [...context.getImageData(image.width - inset, Math.floor(image.height * fraction), 1, 1).data].slice(0, 3)));
+    const rows = Array.from({ length: Math.max(1, Math.floor((image.height - 8) / 2)) }, (_, index) => 4 + index * 2);
+    const backgrounds = rows.flatMap((y) => [5, 8, 11].map((inset) =>
+      [...context.getImageData(image.width - inset, y, 1, 1).data].slice(0, 3)));
     context.fillStyle = foreground;
     context.fillRect(0, 0, 1, 1);
     const text = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
@@ -318,6 +343,12 @@ async function renderedTextContrast(page, alert) {
     });
     return { foreground: text, backgrounds, minimum: Math.min(...ratios) };
   }, { foreground, png: png.toString("base64") });
+}
+
+async function recordContrastReport(testInfo, filename, report) {
+  const reportPath = testInfo.outputPath(filename);
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  await testInfo.attach(filename, { path: reportPath, contentType: "application/json" });
 }
 
 async function semanticMarketColors(page) {
@@ -336,7 +367,7 @@ async function semanticMarketColors(page) {
       note: color(".market-search-cache-note"), price: color(".market-search-price-grid strong"),
       readiness: color(".market-readiness"), error: color(".market-search-error"),
       muted: resolve("--app-muted"), warm: resolve("--accent-warm"),
-      text: resolve("--app-text"), danger: resolve("--danger"),
+      text: resolve("--app-text"), priceText: resolve("--market-price-text"),
     };
     probe.remove();
     return report;

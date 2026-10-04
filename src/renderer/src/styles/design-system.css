@@ -254,6 +254,14 @@
   gap: var(--space-1);
 }
 
+:root[data-theme] .compact-zone-effects .compact-zone-pros :is(span, strong) {
+  color: var(--zone-benefit-text);
+}
+
+:root[data-theme] .compact-zone-effects .compact-zone-cons :is(span, strong) {
+  color: var(--zone-danger-text);
+}
+
 :root[data-theme] .compact-zone-tray .compact-shopping-head span {
   color: var(--app-muted);
   font-size: 10px;
