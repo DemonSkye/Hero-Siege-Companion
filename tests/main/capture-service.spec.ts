@@ -221,6 +221,83 @@ describe("CaptureService lifecycle", () => {
     expect(observeGameProcessIds).toHaveBeenLastCalledWith([]);
   });
 
+  test("stop during pending startup diagnostics cannot publish running or open capture", async () => {
+    vi.useFakeTimers();
+    const updates: CaptureUpdate[] = [];
+    const observeGameProcessIds = vi.fn();
+    let completeDiagnostics!: (value: string) => void;
+    mocks.getNpcapServiceStatus.mockReturnValueOnce(new Promise<string>((resolve) => { completeDiagnostics = resolve; }));
+    mocks.getHeroSiegeNetworkState.mockResolvedValue({ gameProcessIds: [123], antiCheatProcessIds: [], connections: [connection()] });
+    const service = new CaptureService((update) => updates.push(update), undefined, undefined, undefined, undefined, observeGameProcessIds);
+    const starting = service.start();
+    await Promise.resolve();
+    service.stop();
+    const stoppedUpdateCount = updates.length;
+    completeDiagnostics("Running");
+    await starting;
+    expect(updates.slice(stoppedUpdateCount)).toEqual([]);
+    expect(mocks.openPacketCapture).not.toHaveBeenCalled();
+    expect(observeGameProcessIds).toHaveBeenLastCalledWith([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("a stopped discovery cannot replace the process generation of a restarted capture", async () => {
+    vi.useFakeTimers();
+    const observeGameProcessIds = vi.fn();
+    let completeOldDiscovery!: (value: { gameProcessIds: number[]; antiCheatProcessIds: number[]; connections: CaptureConnection[] }) => void;
+    mocks.getHeroSiegeNetworkState
+      .mockReturnValueOnce(new Promise((resolve) => { completeOldDiscovery = resolve; }))
+      .mockResolvedValue({ gameProcessIds: [456], antiCheatProcessIds: [], connections: [connection({ owningProcess: 456 })] });
+    const service = new CaptureService(() => undefined, undefined, undefined, undefined, undefined, observeGameProcessIds);
+    const oldStart = service.start();
+    service.stop();
+    await service.start();
+    completeOldDiscovery({ gameProcessIds: [123], antiCheatProcessIds: [], connections: [connection()] });
+    await oldStart;
+    expect(observeGameProcessIds).toHaveBeenLastCalledWith([456]);
+    expect(mocks.openPacketCapture).toHaveBeenCalledTimes(1);
+    service.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("fallback currency diagnostics never emit synthetic private payload values", () => {
+    const updates: CaptureUpdate[] = [];
+    const service = new CaptureService((update) => updates.push(update));
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const sentinels = ["private-account-sentinel", "private-multipass-sentinel", "private-session-sentinel"];
+    const capturedPacket = rawTcpPacket(`${JSON.stringify({ account_id: sentinels[0], multipass: sentinels[1], crossregion_identifier: sentinels[2], gold: "unparsed" })}\0`);
+    internals.activeLocalAddress = "10.0.0.2";
+    internals.activeLinkType = "RAW";
+    internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()]);
+    internals.processPacket(capturedPacket.length, false);
+    const emittedLogs = updates.flatMap((update) => [...(update.logs ?? []), ...(update.log ? [update.log] : [])]);
+    expect(emittedLogs.some((log) => log.message.includes("Gold-like payload did not parse"))).toBe(true);
+    for (const sentinel of sentinels) expect(JSON.stringify(emittedLogs)).not.toContain(sentinel);
+  });
+
+  test("a stopped pending refresh cannot restore PID observations or close a newer capture", async () => {
+    vi.useFakeTimers();
+    const observeGameProcessIds = vi.fn();
+    const currentNetwork = { gameProcessIds: [456], antiCheatProcessIds: [], connections: [connection({ owningProcess: 456 })] };
+    let completeRefresh!: (value: typeof currentNetwork) => void;
+    mocks.getHeroSiegeNetworkState.mockResolvedValueOnce(currentNetwork)
+      .mockReturnValueOnce(new Promise((resolve) => { completeRefresh = resolve; }))
+      .mockResolvedValue(currentNetwork);
+    const service = new CaptureService(() => undefined, undefined, undefined, undefined, undefined, observeGameProcessIds);
+    await service.start();
+    const refreshing = (service as unknown as RefreshableCaptureService).refreshCaptureSafely("test");
+    service.stop();
+    await service.start();
+    completeRefresh({ ...currentNetwork, gameProcessIds: [] });
+    await refreshing;
+    expect(observeGameProcessIds).toHaveBeenLastCalledWith([456]);
+    expect(mocks.openPacketCapture).toHaveBeenCalledTimes(2);
+    expect(mocks.closeCapture).toHaveBeenCalledTimes(1);
+    service.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });

@@ -398,16 +398,14 @@ ipcMain.handle(IPC_CHANNELS.stateGet, () => {
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
-  gameCaptureCoordinator.clearLaunchCaptureTimer();
-  await captureService?.start();
+  await gameCaptureCoordinator.startCapture();
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
 ipcMain.handle(IPC_CHANNELS.captureStop, () => {
-  gameCaptureCoordinator.clearLaunchCaptureTimer();
   applyPendingCaptureEvents();
   pauseRun("captureStopped");
-  captureService?.stop();
+  gameCaptureCoordinator.stopCapture();
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.statsReset, () => {
@@ -851,12 +849,6 @@ app.whenReady().then(async () => {
   if (state.captureStatus === "error") {
     publishStateNow();
     return;
-  }
-  if (await captureService.hasHeroSiegeProcess()) {
-    await captureService.start();
-  } else {
-    addLog("info", "Hero Siege is not running yet. Launch the game, wait for the main menu, then click Launch Game.");
-    publishState();
   }
   gameCaptureCoordinator.startMonitor();
 });
