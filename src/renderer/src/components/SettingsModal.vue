@@ -7,6 +7,7 @@ import type {
 } from "../../../shared/app-state";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 import type { ConfigurationImportPreview } from "../lib/preferences";
+import { createMarketAccessToggleGesture } from "../lib/market-search-runtime";
 import type { ThemeId } from "../lib/themes";
 import type { WhatsNewRelease } from "../lib/whats-new";
 import { useModalFocus } from "../lib/modal-focus";
@@ -88,6 +89,7 @@ const themeCustomMode = defineModel<boolean>("themeCustomMode", { required: true
 const compactThemeCustomMode = defineModel<boolean>("compactThemeCustomMode", { required: true });
 const compactThemeMatchesApp = defineModel<boolean>("compactThemeMatchesApp", { required: true });
 const satanicZoneRefreshEnabled = defineModel<boolean>("satanicZoneRefreshEnabled", { required: true });
+const marketSearchEnabled = defineModel<boolean>("marketSearchEnabled", { required: true });
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; group: "settings" | "resources" }> = [
   { id: "app", label: "App", group: "settings" },
@@ -101,6 +103,7 @@ const settingsDialog = ref<HTMLElement | null>(null);
 const nestedDialog = ref<SettingsDialogKind | null>(props.backupPreview ? "restore" : null);
 const pendingDeepMode = ref<Exclude<CaptureDiagnosticsMode, "off">>("manual");
 const deleteItemFilters = ref(false);
+const marketAccessToggleGesture = createMarketAccessToggleGesture();
 const { handleModalFocusKeydown } = useModalFocus(settingsDialog);
 
 watch(() => props.initialTab, (tab) => {
@@ -111,6 +114,10 @@ watch(() => props.initialTab, (tab) => {
 watch(() => props.backupPreview, (preview) => {
   if (preview) nestedDialog.value = "restore";
   else if (nestedDialog.value === "restore") nestedDialog.value = null;
+});
+
+watch([activeSettingsSection, nestedDialog], ([section, dialog]) => {
+  if (section !== "support" || dialog !== null) marketAccessToggleGesture.reset();
 });
 
 function normalizeSettingsSection(value: string | undefined): SettingsSection {
@@ -144,6 +151,25 @@ function handleNavigationKeydown(event: KeyboardEvent) {
   const nextSection = SETTINGS_SECTIONS[nextIndex];
   selectSettingsSection(nextSection.id);
   void nextTick(() => document.querySelector<HTMLButtonElement>(`[data-settings-section="${nextSection.id}"]`)?.focus());
+}
+
+function handleSettingsKeydownCapture(event: KeyboardEvent) {
+  if (
+    activeSettingsSection.value !== "support"
+    || nestedDialog.value !== null
+    || event.key !== "ArrowLeft"
+    || event.altKey
+    || event.ctrlKey
+    || event.metaKey
+    || event.shiftKey
+  ) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.repeat) return;
+  if (marketAccessToggleGesture.recordArrowPress()) {
+    marketSearchEnabled.value = !marketSearchEnabled.value;
+  }
 }
 
 function requestSatanicZoneRefreshChange(enabled: boolean) {
@@ -200,7 +226,12 @@ function saveStatusLabel(): string {
 </script>
 
 <template>
-  <div class="modal-backdrop settings-ledger-backdrop" @keydown="handleModalFocusKeydown" @keydown.esc="$emit('close')">
+  <div
+    class="modal-backdrop settings-ledger-backdrop"
+    @keydown.capture="handleSettingsKeydownCapture"
+    @keydown="handleModalFocusKeydown"
+    @keydown.esc="$emit('close')"
+  >
     <section
       ref="settingsDialog"
       class="settings-panel settings-ledger"
@@ -325,11 +356,12 @@ function saveStatusLabel(): string {
         dismiss-only
         @close="closeNestedDialog"
       >
-        <p>SZ Refresh uses a managed local relay so the companion can request the current Satanic Zone between the game’s normal save queries.</p>
+        <p>SZ Refresh opens a short-lived, companion-owned connection to request the current Satanic Zone. It never redirects or modifies the game’s connection.</p>
         <ul>
-          <li>Changing the relay while Hero Siege is connected may disconnect that session, so reconnect before playing.</li>
-          <li>VPNs, system proxies, firewalls, and network-security tools can prevent the relay from working.</li>
+          <li>Npcap must be available so the companion can observe the current session identifiers.</li>
+          <li>No certificate installation, administrator service, proxy, or special game launch is required.</li>
           <li>Refresh requests remain limited to once every 30 seconds.</li>
+          <li>Each click requests a fresh result, even when the displayed result is still current.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
       </SettingsActionDialog>
@@ -341,9 +373,10 @@ function saveStatusLabel(): string {
         @close="closeNestedDialog"
         @confirm="confirmSatanicZoneRefresh"
       >
-        <p>The companion will start a managed local relay. If Hero Siege is connected, changing this can disconnect the active game.</p>
+        <p>The companion will enable manual requests over a short-lived, companion-owned connection.</p>
         <ul>
-          <li>Enable it before joining a game, or reconnect afterward.</li>
+          <li>Npcap capture must observe the current game session before Refresh becomes ready.</li>
+          <li>The game can keep running normally; no reconnect or special launch is required.</li>
           <li>Requests remain limited to once every 30 seconds.</li>
           <li>Backup restoration never enables this feature.</li>
         </ul>

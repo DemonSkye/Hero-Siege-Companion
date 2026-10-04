@@ -40,8 +40,12 @@
     order: 4;
   }
 
-  .shopping-panel {
+  .player-chat-panel {
     order: 5;
+  }
+
+  .shopping-panel {
+    order: 6;
   }
 
   .zone-effects {

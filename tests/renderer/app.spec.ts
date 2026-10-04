@@ -483,6 +483,56 @@ describe("App orchestration", () => {
       wrapper.unmount();
     }
   });
+
+  test("keeps dropped-item Market actions hidden until the durable gate is enabled", async () => {
+    installHeroSiegeCompanionApi();
+    const stubs = {
+      AppTitlebar: { template: "<div />" },
+      CompactView: { template: "<div />" },
+      LiveSessionHeader: {
+        emits: ["open-settings"],
+        template: '<button data-test="open-settings" type="button" @click="$emit(\'open-settings\')">Settings</button>',
+      },
+      LiveView: {
+        props: ["marketSearchAvailable"],
+        template: '<span data-test="market-search-available">{{ marketSearchAvailable }}</span>',
+      },
+      SettingsModal: {
+        props: ["marketSearchEnabled"],
+        emits: ["update:marketSearchEnabled"],
+        template: '<button data-test="unlock-market" type="button" @click="$emit(\'update:marketSearchEnabled\', true)">Unlock</button>',
+      },
+      UpdateBanner: { template: "<div />" },
+      WhatsNewPrompt: { template: "<div />" },
+    };
+    const wrapper = mount(App, {
+      global: {
+        stubs,
+      },
+    });
+
+    try {
+      await flushPromises();
+      expect(wrapper.get('[data-test="market-search-available"]').text()).toBe("false");
+      await wrapper.get('[data-test="open-settings"]').trigger("click");
+      await wrapper.get('[data-test="unlock-market"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-test="market-search-available"]').text()).toBe("true");
+      expect(JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}")).toMatchObject({
+        marketSearchEnabled: true,
+      });
+    } finally {
+      wrapper.unmount();
+    }
+
+    const restoredWrapper = mount(App, { global: { stubs } });
+    try {
+      await flushPromises();
+      expect(restoredWrapper.get('[data-test="market-search-available"]').text()).toBe("true");
+    } finally {
+      restoredWrapper.unmount();
+    }
+  });
 });
 
 function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
@@ -495,6 +545,7 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     chooseGameExecutable: vi.fn().mockResolvedValue(null),
     resetStats: vi.fn().mockResolvedValue(state),
     refreshSatanicZone: vi.fn().mockResolvedValue(state),
+    searchMarket: vi.fn().mockResolvedValue({ ok: true, result: { listings: [] } }),
     pauseRun: vi.fn().mockResolvedValue(state),
     resumeRun: vi.fn().mockResolvedValue(state),
     setPastRunTags: vi.fn().mockResolvedValue(state),

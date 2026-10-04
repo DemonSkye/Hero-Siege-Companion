@@ -1,9 +1,15 @@
 import { ref, type Ref } from "vue";
 import { normalizeCompactRunTiles } from "./compact-tiles";
+import { isHideableLiveDashboardFixture, type HideableLiveDashboardFixture } from "./dashboard-fixtures";
 import {
   normalizeCustomItemFilterSounds,
   normalizeItemFilterGroups,
 } from "./item-filters";
+import {
+  normalizeLiveRunGraphEnabledMetrics,
+  normalizeLiveRunGraphItemNames,
+  type LiveRunStandardMetric,
+} from "./live-run-graph-config";
 import {
   defaultPreferences,
   normalizePreferences,
@@ -25,6 +31,7 @@ export function useAppPreferences() {
   const hideMaterials = ref(initial.hideMaterials);
   const hideUnfilteredTimelineItems = ref(initial.hideUnfilteredTimelineItems);
   const timelineType = ref(initial.timelineType);
+  const marketSearchEnabled = ref(initial.marketSearchEnabled);
   const gameExecutablePath = ref(initial.gameExecutablePath);
   const launchThroughSteam = ref(initial.launchThroughSteam);
   const themeId = ref(initial.themeId);
@@ -43,11 +50,11 @@ export function useAppPreferences() {
   const customItemFilterSounds = ref(initial.customItemFilterSounds);
   const postRunReport = ref(initial.postRunReport);
   const compactRunTiles = ref(initial.compactRunTiles);
-  const hiddenDashboardPanels = ref<Array<"item-timeline" | "live-log">>(
-    initial.hiddenDashboardPanels.filter((panel): panel is "item-timeline" | "live-log" => (
-      panel === "item-timeline" || panel === "live-log"
-    )),
+  const hiddenDashboardPanels = ref<HideableLiveDashboardFixture[]>(
+    initial.hiddenDashboardPanels.filter(isHideableLiveDashboardFixture),
   );
+  const liveRunGraphEnabledMetrics = ref<LiveRunStandardMetric[]>([...initial.liveRunGraphEnabledMetrics]);
+  const liveRunGraphItemNames = ref([...initial.liveRunGraphItemNames]);
   const itemResearchEntries = ref(initial.itemResearchEntries);
 
   const preferenceWatchSources: Ref<unknown>[] = [
@@ -56,6 +63,7 @@ export function useAppPreferences() {
     hideMaterials,
     hideUnfilteredTimelineItems,
     timelineType,
+    marketSearchEnabled,
     gameExecutablePath,
     launchThroughSteam,
     themeId,
@@ -75,6 +83,8 @@ export function useAppPreferences() {
     postRunReport,
     compactRunTiles,
     hiddenDashboardPanels,
+    liveRunGraphEnabledMetrics,
+    liveRunGraphItemNames,
     itemResearchEntries,
   ];
 
@@ -86,6 +96,7 @@ export function useAppPreferences() {
       hideMaterials: hideMaterials.value,
       hideUnfilteredTimelineItems: hideUnfilteredTimelineItems.value,
       timelineType: timelineType.value,
+      marketSearchEnabled: marketSearchEnabled.value,
       shoppingListItems,
       gameExecutablePath: gameExecutablePath.value,
       launchThroughSteam: launchThroughSteam.value,
@@ -106,6 +117,8 @@ export function useAppPreferences() {
       postRunReport: postRunReport.value,
       compactRunTiles: compactRunTiles.value,
       hiddenDashboardPanels: hiddenDashboardPanels.value,
+      liveRunGraphEnabledMetrics: liveRunGraphEnabledMetrics.value,
+      liveRunGraphItemNames: liveRunGraphItemNames.value,
       itemResearchEntries: itemResearchEntries.value,
     });
   }
@@ -119,6 +132,7 @@ export function useAppPreferences() {
     hideMaterials.value = next.hideMaterials;
     hideUnfilteredTimelineItems.value = next.hideUnfilteredTimelineItems;
     timelineType.value = next.timelineType;
+    marketSearchEnabled.value = next.marketSearchEnabled;
     gameExecutablePath.value = next.gameExecutablePath;
     launchThroughSteam.value = next.launchThroughSteam;
     themeId.value = next.themeId;
@@ -137,9 +151,9 @@ export function useAppPreferences() {
     itemFilterMuted.value = next.itemFilterMuted;
     postRunReport.value = normalizePostRunReportConfig(next.postRunReport);
     compactRunTiles.value = normalizeCompactRunTiles(next.compactRunTiles);
-    hiddenDashboardPanels.value = next.hiddenDashboardPanels.filter((panel): panel is "item-timeline" | "live-log" => (
-      panel === "item-timeline" || panel === "live-log"
-    ));
+    hiddenDashboardPanels.value = next.hiddenDashboardPanels.filter(isHideableLiveDashboardFixture);
+    liveRunGraphEnabledMetrics.value = normalizeLiveRunGraphEnabledMetrics(next.liveRunGraphEnabledMetrics);
+    liveRunGraphItemNames.value = normalizeLiveRunGraphItemNames(next.liveRunGraphItemNames);
     itemResearchEntries.value = [...next.itemResearchEntries];
   }
 
@@ -155,6 +169,7 @@ export function useAppPreferences() {
     hideMaterials,
     hideUnfilteredTimelineItems,
     timelineType,
+    marketSearchEnabled,
     gameExecutablePath,
     launchThroughSteam,
     themeId,
@@ -174,6 +189,8 @@ export function useAppPreferences() {
     postRunReport,
     compactRunTiles,
     hiddenDashboardPanels,
+    liveRunGraphEnabledMetrics,
+    liveRunGraphItemNames,
     itemResearchEntries,
     preferenceWatchSources,
     currentPreferences,

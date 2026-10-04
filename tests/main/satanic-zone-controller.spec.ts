@@ -88,7 +88,7 @@ describe("SatanicZoneController", () => {
     expect(states).toHaveBeenCalledTimes(4);
   });
 
-  test("merges relay-owned passive observations through the captured response path and unsubscribes on dispose", () => {
+  test("merges provider-owned observations through the captured response path and unsubscribes on dispose", () => {
     let passiveListener: SatanicZonePassiveObservationListener | null = null;
     const unsubscribe = vi.fn();
     const refreshProvider = provider({
@@ -150,11 +150,11 @@ describe("SatanicZoneController", () => {
       initialState: {
         ...enabledState(),
         refreshAvailable: true,
-        current: zone(WINDOW_TIME - 60_000),
+        current: zone(WINDOW_TIME - 30 * 60_000),
         phase: "current",
         source: "captured",
-        lastSuccessAt: WINDOW_TIME - 60_000,
-        validUntil: WINDOW_TIME + 25 * 60_000,
+        lastSuccessAt: WINDOW_TIME - 30 * 60_000,
+        validUntil: WINDOW_TIME - 5 * 60_000,
       },
       onStateChange: vi.fn(),
       now: () => WINDOW_TIME,
@@ -221,6 +221,39 @@ describe("SatanicZoneController", () => {
     expect(refreshProvider.requestRefresh).toHaveBeenCalledTimes(1);
   });
 
+  test("dispatches an explicit refresh even when the current observation is still fresh", async () => {
+    const refreshProvider = provider();
+    const current = zone(WINDOW_TIME);
+    const initialState = {
+      ...enabledState(),
+      current,
+      phase: "current" as const,
+      source: "captured" as const,
+      lastAttemptAt: WINDOW_TIME - 2_000,
+      lastSuccessAt: WINDOW_TIME - 1_000,
+      validUntil: WINDOW_TIME + 25 * 60_000,
+      nextAllowedRefreshAt: null,
+      refreshAvailable: true,
+    };
+    const controller = new SatanicZoneController({
+      provider: refreshProvider,
+      initialState,
+      onStateChange: vi.fn(),
+      now: () => WINDOW_TIME + 5_000,
+    });
+
+    await expect(controller.refreshNow()).resolves.toEqual({ accepted: true, errorCode: null });
+    expect(controller.getState()).toEqual({
+      ...initialState,
+      phase: "refreshing",
+      lastAttemptAt: WINDOW_TIME + 5_000,
+      nextAllowedRefreshAt: WINDOW_TIME + 35_000,
+      refreshExperimental: true,
+    });
+    expect(refreshProvider.getAvailability).toHaveBeenCalledTimes(1);
+    expect(refreshProvider.requestRefresh).toHaveBeenCalledTimes(1);
+  });
+
   test("fails a manual refresh after the bounded passive-response timeout and never retries it", async () => {
     vi.useFakeTimers();
     let now = WINDOW_TIME;
@@ -233,7 +266,7 @@ describe("SatanicZoneController", () => {
       refreshCooldownMs: 5000,
       responseTimeoutMs: 250,
     });
-    const previous = zone(WINDOW_TIME - 60_000);
+    const previous = zone(WINDOW_TIME - 30 * 60_000);
     controller.observePassiveResponse(previous, WINDOW_TIME);
 
     await controller.refreshNow();
@@ -264,7 +297,7 @@ describe("SatanicZoneController", () => {
     });
 
     await expect(controller.refreshNow()).resolves.toEqual({ accepted: true, errorCode: null });
-    controller.observePassiveResponse(zone(now + 1), now + 1);
+    controller.observePassiveResponse(zone(now - 30 * 60_000), now + 1);
 
     now = WINDOW_TIME + 29_999;
     await expect(controller.refreshNow()).resolves.toEqual({ accepted: false, errorCode: "refresh_cooldown" });
@@ -294,7 +327,7 @@ describe("SatanicZoneController", () => {
 
     await expect(refresh).resolves.toEqual({ accepted: true, errorCode: null });
     expect(controller.getState().nextAllowedRefreshAt).toBe(WINDOW_TIME + 42_345);
-    controller.observePassiveResponse(zone(now + 1), now + 1);
+    controller.observePassiveResponse(zone(now - 30 * 60_000), now + 1);
 
     now = WINDOW_TIME + 42_344;
     await expect(controller.refreshNow()).resolves.toEqual({ accepted: false, errorCode: "refresh_cooldown" });

@@ -4,7 +4,6 @@ import {
   captureConnectionFlowKey,
   capturePacketFlowKey,
   connectionSignature,
-  normalizeCaptureProcessIds,
   refreshRetainedCaptureTargets,
   selectGameServerConnections,
   stableCaptureFilter,
@@ -25,10 +24,6 @@ function connection(overrides: Partial<CaptureConnection> = {}): CaptureConnecti
 }
 
 describe("capture network helpers", () => {
-  test("normalizes supplemental relay process IDs before discovery interpolation", () => {
-    expect(normalizeCaptureProcessIds([42, -1, 7, 42, Number.NaN, 2.5, 0x80000000])).toEqual([7, 42]);
-  });
-
   test("filters launcher and web connections before capture selection", () => {
     const game = connection({ remotePort: 26921 });
     const web = connection({ remoteAddress: "198.51.100.1", remotePort: 443 });
@@ -36,6 +31,13 @@ describe("capture network helpers", () => {
     const connecting = connection({ remoteAddress: "198.51.100.3", remotePort: 6601, state: "SynSent" });
 
     expect(selectGameServerConnections([web, closing, connecting, game])).toEqual([connecting, game]);
+  });
+
+  test("excludes both HTTP and HTTPS launcher traffic from game capture", () => {
+    const http = connection({ remoteAddress: "198.51.100.1", remotePort: 80 });
+    const https = connection({ remoteAddress: "198.51.100.2", remotePort: 443 });
+
+    expect(selectGameServerConnections([http, https])).toEqual([]);
   });
 
   test("creates stable unique capture targets and signatures", () => {

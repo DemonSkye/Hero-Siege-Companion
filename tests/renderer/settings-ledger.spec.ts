@@ -22,6 +22,7 @@ function settingsProps(overrides: Record<string, unknown> = {}) {
     compactThemeCustomMode: false,
     compactThemeMatchesApp: true,
     satanicZoneRefreshEnabled: false,
+    marketSearchEnabled: false,
     themeOptions: THEME_OPTIONS,
     captureDiagnostics,
     diagnosticsNow: 1_000,
@@ -89,11 +90,16 @@ describe("settings ledger", () => {
 
     await wrapper.get(".settings-switch input").trigger("change");
     expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toBeUndefined();
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("managed local relay");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("companion-owned connection");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("no reconnect or special launch is required");
     expect(wrapper.text()).not.toContain("Exclusive");
 
     await button(wrapper, "Enable SZ Refresh").trigger("click");
     expect(wrapper.emitted("update:satanicZoneRefreshEnabled")?.[0]).toEqual([true]);
+
+    await button(wrapper, "Learn More").trigger("click");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("No certificate installation");
+    expect(wrapper.find('a[href*="mitmproxy"]').exists()).toBe(false);
   });
 
   test("emits enhanced diagnostics directly but confirmation-gates every deep activation", async () => {
@@ -124,6 +130,30 @@ describe("settings ledger", () => {
 
     expect(wrapper.text()).toContain("10:00 remaining");
     expect(button(wrapper, "Stop").attributes("aria-pressed")).toBe("true");
+  });
+
+  test("toggles hidden Market access after four rapid left arrows in Help & Support", async () => {
+    const wrapper = mount(SettingsModal, { props: settingsProps() });
+    const supportButton = button(wrapper, "Help & Support");
+    await supportButton.trigger("click");
+    supportButton.element.focus();
+
+    expect(wrapper.text()).not.toContain("Market");
+    await supportButton.trigger("keydown", { key: "ArrowLeft", repeat: true });
+    for (let press = 0; press < 3; press += 1) {
+      await supportButton.trigger("keydown", { key: "ArrowLeft" });
+    }
+    expect(wrapper.emitted("update:marketSearchEnabled")).toBeUndefined();
+    expect(wrapper.get(".settings-ledger-panel-heading h2").text()).toBe("Help & Support");
+
+    await supportButton.trigger("keydown", { key: "ArrowLeft" });
+    expect(wrapper.emitted("update:marketSearchEnabled")).toEqual([[true]]);
+
+    await wrapper.setProps({ marketSearchEnabled: true });
+    for (let press = 0; press < 4; press += 1) {
+      await supportButton.trigger("keydown", { key: "ArrowLeft" });
+    }
+    expect(wrapper.emitted("update:marketSearchEnabled")).toEqual([[true], [false]]);
   });
 
   test("keeps Escape inside a nested confirmation and restores focus when the settings modal closes", async () => {

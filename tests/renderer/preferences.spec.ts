@@ -23,12 +23,19 @@ import {
   LOG_LIMIT_OPTIONS,
   UI_PREFERENCES_SCHEMA_VERSION,
   createConfigurationExportPayload,
+  createFactoryResetPreferences,
   defaultPreferences,
   importConfigurationPayload,
   loadPreferences,
   normalizeShoppingList,
   savePreferences,
 } from "../../src/renderer/src/lib/preferences";
+import {
+  DEFAULT_LIVE_RUN_STANDARD_METRICS,
+  MAX_LIVE_RUN_CUSTOM_ITEM_NAME_LENGTH,
+  normalizeLiveRunGraphEnabledMetrics,
+  normalizeLiveRunGraphItemNames,
+} from "../../src/renderer/src/lib/live-run-graph-config";
 import { defaultPostRunReportConfig, withPostRunReportSummaryItems, withoutPostRunReportItemFilterGroup } from "../../src/renderer/src/lib/report-config";
 import {
   DEFAULT_THEME_ACCENTS,
@@ -69,12 +76,15 @@ describe("renderer preferences persistence", () => {
       hideSocketables: true,
       hideKeys: true,
       hideMaterials: true,
+      marketSearchEnabled: false,
       themeId: "voidglass",
       compactThemeId: "voidglass",
       compactThemeMatchesApp: true,
       themeTextures: {},
       compactThemeTextures: {},
       themeForegroundFills: {},
+      liveRunGraphEnabledMetrics: DEFAULT_LIVE_RUN_STANDARD_METRICS,
+      liveRunGraphItemNames: [],
       postRunReport: defaultPostRunReportConfig,
     });
 
@@ -90,6 +100,7 @@ describe("renderer preferences persistence", () => {
       hideMaterials: preferences.hideMaterials,
       hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
       timelineType: preferences.timelineType,
+      marketSearchEnabled: preferences.marketSearchEnabled,
       gameExecutablePath: preferences.gameExecutablePath,
       launchThroughSteam: preferences.launchThroughSteam,
       themeId: preferences.themeId,
@@ -109,6 +120,8 @@ describe("renderer preferences persistence", () => {
       postRunReport: preferences.postRunReport,
       compactRunTiles: preferences.compactRunTiles,
       hiddenDashboardPanels: preferences.hiddenDashboardPanels,
+      liveRunGraphEnabledMetrics: preferences.liveRunGraphEnabledMetrics,
+      liveRunGraphItemNames: preferences.liveRunGraphItemNames,
       itemResearchEntries: preferences.itemResearchEntries,
     };
     const watchedRefs = new Set(preferences.preferenceWatchSources);
@@ -143,6 +156,7 @@ describe("renderer preferences persistence", () => {
         hideKeys: false,
         hideMaterials: true,
         timelineType: "999",
+        marketSearchEnabled: "true",
         shoppingListItems: ["Copper Ore", "Copper Ore", "", "Ruby"],
         gameExecutablePath: 42,
         launchThroughSteam: false,
@@ -171,6 +185,17 @@ describe("renderer preferences persistence", () => {
           topDropLimit: 10,
           trackedItems: ["Sash of the Magi", "Sash of the Magi", ""],
         },
+        liveRunGraphEnabledMetrics: ["kills", "unknown", "xp", "kills"],
+        liveRunGraphItemNames: [
+          "  Jade   Ore  ",
+          "jade-ore",
+          42,
+          "Ruby Ore",
+          "Devil’s Key",
+          "devils key",
+          "Copper Ore",
+          "Iron Ore",
+        ],
         developerItemResearchEnabled: 1,
         unknownItemAudioPrompt: 1,
         itemResearchEntries: [
@@ -192,6 +217,7 @@ describe("renderer preferences persistence", () => {
     expect(preferences.logLimit).toBe(defaultPreferences.logLimit);
     expect(preferences.timelineLimit).toBe(defaultPreferences.timelineLimit);
     expect(preferences.timelineType).toBe(defaultPreferences.timelineType);
+    expect(preferences.marketSearchEnabled).toBe(false);
     expect(preferences.shoppingListItems).toEqual(["Copper Ore", "Ruby"]);
     expect(preferences.gameExecutablePath).toBe("");
     expect(preferences.launchThroughSteam).toBe(false);
@@ -229,6 +255,8 @@ describe("renderer preferences persistence", () => {
         },
       ],
     });
+    expect(preferences.liveRunGraphEnabledMetrics).toEqual(["xp", "kills"]);
+    expect(preferences.liveRunGraphItemNames).toEqual(["Jade Ore", "Ruby Ore", "Devil’s Key", "Copper Ore"]);
     expect(preferences.developerItemResearchEnabled).toBe(false);
     expect(preferences.unknownItemAudioPrompt).toBe(false);
     expect(preferences.itemResearchEntries[0]).toMatchObject({
@@ -389,6 +417,9 @@ describe("renderer preferences persistence", () => {
       logLimit: 50,
       timelineType: "item-filter:boss-drops",
       shoppingListItems: ["Jade"],
+      marketSearchEnabled: true,
+      liveRunGraphEnabledMetrics: [],
+      liveRunGraphItemNames: ["  Jade   Ore  "],
       postRunReport: defaultPostRunReportConfig,
     });
 
@@ -396,13 +427,75 @@ describe("renderer preferences persistence", () => {
     expect(loadPreferences().schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(loadPreferences().timelineType).toBe("item-filter:boss-drops");
     expect(loadPreferences().shoppingListItems).toEqual(["Jade"]);
+    expect(loadPreferences().marketSearchEnabled).toBe(true);
+    expect(loadPreferences().liveRunGraphEnabledMetrics).toEqual([]);
+    expect(loadPreferences().liveRunGraphItemNames).toEqual(["Jade Ore"]);
     expect(normalizeShoppingList(["Ruby", "Ruby", "", "Jade"])).toEqual(["Ruby", "Jade"]);
+  });
+
+  test("normalizes durable live graph lane selections without mistaking an empty metric list for missing data", () => {
+    expect(normalizeLiveRunGraphEnabledMetrics(undefined)).toEqual(DEFAULT_LIVE_RUN_STANDARD_METRICS);
+    expect(normalizeLiveRunGraphEnabledMetrics([])).toEqual([]);
+    expect(normalizeLiveRunGraphEnabledMetrics(["items", "xp", "items", "lost"])).toEqual(["xp", "items"]);
+
+    const longName = `  ${"Jade ".repeat(40)}  `;
+    const itemNames = normalizeLiveRunGraphItemNames([
+      "  Tarethíel   Signet  ",
+      "tarethiel-signet",
+      longName,
+      "Ruby Ore",
+      "Devil’s Key",
+      "Copper Ore",
+    ]);
+    expect(itemNames).toHaveLength(4);
+    expect(itemNames[0]).toBe("Tarethíel Signet");
+    expect(itemNames[1]?.length).toBeLessThanOrEqual(MAX_LIVE_RUN_CUSTOM_ITEM_NAME_LENGTH);
+    expect(itemNames.slice(2)).toEqual(["Ruby Ore", "Devil’s Key"]);
+  });
+
+  test("keeps live graph refs canonical through current snapshots and restored preferences", () => {
+    const preferences = useAppPreferences();
+    preferences.applyPreferences({
+      ...defaultPreferences,
+      liveRunGraphEnabledMetrics: [],
+      liveRunGraphItemNames: ["  Jade   Ore  ", "jade-ore"],
+    });
+
+    expect(preferences.liveRunGraphEnabledMetrics.value).toEqual([]);
+    expect(preferences.liveRunGraphItemNames.value).toEqual(["Jade Ore"]);
+    expect(preferences.currentPreferences(["Ruby"])).toMatchObject({
+      liveRunGraphEnabledMetrics: [],
+      liveRunGraphItemNames: ["Jade Ore"],
+    });
+  });
+
+  test("factory reset restores the recommended live graph lanes", () => {
+    const reset = createFactoryResetPreferences({
+      ...defaultPreferences,
+      liveRunGraphEnabledMetrics: [],
+      liveRunGraphItemNames: ["Jade Ore"],
+    });
+
+    expect(reset.liveRunGraphEnabledMetrics).toEqual(DEFAULT_LIVE_RUN_STANDARD_METRICS);
+    expect(reset.liveRunGraphItemNames).toEqual([]);
   });
 
   test("persists an intentionally empty Filter Stack without restoring the sample group", () => {
     expect(savePreferences({ ...defaultPreferences, itemFilterGroups: [] })).toBe(true);
 
     expect(loadPreferences().itemFilterGroups).toEqual([]);
+  });
+
+  test("keeps hidden Market access local instead of enabling it through portable backups", () => {
+    const enabled = { ...defaultPreferences, marketSearchEnabled: true };
+    const payload = createConfigurationExportPayload(enabled);
+
+    expect(payload.uiPreferences).not.toHaveProperty("marketSearchEnabled");
+    expect(importConfigurationPayload(payload, enabled).uiPreferences.marketSearchEnabled).toBe(true);
+    expect(importConfigurationPayload({
+      ...payload,
+      uiPreferences: { ...payload.uiPreferences, marketSearchEnabled: true },
+    }, defaultPreferences).uiPreferences.marketSearchEnabled).toBe(false);
   });
 
   test("treats generic item labels as research candidates and exports shareable research JSON", () => {
@@ -688,6 +781,8 @@ describe("renderer preferences persistence", () => {
     const current = {
       ...defaultPreferences,
       logLimit: 50,
+      liveRunGraphEnabledMetrics: defaultPreferences.liveRunGraphEnabledMetrics.filter((metric) => metric === "xp"),
+      liveRunGraphItemNames: ["Ruby Ore"],
       customItemFilterSounds: [{ id: "custom-sound:alert", name: "Alert", fileName: "alert.wav", src: "file:///sounds/alert.wav" }],
       itemFilterMuted: true,
       itemFilterGroups: [{ id: "x", name: "Drops", enabled: true, soundId: "custom-sound:alert", volume: 70, cooldownMs: 1000, rarities: [], types: [], items: [] }],
@@ -722,6 +817,8 @@ describe("renderer preferences persistence", () => {
       compactThemeForegroundFills: { light: 82 },
       themeTokenMaps: { cyberpunk: { border: "rgba(0, 240, 255, 0.48)" } },
       itemFilterMuted: false,
+      liveRunGraphEnabledMetrics: defaultPreferences.liveRunGraphEnabledMetrics.filter((metric) => metric === "gold" || metric === "items"),
+      liveRunGraphItemNames: ["Jade Ore"],
       customItemFilterSounds: [{ id: "custom-sound:boss", name: "Boss Drop", fileName: "boss.wav", src: "file:///sounds/boss.wav" }],
       itemFilterGroups: [{ id: "boss", name: "Boss", enabled: true, soundId: "custom-sound:boss", volume: 70, cooldownMs: 1000, rarities: ["Heroic"], types: [], items: [] }],
       postRunReport: withPostRunReportSummaryItems(
@@ -766,6 +863,8 @@ describe("renderer preferences persistence", () => {
     expect(payload.uiPreferences.themeForegroundFills?.cyberpunk).toBe(68);
     expect(payload.uiPreferences.compactThemeForegroundFills?.light).toBe(82);
     expect(payload.uiPreferences.themeTokenMaps?.cyberpunk).toEqual({ border: "rgba(0, 240, 255, 0.48)" });
+    expect(payload.uiPreferences.liveRunGraphEnabledMetrics).toEqual(["gold", "items"]);
+    expect(payload.uiPreferences.liveRunGraphItemNames).toEqual(["Jade Ore"]);
     expect(payload.uiPreferences.postRunReport).toMatchObject({ topDropLimit: 5 });
     expect(payload.uiPreferences.postRunReport?.itemGroups).toEqual([
       {
@@ -801,7 +900,16 @@ describe("renderer preferences persistence", () => {
     expect(result.uiPreferences.themeForegroundFills.cyberpunk).toBe(68);
     expect(result.uiPreferences.compactThemeForegroundFills.light).toBe(82);
     expect(result.uiPreferences.postRunReport.topDropLimit).toBe(5);
+    expect(result.uiPreferences.liveRunGraphEnabledMetrics).toEqual(["gold", "items"]);
+    expect(result.uiPreferences.liveRunGraphItemNames).toEqual(["Jade Ore"]);
     expect(result.uiPreferences.itemResearchEntries).toHaveLength(1);
+
+    const olderUiPreferences = { ...payload.uiPreferences };
+    delete olderUiPreferences.liveRunGraphEnabledMetrics;
+    delete olderUiPreferences.liveRunGraphItemNames;
+    const olderResult = importConfigurationPayload({ ...payload, uiPreferences: olderUiPreferences }, current);
+    expect(olderResult.uiPreferences.liveRunGraphEnabledMetrics).toEqual(["xp"]);
+    expect(olderResult.uiPreferences.liveRunGraphItemNames).toEqual(["Ruby Ore"]);
   });
 });
 

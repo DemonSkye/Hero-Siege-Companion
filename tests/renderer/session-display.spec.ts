@@ -138,4 +138,51 @@ describe("session display runtime", () => {
 
     expect(display.visibleItemTimeline.value.map((item) => item.label)).toEqual(["Newest", "Middle", "Oldest"]);
   });
+
+  test("separates structured player chat from bounded diagnostic history", () => {
+    const state = companionState({
+      logs: [
+        {
+          id: "chat-1",
+          level: "info",
+          message: "Player chat · TradeFriend: price?",
+          createdAt: baseTime,
+          playerChat: {
+            playerName: "TradeFriend",
+            message: "price?",
+            actionable: true,
+          },
+        },
+        {
+          id: "diagnostic-1",
+          level: "success",
+          message: "Capture opened.",
+          createdAt: baseTime - 1,
+        },
+      ],
+    });
+    const display = useSessionDisplay({
+      state: ref(state),
+      now: ref(baseTime),
+      compactRunTiles: ref([]),
+      itemFilterGroups: ref([]),
+      itemFilterMatchHistory: ref([]),
+      logLimit: ref(1),
+      timelineType: ref("all"),
+      hideUnfilteredTimelineItems: ref(false),
+      hideKeys: ref(false),
+      hideMaterials: ref(false),
+      hideSocketables: ref(false),
+    });
+
+    expect(display.recentLogs.value.map((entry) => entry.id)).toEqual(["diagnostic-1"]);
+    expect(display.recentPlayerChat.value).toEqual([
+      expect.objectContaining({
+        id: "chat-1",
+        playerName: "TradeFriend",
+        message: "price?",
+        actionable: true,
+      }),
+    ]);
+  });
 });

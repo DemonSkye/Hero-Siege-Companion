@@ -7,8 +7,20 @@ import {
   type RunPaceItemPoint,
 } from "../../../shared/run-pace";
 import type { ItemTimelineEntry } from "../../../shared/stats";
+import {
+  DEFAULT_LIVE_RUN_MAX_CUSTOM_ITEMS,
+  DEFAULT_LIVE_RUN_STANDARD_METRICS,
+  LIVE_RUN_STANDARD_METRICS,
+  MAX_LIVE_RUN_CUSTOM_ITEM_NAME_LENGTH,
+  normalizeLiveRunGraphEnabledMetrics,
+  normalizeLiveRunGraphItemNames,
+  type LiveRunStandardMetric,
+} from "./live-run-graph-config";
 
-export type LiveRunStandardMetric = "xp" | "gold" | "kills" | "items";
+export {
+  DEFAULT_LIVE_RUN_MAX_CUSTOM_ITEMS,
+  type LiveRunStandardMetric,
+} from "./live-run-graph-config";
 
 export interface LiveRunObservation {
   runIdentity: string;
@@ -70,6 +82,7 @@ export interface LiveRunHistoryRecorder {
   record(observation: LiveRunObservation): readonly LiveRunHistorySample[];
   addCustomItem(name: string): boolean;
   removeCustomItem(nameOrKey: string): boolean;
+  setCustomItems(names: readonly string[]): boolean;
   reset(clearCustomItems?: boolean): void;
 }
 
@@ -77,6 +90,8 @@ export interface UseLiveRunHistoryOptions extends LiveRunHistoryRecorderOptions 
   state: Ref<CompanionState>;
   now: Ref<number>;
   ready?: Ref<boolean>;
+  customItemNames?: Ref<readonly string[]>;
+  enabledStandardMetrics?: Ref<readonly LiveRunStandardMetric[]>;
   chartWidth?: number;
   chartHeight?: number;
 }
@@ -89,16 +104,14 @@ export const LIVE_RUN_STANDARD_LANES: ReadonlyArray<{ metric: LiveRunStandardMet
 ];
 
 const LIVE_RUN_STANDARD_METRIC_SET = new Set<LiveRunStandardMetric>(
-  LIVE_RUN_STANDARD_LANES.map(({ metric }) => metric),
+  LIVE_RUN_STANDARD_METRICS,
 );
 
 export const DEFAULT_LIVE_RUN_MAX_SAMPLES = 240;
 export const DEFAULT_LIVE_RUN_COALESCE_WINDOW_MS = 2_000;
-export const DEFAULT_LIVE_RUN_MAX_CUSTOM_ITEMS = 4;
 export const DEFAULT_LIVE_RUN_CHART_WIDTH = 1_000;
 export const DEFAULT_LIVE_RUN_CHART_HEIGHT = 160;
 const DEFAULT_MAX_OBSERVED_ITEM_ENTRIES = 2_048;
-const MAX_CUSTOM_ITEM_NAME_LENGTH = 120;
 
 export function liveRunObservationFromState(state: CompanionState, observedAt = Date.now()): LiveRunObservation {
   const startedAt = finiteNonNegative(state.stats.sessionStartedAt);
@@ -210,6 +223,19 @@ export function createLiveRunHistoryRecorder(options: LiveRunHistoryRecorderOpti
       const key = canonicalLiveRunItemKey(nameOrKey.startsWith("item:") ? nameOrKey.slice(5) : nameOrKey);
       const nextItems = customItems.filter((item) => item.key !== key);
       if (nextItems.length === customItems.length) return false;
+      customItems = nextItems;
+      return true;
+    },
+    setCustomItems(names) {
+      const nextItems = normalizeLiveRunGraphItemNames(names).slice(0, maxCustomItems).map((name) => {
+        const key = canonicalLiveRunItemKey(name);
+        return {
+          key,
+          name: itemLabels.get(key) ?? name,
+          seriesId: `item:${key}`,
+        };
+      });
+      if (sameCustomItems(customItems, nextItems)) return false;
       customItems = nextItems;
       return true;
     },
@@ -396,6 +422,8 @@ export function useLiveRunHistory({
   state,
   now,
   ready,
+  customItemNames: configuredCustomItemNames,
+  enabledStandardMetrics: configuredStandardMetrics,
   chartWidth = DEFAULT_LIVE_RUN_CHART_WIDTH,
   chartHeight = DEFAULT_LIVE_RUN_CHART_HEIGHT,
   ...recorderOptions
@@ -403,8 +431,11 @@ export function useLiveRunHistory({
   const recorder = createLiveRunHistoryRecorder(recorderOptions);
   const samples = shallowRef(recorder.samples);
   const customItems = shallowRef(recorder.customItems);
+  const customItemNameSelection = configuredCustomItemNames ?? shallowRef<readonly string[]>([]);
+  const standardMetricSelection = configuredStandardMetrics
+    ?? shallowRef<readonly LiveRunStandardMetric[]>(DEFAULT_LIVE_RUN_STANDARD_METRICS);
   const enabledStandardMetrics = shallowRef<readonly LiveRunStandardMetric[]>(
-    LIVE_RUN_STANDARD_LANES.map(({ metric }) => metric),
+    normalizeLiveRunGraphEnabledMetrics(standardMetricSelection.value),
   );
   const lanes = computed(() => projectLiveRunChartLanes(samples.value, customItems.value, chartWidth, chartHeight));
   const elapsedMs = computed(() => Math.max(
@@ -417,6 +448,19 @@ export function useLiveRunHistory({
     samples.value = recorder.record(liveRunObservationFromState(nextState, observedAt));
   }, { immediate: true, flush: "sync" });
 
+  watch(customItemNameSelection, (names) => {
+    recorder.setCustomItems(names);
+    customItems.value = recorder.customItems;
+    const normalizedNames = recorder.customItems.map((item) => item.name);
+    if (!sameStrings(names, normalizedNames)) customItemNameSelection.value = normalizedNames;
+  }, { immediate: true, deep: true, flush: "sync" });
+
+  watch(standardMetricSelection, (metrics) => {
+    const normalizedMetrics = normalizeLiveRunGraphEnabledMetrics(metrics);
+    enabledStandardMetrics.value = normalizedMetrics;
+    if (!sameStrings(metrics, normalizedMetrics)) standardMetricSelection.value = normalizedMetrics;
+  }, { immediate: true, deep: true, flush: "sync" });
+
   return {
     samples: readonly(samples),
     customItems: readonly(customItems),
@@ -426,11 +470,13 @@ export function useLiveRunHistory({
     addCustomItem(name: string) {
       const added = recorder.addCustomItem(name);
       customItems.value = recorder.customItems;
+      if (added) customItemNameSelection.value = recorder.customItems.map((item) => item.name);
       return added;
     },
     removeCustomItem(nameOrKey: string) {
       const removed = recorder.removeCustomItem(nameOrKey);
       customItems.value = recorder.customItems;
+      if (removed) customItemNameSelection.value = recorder.customItems.map((item) => item.name);
       return removed;
     },
     setStandardMetricEnabled(metric: LiveRunStandardMetric, enabled: boolean) {
@@ -442,6 +488,7 @@ export function useLiveRunHistory({
           .map(({ metric: candidate }) => candidate)
           .filter((candidate) => candidate === metric || enabledStandardMetrics.value.includes(candidate))
         : enabledStandardMetrics.value.filter((candidate) => candidate !== metric);
+      standardMetricSelection.value = enabledStandardMetrics.value;
       return true;
     },
     resetHistory(clearCustomItems = false) {
@@ -452,8 +499,23 @@ export function useLiveRunHistory({
   };
 }
 
+function sameCustomItems(
+  left: readonly LiveRunCustomItem[],
+  right: readonly LiveRunCustomItem[],
+): boolean {
+  return left.length === right.length && left.every((item, index) => (
+    item.key === right[index]?.key
+    && item.name === right[index]?.name
+    && item.seriesId === right[index]?.seriesId
+  ));
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export function normalizeLiveRunItemName(value: string): string {
-  return normalizeRunPaceItemName(value).slice(0, MAX_CUSTOM_ITEM_NAME_LENGTH);
+  return normalizeRunPaceItemName(value).slice(0, MAX_LIVE_RUN_CUSTOM_ITEM_NAME_LENGTH);
 }
 
 export function canonicalLiveRunItemKey(value: string): string {

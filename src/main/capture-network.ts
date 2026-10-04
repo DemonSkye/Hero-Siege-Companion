@@ -37,10 +37,7 @@ export interface CapturePacketEndpoints {
   dstPort: number;
 }
 
-export async function getHeroSiegeNetworkState(
-  supplementalProcessIds: readonly number[] = [],
-): Promise<HeroSiegeNetworkState> {
-  const supplementalProcessIdLiteral = normalizeCaptureProcessIds(supplementalProcessIds).join(",");
+export async function getHeroSiegeNetworkState(): Promise<HeroSiegeNetworkState> {
   const script = `
     $processes = Get-Process |
       Where-Object {
@@ -55,14 +52,13 @@ export async function getHeroSiegeNetworkState(
       };
 
     $processIds = @($processes | Select-Object -ExpandProperty Id);
-    $captureProcessIds = @($processIds + @(${supplementalProcessIdLiteral}));
     $connections = @();
 
-    if ($captureProcessIds.Count -gt 0) {
+    if ($processIds.Count -gt 0) {
       $connections = @(
         Get-NetTCPConnection -ErrorAction SilentlyContinue |
           Where-Object {
-            $captureProcessIds -contains $_.OwningProcess -and
+            $processIds -contains $_.OwningProcess -and
             $_.RemoteAddress -and
             $_.RemoteAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') -and
             $_.RemoteAddress -notlike '*:*'
@@ -104,13 +100,6 @@ export async function getHeroSiegeNetworkState(
   } catch (error) {
     throw new Error(`PowerShell network query returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-/** Keeps process IDs safe to interpolate as numeric PowerShell literals. */
-export function normalizeCaptureProcessIds(values: readonly number[]): number[] {
-  return Array.from(new Set(values))
-    .filter((value) => Number.isSafeInteger(value) && value > 0 && value <= 0x7fffffff)
-    .sort((left, right) => left - right);
 }
 
 export async function getNpcapServiceStatus(): Promise<string> {

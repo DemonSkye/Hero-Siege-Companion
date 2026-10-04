@@ -37,16 +37,33 @@ describe("Run Command live dashboard", () => {
     expect(wrapper.get(".timeline").classes()).toContain("timeline");
   });
 
+
+  test("shows Market readiness only when access is enabled and forwards state changes into the Timeline", async () => {
+    const wrapper = mountLiveView();
+    expect(wrapper.find(".market-readiness").exists()).toBe(false);
+    await wrapper.setProps({ marketSearchAvailable: true });
+    expect(wrapper.get(".market-readiness [role='status']").text()).toBe("Market ready");
+    const waiting = { ...companionState().marketReadiness, phase: "collecting" as const, reason: "missing_fields" as const, missingFields: ["season" as const], canSearch: false };
+    await wrapper.setProps({ state: companionState({ marketReadiness: waiting }) });
+    expect(wrapper.get(".market-readiness").text()).toContain("Waiting for Season");
+    expect(wrapper.get(".market-readiness").text()).toContain("5/6 fields received");
+    await wrapper.setProps({ marketSearchAvailable: false });
+    expect(wrapper.find(".market-readiness").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   test("keeps empty activity fixtures compact and informative", async () => {
     const wrapper = mountLiveView();
 
     expect(wrapper.find("#item-timeline-card").exists()).toBe(true);
     expect(wrapper.find("#live-log-card").exists()).toBe(true);
+    expect(wrapper.find("#player-chat-card").exists()).toBe(true);
 
     await wrapper.setProps({
       visibleItemTimeline: [],
       itemTimelineCount: 0,
       recentLogs: [],
+      recentPlayerChat: [],
     });
 
     expect(wrapper.get("#item-timeline-card-body .dashboard-empty-state").text()).toBe(
@@ -55,8 +72,44 @@ describe("Run Command live dashboard", () => {
     expect(wrapper.get("#live-log-card-body .dashboard-empty-state").text()).toContain(
       "Capture events and diagnostics",
     );
+    expect(wrapper.get("#player-chat-card-body .dashboard-empty-state").text()).toContain(
+      "Player messages",
+    );
     expect(wrapper.find("#item-timeline-card-body .timeline").exists()).toBe(false);
     expect(wrapper.find("#live-log-card-body .logs").exists()).toBe(false);
+  });
+
+  test("places Player Chat below Live Log with independent hide, restore, and collapse controls", async () => {
+    const wrapper = mountLiveView({
+      recentPlayerChat: [{
+        id: "chat-1",
+        createdAt: baseTime,
+        playerName: "TradeFriend",
+        message: "price?",
+        actionable: true,
+      }],
+    });
+    const supportCardIds = wrapper.findAll(".dashboard-column-side > article").map((card) => card.attributes("id"));
+
+    expect(supportCardIds.indexOf("player-chat-card")).toBeGreaterThan(supportCardIds.indexOf("live-log-card"));
+    expect(wrapper.get("#player-chat-card").text()).toContain("TradeFriend");
+
+    await wrapper.get('button[aria-label="Collapse Player Chat"]').trigger("click");
+    expect(wrapper.get("#player-chat-card-body").attributes("style")).toContain("display: none");
+    expect(wrapper.get("#live-log-card-body").attributes("style") ?? "").not.toContain("display: none");
+
+    await wrapper.get('button[aria-label="Hide Player Chat"]').trigger("click");
+    expect(wrapper.emitted("update:hiddenFixtures")?.at(-1)).toEqual([["player-chat"]]);
+    await wrapper.setProps({ hiddenFixtures: ["player-chat"] });
+    expect(wrapper.find("#player-chat-card").exists()).toBe(false);
+
+    await wrapper.get(".dashboard-customizer-trigger").trigger("click");
+    const playerChatFixture = wrapper.findAll(".dashboard-customizer-popover label")
+      .find((label) => label.text().includes("Player Chat"));
+    if (!playerChatFixture) throw new Error("Player Chat fixture control was not rendered");
+    expect((playerChatFixture.get("input").element as HTMLInputElement).checked).toBe(false);
+    await playerChatFixture.get("input").setValue(true);
+    expect(wrapper.emitted("update:hiddenFixtures")?.at(-1)).toEqual([[]]);
   });
 
   test("emits the contextual hide-unfiltered filter for its preference-owning parent", async () => {
@@ -117,7 +170,17 @@ describe("Run Command live dashboard", () => {
   });
 });
 
-function mountLiveView(overrides: { hiddenFixtures?: Array<"item-timeline" | "live-log">; hideUnfilteredItems?: boolean } = {}) {
+function mountLiveView(overrides: {
+  hiddenFixtures?: Array<"item-timeline" | "live-log" | "player-chat">;
+  hideUnfilteredItems?: boolean;
+  recentPlayerChat?: Array<{
+    id: string;
+    createdAt: number;
+    playerName: string;
+    message: string;
+    actionable: boolean;
+  }>;
+} = {}) {
   const state = companionState();
   const filterGroup = itemFilterGroup();
   const graphSample: LiveRunHistorySample = {
@@ -163,6 +226,7 @@ function mountLiveView(overrides: { hiddenFixtures?: Array<"item-timeline" | "li
       shoppingSuggestions: ["Ruby"],
       activeShoppingItem: "Copper Ore",
       recentLogs: state.logs,
+      recentPlayerChat: overrides.recentPlayerChat ?? [],
       expandedLogIds: new Set<string>(),
       showCaptureDetails: false,
       expandedDropRarity: null,

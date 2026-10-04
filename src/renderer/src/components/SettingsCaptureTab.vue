@@ -29,7 +29,7 @@ defineEmits<{
     <div class="settings-ledger-row">
       <div class="settings-ledger-copy">
         <span id="settings-sz-refresh-label" class="settings-ledger-title">Enable SZ Refresh</span>
-        <p>Starts the managed local relay and adds Refresh controls to full and compact dashboards.</p>
+        <p>Adds Refresh controls that use a short-lived companion-owned connection.</p>
       </div>
       <label class="settings-switch">
         <input
@@ -44,7 +44,7 @@ defineEmits<{
     </div>
 
     <div class="settings-notice" role="note">
-      <p><strong>Reconnect required.</strong> Changing this while Hero Siege is connected can disconnect the active game. VPNs, system proxies, and network-security tools may conflict with the relay.</p>
+      <p><strong>Npcap required.</strong> Capture must observe the current game session before manual Refresh is ready. No reconnect, certificate, proxy, or special game launch is required.</p>
       <button class="icon-button ghost" type="button" @click="$emit('learnMore')">Learn More</button>
     </div>
   </section>

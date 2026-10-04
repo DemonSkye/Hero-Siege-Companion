@@ -8,6 +8,7 @@ import {
   useLiveRunHistory,
   type LiveRunHistorySample,
   type LiveRunObservation,
+  type LiveRunStandardMetric,
 } from "../../src/renderer/src/lib/live-run-history";
 import { inspectLiveRunChartLanes } from "../../src/renderer/src/lib/live-run-chart-inspection";
 import type { ItemTimelineEntry } from "../../src/shared/stats";
@@ -215,6 +216,39 @@ describe("live run history", () => {
     expect(history.enabledStandardMetrics.value).toEqual(["xp", "kills", "items"]);
     history.resetHistory();
     expect(history.enabledStandardMetrics.value).toEqual(["xp", "kills", "items"]);
+    scope.stop();
+  });
+
+  test("hydrates durable lane selections and publishes live edits back to their preference refs", () => {
+    const state = ref(companionState());
+    const now = ref(baseTime);
+    const customItemNames = ref<string[]>(["Jade Ore"]);
+    const enabledStandardMetrics = ref<LiveRunStandardMetric[]>(["xp", "kills"]);
+    const scope = effectScope();
+    const history = scope.run(() => useLiveRunHistory({
+      state,
+      now,
+      customItemNames,
+      enabledStandardMetrics,
+      coalesceWindowMs: 0,
+    }));
+    if (!history) throw new Error("Expected live run history composable");
+
+    expect(history.customItems.value.map((item) => item.name)).toEqual(["Jade Ore"]);
+    expect(history.enabledStandardMetrics.value).toEqual(["xp", "kills"]);
+
+    expect(history.addCustomItem("Ruby Ore")).toBe(true);
+    expect(customItemNames.value).toEqual(["Jade Ore", "Ruby Ore"]);
+    expect(history.removeCustomItem("Jade Ore")).toBe(true);
+    expect(customItemNames.value).toEqual(["Ruby Ore"]);
+    expect(history.setStandardMetricEnabled("gold", true)).toBe(true);
+    expect(enabledStandardMetrics.value).toEqual(["xp", "gold", "kills"]);
+
+    customItemNames.value = ["  Tarethíel   Signet  "];
+    enabledStandardMetrics.value = [];
+    expect(history.customItems.value.map((item) => item.name)).toEqual(["Tarethíel Signet"]);
+    expect(history.enabledStandardMetrics.value).toEqual([]);
+    expect(customItemNames.value).toEqual(["Tarethíel Signet"]);
     scope.stop();
   });
 

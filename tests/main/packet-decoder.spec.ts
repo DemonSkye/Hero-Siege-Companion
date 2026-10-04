@@ -629,6 +629,46 @@ describe("packet decoder", () => {
     ]);
   });
 
+  test.each([
+    ["ban_check_uid", 0x21],
+    ["ordinary_session_poll", 0x82],
+  ] as const)("observes native API route %s without adding it to gameplay parsing", (route, marker) => {
+    const body = Buffer.concat([
+      Buffer.from([3, 0, 1, 0]),
+      Buffer.from(`${route}\0`),
+      Buffer.from([marker, 0]),
+      Buffer.from("unique_account_id=1234567&crossregion_identifier=1234567890\0"),
+    ]);
+    const completed = new PacketBuffers().push(parsedPayload(apiFrame(body)));
+
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ observationOnly: true });
+    expect(completed[0].text).toContain("crossregion_identifier=1234567890");
+    expect(completed[0].packet.payload).toEqual(body);
+    expect(new PacketBuffers().push(parsedPayload(genericFrame(body)))).toEqual([]);
+  });
+
+  test("does not promote malformed or unframed API-like text to observation payloads", () => {
+    const query = "unique_account_id=1234567&crossregion_identifier=1234567890";
+    const validBody = `\x03\0\x01\0ordinary_poll\0!\0${query}\0`;
+    const malformedBodies = [
+      validBody.replace(/^\x03/, "\x04"),
+      validBody.replace("ordinary_poll", "ordinary-poll"),
+      validBody.replace("ordinary_poll", ""),
+      validBody.replace("ordinary_poll", "a".repeat(129)),
+      validBody.replace("!\0", "!"),
+      validBody.slice(0, -1),
+      validBody.replace("&", "\0&"),
+      validBody.replace(query, ""),
+      validBody.replace(query, "not-a-form"),
+    ];
+
+    for (const body of malformedBodies) {
+      expect(new PacketBuffers().push(parsedPayload(apiFrame(body)))).toEqual([]);
+    }
+    expect(new PacketBuffers().push(parsedPayload(validBody))).toEqual([]);
+  });
+
   test("emits complete standalone JSON on PSH when no delimiter is present", () => {
     const buffers = new PacketBuffers();
     expect(buffers.push(parsedPayload('{"gold":100}', { seq: 1, flags: 0x18 })).map((payload) => payload.text)).toEqual(['{"gold":100}']);

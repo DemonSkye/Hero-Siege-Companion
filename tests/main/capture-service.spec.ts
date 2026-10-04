@@ -3,6 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CaptureService, type CaptureUpdate } from "../../src/main/capture";
+import { CapturedSessionContextStore } from "../../src/main/captured-session-context";
+import { DirectMarketSearchProvider } from "../../src/main/direct-market-search-provider";
+import { MarketRegionDirectory } from "../../src/main/market-region-directory";
+import { MarketResultCache } from "../../src/main/market-result-cache";
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import type { CaptureConnection } from "../../src/shared/app-state";
 import { EVENT_NAMES } from "../../src/shared/constants";
@@ -54,7 +58,8 @@ vi.mock("../../src/main/capture-network", () => ({
     }
     return Array.from(retainedTargets.values(), ({ target }) => target);
   },
-  selectGameServerConnections: (connections: CaptureConnection[]) => connections.filter((connection) => ![80, 443].includes(connection.remotePort)),
+  selectGameServerConnections: (connections: CaptureConnection[], includePlainHttp = false) =>
+    connections.filter((connection) => connection.remotePort !== 443 && (includePlainHttp || connection.remotePort !== 80)),
   stableCaptureFilter: (localAddress: string, targets: Array<{ remoteAddress: string; remotePort: number }> = []) =>
     `tcp and host ${localAddress} + targets:${targets.map((target) => `${target.remoteAddress}:${target.remotePort}`).join(",")}`,
   summarizeConnections: (connections: CaptureConnection[]) => connections,
@@ -178,7 +183,7 @@ describe("CaptureService lifecycle", () => {
     mocks.openPacketCapture.mockReset().mockReturnValue({ cap: { close: mocks.closeCapture }, linkType: "RAW" });
   });
 
-  test("uses an owned relay tuple for capture while emitting only game-owned connections", async () => {
+  test("captures only game-owned tuples and publishes the active game process generation", async () => {
     const updates: CaptureUpdate[] = [];
     const gameConnection = connection({
       owningProcess: 123,
@@ -186,44 +191,34 @@ describe("CaptureService lifecycle", () => {
       remoteAddress: "203.0.113.10",
       remotePort: 6668,
     });
-    const relayConnection = connection({
-      owningProcess: 456,
-      localPort: 50001,
-      remoteAddress: "203.0.113.20",
-      remotePort: 6669,
-    });
+    const observeGameProcessIds = vi.fn();
     const service = new CaptureService(
       (update) => updates.push(update),
       undefined,
       undefined,
       undefined,
-      () => [456],
+      undefined,
+      observeGameProcessIds,
     );
     mocks.getHeroSiegeNetworkState.mockResolvedValue({
       gameProcessIds: [123],
       antiCheatProcessIds: [],
-      connections: [gameConnection, relayConnection],
+      connections: [gameConnection],
     });
 
     await service.start();
 
-    expect(mocks.getHeroSiegeNetworkState).toHaveBeenCalledWith([456]);
+    expect(mocks.getHeroSiegeNetworkState).toHaveBeenCalledWith();
+    expect(observeGameProcessIds).toHaveBeenCalledWith([123]);
     expect(mocks.openPacketCapture).toHaveBeenCalledTimes(1);
     expect(mocks.openPacketCapture.mock.calls[0][1]).toBe(
-      "tcp and host 10.0.0.2 + targets:203.0.113.10:6668,203.0.113.20:6669",
+      "tcp and host 10.0.0.2 + targets:203.0.113.10:6668",
     );
     const emittedConnections = updates.flatMap((update) => update.connections ?? []);
     expect(emittedConnections).toContainEqual(gameConnection);
-    expect(emittedConnections).not.toContainEqual(relayConnection);
     expect(emittedConnections.every((item) => item.owningProcess === 123)).toBe(true);
-
-    const flowService = service as unknown as CaptureFlowService;
-    expect(flowService.isCaptureFlowPacket(packet({
-      srcPort: relayConnection.localPort,
-      dst: relayConnection.remoteAddress,
-      dstPort: relayConnection.remotePort,
-    }))).toBe(true);
     service.stop();
+    expect(observeGameProcessIds).toHaveBeenLastCalledWith([]);
   });
 
   afterEach(() => {
@@ -549,6 +544,123 @@ describe("CaptureService lifecycle", () => {
     );
   });
 
+  test("offers completed payloads to the session-context observer before parser filtering", () => {
+    const observeSessionPayload = vi.fn();
+    const service = new CaptureService(
+      () => undefined,
+      undefined,
+      undefined,
+      false,
+      observeSessionPayload,
+    );
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const payload = "account_id=42&multipass=secret\0";
+    const capturedPacket = rawTcpPacket(payload);
+    vi.spyOn(internals.packetBuffers, "push").mockReturnValue([{ packet: packet(), text: payload }]);
+    internals.activeLocalAddress = "10.0.0.2";
+    internals.activeLinkType = "RAW";
+    internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now());
+
+    internals.processPacket(capturedPacket.length, false);
+
+    expect(observeSessionPayload).toHaveBeenCalledWith(expect.objectContaining({
+      text: payload,
+      direction: "outbound",
+      remoteAddress: "203.0.113.10",
+      remotePort: 26921,
+    }));
+  });
+
+  test("observes newly recognized API requests without parsing their nested currency or chat as game events", () => {
+    const updates: CaptureUpdate[] = [];
+    const observeSessionPayload = vi.fn();
+    const service = new CaptureService((update) => updates.push(update), undefined, undefined, false, observeSessionPayload);
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const parser = vi.spyOn(service as unknown as {
+      captureMessagesSafely(text: string): MessageValue[] | null;
+    }, "captureMessagesSafely");
+    const query = "unique_account_id=hero-7&crossregion_identifier=session-one"
+      + '&state={"currencyData":{"GSS":1000}}'
+      + '&chat={"chatRoom":0,"name":"Fixture player","message":"not a live chat","msgType":0,"uid":123}';
+    const body = Buffer.concat([Buffer.from([3, 0, 1, 0]), Buffer.from(`ordinary_poll\0!\0${query}\0`)]);
+    const header = Buffer.alloc(16);
+    header.write("0123456789ab", 0, "ascii");
+    header.writeUInt32LE(body.length, 12);
+    const capturedPacket = rawTcpPacket(Buffer.concat([header, body]));
+    internals.activeLocalAddress = "10.0.0.2";
+    internals.activeLinkType = "RAW";
+    internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now());
+
+    internals.processPacket(capturedPacket.length, false);
+
+    expect(observeSessionPayload).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      text: expect.stringContaining(`ordinary_poll ! ${query}`),
+      direction: "outbound",
+    }));
+    expect(parser).not.toHaveBeenCalled();
+    expect(updates.flatMap((update) => update.events ?? [])).toEqual([]);
+    const logs = updates.flatMap((update) => [...(update.logs ?? []), ...(update.log ? [update.log] : [])]);
+    expect(logs.some((log) => log.playerChat !== undefined)).toBe(false);
+  });
+
+  test("carries a structurally captured save frame through session context into the direct Market provider", async () => {
+    const store = new CapturedSessionContextStore();
+    store.observeGameProcessIds([123]);
+    store.applyRegionDirectory(new MarketRegionDirectory([
+      { address: "203.0.113.10", port: 26921, beta: "0", region: "10" },
+    ]));
+    const workerRunner = vi.fn(async () => ({
+      response: { ok: true as const, result: { listings: [{ price: 123 }] } },
+      diagnostics: {},
+    }));
+    const provider = new DirectMarketSearchProvider(
+      store,
+      undefined,
+      undefined,
+      new MarketResultCache(),
+      Date.now,
+      workerRunner,
+    );
+    const service = new CaptureService(() => undefined, undefined, undefined, false, (payload) => store.observe(payload));
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const query = new URLSearchParams({
+      account_id: "42",
+      unique_account_id: "hero-7",
+      crossregion_identifier: "xrid-one",
+      beta: "0",
+      slot: "1",
+      slot_data: JSON.stringify({ season: 11, hardcore: 0 }),
+    }).toString();
+    const body = Buffer.concat([Buffer.from([3, 0, 1, 0]), Buffer.from(`save\0!\0${query}\0`)]);
+    const header = Buffer.alloc(16);
+    header.write("0123456789ab", 0, "ascii");
+    header.writeUInt32LE(body.length, 12);
+    const capturedPacket = rawTcpPacket(Buffer.concat([header, body]));
+    internals.activeLocalAddress = "10.0.0.2";
+    internals.activeLinkType = "RAW";
+    internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now());
+
+    internals.processPacket(capturedPacket.length, false);
+    await expect(provider.search({ itemMask: 1_073_746_020, statFilters: [] })).resolves.toMatchObject({
+      ok: true,
+      result: { listings: [{ price: 123 }] },
+    });
+    expect(workerRunner).toHaveBeenCalledWith(expect.objectContaining({
+      fields: expect.objectContaining({
+        account_id: "10-42",
+        unique_account_id: "hero-7",
+        crossregion_identifier: "xrid-one",
+        season: "11",
+        hardcore: "0",
+        beta: "0",
+      }),
+    }), { itemMask: 1_073_746_020, statFilters: [] }, undefined);
+    provider.dispose();
+  });
+
   test("reassembles a current multi-segment save frame through the capture pipeline", () => {
     const updates: CaptureUpdate[] = [];
     const service = new CaptureService((update) => updates.push(update));
@@ -591,6 +703,35 @@ describe("CaptureService lifecycle", () => {
         }),
       }),
     );
+  });
+
+  test("emits player chat as structured log context without a false gold parser warning", () => {
+    const updates: CaptureUpdate[] = [];
+    const service = new CaptureService((update) => updates.push(update));
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const capturedPacket = rawTcpPacket(`${JSON.stringify({
+      chatRoom: 0,
+      name: "stupididiot",
+      message: "i just spent all my gold",
+      msgType: 0,
+      uid: 4_832_210,
+      platformName: "rawb",
+    })}\0`);
+    internals.activeLocalAddress = "10.0.0.2";
+    internals.activeLinkType = "RAW";
+    internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now());
+
+    internals.processPacket(capturedPacket.length, false);
+
+    const logs = updates.flatMap((update) => [...(update.logs ?? []), ...(update.log ? [update.log] : [])]);
+    expect(logs).toContainEqual(expect.objectContaining({
+      level: "info",
+      message: "Player chat · stupididiot: i just spent all my gold",
+      playerChat: expect.objectContaining({ playerName: "stupididiot", actionable: true }),
+    }));
+    expect(logs.some((log) => log.message.includes("Gold-like payload did not parse"))).toBe(false);
+    expect(updates.flatMap((update) => update.events ?? [])).toHaveLength(0);
   });
 
   test("resets capture after repeated parser failures", async () => {

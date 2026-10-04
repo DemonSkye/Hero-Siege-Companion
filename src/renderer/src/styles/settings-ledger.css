@@ -626,6 +626,21 @@
   margin: 0;
 }
 
+.settings-action-dialog-content a {
+  color: var(--user-accent);
+  font-weight: 700;
+}
+
+.settings-action-dialog-content a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.settings-action-dialog-content a:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--button-primary);
+  outline-offset: 2px;
+}
+
 .settings-action-dialog-content ul {
   padding-left: 20px;
 }

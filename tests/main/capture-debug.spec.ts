@@ -2,6 +2,10 @@ import { describe, expect, test } from "vitest";
 import { sanitizeDebugData, sanitizeDebugSnippet } from "../../src/main/capture-debug";
 
 describe("capture debug helpers", () => {
+  test("redacts market multipass in snippets and structured diagnostics", () => {
+    expect(sanitizeDebugSnippet('multipass=private-token&beta=0 {"multipass":"other-secret"}')).not.toMatch(/private-token|other-secret/);
+    expect(sanitizeDebugData({ multipass: "private-token" })).toEqual({ multipass: "<redacted>" });
+  });
   test("redacts account identifiers from captured snippets", () => {
     const snippet = sanitizeDebugSnippet(
       'account_id=123&accountId=abc&identifier=secret {"uniqueAccountId":"quoted","newIdentifierHash":"hash"}',

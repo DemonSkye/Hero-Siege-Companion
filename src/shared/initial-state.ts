@@ -7,6 +7,7 @@ import type {
 } from "./app-state";
 import { createInitialSatanicZoneState } from "./satanic-zone";
 import { createInitialStats } from "./stats";
+import { createInitialMarketReadiness } from "./market-readiness";
 
 export const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
   skipEmptyRuns: true,
@@ -50,6 +51,7 @@ export function createInitialCompanionState(logs: LogEntry[] = []): CompanionSta
       lastParserError: null,
     },
     satanicZone: createInitialSatanicZoneState(),
+    marketReadiness: createInitialMarketReadiness(),
     stats: createInitialStats(),
     pastRuns: [],
     runArchivePreferences: DEFAULT_RUN_ARCHIVE_PREFERENCES,

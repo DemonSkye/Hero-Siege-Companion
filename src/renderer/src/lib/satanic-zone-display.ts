@@ -122,12 +122,12 @@ function zoneStatusDetail(phase: SatanicZonePhase, state: SatanicZoneState): str
       return "The manual refresh did not complete. The last known zone is preserved.";
     case "unavailable":
       if (state.errorCode === "one_shot_consumed") {
-        return "Manual refresh is unavailable for the rest of this helper session.";
+        return "Manual refresh is unavailable for the rest of this Companion session.";
       }
       if (state.errorCode === "helper_not_ready") {
-        return "The local refresh relay has not finished starting. Try the refresh button again shortly.";
+        return "Current session identifiers are not ready yet. Keep Npcap capture running while the game connects.";
       }
-      return "The manual refresh relay is unavailable. Passive capture can still update the zone.";
+      return "Manual refresh is unavailable. Passive capture can still update the zone.";
     case "waiting":
       return "Waiting for the game to send the current Satanic Zone.";
   }

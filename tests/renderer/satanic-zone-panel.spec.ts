@@ -15,9 +15,9 @@ describe("SatanicZonePanel", () => {
     expect(wrapper.text()).toContain("Observed 2m ago");
     expect(wrapper.text()).toContain("Valid until");
     expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain(
-      "does not require a vote reset or leaving your zone.",
+      "never modifies the game's connection",
     );
-    expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain("VPN or proxy setups may interfere");
+    expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain("Npcap must first observe");
 
     const refreshButton = wrapper.get(".zone-refresh-button");
     expect(refreshButton.attributes("disabled")).toBeUndefined();
@@ -55,7 +55,7 @@ describe("SatanicZonePanel", () => {
     expect(wrapper.text()).toContain("Act 8: Forgotten Caves");
   });
 
-  test("reports relay startup without inventing a world-entry requirement", () => {
+  test("reports missing session context without inventing a world-entry requirement", () => {
     const wrapper = mountPanel(currentZoneState({
       current: null,
       phase: "unavailable",
@@ -67,7 +67,7 @@ describe("SatanicZonePanel", () => {
     }));
 
     expect(wrapper.get('.zone-status[data-phase="unavailable"]').text()).toContain(
-      "local refresh relay has not finished starting",
+      "Current session identifiers are not ready yet",
     );
     expect(wrapper.findAll(".effect-column")).toHaveLength(2);
     expect(wrapper.findAll(".zone-effect-empty")[0].text()).toContain("Positive modifiers will appear");
@@ -105,7 +105,7 @@ describe("SatanicZonePanel", () => {
 
   test.each([
     {
-      name: "a passive update and unavailable cached relay overlap",
+      name: "a passive update and unavailable cached provider state overlap",
       state: currentZoneState({
         phase: "updating",
         refreshAvailable: false,
@@ -117,11 +117,11 @@ describe("SatanicZonePanel", () => {
       state: currentZoneState({ phase: "refreshing" }),
     },
     {
-      name: "the cached relay availability is false with a terminal-looking error",
+      name: "the cached provider availability is false with a terminal-looking error",
       state: currentZoneState({ refreshAvailable: false, errorCode: "one_shot_consumed" }),
     },
     {
-      name: "the cached relay is not configured",
+      name: "the cached provider is not configured",
       state: currentZoneState({
         refreshAvailable: false,
         refreshExperimental: false,

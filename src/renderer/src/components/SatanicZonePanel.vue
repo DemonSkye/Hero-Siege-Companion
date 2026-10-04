@@ -28,7 +28,7 @@ const refreshControl = computed(() =>
 <template>
   <LiveDashboardCard id="satanic-zone-card" panel-class="zone-panel" :title="zone?.zone || 'Waiting for zone packet'">
     <template #eyebrow>
-      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses the Companion's local relay and does not require a vote reset or leaving your zone. Some VPN or proxy setups may interfere with it.">i</span>
+      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses a short-lived Companion-owned connection and never modifies the game's connection. Npcap must first observe the current session identifiers.">i</span>
     </template>
     <template #title>{{ zone?.zone || "Waiting for zone packet" }}</template>
     <template #actions>

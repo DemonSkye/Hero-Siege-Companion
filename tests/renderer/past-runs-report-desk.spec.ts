@@ -119,6 +119,38 @@ describe("Past Runs Report Desk", () => {
     expect(wrapper.find(".past-run-pace-history").exists()).toBe(false);
   });
 
+  test("reuses the durable live lane selection when rendering an archived run", async () => {
+    const wrapper = mountReportDesk([pastRun({
+      id: "jade-run",
+      accountName: "Jade Run",
+      durationMs: 60_000,
+      runPace: {
+        schemaVersion: 1,
+        samples: [
+          { elapsedMs: 0, xp: 0, gold: 0, kills: 0, items: 0 },
+          { elapsedMs: 60_000, xp: 100, gold: 500, kills: 10, items: 2 },
+        ],
+        itemSeries: [{
+          name: "Jade Ore",
+          points: [
+            { elapsedMs: 0, value: 0 },
+            { elapsedMs: 60_000, value: 2 },
+          ],
+        }],
+        itemSeriesTruncated: false,
+      },
+    })]);
+    await wrapper.setProps({
+      liveRunGraphEnabledMetrics: ["xp", "kills", "items"],
+      liveRunGraphItemNames: ["Jade Ore"],
+    });
+    await wrapper.get(".past-run-card-primary-action").trigger("click");
+
+    expect(wrapper.get(".past-run-pace-history").findAll(".run-pace-lane").map((lane) => (
+      lane.attributes("data-lane-id")
+    ))).toEqual(["xp", "kills", "items", "item:jade ore"]);
+  });
+
   test("tracks exact saved items without narrowing the aggregate report", async () => {
     const wrapper = mountReportDesk();
     const report = wrapper.get(".past-run-report-paper");

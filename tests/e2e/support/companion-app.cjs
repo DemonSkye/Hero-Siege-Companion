@@ -38,6 +38,7 @@ const EXPECTED_PRELOAD_API = [
   "resetWindowBounds",
   "resumeRun",
   "saveSupportDiagnostics",
+  "searchMarket",
   "setAlwaysOnTop",
   "setCaptureDiagnosticsMode",
   "setCompactMode",

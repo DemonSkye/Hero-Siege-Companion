@@ -7,6 +7,7 @@ import CompactView from "../../src/renderer/src/components/CompactView.vue";
 import ItemFilterView from "../../src/renderer/src/components/ItemFilterView.vue";
 import LiveSessionHeader from "../../src/renderer/src/components/LiveSessionHeader.vue";
 import LiveView from "../../src/renderer/src/components/LiveView.vue";
+import MarketSearchDialog from "../../src/renderer/src/components/MarketSearchDialog.vue";
 import PastRunsView from "../../src/renderer/src/components/PastRunsView.vue";
 import PastRunReportConfigModal from "../../src/renderer/src/components/PastRunReportConfigModal.vue";
 import SettingsModal from "../../src/renderer/src/components/SettingsModal.vue";
@@ -20,6 +21,59 @@ import { WHATS_NEW_RELEASE } from "../../src/renderer/src/lib/whats-new";
 import { baseTime, companionState, itemFilterGroup, itemTimelineEntry, pastRun } from "./fixtures";
 
 describe("Vue component contracts", () => {
+  test("MarketSearchDialog reuses the searchable alphabetized Filter Stack stat picker", async () => {
+    const wrapper = mount(MarketSearchDialog, {
+      attachTo: document.body,
+      props: {
+        item: itemTimelineEntry(),
+        readiness: companionState().marketReadiness,
+        minSockets: null,
+        statFilters: [{ key: "market-stat-1", statId: 60, minimum: null }],
+        phase: "idle",
+        listings: [],
+        totalMatches: null,
+        errorMessage: "",
+        resultObservedAt: null,
+        resultCached: false,
+        canSearch: false,
+        cooldownRemainingSeconds: 0,
+      },
+    });
+
+    try {
+      expect(wrapper.get(".market-search-cache-note").text()).toContain("separate direct HTTPS connection");
+      expect(wrapper.get(".market-search-stat-name").text()).toContain("Mana");
+      expect(wrapper.get('button[aria-label="Remove Mana"]').classes()).toContain("market-search-stat-remove");
+      await wrapper.setProps({ cooldownRemainingSeconds: 7 });
+      expect(buttonByText(wrapper, "Search in 7s").attributes("disabled")).toBeDefined();
+      await buttonByText(wrapper, "Add stat").trigger("click");
+      await wrapper.get('input[placeholder="Search market stats"]').setValue("mana");
+
+      const suggestionButtons = wrapper.findAll(".item-filter-suggestions button");
+      const suggestionNames = suggestionButtons.map((button) => button.text().trim());
+      expect(suggestionNames.length).toBeGreaterThan(0);
+      expect(suggestionNames).not.toContain("Mana");
+      expect(suggestionNames).toEqual([...suggestionNames].sort((left, right) => left.localeCompare(right)));
+
+      await buttonByText(wrapper, "Mana stolen per Hit").trigger("click");
+      expect(wrapper.emitted("addStatFilter")).toEqual([[64]]);
+
+      const statMinimumInput = wrapper.get('.market-search-stat-row input[type="number"]');
+      const invalidKey = new KeyboardEvent("keydown", { key: "e", cancelable: true });
+      statMinimumInput.element.dispatchEvent(invalidKey);
+      expect(invalidKey.defaultPrevented).toBe(true);
+
+      const numericKey = new KeyboardEvent("keydown", { key: "8", cancelable: true });
+      statMinimumInput.element.dispatchEvent(numericKey);
+      expect(numericKey.defaultPrevented).toBe(false);
+
+      await statMinimumInput.setValue("8");
+      expect(wrapper.emitted("updateStatFilter")).toEqual([["market-stat-1", { minimum: 8 }]]);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   test("AppTitlebar exposes window chrome actions", async () => {
     const wrapper = mount(AppTitlebar, {
       props: {
@@ -435,7 +489,7 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).not.toContain("Exclusive");
     await buttonByText(wrapper, "Enable SZ Refresh").trigger("click");
     await buttonByText(wrapper, "Learn More").trigger("click");
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("VPNs, system proxies, firewalls, and network-security tools");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("No certificate installation");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("once every 30 seconds");
     await buttonByText(wrapper, "Close").trigger("click");
 
@@ -486,8 +540,8 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Rebuilt Settings as one autosaving");
     expect(wrapper.text()).toContain("Past Runs now keeps up to 250 meaningful runs");
     expect(wrapper.text()).toContain("Retired the player-facing Item Research notebook");
-    expect(wrapper.text()).toContain("Added experimental manual Satanic Zone refresh.");
-    expect(wrapper.text()).toContain("changing it while connected can disconnect the active game.");
+    expect(wrapper.text()).toContain("Manual Satanic Zone Refresh now uses a short-lived Companion-owned connection.");
+    expect(wrapper.text()).toContain("no longer requires a proxy, certificate, reconnect, or special game launch.");
     expect(wrapper.text()).toContain("Patched stability issues across capture startup, packet handling, diagnostics, and native shutdown.");
     expect(wrapper.text()).toContain("Updated the tracked Hero Siege season number to Season 11.");
     expect(wrapper.text()).toContain(
@@ -497,7 +551,7 @@ describe("Vue component contracts", () => {
       "Fixed ordinary randomly generated items, including charms, being mistaken for Set items. They now show their correct base type and no longer inflate Set totals.",
     );
     expect(wrapper.text()).toContain(
-      "Fixed captured item drops disappearing before they reached the timeline, including Satanic and Set items while the optional relay is active.",
+      "Fixed captured item drops disappearing before they reached the timeline, including Satanic and Set items while optional manual refresh is enabled.",
     );
     expect(wrapper.text()).toContain(
       "Added the current Act 9 Satanic Zone names, so zones such as Shipwreck Cove no longer appear as raw map codes.",
@@ -512,7 +566,7 @@ describe("Vue component contracts", () => {
     expect(whatsNew.text()).not.toContain("Added The Hierophant for collectible type 13 / id 40.");
 
     await wrapper.get('[data-settings-section="developers"]').trigger("click");
-    expect(wrapper.text()).toContain("Advanced theme-authoring resources");
+    expect(wrapper.text()).toContain("Theme-authoring resources and migration tools");
     expect(wrapper.text()).toContain("Player-facing Item Research has been retired.");
     await buttonByText(wrapper, "Import Theme").trigger("click");
     await buttonByText(wrapper, "Export Current Theme").trigger("click");
@@ -987,6 +1041,7 @@ describe("Vue component contracts", () => {
     expect(dashboardColumns[1].findAll(".live-dashboard-card-title h2").map((heading) => heading.attributes("id"))).toEqual([
       "tracked-drops-card-title",
       "live-log-card-title",
+      "player-chat-card-title",
     ]);
 
     await wrapper.get('button[aria-label="Collapse Gold"]').trigger("click");
@@ -1133,6 +1188,7 @@ function settingsModalProps() {
     launchThroughSteam: true,
     gameExecutablePath: "",
     satanicZoneRefreshEnabled: false,
+    marketSearchEnabled: false,
     themeId: "voidglass" as const,
     compactThemeId: "voidglass" as const,
     themeCustomMode: false,

@@ -364,17 +364,26 @@
 }
 
 .log {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+  font: inherit;
+  text-align: left;
+}
+
+.log-content {
   display: grid;
   width: 100%;
   grid-template-columns: 86px minmax(84px, auto) 28px 1fr;
   align-items: start;
   gap: 10px;
-  min-height: 38px;
   padding: 8px 10px;
   border: 0;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.045);
+  background: transparent;
   cursor: pointer;
+  color: inherit;
   font: inherit;
   text-align: left;
 }
@@ -492,6 +501,71 @@
 
 .log.expanded .log-message {
   white-space: normal;
+}
+
+.player-chat-list {
+  display: grid;
+  max-height: 360px;
+  gap: 8px;
+  overflow: auto;
+  margin: 0;
+  padding: 0 6px 0 0;
+  list-style: none;
+  scrollbar-color: #3f9487 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.player-chat-list::-webkit-scrollbar {
+  width: 9px;
+}
+
+.player-chat-list::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.player-chat-list::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(18, 21, 27, 0.92);
+  border-radius: 999px;
+  background: #3f9487;
+}
+
+.player-chat-row {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--user-accent) 7%, transparent);
+}
+
+.player-chat-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.player-chat-meta strong {
+  overflow: hidden;
+  color: var(--user-accent);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-chat-meta span {
+  flex: 0 0 auto;
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.player-chat-message {
+  margin: 0;
+  color: var(--app-heading);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .log-success p {

@@ -84,7 +84,11 @@ function e2eTrafficPayloads() {
         debuffs: "15",
       },
       {
-        message: "SERVER: [Softcore] E2E Packet Runner just found [Aurelion Fury]",
+        status: 1,
+        message: "ok",
+        itemData: {
+          "10-3909410-e2eaurelion-3": { a: 1, b: 9, c: 1, d: 6, j: 4 },
+        },
       },
     ])} trailing-frame-noise`,
   ];
@@ -103,10 +107,15 @@ function e2eRareDropTrafficPayloads() {
         seasonMode: "GSS",
       },
       {
-        message: "SERVER: [Softcore] E2E Drop Verifier just found [Fumacinha's Favela Flipflop]",
+        status: 1,
+        message: "ok",
+        itemData: {
+          "10-3909410-e2efumacinha-2": { a: 1, b: 68, c: 1, d: 6 },
+          "10-3909410-e2eaurelion-3": { a: 2, b: 9, c: 1, d: 6, j: 4 },
+        },
       },
       {
-        message: "SERVER: [Softcore] E2E Drop Verifier just found [Aurelion Fury]",
+        message: "SERVER: [Softcore] Another Player just found [Fumacinha's Favela Flipflop]",
       },
     ])} rare-tail`,
   ];

@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } fr
 import type { CaptureDiagnosticsLevel, CaptureDiagnosticsMode, CompanionState, LogEntry } from "../../shared/app-state";
 import { mergeCompanionStateUpdate } from "../../shared/app-state";
 import { createInitialCompanionState } from "../../shared/initial-state";
+import type { MarketSearchRequest, MarketSearchResponse } from "../../shared/market-search";
 import AppTitlebar from "./components/AppTitlebar.vue";
 import CompactView from "./components/CompactView.vue";
 import LiveSessionHeader from "./components/LiveSessionHeader.vue";
@@ -16,6 +17,7 @@ import { itemFilterIdFromTimelineValue, type ItemFilterGroup } from "./lib/item-
 import { useItemFilterRuntime } from "./lib/item-filter-runtime";
 import { createItemResearchExportPayload } from "./lib/item-research";
 import { useLiveRunHistory } from "./lib/live-run-history";
+import { useMarketSearchRuntime } from "./lib/market-search-runtime";
 import { useAppPreferences } from "./lib/app-preferences";
 import {
   LOG_LIMIT_OPTIONS,
@@ -53,6 +55,7 @@ type SettingsTarget = SettingsSection | "whatsNew";
 const CompactCustomizeModal = defineAsyncComponent(() => import("./components/CompactCustomizeModal.vue"));
 const ItemFilterView = defineAsyncComponent(() => import("./components/ItemFilterView.vue"));
 const LiveView = defineAsyncComponent(() => import("./components/LiveView.vue"));
+const MarketSearchDialog = defineAsyncComponent(() => import("./components/MarketSearchDialog.vue"));
 const PastRunsView = defineAsyncComponent(() => import("./components/PastRunsView.vue"));
 const SettingsModal = defineAsyncComponent(() => import("./components/SettingsModal.vue"));
 
@@ -77,7 +80,6 @@ let preferencesLoaded = false;
 let preferenceSaveGeneration = 0;
 let unsubscribe: (() => void) | null = null;
 let clock: number | null = null;
-
 const {
   logLimit,
   showCaptureDetails,
@@ -86,6 +88,7 @@ const {
   hideMaterials,
   hideUnfilteredTimelineItems,
   timelineType,
+  marketSearchEnabled,
   gameExecutablePath,
   launchThroughSteam,
   themeId,
@@ -105,6 +108,8 @@ const {
   postRunReport,
   compactRunTiles,
   hiddenDashboardPanels,
+  liveRunGraphEnabledMetrics,
+  liveRunGraphItemNames,
   itemResearchEntries,
   preferenceWatchSources,
   currentPreferences,
@@ -174,6 +179,28 @@ const {
   discardPendingItemFilterPackImport,
 } = useItemFilterRuntime({ itemFilterGroups, itemFilterMuted, customItemFilterSounds, showToast });
 const {
+  selectedItem: marketSearchItem,
+  minSockets: marketSearchMinSockets,
+  statFilters: marketSearchStatFilters,
+  phase: marketSearchPhase,
+  listings: marketSearchListings,
+  totalMatches: marketSearchTotalMatches,
+  errorMessage: marketSearchErrorMessage,
+  resultObservedAt: marketSearchResultObservedAt,
+  resultCached: marketSearchResultCached,
+  cooldownRemainingSeconds: marketSearchCooldownRemainingSeconds,
+  canSearch: canSubmitMarketSearch,
+  openMarketSearch,
+  closeMarketSearch,
+  updateMinSockets: updateMarketSearchMinSockets,
+  addStatFilter: addMarketSearchStatFilter,
+  updateStatFilter: updateMarketSearchStatFilter,
+  removeStatFilter: removeMarketSearchStatFilter,
+  searchMarket: submitMarketSearch,
+} = useMarketSearchRuntime({
+  searchMarket: requestMarketSearch, now, readiness: computed(() => state.value.marketReadiness),
+});
+const {
   captureStatusLabel,
   runScoreDisplays,
   compactRunTileDisplays,
@@ -187,6 +214,7 @@ const {
   itemTimelineSourceCount,
   visibleItemTimeline,
   recentLogs,
+  recentPlayerChat,
   pastRuns,
 } = useSessionDisplay({
   state,
@@ -209,7 +237,13 @@ const {
   addCustomItem: addLiveRunGraphItem,
   removeCustomItem: removeLiveRunGraphItem,
   setStandardMetricEnabled: setLiveRunGraphStandardMetric,
-} = useLiveRunHistory({ state, now, ready: stateHydrated });
+} = useLiveRunHistory({
+  state,
+  now,
+  ready: stateHydrated,
+  customItemNames: liveRunGraphItemNames,
+  enabledStandardMetrics: liveRunGraphEnabledMetrics,
+});
 const { availableUpdate, checkForUpdateNotice, openAvailableUpdate, ignoreAvailableUpdate } = useUpdateNotice();
 const { showWhatsNewPrompt, maybeShowWhatsNewPrompt, dismissWhatsNewPrompt, openWhatsNewFromPrompt } = useWhatsNewPrompt(
   WHATS_NEW_RELEASE.version,
@@ -293,7 +327,9 @@ onMounted(async () => {
     state.value = mergeCompanionStateUpdate(state.value, nextState);
   });
   void checkForUpdateNotice();
-  clock = window.setInterval(() => { now.value = Date.now(); }, 1000);
+  clock = window.setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
 });
 
 watch([...preferenceWatchSources, shoppingListItems], () => {
@@ -307,6 +343,10 @@ watch([timelineType, itemFilterGroups], () => {
   const groupId = itemFilterIdFromTimelineValue(timelineType.value);
   if (groupId && !itemFilterGroups.value.some((group) => group.id === groupId)) timelineType.value = "all";
 }, { deep: true });
+
+watch(marketSearchEnabled, (enabled) => {
+  if (!enabled) closeMarketSearch();
+});
 
 onUnmounted(() => {
   unsubscribe?.();
@@ -427,6 +467,10 @@ function openItemFilterGroup(groupId: string) {
   const group = itemFilterGroups.value.find((candidate) => candidate.id === groupId);
   if (group) selectItemFilterGroup(group);
   activeTab.value = "filter";
+}
+
+function requestMarketSearch(request: MarketSearchRequest): Promise<MarketSearchResponse> {
+  return window.heroSiegeCompanion.searchMarket(request);
 }
 
 function openSettings(tab?: SettingsTarget) {
@@ -578,6 +622,7 @@ function toggleLog(log: LogEntry) {
   else next.add(log.id);
   expandedLogIds.value = next;
 }
+
 </script>
 
 <template>
@@ -664,16 +709,19 @@ function toggleLog(log: LogEntry) {
         :log-limit-options="logLimitOptions"
         :item-type-options="itemTypeOptions"
         :item-filter-groups="itemFilterGroups"
+        :market-search-available="marketSearchEnabled"
         :shopping-list-items="shoppingListItems"
         :shopping-suggestions="shoppingSuggestions"
         :active-shopping-item="activeShoppingItem"
         :recent-logs="recentLogs"
+        :recent-player-chat="recentPlayerChat"
         :expanded-log-ids="expandedLogIds"
         @copy-shopping-item="copyShoppingItem($event, false)"
         @add-shopping-item="addShoppingItem"
         @remove-shopping-item="removeShoppingItem"
         @open-npcap-guide="openNpcapGuide"
         @open-item-filter-group="openItemFilterGroup"
+        @search-market="openMarketSearch"
         @add-live-run-graph-item="addLiveRunGraphItem"
         @remove-live-run-graph-item="removeLiveRunGraphItem"
         @set-live-run-graph-standard-metric="setLiveRunGraphStandardMetric"
@@ -718,6 +766,8 @@ function toggleLog(log: LogEntry) {
         :report-config="postRunReport"
         :past-runs="pastRuns"
         :item-filter-groups="itemFilterGroups"
+        :live-run-graph-enabled-metrics="liveRunGraphEnabledMetrics"
+        :live-run-graph-item-names="liveRunGraphItemNames"
         @update:report-config="updatePostRunReportConfig"
         @update-run-tags="updatePastRunTags"
         @export-runs-json="exportPastRunsJson"
@@ -727,6 +777,28 @@ function toggleLog(log: LogEntry) {
         @delete-all-runs="deleteAllPastRuns"
       />
     </div>
+
+    <MarketSearchDialog
+      v-if="marketSearchEnabled && marketSearchItem"
+      :item="marketSearchItem"
+      :readiness="state.marketReadiness"
+      :min-sockets="marketSearchMinSockets"
+      :stat-filters="marketSearchStatFilters"
+      :phase="marketSearchPhase"
+      :listings="marketSearchListings"
+      :total-matches="marketSearchTotalMatches"
+      :error-message="marketSearchErrorMessage"
+      :result-observed-at="marketSearchResultObservedAt"
+      :result-cached="marketSearchResultCached"
+      :cooldown-remaining-seconds="marketSearchCooldownRemainingSeconds"
+      :can-search="canSubmitMarketSearch"
+      @close="closeMarketSearch"
+      @update-min-sockets="updateMarketSearchMinSockets"
+      @add-stat-filter="addMarketSearchStatFilter"
+      @update-stat-filter="updateMarketSearchStatFilter"
+      @remove-stat-filter="removeMarketSearchStatFilter"
+      @search="submitMarketSearch"
+    />
 
     <SettingsModal
       v-if="showSettings"
@@ -738,6 +810,7 @@ function toggleLog(log: LogEntry) {
       v-model:compact-theme-custom-mode="compactThemeCustomMode"
       v-model:compact-theme-matches-app="compactThemeMatchesApp"
       v-model:satanic-zone-refresh-enabled="satanicZoneRefreshEnabled"
+      v-model:market-search-enabled="marketSearchEnabled"
       :theme-options="THEME_OPTIONS"
       :legacy-theme-available="legacyThemeAvailable"
       :legacy-compact-theme-available="legacyCompactThemeAvailable"

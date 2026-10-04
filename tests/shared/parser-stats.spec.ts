@@ -14,7 +14,7 @@ import {
 } from "../../src/shared/item-catalog";
 import { lookupItemTranslationByName } from "../../src/shared/item-lookup";
 import { lookupKnownItemRarity } from "../../src/shared/item-rarity";
-import { captureMessages, identifyEvent, messageToEvents } from "../../src/shared/parser";
+import { captureMessages, extractPlayerChatMessages, identifyEvent, messageToEvents } from "../../src/shared/parser";
 import { hasRunActivity, PAST_RUN_SCHEMA_VERSION, StatsEngine } from "../../src/shared/stats";
 
 // These specs are packet-shaped on purpose. They preserve the odd payloads and
@@ -50,6 +50,34 @@ test("nested payloads flatten into events", () => {
   assert.equal(events[0].value.GSS, 100);
   assert.equal(events[1].value, 15);
   assert.match(events[2].value.zone, /Act 1/);
+});
+
+test("recognizes structured player chat without turning it into a run event", () => {
+  const payload = {
+    chatRoom: 0,
+    name: "stupididiot",
+    nameColor: 7_844_807,
+    message: "i just spent all my gold",
+    msgType: 0,
+    uid: 4_832_210,
+    platformName: "rawb",
+  };
+
+  assert.deepEqual(extractPlayerChatMessages(payload), [{
+    playerName: "stupididiot",
+    message: "i just spent all my gold",
+    uid: 4_832_210,
+    chatRoom: 0,
+    msgType: 0,
+    platformName: "rawb",
+    actionable: true,
+  }]);
+  assert.deepEqual(messageToEvents(payload), []);
+});
+
+test("keeps server chat non-actionable and rejects loose chat-like objects", () => {
+  assert.equal(extractPlayerChatMessages({ chatRoom: 0, name: "SERVER", message: "GiveMeGold rolled", msgType: 1, uid: 0 })[0].actionable, false);
+  assert.deepEqual(extractPlayerChatMessages({ name: "GiveMeGold", message: "not a chat envelope", uid: 3 }), []);
 });
 
 test("query string nested JSON values are deserialized", () => {
@@ -383,6 +411,7 @@ test("item stats accept named rarity and magic find alias", () => {
   const stats = new StatsEngine();
   const snapshot = stats.applyEvents(events);
 
+  assert.equal(events[0].value.rarityName, "Satanic");
   assert.equal(snapshot.items.Satanic.total, 1);
   assert.equal(snapshot.items.Satanic.mf, 1);
 });
@@ -412,7 +441,7 @@ test("item parser accepts observed magic-find flag field names", () => {
   }
 });
 
-test("seeded inventory weapon bases do not count as Heroic without server announcement", () => {
+test("seeded inventory weapon bases use packet rarity instead of name guesses", () => {
   const events = messageToEvents([
     {
       addedItemObject: {
@@ -496,9 +525,12 @@ test("inventory update ext adds items from short fields", () => {
   const snapshot = stats.applyEvents(events);
 
   assert.deepEqual(events.map((event) => event.name), ["itemAdded", "itemAdded"]);
-  assert.equal(snapshot.items.Satanic.total, 1);
-  assert.equal(snapshot.items.Satanic.mf, 1);
-  assert.equal(snapshot.items.Heroic.total, 0);
+  assert.equal(events[0].value.label, "Ymir's Frozen Vestment");
+  assert.equal(events[0].value.rarityName, "Set");
+  assert.equal(snapshot.items.Set.total, 1);
+  assert.equal(snapshot.items.Set.mf, 1);
+  assert.equal(snapshot.items.Satanic.total, 0);
+  assert.equal(snapshot.items.Heroic.total, 1);
   assert.equal(snapshot.items.Heroic.mf, 0);
 });
 
@@ -1003,7 +1035,7 @@ test("correlated generated itemData ignores c0 randomized equipment", () => {
   assert.deepEqual(events, []);
 });
 
-test("generated ground itemData is ignored until an inventory pickup event", () => {
+test("generated c=0 ground equipment waits for an inventory pickup before counting rarity", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -1040,7 +1072,8 @@ test("generated ground itemData is ignored until an inventory pickup event", () 
   const snapshot = stats.applyEvents(events);
 
   assert.deepEqual(events.map((event) => event.name), ["itemAdded"]);
-  assert.equal(snapshot.items.Heroic.total, 0);
+  assert.equal(events[0].value.rarityName, "Heroic");
+  assert.equal(snapshot.items.Heroic.total, 1);
   assert.equal(snapshot.itemTimeline.length, 1);
 });
 
@@ -1117,22 +1150,22 @@ test("trusted generated itemData tracks dropped named items before pickup", () =
   assert.equal(snapshot.itemTimeline.length, 1);
 });
 
-test("server just found messages can produce named drop events", () => {
+test("server just found announcements do not create loot events", () => {
   const events = messageToEvents([
     {
       message: "SERVER: [Softcore] Dante just found [Fumacinha's Favela Flipflop]",
     },
+    {
+      message: "SERVER: [Softcore] Another Player just found [Aurelion Fury]",
+    },
   ]);
 
-  assert.equal(events[0].name, "itemDropped");
-  assert.equal(events[0].value.source, "server");
-  assert.equal(events[0].value.label, "Fumacinha's Favela Flipflop");
-  assert.equal(events[0].value.type, 2);
+  assert.deepEqual(events, []);
 });
 
 test("named weapon identity supplies its catalog subtype", () => {
   const events = messageToEvents([
-    { message: "SERVER: [Softcore] Dante just found [Stofflix Cooking Cleaver]" },
+    { addedItemObject: { name: "Stofflix Cooking Cleaver", rarity: "Satanic" } },
     {
       operations: {
         add: {
@@ -1157,9 +1190,13 @@ test("named weapon identity supplies its catalog subtype", () => {
   assert.deepEqual(events.map((event) => event.value.id), [35, 35]);
 });
 
-test("server announcements resolve overridden heroic catalog identities", () => {
+test("trusted generated item packets resolve overridden heroic catalog identities", () => {
   const events = messageToEvents([
-    { message: "SERVER: [Softcore] Dante just found [Scourge Loop]" },
+    {
+      itemData: {
+        "10-3909410-scourgeloop-7": { a: 1, b: 48, c: 1, d: 9 },
+      },
+    },
   ]);
   const snapshot = new StatsEngine().applyEvents(events);
 
@@ -1172,9 +1209,9 @@ test("server announcements resolve overridden heroic catalog identities", () => 
   assert.equal(snapshot.items.Heroic.total, 1);
 });
 
-test("server announcements retain known rarity when the name spans repositories", () => {
+test("name-only inventory compatibility retains known rarity when the name spans repositories", () => {
   const events = messageToEvents([
-    { message: "SERVER: [Softcore] Dante just found [Ali's Boxing Gloves]" },
+    { addedItemObject: { name: "Ali's Boxing Gloves", rarity: 9 } },
   ]);
   const snapshot = new StatsEngine().applyEvents(events);
 
@@ -1187,42 +1224,38 @@ test("server announcements retain known rarity when the name spans repositories"
   assert.equal(snapshot.items.Heroic.total, 1);
 });
 
-test("heroic and angelic item identities require server just found messages", () => {
-  const inventoryEvents = messageToEvents([
+test("trusted generated item packets classify the reported heroic and unholy drops without chat announcements", () => {
+  const events = messageToEvents([
     {
       status: 1,
-      message: "Success on inventory update ext",
-      operations: {
-        add: {
-          "2-3768602-6529eca8745200001-3": {
-            sh: "4e341ae17885",
-            n: 3,
-            a: 478771514,
-            e: 10,
-            j: 4,
-            d: 1,
-            b: 9,
-            c: 0,
-          },
-        },
+      message: "ok",
+      itemData: {
+        "10-3909410-thunderguardian-1": { a: 1, b: 61, c: 1, d: 6 },
+        "10-3909410-clafaxierslegacy-3": { a: 2, b: 10, c: 1, d: 6, j: 10 },
+        "10-3909410-aurelionfury-3": { a: 3, b: 9, c: 1, d: 6, j: 4 },
+        "10-3909410-lilithswrath-10": { a: 4, b: 56, c: 1, d: 6 },
       },
-      newHashes: {},
     },
   ]);
-  const serverEvents = messageToEvents([{ message: "SERVER: [Softcore] Dante just found [Aurelion Fury]" }]);
   const stats = new StatsEngine();
-  stats.applyEvents(inventoryEvents);
-  const snapshot = stats.applyEvents(serverEvents);
+  const snapshot = stats.applyEvents(events);
 
-  assert.equal(inventoryEvents[0].value.label, "Naga");
-  assert.equal(inventoryEvents[0].value.rarityName, "Common");
-  assert.equal(serverEvents[0].value.label, "Aurelion Fury");
-  assert.equal(serverEvents[0].value.rarityName, "Angelic");
+  assert.deepEqual(events.map((event) => [event.value.label, event.value.rarityName]), [
+    ["Thunder Guardian's Plate", "Heroic"],
+    ["Clafaxier's Legacy", "Heroic"],
+    ["Aurelion Fury", "Angelic"],
+    ["Lilith's Wrath", "Unholy"],
+  ]);
+  assert.ok(events.every((event) => event.name === "itemDropped" && event.value.source === "server"));
+  assert.equal(snapshot.items.Heroic.total, 2);
   assert.equal(snapshot.items.Angelic.total, 1);
+  assert.equal(snapshot.items.Unholy, undefined);
+  assert.equal(snapshot.itemBreakdown.Heroic["Thunder Guardian's Plate"].total, 1);
+  assert.equal(snapshot.itemBreakdown.Heroic["Clafaxier's Legacy"].total, 1);
   assert.equal(snapshot.itemBreakdown.Angelic["Aurelion Fury"].total, 1);
 });
 
-test("submitted research resolves confirmed glove identities without widening heroic inventory counts", () => {
+test("submitted research does not promote superior generated gloves to heroic", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -1276,9 +1309,11 @@ test("inventory item_data payloads are treated as picked up items", () => {
   const snapshot = stats.applyEvents(events);
 
   assert.equal(events[0].name, "itemAdded");
-  assert.equal(events[0].value.rarityName, "Satanic");
-  assert.equal(snapshot.items.Satanic.total, 1);
-  assert.equal(snapshot.items.Satanic.mf, 1);
+  assert.equal(events[0].value.label, "Ymir's Frozen Vestment");
+  assert.equal(events[0].value.rarityName, "Set");
+  assert.equal(snapshot.items.Set.total, 1);
+  assert.equal(snapshot.items.Set.mf, 1);
+  assert.equal(snapshot.items.Satanic.total, 0);
 });
 
 test("inventory item_data pickup_add_data payloads are treated as picked up items", () => {
@@ -1300,8 +1335,8 @@ test("inventory item_data pickup_add_data payloads are treated as picked up item
   const snapshot = stats.applyEvents(events);
 
   assert.equal(events[0].name, "itemAdded");
-  assert.equal(events[0].value.rarityName, "Unknown");
-  assert.equal(snapshot.items.Heroic.total, 0);
+  assert.equal(events[0].value.rarityName, "Heroic");
+  assert.equal(snapshot.items.Heroic.total, 1);
 });
 
 test("common inventory pickups still appear in timeline", () => {
@@ -1411,7 +1446,7 @@ test("inventory update ext treats fingerprint type zero as helmet", () => {
   assert.equal(events[0].value.label, "Gabriel's Brimmed Fedora");
 });
 
-test("known heroic ring names do not override inventory packets without server announcement", () => {
+test("known heroic ring identities override noisy common inventory rarity", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -1447,12 +1482,12 @@ test("known heroic ring names do not override inventory packets without server a
 
   assert.equal(events[0].value.label, "Scourge Loop");
   assert.equal(events[0].value.localizationId, "rings_scourge_loop");
-  assert.equal(events[0].value.rarityName, "Unknown");
+  assert.equal(events[0].value.rarityName, "Heroic");
   assert.equal(events[1].value.label, "Stone of Premonition");
   assert.equal(events[1].value.localizationId, "rings_stone_of_jordan");
-  assert.equal(events[1].value.rarityName, "Unknown");
+  assert.equal(events[1].value.rarityName, "Heroic");
   assert.equal(snapshot.items.Set.total, 0);
-  assert.equal(snapshot.items.Heroic.total, 0);
+  assert.equal(snapshot.items.Heroic.total, 2);
   assert.equal(snapshot.items.Satanic.total, 0);
 });
 
@@ -1497,6 +1532,79 @@ test("known item rarities override superior packet rarity", () => {
   );
   assert.equal(snapshot.items.Set.total, 1);
   assert.equal(snapshot.items.Satanic.total, 1);
+});
+
+test("Monsoon's fixed catalog rarity overrides its live Satanic packet class", () => {
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: {
+        add: {
+          "10-4238510-65a67cddf184d000c-3": {
+            e: 11,
+            a: 920609573,
+            j: 0,
+            b: 16,
+            d: 6,
+            m: 1,
+            c: 1,
+            weaponType: 13,
+          },
+        },
+      },
+    },
+  ]);
+  const stats = new StatsEngine();
+  const snapshot = stats.applyEvents(events);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].value.id, 16);
+  assert.equal(events[0].value.weaponType, 13);
+  assert.equal(events[0].value.label, "Monsoon");
+  assert.equal(events[0].value.rarity, 6);
+  assert.equal(events[0].value.rarityName, "Heroic");
+  assert.equal(snapshot.items.Heroic.total, 1);
+  assert.equal(snapshot.items.Satanic.total, 0);
+});
+
+test("every catalogued fixed Heroic, Angelic, and Unholy identity overrides Satanic packet class", () => {
+  const add: Record<string, Record<string, number>> = {};
+  const expectedByFingerprint = new Map<string, "Heroic" | "Angelic" | "Unholy">();
+  const expectedCounts = { Heroic: 0, Angelic: 0, Unholy: 0 };
+
+  for (const [index, definition] of activeItemCatalog.allDefinitions().entries()) {
+    if (definition.repository !== "unique" || definition.identityMode !== "fixed") continue;
+    const expected = lookupKnownItemRarity(definition.type, definition.name);
+    if (expected !== "Heroic" && expected !== "Angelic" && expected !== "Unholy") continue;
+
+    const fingerprint = `10-4238510-rarity${index}-${definition.type}`;
+    add[fingerprint] = {
+      a: index + 1,
+      b: definition.gameId,
+      c: 1,
+      d: 6,
+      type: definition.type,
+      weaponType: definition.weaponType,
+    };
+    expectedByFingerprint.set(fingerprint, expected);
+    expectedCounts[expected] += 1;
+  }
+
+  const events = messageToEvents([
+    {
+      status: 1,
+      message: "Success on inventory update ext",
+      operations: { add },
+    },
+  ]);
+
+  assert.deepEqual(expectedCounts, { Heroic: 193, Angelic: 30, Unholy: 18 });
+  assert.equal(events.length, expectedByFingerprint.size);
+  for (const event of events) {
+    assert.equal(event.value.rarity, 6);
+    assert.equal(event.value.rarityName, expectedByFingerprint.get(event.value.fingerprint));
+  }
 });
 
 test("known item rarity map classifies satanic drops", () => {
@@ -1605,7 +1713,7 @@ test("unknown numeric rarity codes still use known item rarity", () => {
   assert.equal(snapshot.items.Set.total, 0);
 });
 
-test("known item rarity map classifies known helmets except server-announced rarities", () => {
+test("known item rarity map classifies fixed set and heroic helmets", () => {
   const events = messageToEvents([
     {
       status: 1,
@@ -1641,10 +1749,10 @@ test("known item rarity map classifies known helmets except server-announced rar
     events.map((event) => [event.value.label, event.value.rarityName]),
     [
       ["Lunar Prophet's Tiara", "Set"],
-      ["Lava King's Lost Mask", "Unknown"],
+      ["Lava King's Lost Mask", "Heroic"],
     ],
   );
-  assert.equal(snapshot.items.Heroic.total, 0);
+  assert.equal(snapshot.items.Heroic.total, 1);
   assert.equal(snapshot.items.Set.total, 1);
   assert.equal(snapshot.items.Satanic.total, 0);
 });
@@ -1905,8 +2013,16 @@ test("run summaries track non-basic keys ore and selected drops", () => {
         },
       },
     },
-    { message: "SERVER: [Softcore] Dante just found [Fumacinha's Favela Flipflop]" },
-    { message: "SERVER: [Softcore] Dante just found [Aurelion Fury]" },
+    {
+      itemData: {
+        "10-3909410-fumacinha-2": { a: 7, b: 68, c: 1, d: 9 },
+      },
+    },
+    {
+      itemData: {
+        "10-3909410-aurelion-3": { a: 8, b: 9, c: 1, d: 7, j: 4 },
+      },
+    },
     { added_item_object: { rarity: "Set", item_id: 103, type: 0 } },
     { added_item_object: { rarity: "Satanic", item_id: 104, type: 0 } },
   ]);

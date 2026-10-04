@@ -22,7 +22,7 @@ const referenceView = ref<"schema" | "tokens">("schema");
 <template>
   <div class="settings-ledger-panel-heading">
     <h2>Developers</h2>
-    <p>Advanced theme-authoring resources. Built-in themes remain canonical and intentionally non-editable.</p>
+    <p>Theme-authoring resources and migration tools.</p>
   </div>
 
   <section class="settings-ledger-section" aria-labelledby="settings-theme-tools-title">

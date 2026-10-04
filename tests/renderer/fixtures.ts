@@ -16,6 +16,10 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
     updatedAt: baseTime,
   };
   return {
+    marketReadiness: {
+      phase: "ready", reason: null, missingFields: [], sessionCurrent: true,
+      regionQualified: true, expiresAt: baseTime + 600_000, canSearch: true,
+    },
     captureRunning: true,
     captureStatus: "running",
     captureError: null,

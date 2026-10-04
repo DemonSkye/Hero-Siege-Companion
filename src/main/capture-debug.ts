@@ -30,11 +30,11 @@ export function sanitizeDebugSnippet(text: string, maxLength = 1200): string {
 export function redactSensitiveDebugText(text: string): string {
   return text
     .replace(
-      /\b([a-z0-9_]*(?:account_?id|fingerprint|hash|identifier)|checksum)=([^&\s]+)/gi,
+      /\b([a-z0-9_]*(?:account_?id|fingerprint|hash|identifier)|checksum|multipass)=([^&\s]+)/gi,
       "$1=<redacted>",
     )
     .replace(
-      /"([a-z0-9_]*(?:account_?id|fingerprint|hash|identifier)|checksum)"\s*:\s*(?:"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?|true|false|null)/gi,
+      /"([a-z0-9_]*(?:account_?id|fingerprint|hash|identifier)|checksum|multipass)"\s*:\s*(?:"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?|true|false|null)/gi,
       '"$1":"<redacted>"',
     )
     .replace(ITEM_FINGERPRINT_PATTERN, (fingerprint) => pseudonymizeItemFingerprint(fingerprint));
@@ -68,7 +68,7 @@ function sanitizeDebugValue(value: unknown, key: string, depth: number, seen: We
 }
 
 function isSensitiveDebugKey(key: string): boolean {
-  return /^(?:[a-z0-9_]*(?:account_?id|fingerprint|hash|identifier)|checksum)$/i.test(key);
+  return /^(?:[a-z0-9_]*(?:account_?id|fingerprint|hash|identifier)|checksum|multipass)$/i.test(key);
 }
 
 function rotateLogIfLarge(logPath: string, maxBytes: number): void {

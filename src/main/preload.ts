@@ -10,6 +10,7 @@ const api: HeroSiegeCompanionApi = {
   chooseGameExecutable: () => ipcRenderer.invoke(IpcChannel.gameChooseExecutable),
   resetStats: () => ipcRenderer.invoke(IpcChannel.statsReset),
   refreshSatanicZone: () => ipcRenderer.invoke(IpcChannel.satanicZoneRefresh),
+  searchMarket: (request) => ipcRenderer.invoke(IpcChannel.marketSearch, request),
   pauseRun: () => ipcRenderer.invoke(IpcChannel.runPause),
   resumeRun: () => ipcRenderer.invoke(IpcChannel.runResume),
   setPastRunTags: (runId: string, tags: string[]): Promise<CompanionState> =>

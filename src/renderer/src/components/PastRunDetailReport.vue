@@ -5,6 +5,11 @@ import type { PastRunSummary } from "../../../shared/stats";
 import { formatDateTime, formatDuration, formatNumber, formatTime } from "../lib/format";
 import { itemIconUrl, resourceImage } from "../lib/item-assets";
 import { projectPastRunPaceChartLanes } from "../lib/live-run-history";
+import {
+  normalizeLiveRunGraphEnabledMetrics,
+  normalizeLiveRunGraphItemNames,
+  type LiveRunStandardMetric,
+} from "../lib/live-run-graph-config";
 import { pastRunSearchMatches, pastRunTitle, runTags, searchTerms } from "../lib/past-run-search";
 import { hasReportItemDetailEntries, runReportItemRows, type PastRunReportItemRow } from "../lib/past-runs";
 import type { ItemFilterGroup } from "../lib/item-filters";
@@ -16,12 +21,21 @@ const props = defineProps<{
   reportConfig: PostRunReportConfig;
   itemFilterGroups: ItemFilterGroup[];
   searchQuery: string;
+  liveRunGraphEnabledMetrics?: readonly LiveRunStandardMetric[];
+  liveRunGraphItemNames?: readonly string[];
 }>();
 
 const reportRows = computed(() => runReportItemRows(props.run, props.reportConfig, props.itemFilterGroups));
-const runPaceLanes = computed(() => props.run.runPace
-  ? projectPastRunPaceChartLanes(props.run.runPace, props.reportConfig.exactTrackedItems)
-  : []);
+const runPaceLanes = computed(() => {
+  if (!props.run.runPace) return [];
+  const enabledMetrics = new Set(normalizeLiveRunGraphEnabledMetrics(props.liveRunGraphEnabledMetrics));
+  const itemNames = normalizeLiveRunGraphItemNames([
+    ...(props.liveRunGraphItemNames ?? []),
+    ...props.reportConfig.exactTrackedItems,
+  ]);
+  return projectPastRunPaceChartLanes(props.run.runPace, itemNames)
+    .filter((lane) => lane.metric === "custom-item" || enabledMetrics.has(lane.metric));
+});
 const runPaceElapsedMs = computed(() => props.run.runPace ? pastRunPaceElapsedMs(props.run.runPace) : 0);
 const searchMatches = computed(() => pastRunSearchMatches(props.run, searchTerms(props.searchQuery)));
 const matchedSearchIds = computed(() => new Set(searchMatches.value.map((match) => match.id)));

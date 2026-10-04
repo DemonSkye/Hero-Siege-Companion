@@ -1,6 +1,7 @@
 import type { CaptureHealth, CapturePreferences, LogEntry } from "../shared/app-state";
 import { captureMessages, messageToEvents, type ParsedEvent } from "../shared/parser";
 import type { CaptureUpdate } from "./capture";
+import type { CapturedSessionPayload } from "./captured-session-context";
 import { isElectronE2eTestMode } from "./electron-test-mode";
 
 export type { CaptureUpdate };
@@ -21,7 +22,8 @@ export async function createCaptureRuntime(
   debugLogPath: string,
   wideDebugLogPath: string,
   capturePreferences: CapturePreferences,
-  supplementalCaptureProcessIds: () => readonly number[] = () => [],
+  observeSessionPayload: (payload: CapturedSessionPayload) => void = () => undefined,
+  observeGameProcessIds: (processIds: readonly number[]) => void = () => undefined,
 ): Promise<CaptureRuntime> {
   if (isElectronE2eTestMode()) return new ElectronE2eCaptureRuntime(onUpdate, capturePreferences);
 
@@ -32,7 +34,8 @@ export async function createCaptureRuntime(
       debugLogPath,
       wideDebugLogPath,
       capturePreferences,
-      supplementalCaptureProcessIds,
+      observeSessionPayload,
+      observeGameProcessIds,
     );
   } catch (error) {
     const runtime = new NativeCaptureUnavailableRuntime(onUpdate, error);

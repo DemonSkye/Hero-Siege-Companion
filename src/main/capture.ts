@@ -27,11 +27,12 @@ import {
   type RetainedCaptureTarget,
 } from "./capture-network";
 import { getPayload, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "./packet-decoder";
-import type { CaptureConnection, CaptureHealth, CapturePreferences } from "../shared/app-state";
+import type { CaptureConnection, CaptureHealth, CapturePreferences, PlayerChatLogContext } from "../shared/app-state";
 import { EVENT_NAMES } from "../shared/constants";
 import type { MessageValue } from "../shared/fields";
+import type { CapturedSessionPayload } from "./captured-session-context";
 import { DEFAULT_CAPTURE_PREFERENCES } from "../shared/initial-state";
-import { captureMessages, messageToEvents, type ParsedEvent } from "../shared/parser";
+import { captureMessages, extractPlayerChatMessages, messageToEvents, type ParsedEvent } from "../shared/parser";
 
 const MAX_LOG_SNIPPET = 180;
 const MAX_DEBUG_LOG_BYTES = 10 * 1024 * 1024;
@@ -55,12 +56,18 @@ export interface CaptureUpdate {
   connections?: CaptureConnection[];
   health?: Partial<CaptureHealth>;
   events?: ParsedEvent[];
-  log?: { level: "info" | "success" | "warning" | "error" | "debug"; message: string };
-  logs?: Array<{ level: "info" | "success" | "warning" | "error" | "debug"; message: string }>;
+  log?: CaptureLog;
+  logs?: CaptureLog[];
   running?: boolean;
   status?: "idle" | "waiting" | "running" | "error";
   error?: string | null;
   satanicZoneActivity?: SatanicZoneCaptureActivity;
+}
+
+export interface CaptureLog {
+  level: "info" | "success" | "warning" | "error" | "debug";
+  message: string;
+  playerChat?: PlayerChatLogContext;
 }
 
 export type SatanicZoneCaptureActivity =
@@ -152,7 +159,8 @@ export class CaptureService {
     private readonly debugLogPath?: string,
     private readonly wideDebugLogPath?: string,
     capturePreferences: CapturePreferences | boolean = DEFAULT_CAPTURE_PREFERENCES,
-    private readonly supplementalCaptureProcessIds: () => readonly number[] = () => [],
+    private readonly observeSessionPayload: (payload: CapturedSessionPayload) => void = () => undefined,
+    private readonly observeGameProcessIds: (processIds: readonly number[]) => void = () => undefined,
   ) {
     this.capturePreferences = captureLoggingPreferences(capturePreferences);
   }
@@ -193,7 +201,9 @@ export class CaptureService {
   }
 
   async hasHeroSiegeProcess(): Promise<boolean> {
-    return (await getHeroSiegeNetworkState(this.readSupplementalCaptureProcessIds())).gameProcessIds.length > 0;
+    const networkState = await getHeroSiegeNetworkState();
+    this.observeGameProcessIdsSafely(networkState.gameProcessIds);
+    return networkState.gameProcessIds.length > 0;
   }
 
   async start(): Promise<void> {
@@ -202,7 +212,8 @@ export class CaptureService {
 
     let initialNetworkState: HeroSiegeNetworkState;
     try {
-      initialNetworkState = await getHeroSiegeNetworkState(this.readSupplementalCaptureProcessIds());
+      initialNetworkState = await getHeroSiegeNetworkState();
+      this.observeGameProcessIdsSafely(initialNetworkState.gameProcessIds);
     } catch (error) {
       if (!this.captureRequested) return;
       this.captureRequested = false;
@@ -264,6 +275,7 @@ export class CaptureService {
     this.captureRequested = false;
     this.stopTimers();
     this.resetCaptureSession();
+    this.observeGameProcessIdsSafely([]);
     this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
   }
 
@@ -329,7 +341,8 @@ export class CaptureService {
     if (!this.captureRequested) return;
     this.lastRefreshAt = Date.now();
     const currentNetworkState = networkState
-      ?? (await getHeroSiegeNetworkState(this.readSupplementalCaptureProcessIds()));
+      ?? (await getHeroSiegeNetworkState());
+    this.observeGameProcessIdsSafely(currentNetworkState.gameProcessIds);
     if (!this.captureRequested) return;
     const connections = currentNetworkState.connections;
     const publicConnections = gameOwnedConnections(currentNetworkState);
@@ -416,14 +429,11 @@ export class CaptureService {
     this.openCapture(signature, captureConnections, connections, filter);
   }
 
-  private readSupplementalCaptureProcessIds(): readonly number[] {
+  private observeGameProcessIdsSafely(processIds: readonly number[]): void {
     try {
-      return this.supplementalCaptureProcessIds();
-    } catch (error) {
-      this.writeDebugLog("capture-supplemental-process-query-error", {
-        error: errorMessage(error),
-      });
-      return [];
+      this.observeGameProcessIds(processIds);
+    } catch {
+      // Session context observation must never interrupt capture discovery.
     }
   }
 
@@ -574,11 +584,14 @@ export class CaptureService {
     }
     const completedPayloads = this.packetBuffers.push(parsedPacket);
     const events: ParsedEvent[] = [];
+    const observedLogs: CaptureLog[] = [];
 
     for (const completedPayload of completedPayloads) {
       const { packet, text: payloadText } = completedPayload;
       this.recordEndpointTraffic(packet, "payload");
       this.writeWidePayloadLog(packet, payloadText);
+      this.observeSessionPayloadSafely(packet, payloadText);
+      if (completedPayload.observationOnly) continue;
       if (!isLikelyParseablePayload(payloadText)) continue;
       if (payloadText.length > MAX_PARSE_PAYLOAD_CHARS) {
         this.recordParserFailure("payload-size", new Error(`Payload exceeded ${MAX_PARSE_PAYLOAD_CHARS} characters.`), payloadText);
@@ -589,6 +602,18 @@ export class CaptureService {
       this.lastPayloadAt = Date.now();
       const messages = this.captureMessagesSafely(payloadText);
       if (!messages) continue;
+      const playerChatMessages = extractPlayerChatMessages(messages);
+      observedLogs.push(
+        ...playerChatMessages.map((chat): CaptureLog => ({
+          level: "info",
+          message: `Player chat · ${chat.playerName}: ${chat.message}`,
+          playerChat: {
+            playerName: chat.playerName,
+            message: chat.message,
+            actionable: chat.actionable,
+          },
+        })),
+      );
       this.generatedDropCorrelator.markTrustedResponses(packet, messages, this.activeLocalAddress, (type, data) =>
         this.writeDebugLog(type, data),
       );
@@ -601,7 +626,9 @@ export class CaptureService {
       events.push(...usefulEvents);
       this.consecutiveParserFailures = 0;
       this.runParserProbeSafely("debug-payload", () => this.probeDebugPayload(payloadText, messages, usefulEvents), payloadText);
-      this.runParserProbeSafely("gold-payload", () => this.probeGoldPayload(payloadText, usefulEvents), payloadText);
+      if (playerChatMessages.length === 0) {
+        this.runParserProbeSafely("gold-payload", () => this.probeGoldPayload(payloadText, usefulEvents), payloadText);
+      }
     }
 
     if (events.length === 0) {
@@ -611,6 +638,8 @@ export class CaptureService {
           payloadsAssembled: this.payloadsAssembled,
           messagesDecoded: this.messagesDecoded,
         },
+        log: observedLogs.length === 1 ? observedLogs[0] : undefined,
+        logs: observedLogs.length > 1 ? observedLogs : undefined,
       });
       return;
     }
@@ -620,6 +649,7 @@ export class CaptureService {
     const loggableEvents = events.filter((event) => shouldLogEvent(event));
     this.writeParsedEventDebugLog(loggableEvents, events.length);
     const eventLogs = loggableEvents.map((event) => ({ level: "debug" as const, message: summarizeEvent(event) }));
+    const logs = [...observedLogs, ...eventLogs];
     this.emit({
       events,
       health: {
@@ -631,9 +661,24 @@ export class CaptureService {
         parserRestarts: this.parserRestarts,
         lastParserError: null,
       },
-      log: eventLogs.length === 1 ? eventLogs[0] : undefined,
-      logs: eventLogs.length > 1 ? eventLogs : undefined,
+      log: logs.length === 1 ? logs[0] : undefined,
+      logs: logs.length > 1 ? logs : undefined,
     });
+  }
+
+  private observeSessionPayloadSafely(packet: ParsedPayload, text: string): void {
+    try {
+      const outbound = packet.src === this.activeLocalAddress;
+      this.observeSessionPayload({
+        text,
+        direction: outbound ? "outbound" : "inbound",
+        remoteAddress: outbound ? packet.dst : packet.src,
+        remotePort: outbound ? packet.dstPort : packet.srcPort,
+        observedAt: Date.now(),
+      });
+    } catch {
+      // Session context observation must never interrupt ordinary capture.
+    }
   }
 
   private writeParsedEventDebugLog(events: ParsedEvent[], totalEvents: number): void {

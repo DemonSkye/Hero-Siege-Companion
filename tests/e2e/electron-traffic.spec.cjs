@@ -3,6 +3,7 @@ const {
   cleanupUserDataDir,
   closeCompanionApp,
   createUserDataDir,
+  emitCaptureEvents,
   emitCapturePayloads,
   getRendererState,
   launchCompanionApp,
@@ -73,14 +74,14 @@ test("parses mocked traffic payloads through main and renders live outcomes", as
   });
 });
 
-test("classifies heroic and angelic drops from mocked traffic messages", async () => {
+test("classifies heroic and angelic drops from item packets", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
     await emitCapturePayloads(electronApp, e2eRareDropTrafficPayloads());
 
     const state = await waitForRendererState(
       page,
       (nextState) => nextState.stats.items.Heroic.total === 1 && nextState.stats.items.Angelic.total === 1,
-      { message: "server just-found traffic should create tracked Heroic and Angelic drops" },
+      { message: "item packet traffic should create tracked Heroic and Angelic drops" },
     );
 
     expect(state.stats.accountName).toBe("E2E Drop Verifier");
@@ -101,6 +102,60 @@ test("classifies heroic and angelic drops from mocked traffic messages", async (
     await page.locator("button.item-counter.angelic").click();
     await expect(page.locator("#tracked-drops-card-body").getByText("Aurelion Fury")).toBeVisible();
   });
+});
+
+test("carries live Run Pace lane choices into the saved run and across relaunch", async () => {
+  const userDataDir = createUserDataDir();
+  let appSession = null;
+  try {
+    appSession = await launchCompanionApp({ userDataDir });
+    const runPace = appSession.page.locator("#run-pace-card");
+    const goldToggle = runPace.locator(".run-pace-standard-lanes").getByRole("checkbox", { name: "Gold" });
+
+    await goldToggle.uncheck();
+    await runPace.getByPlaceholder("Enter an exact item name").fill("Jade Ore");
+    await runPace.getByRole("button", { name: "Track item" }).click();
+
+    await expect(goldToggle).not.toBeChecked();
+    await expect(runPace.locator('[data-lane-id="gold"]')).toHaveCount(0);
+    await expect(runPace.locator('[data-lane-id="item:jade ore"] .run-pace-lane-label')).toHaveText("Jade Ore");
+
+    await emitCaptureEvents(appSession.electronApp, [jadeOreCaptureEvent()]);
+    await waitForRendererState(
+      appSession.page,
+      (state) => state.stats.itemTimeline.some((item) => item.label === "Jade Ore" && item.amount === 4),
+      { message: "mocked Jade Ore traffic should reach the live Run Pace history" },
+    );
+    await expect(runPace.locator('[data-lane-id="item:jade ore"] .run-pace-lane-summary strong')).toHaveText("4");
+
+    await appSession.page.getByRole("button", { name: "End Run" }).click();
+    await expect(appSession.page.getByRole("heading", { name: "Report Desk" })).toBeVisible();
+    await appSession.page.locator(".past-run-card-primary-action").first().click();
+
+    const archivedChart = appSession.page.locator(".past-run-pace-history");
+    await expect(archivedChart.locator('[data-lane-id="gold"]')).toHaveCount(0);
+    await expect(
+      archivedChart.locator('[data-lane-id="item:jade ore"] .run-pace-lane-label'),
+    ).toHaveText("Jade Ore");
+    await expect(
+      archivedChart.locator('[data-lane-id="item:jade ore"] .run-pace-lane-summary strong'),
+    ).toHaveText("4");
+
+    await closeCompanionApp(appSession);
+    appSession = await launchCompanionApp({ userDataDir });
+
+    const restoredRunPace = appSession.page.locator("#run-pace-card");
+    await expect(
+      restoredRunPace.locator(".run-pace-standard-lanes").getByRole("checkbox", { name: "Gold" }),
+    ).not.toBeChecked();
+    await expect(restoredRunPace.locator('[data-lane-id="gold"]')).toHaveCount(0);
+    await expect(
+      restoredRunPace.locator('[data-lane-id="item:jade ore"] .run-pace-lane-label'),
+    ).toHaveText("Jade Ore");
+  } finally {
+    if (appSession) await closeCompanionApp(appSession);
+    cleanupUserDataDir(userDataDir);
+  }
 });
 
 test("archives Run Pace history and restores its exact lanes after relaunch", async () => {
@@ -141,3 +196,32 @@ test("archives Run Pace history and restores its exact lanes after relaunch", as
     cleanupUserDataDir(userDataDir);
   }
 });
+
+function jadeOreCaptureEvent() {
+  return {
+    name: "itemDropped",
+    value: {
+      source: "inventory",
+      repository: "normal",
+      fingerprint: "e2e-jade-ore",
+      label: "Jade Ore",
+      seed: 1,
+      id: 31,
+      tokenLevel: 0,
+      type: 14,
+      dropQuality: 1,
+      rarity: 1,
+      rarityName: "Common",
+      token: 0,
+      tier: 0,
+      amount: 4,
+      weaponType: 0,
+      marketId: 0,
+      mfDrop: 0,
+      sockets: 0,
+      account: "E2E Ore Runner",
+    },
+    raw: {},
+    createdAt: Date.now(),
+  };
+}

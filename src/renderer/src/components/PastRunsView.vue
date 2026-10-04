@@ -19,6 +19,7 @@ import {
 } from "../lib/past-runs";
 import type { PostRunReportConfig } from "../lib/report-config";
 import { itemFilterHasTimelineCriteria, type ItemFilterGroup } from "../lib/item-filters";
+import type { LiveRunStandardMetric } from "../lib/live-run-graph-config";
 import PastRunAggregatePanel from "./PastRunAggregatePanel.vue";
 import PastRunCard from "./PastRunCard.vue";
 import PastRunDetailReport from "./PastRunDetailReport.vue";
@@ -29,6 +30,8 @@ const props = defineProps<{
   pastRuns: PastRunSummary[];
   reportConfig: PostRunReportConfig;
   itemFilterGroups: ItemFilterGroup[];
+  liveRunGraphEnabledMetrics?: readonly LiveRunStandardMetric[];
+  liveRunGraphItemNames?: readonly string[];
 }>();
 
 const emit = defineEmits<{
@@ -381,6 +384,8 @@ function groupRunsByDate(runs: PastRunSummary[]): PastRunDateGroup[] {
                 :report-config="reportConfig"
                 :item-filter-groups="itemFilterGroups"
                 :search-query="runSearchQuery"
+                :live-run-graph-enabled-metrics="liveRunGraphEnabledMetrics"
+                :live-run-graph-item-names="liveRunGraphItemNames"
               />
               <footer class="past-run-report-footer">
                 <span>Report scope: this saved run</span>

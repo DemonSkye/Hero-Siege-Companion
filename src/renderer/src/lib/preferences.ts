@@ -1,5 +1,6 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import { defaultCompactRunTiles, normalizeCompactRunTiles, type CompactRunTileConfig } from "./compact-tiles";
+import { normalizeHiddenDashboardFixtures } from "./dashboard-fixtures";
 import {
   DEFAULT_ITEM_FILTER_GROUPS,
   itemFilterIdFromTimelineValue,
@@ -10,6 +11,12 @@ import {
 } from "./item-filters";
 import { DEFAULT_SHOPPING_LIST } from "./item-options";
 import { normalizeItemResearchEntries, type ItemResearchEntry } from "./item-research";
+import {
+  DEFAULT_LIVE_RUN_STANDARD_METRICS,
+  normalizeLiveRunGraphEnabledMetrics,
+  normalizeLiveRunGraphItemNames,
+  type LiveRunStandardMetric,
+} from "./live-run-graph-config";
 import { defaultPostRunReportConfig, normalizePostRunReportConfig, type PostRunReportConfig } from "./report-config";
 import {
   DEFAULT_THEME_ACCENTS,
@@ -39,6 +46,7 @@ export interface UiPreferences {
   hideMaterials: boolean;
   hideUnfilteredTimelineItems: boolean;
   timelineType: string;
+  marketSearchEnabled: boolean;
   shoppingListItems: string[];
   gameExecutablePath: string;
   launchThroughSteam: boolean;
@@ -59,6 +67,8 @@ export interface UiPreferences {
   postRunReport: PostRunReportConfig;
   compactRunTiles: CompactRunTileConfig[];
   hiddenDashboardPanels: string[];
+  liveRunGraphEnabledMetrics: LiveRunStandardMetric[];
+  liveRunGraphItemNames: string[];
   developerItemResearchEnabled: boolean;
   unknownItemAudioPrompt: boolean;
   itemResearchEntries: ItemResearchEntry[];
@@ -115,6 +125,7 @@ export const defaultPreferences: UiPreferences = {
   hideMaterials: true,
   hideUnfilteredTimelineItems: false,
   timelineType: "all",
+  marketSearchEnabled: false,
   shoppingListItems: DEFAULT_SHOPPING_LIST,
   gameExecutablePath: "",
   launchThroughSteam: true,
@@ -135,6 +146,8 @@ export const defaultPreferences: UiPreferences = {
   postRunReport: defaultPostRunReportConfig,
   compactRunTiles: defaultCompactRunTiles,
   hiddenDashboardPanels: [],
+  liveRunGraphEnabledMetrics: [...DEFAULT_LIVE_RUN_STANDARD_METRICS],
+  liveRunGraphItemNames: [],
   developerItemResearchEnabled: false,
   unknownItemAudioPrompt: false,
   itemResearchEntries: [],
@@ -174,6 +187,7 @@ export function serializeDurablePreferences(value: Partial<UiPreferences>): stri
     hideMaterials: preferences.hideMaterials,
     hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
     timelineType: preferences.timelineType,
+    marketSearchEnabled: preferences.marketSearchEnabled,
     shoppingListItems: preferences.shoppingListItems,
     gameExecutablePath: preferences.gameExecutablePath,
     launchThroughSteam: preferences.launchThroughSteam,
@@ -194,6 +208,8 @@ export function serializeDurablePreferences(value: Partial<UiPreferences>): stri
     postRunReport: preferences.postRunReport,
     compactRunTiles: preferences.compactRunTiles,
     hiddenDashboardPanels: preferences.hiddenDashboardPanels,
+    liveRunGraphEnabledMetrics: preferences.liveRunGraphEnabledMetrics,
+    liveRunGraphItemNames: preferences.liveRunGraphItemNames,
   };
   if (preferences.itemResearchEntries.length) {
     durablePreferences.itemResearchEntries = preferences.itemResearchEntries;
@@ -232,6 +248,8 @@ export function createConfigurationExportPayload(
     postRunReport: preferences.postRunReport,
     compactRunTiles: preferences.compactRunTiles,
     hiddenDashboardPanels: preferences.hiddenDashboardPanels,
+    liveRunGraphEnabledMetrics: preferences.liveRunGraphEnabledMetrics,
+    liveRunGraphItemNames: preferences.liveRunGraphItemNames,
   };
 
   return {
@@ -340,6 +358,8 @@ const RESTORABLE_PREFERENCE_KEYS: Array<keyof UiPreferences> = [
   "postRunReport",
   "compactRunTiles",
   "hiddenDashboardPanels",
+  "liveRunGraphEnabledMetrics",
+  "liveRunGraphItemNames",
 ];
 
 const THEME_IDS = Object.keys(DEFAULT_THEME_ACCENTS) as ThemeId[];
@@ -391,6 +411,7 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     hideMaterials: Boolean(value.hideMaterials),
     hideUnfilteredTimelineItems: Boolean(value.hideUnfilteredTimelineItems),
     timelineType: validTimelineType,
+    marketSearchEnabled: value.marketSearchEnabled === true,
     shoppingListItems: normalizeShoppingList(value.shoppingListItems),
     gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
@@ -415,6 +436,8 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     postRunReport: normalizePostRunReportConfig(value.postRunReport),
     compactRunTiles: normalizeCompactRunTiles(value.compactRunTiles),
     hiddenDashboardPanels: normalizeHiddenDashboardPanels(value.hiddenDashboardPanels),
+    liveRunGraphEnabledMetrics: normalizeLiveRunGraphEnabledMetrics(value.liveRunGraphEnabledMetrics),
+    liveRunGraphItemNames: normalizeLiveRunGraphItemNames(value.liveRunGraphItemNames),
     developerItemResearchEnabled: false,
     unknownItemAudioPrompt: false,
     itemResearchEntries: normalizeItemResearchEntries(value.itemResearchEntries),
@@ -422,8 +445,7 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
 }
 
 function normalizeHiddenDashboardPanels(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return Array.from(new Set(value.map(String))).filter((panel) => panel === "item-timeline" || panel === "live-log");
+  return normalizeHiddenDashboardFixtures(value);
 }
 
 export function normalizeShoppingList(value: unknown): string[] {

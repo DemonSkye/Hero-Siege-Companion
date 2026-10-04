@@ -14,6 +14,7 @@ export interface ParsedPayload {
 export interface CompletedPayload {
   packet: ParsedPayload;
   text: string;
+  observationOnly?: true;
 }
 
 const IPV4_PROTOCOL_TCP = 6;
@@ -333,6 +334,10 @@ function drainLengthPrefixedFrames(
     const text = decodeLengthPrefixedBody(body);
     if (hasApplicationFrameStart(text)) {
       completed.push(completedPayload(stream.framePacket, body, text));
+    } else if (candidate.headerLength === API_HEADER_BYTES && hasGameApiRequestEnvelope(body)) {
+      // A framed API request need not be a known gameplay event. Let observers
+      // inspect it without widening the loot/stats parser's accepted traffic.
+      completed.push({ ...completedPayload(stream.framePacket, body, text), observationOnly: true });
     }
     consumeFrameBytes(stream, candidate.frameLength);
   }
@@ -489,6 +494,18 @@ function hasLegacyFrameStart(buffer: Buffer): boolean {
 
 function decodeLengthPrefixedBody(payload: Buffer): string {
   return payload.toString("utf8").replace(/\0+/g, " ").trim();
+}
+
+function hasGameApiRequestEnvelope(body: Buffer): boolean {
+  if (body[0] !== 3 || body[1] !== 0 || body[2] !== 1 || body[3] !== 0) return false;
+  const routeEnd = body.indexOf(0, 4);
+  if (routeEnd < 5 || routeEnd > 132) return false;
+  if (!/^[a-z][a-z0-9_]*(?:\/[a-z0-9_]+)*$/i.test(body.toString("utf8", 4, routeEnd))) return false;
+  // The one-byte route marker is opaque; different calls use different values.
+  if (body[routeEnd + 2] !== 0) return false;
+  const queryStart = routeEnd + 3;
+  if (queryStart >= body.length - 1 || body.indexOf(0, queryStart) !== body.length - 1) return false;
+  return /^[a-z][a-z0-9_]*=/i.test(body.toString("utf8", queryStart, body.length - 1));
 }
 
 function drainLegacyFrames(

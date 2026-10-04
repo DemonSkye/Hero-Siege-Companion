@@ -35,14 +35,16 @@ function isLogExpanded(log: LogEntry): boolean {
       </label>
     </template>
     <div v-if="recentLogs.length" class="logs">
-      <button v-for="log in recentLogs" :key="log.id" type="button" :class="[logClass(log), { expanded: isLogExpanded(log) }]" @click="$emit('toggleLog', log)">
-        <span class="log-time">{{ formatTime(log.createdAt) }}</span>
-        <span :class="['log-event', logEventTone(log)]">{{ logEventLabel(log) }}</span>
-        <img v-if="logItemIconUrl(log)" class="log-icon" :src="logItemIconUrl(log)" alt="" />
-        <span v-else class="log-icon log-icon-empty" aria-hidden="true"></span>
-        <p class="log-message">{{ logSummary(log) }}</p>
-        <pre v-if="isLogExpanded(log)" class="log-full">{{ log.message }}</pre>
-      </button>
+      <div v-for="log in recentLogs" :key="log.id" :class="[logClass(log), { expanded: isLogExpanded(log) }]">
+        <button type="button" class="log-content" @click="$emit('toggleLog', log)">
+          <span class="log-time">{{ formatTime(log.createdAt) }}</span>
+          <span :class="['log-event', logEventTone(log)]">{{ logEventLabel(log) }}</span>
+          <img v-if="logItemIconUrl(log)" class="log-icon" :src="logItemIconUrl(log)" alt="" />
+          <span v-else class="log-icon log-icon-empty" aria-hidden="true"></span>
+          <p class="log-message">{{ logSummary(log) }}</p>
+          <pre v-if="isLogExpanded(log)" class="log-full">{{ log.message }}</pre>
+        </button>
+      </div>
     </div>
     <p v-else class="empty-copy dashboard-empty-state">Capture events and diagnostics will appear here as they arrive.</p>
   </LiveDashboardCard>

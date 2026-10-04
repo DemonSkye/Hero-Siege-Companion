@@ -472,13 +472,15 @@
 }
 
 .zone-panel,
-.log-panel {
+.log-panel,
+.player-chat-panel {
   grid-column: span 1;
 }
 
 .zone-panel,
 .timeline-panel,
-.log-panel {
+.log-panel,
+.player-chat-panel {
   min-height: 0;
 }
 

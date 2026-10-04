@@ -1,11 +1,19 @@
 import type { CompanionStats, PastRunSummary } from "./stats";
 import type { SatanicZoneState } from "./satanic-zone";
+import type { MarketReadiness } from "./market-readiness";
 
 export interface LogEntry {
   id: string;
   level: "info" | "success" | "warning" | "error" | "debug";
   message: string;
   createdAt: number;
+  playerChat?: PlayerChatLogContext;
+}
+
+export interface PlayerChatLogContext {
+  playerName: string;
+  message: string;
+  actionable: boolean;
 }
 
 export interface CaptureConnection {
@@ -79,6 +87,7 @@ export interface CompanionState {
   connections: CaptureConnection[];
   health: CaptureHealth;
   satanicZone: SatanicZoneState;
+  marketReadiness: MarketReadiness;
   stats: CompanionStats;
   pastRuns: PastRunSummary[];
   runArchivePreferences: RunArchivePreferences;

@@ -14,11 +14,14 @@ import { CaptureDiagnosticsController } from "./capture-diagnostics-controller";
 import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
 import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
+import { CapturedSessionContextStore } from "./captured-session-context";
+import { DirectMarketSearchProvider } from "./direct-market-search-provider";
 import {
-  createManagedSatanicZoneRefreshProvider,
-  type ManagedSatanicZoneRefreshProvider,
-} from "./managed-satanic-zone-provider";
-import { satanicZoneRelayResourcesPath } from "./satanic-zone-relay-runtime-io";
+  createDirectSatanicZoneTransport,
+  DirectSatanicZoneRefreshProvider,
+} from "./direct-satanic-zone-provider";
+import { MarketRegionDirectoryCache } from "./market-region-directory";
+import { MarketReadinessController } from "./market-readiness-controller";
 import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
 import {
   MAX_PAST_RUNS,
@@ -57,6 +60,10 @@ import { createCompanionStateUpdate } from "../shared/app-state";
 import { EVENT_NAMES } from "../shared/constants";
 import { IPC_CHANNELS, type ConfigurationExportOptions } from "../shared/ipc";
 import { createInitialCompanionState } from "../shared/initial-state";
+import {
+  normalizeMarketSearchRequest,
+  type MarketSearchResponse,
+} from "../shared/market-search";
 import type { SatanicZoneInfo } from "../shared/parser";
 import type { SatanicZoneState } from "../shared/satanic-zone";
 import { hasRunActivity, normalizePastRunTags, StatsEngine, type PastRunSummary } from "../shared/stats";
@@ -87,7 +94,10 @@ let pastRunsPendingPublish = false;
 let lastPendingCaptureEventsLogAt = 0;
 let appDiagnostics: AppDiagnostics | null = null;
 let satanicZoneController: SatanicZoneController | null = null;
-let satanicZoneRefreshProvider: ManagedSatanicZoneRefreshProvider | null = null;
+let satanicZoneRefreshProvider: DirectSatanicZoneRefreshProvider | null = null;
+let directMarketSearchProvider: DirectMarketSearchProvider | null = null;
+let capturedSessionContext: CapturedSessionContextStore | null = null;
+let marketReadinessController: MarketReadinessController | null = null;
 let lastPersistedSatanicZoneCacheKey: string | null = null;
 let crashReporterStarted = false;
 let crashReporterStartError: string | null = null;
@@ -216,6 +226,7 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   const previousCaptureRunning = state.captureRunning;
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
+  if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) state.connections = update.connections;
   if (update.health) state.health = { ...state.health, ...update.health };
@@ -248,19 +259,15 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
 
   if (previousCaptureRunning && !state.captureRunning) {
     applyPendingCaptureEvents();
-    const zonePhase = satanicZoneController?.getState().phase;
-    if (zonePhase === "refreshing" || zonePhase === "updating") {
-      satanicZoneController?.markUnavailable("capture_unavailable");
-    }
     pauseRun("captureStopped");
   } else if (!previousCaptureRunning && state.captureRunning && state.runStatus === "paused" && state.runPausedReason === "captureStopped") {
     resumeRun();
   }
 
   if (update.logs?.length) {
-    for (const log of update.logs) addLog(log.level, log.message);
+    for (const log of update.logs) addLog(log.level, log.message, log.playerChat);
   }
-  if (update.log) addLog(update.log.level, update.log.message);
+  if (update.log) addLog(update.log.level, update.log.message, update.log.playerChat);
   publishState();
 }
 
@@ -292,7 +299,7 @@ function maybeLogPendingCaptureBacklog(addedEvents: number): void {
   });
 }
 
-function addLog(level: LogEntry["level"], message: string): void {
+function addLog(level: LogEntry["level"], message: string, playerChat?: LogEntry["playerChat"]): void {
   const output = level === "error" || level === "warning" ? console.error : console.log;
   output(`[${level}] ${message}`);
   logs.unshift({
@@ -300,6 +307,7 @@ function addLog(level: LogEntry["level"], message: string): void {
     level,
     message,
     createdAt: Date.now(),
+    playerChat,
   });
   logs.splice(500);
 }
@@ -437,11 +445,27 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
     accepted: result?.accepted ?? false,
     errorCode: result?.accepted ? null : result?.errorCode ?? "refresh_not_configured",
   });
-  if (result?.accepted) addLog("info", "Manual Satanic Zone refresh requested; waiting for the validated response.");
+  if (result?.accepted) addLog("info", "Manual Satanic Zone refresh sent; waiting for the validated response.");
   else addLog("warning", `Manual Satanic Zone refresh was not sent (${result?.errorCode ?? "refresh_not_configured"}).`);
   publishStateNow();
   return state;
 });
+ipcMain.handle(
+  IPC_CHANNELS.marketSearch,
+  async (_event, request: unknown): Promise<MarketSearchResponse> => {
+    const normalized = normalizeMarketSearchRequest(request);
+    if (!normalized.ok) return { ok: false, errorCode: "request_rejected" };
+    const provider = directMarketSearchProvider;
+    if (isElectronE2eTestMode() || !provider) {
+      return { ok: false, errorCode: "helper_unavailable" };
+    }
+    try {
+      return await provider.search(normalized.request);
+    } catch {
+      return { ok: false, errorCode: "helper_unavailable" };
+    }
+  },
+);
 ipcMain.handle(IPC_CHANNELS.runPause, () => {
   applyPendingCaptureEvents();
   pauseRun("manual");
@@ -738,22 +762,30 @@ app.whenReady().then(async () => {
   };
   state.stats.satanicZone = state.satanicZone.current;
   lastPersistedSatanicZoneCacheKey = satanicZoneCachePersistenceKey(state.satanicZone, Date.now());
-  satanicZoneRefreshProvider = isElectronE2eTestMode()
-    ? null
-    : createManagedSatanicZoneRefreshProvider({
-        resourcesPath: satanicZoneRelayResourcesPath({
-          isPackaged: app.isPackaged,
-          resourcesPath: process.resourcesPath,
-          appPath: app.getAppPath(),
-        }),
-        stateRoot: path.join(userDataPath, "satanic-zone-relay"),
-      });
+  capturedSessionContext = new CapturedSessionContextStore(writeAppLog);
+  marketReadinessController = new MarketReadinessController(capturedSessionContext, (readiness) => {
+    state.marketReadiness = readiness;
+    publishState();
+  });
+  if (!isElectronE2eTestMode()) {
+    const regionDirectoryCache = new MarketRegionDirectoryCache();
+    directMarketSearchProvider = new DirectMarketSearchProvider(
+      capturedSessionContext,
+      writeAppLog,
+      async (signal) => marketReadinessController?.prepareRegion(async () => {
+        capturedSessionContext?.applyRegionDirectory(await regionDirectoryCache.get(signal));
+      }),
+    );
+    satanicZoneRefreshProvider = new DirectSatanicZoneRefreshProvider(
+      capturedSessionContext,
+      (context, signal) => createDirectSatanicZoneTransport(context, signal, writeAppLog),
+    );
+  }
   satanicZoneController = new SatanicZoneController({
     provider: satanicZoneRefreshProvider,
     initialState: state.satanicZone,
     onStateChange: applySatanicZoneState,
   });
-  await satanicZoneController.refreshAvailability();
   windowBounds = loadWindowBounds(windowBoundsPath, writeAppLog);
   writeAppLog("app-ready", {
     userDataPath,
@@ -784,7 +816,8 @@ app.whenReady().then(async () => {
     debugLogPath,
     wideDebugLogPath,
     state.capturePreferences,
-    () => satanicZoneRefreshProvider?.captureProcessIds() ?? [],
+    (payload) => capturedSessionContext?.observe(payload),
+    (processIds) => capturedSessionContext?.observeGameProcessIds(processIds),
   );
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   updateCrashReportCaptureContext();
@@ -795,6 +828,11 @@ app.whenReady().then(async () => {
     },
     emitCapturePayloads: (payloads) => {
       emitElectronE2eCapturePayloads(captureService, payloads);
+      publishStateNow();
+    },
+    emitSessionContext: (processIds, payloads) => {
+      capturedSessionContext?.observeGameProcessIds(processIds);
+      for (const payload of payloads) capturedSessionContext?.observe(payload);
       publishStateNow();
     },
     getState: () => state,
@@ -858,7 +896,15 @@ function shutdownCapture(reason: string): void {
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   gameCaptureCoordinator.stopMonitor();
   satanicZoneController?.dispose();
+  satanicZoneController = null;
+  directMarketSearchProvider?.dispose();
+  directMarketSearchProvider = null;
   satanicZoneRefreshProvider?.dispose();
+  satanicZoneRefreshProvider = null;
+  marketReadinessController?.dispose();
+  marketReadinessController = null;
+  capturedSessionContext?.dispose();
+  capturedSessionContext = null;
   captureDiagnosticsController.dispose();
   archiveCurrentRun(reason);
   try {

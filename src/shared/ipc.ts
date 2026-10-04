@@ -6,6 +6,7 @@ import type {
   ReleaseUpdateInfo,
 } from "./app-state";
 import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "./support-diagnostics";
+import type { MarketSearchRequest, MarketSearchResponse } from "./market-search";
 
 export const enum IpcChannel {
   stateGet = "state:get",
@@ -16,6 +17,7 @@ export const enum IpcChannel {
   gameChooseExecutable = "game:choose-executable",
   statsReset = "stats:reset",
   satanicZoneRefresh = "satanic-zone:refresh",
+  marketSearch = "market:search",
   runPause = "run:pause",
   runResume = "run:resume",
   pastRunsSetTags = "past-runs:set-tags",
@@ -56,6 +58,7 @@ export const IPC_CHANNELS = {
   gameChooseExecutable: IpcChannel.gameChooseExecutable,
   statsReset: IpcChannel.statsReset,
   satanicZoneRefresh: IpcChannel.satanicZoneRefresh,
+  marketSearch: IpcChannel.marketSearch,
   runPause: IpcChannel.runPause,
   runResume: IpcChannel.runResume,
   pastRunsSetTags: IpcChannel.pastRunsSetTags,
@@ -124,6 +127,7 @@ export interface HeroSiegeCompanionApi {
   chooseGameExecutable: () => Promise<string | null>;
   resetStats: () => Promise<CompanionState>;
   refreshSatanicZone: () => Promise<CompanionState>;
+  searchMarket: (request: MarketSearchRequest) => Promise<MarketSearchResponse>;
   pauseRun: () => Promise<CompanionState>;
   resumeRun: () => Promise<CompanionState>;
   setPastRunTags: (runId: string, tags: string[]) => Promise<CompanionState>;

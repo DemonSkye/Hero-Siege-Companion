@@ -5,7 +5,11 @@ import { MAGIC_FIND_FLAG_HELP, MAGIC_FIND_FLAG_METRIC_LABEL, formatTime } from "
 import { itemIconUrl } from "../lib/item-assets";
 import { itemFilterTimelineOptions, itemTimelineKey, type ItemFilterGroup, type ItemFilterMatchHistoryEntry } from "../lib/item-filters";
 import type { LiveItemTypeOption } from "../lib/live-view-types";
+import { canSearchMarketForTimelineItem } from "../lib/market-search-runtime";
 import LiveDashboardCard from "./LiveDashboardCard.vue";
+import type { MarketReadiness } from "../../../shared/market-readiness";
+import { marketReadinessDisplay } from "../lib/market-readiness-display";
+import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 
 const props = defineProps<{
   visibleItemTimeline: ItemTimelineEntry[];
@@ -13,11 +17,14 @@ const props = defineProps<{
   itemFilterMatchHistory: ItemFilterMatchHistoryEntry[];
   itemTypeOptions: LiveItemTypeOption[];
   itemFilterGroups: ItemFilterGroup[];
+  marketSearchAvailable?: boolean;
+  marketReadiness: MarketReadiness;
 }>();
 
 defineEmits<{
   hide: [];
   openItemFilterGroup: [groupId: string];
+  searchMarket: [item: ItemTimelineEntry];
 }>();
 
 const timelineType = defineModel<string>("timelineType", { required: true });
@@ -93,6 +100,7 @@ function itemFilterGroupExists(groupId: string): boolean {
         </div>
       </details>
     </template>
+    <MarketReadinessStatus v-if="marketSearchAvailable" :readiness="marketReadiness" />
     <div v-if="visibleItemTimeline.length" class="timeline">
       <div v-for="item in visibleItemTimeline" :key="`${item.createdAt}-${item.id}-${item.fingerprint}`" class="timeline-row">
         <img v-if="itemIconUrl(item.label)" class="timeline-icon" :src="itemIconUrl(item.label)" :alt="item.label" />
@@ -110,6 +118,16 @@ function itemFilterGroupExists(groupId: string): boolean {
             @click="$emit('openItemFilterGroup', itemFilterMatch(item)?.groupId ?? '')"
           >
             {{ itemFilterMatch(item)?.groupName }}
+          </button>
+          <button
+            v-if="marketSearchAvailable && canSearchMarketForTimelineItem(item)"
+            class="timeline-market-button"
+            type="button"
+            :aria-label="`Check ${item.label} on the market`"
+            :title="marketReadinessDisplay(marketReadiness).label"
+            @click="$emit('searchMarket', item)"
+          >
+            Market
           </button>
           <small>
             <span :title="item.mfDrop ? MAGIC_FIND_FLAG_HELP : undefined">{{ item.mfDrop ? MAGIC_FIND_FLAG_METRIC_LABEL : "Normal" }}</span>

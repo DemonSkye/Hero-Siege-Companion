@@ -3,20 +3,23 @@ import { computed } from "vue";
 import type { CompanionState, LogEntry } from "../../../shared/app-state";
 import type { ItemTimelineEntry } from "../../../shared/stats";
 import type { CompactRunTileDisplay } from "../lib/compact-tiles";
+import type { HideableLiveDashboardFixture } from "../lib/dashboard-fixtures";
 import { eventChecked } from "../lib/dom-events";
 import type { ItemFilterGroup, ItemFilterMatchHistoryEntry } from "../lib/item-filters";
 import type { LiveRunChartLane, LiveRunCustomItem, LiveRunStandardMetric } from "../lib/live-run-history";
 import type { LiveItemTypeOption, LiveTrackedItem } from "../lib/live-view-types";
+import type { PlayerChatDisplayEntry } from "../lib/player-chat-display";
 import ItemTimelinePanel from "./ItemTimelinePanel.vue";
 import LiveLogPanel from "./LiveLogPanel.vue";
 import LiveMetricGrid from "./LiveMetricGrid.vue";
 import LiveRunGraphPanel from "./LiveRunGraphPanel.vue";
 import LiveStatusPanel from "./LiveStatusPanel.vue";
+import PlayerChatPanel from "./PlayerChatPanel.vue";
 import SatanicZonePanel from "./SatanicZonePanel.vue";
 import ShoppingListPanel from "./ShoppingListPanel.vue";
 import TrackedDropsPanel from "./TrackedDropsPanel.vue";
 
-defineProps<{
+withDefaults(defineProps<{
   state: CompanionState;
   now: number;
   captureStatusLabel: string;
@@ -39,12 +42,16 @@ defineProps<{
   logLimitOptions: number[];
   itemTypeOptions: LiveItemTypeOption[];
   itemFilterGroups: ItemFilterGroup[];
+  marketSearchAvailable?: boolean;
   shoppingListItems: string[];
   shoppingSuggestions: string[];
   activeShoppingItem: string;
   recentLogs: LogEntry[];
+  recentPlayerChat?: readonly PlayerChatDisplayEntry[];
   expandedLogIds: Set<string>;
-}>();
+}>(), {
+  recentPlayerChat: () => [],
+});
 
 const emit = defineEmits<{
   copyShoppingItem: [item: string];
@@ -52,6 +59,7 @@ const emit = defineEmits<{
   removeShoppingItem: [item: string];
   openNpcapGuide: [];
   openItemFilterGroup: [groupId: string];
+  searchMarket: [item: ItemTimelineEntry];
   addLiveRunGraphItem: [name: string];
   removeLiveRunGraphItem: [seriesId: string];
   setLiveRunGraphStandardMetric: [metric: LiveRunStandardMetric, enabled: boolean];
@@ -70,10 +78,9 @@ const shoppingDraftItem = defineModel<string>("shoppingDraftItem", { required: t
 const logLimit = defineModel<number>("logLimit", { required: true });
 const hiddenFixtures = defineModel<HideableLiveDashboardFixture[]>("hiddenFixtures", { required: true });
 
-type HideableLiveDashboardFixture = "item-timeline" | "live-log";
-
 const itemTimelineVisible = computed(() => !hiddenFixtures.value.includes("item-timeline"));
 const liveLogVisible = computed(() => !hiddenFixtures.value.includes("live-log"));
+const playerChatVisible = computed(() => !hiddenFixtures.value.includes("player-chat"));
 const hiddenFixtureCount = computed(() => hiddenFixtures.value.length);
 
 function setFixtureVisible(fixture: HideableLiveDashboardFixture, visible: boolean): void {
@@ -124,6 +131,10 @@ function setLiveRunGraphStandardMetric(metric: LiveRunStandardMetric, enabled: b
               <input :checked="liveLogVisible" type="checkbox" @change="setFixtureVisible('live-log', eventChecked($event))" />
               <span>Live Log</span>
             </label>
+            <label class="filter-box">
+              <input :checked="playerChatVisible" type="checkbox" @change="setFixtureVisible('player-chat', eventChecked($event))" />
+              <span>Player Chat</span>
+            </label>
             <button v-if="hiddenFixtureCount" class="dashboard-restore-button" type="button" @click="restoreAllFixtures">
               Restore all fixtures
             </button>
@@ -170,9 +181,12 @@ function setLiveRunGraphStandardMetric(metric: LiveRunStandardMetric, enabled: b
           :item-filter-match-history="itemFilterMatchHistory"
           :item-type-options="itemTypeOptions"
           :item-filter-groups="itemFilterGroups"
+          :market-search-available="marketSearchAvailable"
+          :market-readiness="state.marketReadiness"
           @update:hide-unfiltered-items="updateHideUnfilteredItems"
           @hide="setFixtureVisible('item-timeline', false)"
           @open-item-filter-group="$emit('openItemFilterGroup', $event)"
+          @search-market="$emit('searchMarket', $event)"
         />
 
         <ShoppingListPanel
@@ -202,6 +216,12 @@ function setLiveRunGraphStandardMetric(metric: LiveRunStandardMetric, enabled: b
           :log-limit-options="logLimitOptions"
           @hide="setFixtureVisible('live-log', false)"
           @toggle-log="$emit('toggleLog', $event)"
+        />
+
+        <PlayerChatPanel
+          v-if="playerChatVisible"
+          :entries="recentPlayerChat"
+          @hide="setFixtureVisible('player-chat', false)"
         />
       </div>
     </section>

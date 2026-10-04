@@ -21,6 +21,7 @@ import {
   resourceRecordTotal,
   sortedDropBreakdown,
 } from "./past-runs";
+import { projectDiagnosticLogs, projectPlayerChatEntries } from "./player-chat-display";
 
 interface UseSessionDisplayOptions {
   state: Ref<CompanionState>;
@@ -115,7 +116,8 @@ export function useSessionDisplay({
   const visibleItemTimeline = computed(() =>
     [...filteredItemTimeline.value].sort((left, right) => right.createdAt - left.createdAt),
   );
-  const recentLogs = computed(() => state.value.logs.slice(0, logLimit.value));
+  const recentLogs = computed(() => projectDiagnosticLogs(state.value.logs, logLimit.value));
+  const recentPlayerChat = computed(() => projectPlayerChatEntries(state.value.logs));
   const pastRuns = computed(() => state.value.pastRuns ?? []);
   const runTileDisplayContext = computed(() => ({
     stats: state.value.stats,
@@ -157,6 +159,7 @@ export function useSessionDisplay({
     itemTimelineSourceCount,
     visibleItemTimeline,
     recentLogs,
+    recentPlayerChat,
     pastRuns,
   };
 

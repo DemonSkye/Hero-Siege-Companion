@@ -2,11 +2,12 @@ const { test, expect } = require("@playwright/test");
 const {
   EXPECTED_PRELOAD_API,
   emitCaptureEvents,
+  emitCapturePayloads,
   getPreloadBridgeReport,
   getRendererState,
   withCompanionApp,
 } = require("./support/companion-app.cjs");
-const { e2eCaptureEvents } = require("./support/fixtures.cjs");
+const { e2eCaptureEvents, e2eTrafficPayloads } = require("./support/fixtures.cjs");
 
 test("exposes the complete preload bridge before renderer actions run", async () => {
   await withCompanionApp(async ({ page }) => {
@@ -20,6 +21,108 @@ test("exposes the complete preload bridge before renderer actions run", async ()
     const state = await getRendererState(page);
     expect(state.logs.some((log) => log.message.includes("Renderer preload failed"))).toBe(false);
     expect(state.logs.some((log) => log.message.includes("../shared/ipc"))).toBe(false);
+  });
+});
+
+
+test("publishes sanitized Market readiness through the preload state bridge", async () => {
+  await withCompanionApp({ gameRunning: false }, async ({ electronApp, page }) => {
+    const fields = ["account_id", "unique_account_id", "crossregion_identifier", "season", "hardcore", "beta"];
+    const payload = (text) => ({ text, direction: "outbound", remoteAddress: "203.0.113.42", remotePort: 26921 });
+    const observe = (processIds, payloads) => electronApp.evaluate((_process, input) => {
+      globalThis.heroSiegeCompanionE2e.emitSessionContext(input.processIds, input.payloads);
+    }, { processIds, payloads });
+    await page.evaluate(() => {
+      window.__marketReadinessUpdates = [];
+      window.__stopMarketReadinessProbe = window.heroSiegeCompanion.onStateUpdated((update) => {
+        window.__marketReadinessUpdates.push(update.marketReadiness);
+      });
+    });
+
+    expect((await getRendererState(page)).marketReadiness).toMatchObject({
+      phase: "waiting", reason: "capture_inactive", canSearch: false, missingFields: fields,
+    });
+    await expect(page.locator(".market-readiness")).toHaveCount(0);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await settings.getByRole("button", { name: "Help & Support", exact: true }).click();
+    for (let press = 0; press < 4; press += 1) await page.keyboard.press("ArrowLeft");
+    await settings.getByRole("button", { name: "Close settings" }).click();
+
+    await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+    await expect.poll(async () => (await getRendererState(page)).marketReadiness.reason).toBe("game_unavailable");
+    await observe([123], [payload("api account_id=10-42&beta=0")]);
+    const timeline = page.locator("#item-timeline-card .market-readiness");
+    await expect(timeline.getByRole("status")).toHaveText("Market collecting context");
+    await timeline.locator("summary").click();
+    await expect(timeline).toContainText("2/6 fields received");
+    await expect(timeline).toContainText("Account identity: Waiting");
+    expect(await timeline.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+
+    await emitCapturePayloads(electronApp, e2eTrafficPayloads());
+    await page.getByRole("button", { name: "Check Aurelion Fury on the market" }).click();
+    const dialog = page.getByRole("dialog", { name: "Aurelion Fury" });
+    const status = dialog.locator(".market-readiness");
+    await expect(status.getByRole("status")).toHaveText("Market collecting context");
+    await expect(dialog.locator('button[type="submit"]')).toBeDisabled();
+    const complete = payload("api account_id=10-42&unique_account_id=e2e-identity&crossregion_identifier=e2e-session&season=11&hardcore=0&beta=0");
+    await observe([123], [complete]);
+    await expect(status.getByRole("status")).toHaveText("Market ready");
+    await expect(dialog.locator('button[type="submit"]')).toBeEnabled();
+    await status.locator("summary").click();
+    await expect(status).toContainText("6/6 fields received");
+    await expect(status).toContainText("Current session: Confirmed");
+    await expect(status).toContainText("Account region: Confirmed");
+    expect(await status.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    expect(await dialog.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      return bounds.top >= 0 && bounds.bottom <= window.innerHeight && bounds.left >= 0 && bounds.right <= window.innerWidth;
+    })).toBe(true);
+    if (process.env.HSC_MARKET_READINESS_SCREENSHOT) {
+      await page.screenshot({ path: process.env.HSC_MARKET_READINESS_SCREENSHOT });
+    }
+
+    await page.evaluate(() => window.heroSiegeCompanion.stopCapture());
+    await expect(status.getByRole("status")).toHaveText("Market waiting for capture");
+    await expect(dialog.locator('button[type="submit"]')).toBeDisabled();
+    // Model the native observer clearing the stopped capture generation, then
+    // restarting against the same synthetic PID. No real process is inspected.
+    await observe([], []);
+    await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+    await observe([123], []);
+    await expect(status.getByRole("status")).toHaveText("Market collecting context");
+    await expect(status).toContainText("0/6 fields received");
+    await observe([123], [complete]);
+    await expect(status.getByRole("status")).toHaveText("Market ready");
+    await expect.poll(() => page.evaluate(() => window.__marketReadinessUpdates.some((entry) => entry.phase === "ready"))).toBe(true);
+
+    const updates = await page.evaluate(() => window.__marketReadinessUpdates);
+    for (const readiness of updates) {
+      expect(Object.keys(readiness).sort()).toEqual([
+        "canSearch", "expiresAt", "missingFields", "phase", "reason", "regionQualified", "sessionCurrent",
+      ]);
+    }
+    expect(JSON.stringify(updates)).not.toMatch(/e2e-identity|e2e-session|203\.0\.113|10-42/);
+    expect(await page.evaluate(() => window.heroSiegeCompanion.checkForUpdate())).toBeNull();
+    await page.evaluate(() => window.__stopMarketReadinessProbe());
+  });
+});
+
+test("rejects malformed market requests before the unavailable E2E transport", async () => {
+  await withCompanionApp(async ({ page }) => {
+    const responses = await page.evaluate(async () => ({
+      invalid: await window.heroSiegeCompanion.searchMarket({
+        itemMask: "not-a-mask",
+        statFilters: [],
+      }),
+      unavailable: await window.heroSiegeCompanion.searchMarket({
+        itemMask: 1073746020,
+        statFilters: [],
+      }),
+    }));
+
+    expect(responses.invalid).toEqual({ ok: false, errorCode: "request_rejected" });
+    expect(responses.unavailable).toEqual({ ok: false, errorCode: "helper_unavailable" });
   });
 });
 
