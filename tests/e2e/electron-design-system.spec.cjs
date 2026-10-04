@@ -169,6 +169,7 @@ test("themes Timeline Market readiness, results and errors with native disclosur
       }));
     });
     await expect(search).toBeEnabled();
+    await assertFullyExposed(search, "expanded readiness before search");
     await search.click();
     await expect(market.locator(".market-search-price-grid")).toContainText("125,000 gold");
     await summary.click();
@@ -179,6 +180,7 @@ test("themes Timeline Market readiness, results and errors with native disclosur
       await marketButton.click();
       await search.click();
       await expect(market.locator(".market-search-price-grid")).toContainText("125,000 gold");
+      await assertFullyExposed(search, `${theme}: results before any scrolling`);
       const colors = await semanticMarketColors(page);
       expect(colors.note, theme).toBe(colors.muted);
       expect(colors.price, theme).toBe(colors.priceText);
@@ -278,6 +280,113 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
     await recordContrastReport(testInfo, "compact-zone-contrast.json", zoneContrasts);
   });
 });
+
+test("keeps Market submission exposed before interaction at default and minimum full sizes", async ({}, testInfo) => {
+  test.setTimeout(60_000);
+  await withCompanionApp(async ({ page, electronApp }) => {
+    await blockExternalRequests(page);
+    await emitCapturePayloads(electronApp, e2eTrafficPayloads());
+    await chooseTheme(page, "light");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+    await settings.getByRole("button", { name: "Help & Support", exact: true }).click();
+    for (let press = 0; press < 4; press += 1) await page.keyboard.press("ArrowLeft");
+    await expect.poll(async () => (await getStoredUiPreferences(page)).marketSearchEnabled).toBe(true);
+    await settings.getByRole("button", { name: "Close settings" }).click();
+    await electronApp.evaluate(({ BrowserWindow, ipcMain }) => {
+      const state = globalThis.heroSiegeCompanionE2e.getState();
+      state.marketReadiness = {
+        phase: "ready", reason: null, missingFields: [], sessionCurrent: true,
+        regionQualified: true, expiresAt: Date.now() + 120_000, canSearch: true,
+      };
+      BrowserWindow.getAllWindows()[0].webContents.send("state:updated", state);
+      globalThis.__marketFooterSearchCount = 0;
+      ipcMain.removeHandler("market:search");
+      ipcMain.handle("market:search", async () => {
+        globalThis.__marketFooterSearchCount += 1;
+        return { ok: true, result: { listings: [{ price: 125_000 }, { price: 175_000 }], totalMatches: 2 }, observedAt: Date.now(), cached: false };
+      });
+    });
+    await page.getByRole("button", { name: "Check Aurelion Fury on the market" }).click();
+    const market = page.getByRole("dialog", { name: "Aurelion Fury", exact: true });
+    const search = market.getByRole("button", { name: "Search market", exact: true });
+    const summary = market.locator(".market-readiness > summary");
+    for (const [width, height] of [[1180, 760], [980, 620]]) {
+      await electronApp.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(...size, false), [width, height]);
+      for (const expanded of [false, true]) {
+        if (await market.locator(".market-readiness").evaluate((details) => details.open) !== expanded) await summary.click();
+        await market.locator(".market-search-body").evaluate((form) => { form.scrollTop = 0; });
+        await assertFullyExposed(search, `${width}x${height} ${expanded ? "expanded" : "collapsed"} readiness`);
+      }
+    }
+    for (let index = 0; index < 4; index += 1) {
+      await market.getByRole("button", { name: "Add stat", exact: true }).click();
+      await market.getByLabel("Search market stats", { exact: true }).fill("mana");
+      await market.locator(".item-filter-suggestions button").first().click();
+      await market.locator('.market-search-stat-row input[type="number"]').last().fill("1");
+    }
+    await market.locator(".market-search-body").evaluate((form) => { form.scrollTop = 0; });
+    await assertFullyExposed(search, "minimum window with expanded readiness and long stats form");
+    const formOverflow = await market.locator(".market-search-body").evaluate((form) => form.scrollHeight > form.clientHeight);
+    expect(formOverflow).toBe(true);
+    await expect(search).toBeEnabled();
+    // Browser-owned form submission from a field must still reach the footer's
+    // associated submit button; no synthetic renderer event or direct IPC call.
+    await market.getByPlaceholder("Any", { exact: true }).press("Enter");
+    await expect(market.locator(".market-search-price-grid")).toContainText("125,000 gold");
+    expect(await electronApp.evaluate(() => globalThis.__marketFooterSearchCount)).toBe(1);
+    await market.locator(".market-search-body").evaluate((form) => { form.scrollTop = 0; });
+    await assertFullyExposed(search, "minimum window after results with long content at scroll start");
+    await screenshot(page, testInfo, "market-footer-minimum-expanded-light.png");
+    await market.locator(".market-search-body").evaluate((form) => { form.scrollTop = form.scrollHeight; });
+    await assertFullyExposed(search, "minimum window at end of long content");
+    await search.focus();
+    await page.keyboard.press("Tab");
+    await expect(market.getByRole("button", { name: "Close market search" })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(search).toBeFocused();
+  });
+});
+
+// Unlike locator.click()/screenshots, this does not scroll the target into view.
+// Check both viewport intersection and every overflow-clipping ancestor, plus
+// corner hit tests, so an outer-modal bounds check cannot hide inner clipping.
+async function assertFullyExposed(button, label) {
+  const exposure = await button.evaluate(async (element) => {
+    const rect = element.getBoundingClientRect();
+    const visible = { left: Math.max(0, rect.left), top: Math.max(0, rect.top), right: Math.min(innerWidth, rect.right), bottom: Math.min(innerHeight, rect.bottom) };
+    const clippingAncestors = [];
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      const previous = { ...visible };
+      const style = getComputedStyle(parent);
+      const bounds = parent.getBoundingClientRect();
+      const left = bounds.left + parent.clientLeft;
+      const top = bounds.top + parent.clientTop;
+      if (/auto|scroll|hidden|clip/u.test(style.overflowX)) {
+        visible.left = Math.max(visible.left, left);
+        visible.right = Math.min(visible.right, left + parent.clientWidth);
+      }
+      if (/auto|scroll|hidden|clip/u.test(style.overflowY)) {
+        visible.top = Math.max(visible.top, top);
+        visible.bottom = Math.min(visible.bottom, top + parent.clientHeight);
+      }
+      if (visible.left > previous.left + 0.5 || visible.right < previous.right - 0.5 || visible.top > previous.top + 0.5 || visible.bottom < previous.bottom - 0.5) clippingAncestors.push(parent.className || parent.tagName);
+    }
+    const intersectionRatio = await new Promise((resolve) => {
+      const observer = new IntersectionObserver(([entry]) => { observer.disconnect(); resolve(entry.intersectionRatio); });
+      observer.observe(element);
+    });
+    const inset = Math.min(6, rect.width / 4, rect.height / 4);
+    const hitPoints = [[rect.left + inset, rect.top + inset], [rect.right - inset, rect.top + inset], [rect.left + inset, rect.bottom - inset], [rect.right - inset, rect.bottom - inset]];
+    return {
+      intersectionRatio, clippingAncestors,
+      uncovered: hitPoints.every(([x, y]) => element.contains(document.elementFromPoint(x, y))),
+    };
+  });
+  expect(exposure.clippingAncestors, label).toEqual([]);
+  expect(exposure.intersectionRatio, label).toBeGreaterThanOrEqual(0.999);
+  expect(exposure.uncovered, label).toBe(true);
+}
 
 async function chooseTheme(page, theme, compactTheme) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();

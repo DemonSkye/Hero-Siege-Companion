@@ -97,6 +97,12 @@ sampled composited screenshot backgrounds, with a 4.5:1 normal-text threshold.
 The same rendered check covers both Market prices and compact Zone effect
 labels/titles in all six palettes. Dedicated text roles retain the original hues
 and adjust only the supplied combinations that failed the contrast check.
+Market's action footer is outside the scrolling form and uses a native `form`
+association for submission. A pre-interaction regression checks clipping by
+every overflow ancestor, viewport intersection and hit testing at default and
+minimum supported full sizes, including expanded readiness and long content.
+It also checks Enter submission and modal keyboard wrap without click-induced
+auto-scrolling hiding a clipped action.
 The internal error text/background roles alias public `appText`/`dangerBg`;
 imported themes retain the existing public API. This checks supplied defaults
 and does not guarantee contrast for arbitrary custom palettes. Existing layout,

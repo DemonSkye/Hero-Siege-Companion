@@ -46,17 +46,24 @@
 }
 
 .settings-panel.market-search-dialog {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(720px, calc(100vw - 32px));
   max-height: min(760px, calc(100vh - var(--modal-gutter-top) - var(--modal-gutter-bottom)));
 }
 
 .market-search-body {
   display: grid;
+  align-content: start;
   gap: 16px;
   min-height: 0;
   padding: 20px;
   overflow-y: auto;
+}
+
+.market-search-actions {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-strong);
 }
 
 .market-search-base,
