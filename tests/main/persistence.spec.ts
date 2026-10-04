@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   SATANIC_ZONE_CACHE_SCHEMA_VERSION,
   loadPastRuns,
@@ -46,6 +46,37 @@ function tempFile(name: string): string {
 }
 
 describe("main process persistence helpers", () => {
+  test("failed archive replacement preserves the previous file and reports failure", () => {
+    const archivePath = tempFile("past-runs.json");
+    const previous = `${JSON.stringify([pastRun()])}\n`;
+    fs.writeFileSync(archivePath, previous, "utf8");
+    const log = vi.fn();
+    vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("synthetic replacement failure"); });
+    expect(savePastRuns(archivePath, [pastRun({ id: "replacement" })], log)).toBe(false);
+    expect(fs.readFileSync(archivePath, "utf8")).toBe(previous);
+    expect(log).toHaveBeenCalledWith("past-runs-save-error", expect.any(Object));
+    expect(fs.readdirSync(tempDir)).toEqual(["past-runs.json"]);
+  });
+
+  test("archive storage reports an unavailable path instead of claiming success", () => {
+    const log = vi.fn();
+    expect(savePastRuns(path.join(tempDir, "missing", "past-runs.json"), [pastRun()], log)).toBe(false);
+    expect(log).toHaveBeenCalledWith("past-runs-save-error", expect.any(Object));
+  });
+
+  test("an interrupted temporary write cannot truncate the previous archive", () => {
+    const archivePath = tempFile("past-runs.json");
+    const previous = `${JSON.stringify([pastRun()])}\n`;
+    fs.writeFileSync(archivePath, previous, "utf8");
+    const writeFile = fs.writeFileSync;
+    vi.spyOn(fs, "writeFileSync").mockImplementationOnce((target) => {
+      writeFile(target, "partial synthetic output", "utf8");
+      throw new Error("synthetic interrupted write");
+    });
+    expect(savePastRuns(archivePath, [pastRun({ id: "new" })])).toBe(false);
+    expect(fs.readFileSync(archivePath, "utf8")).toBe(previous);
+    expect(fs.readdirSync(tempDir)).toEqual(["past-runs.json"]);
+  });
   test("normalizes stored main-process preferences", () => {
     expect(normalizeSatanicZoneRefreshPreferences({ enabled: true })).toEqual({ enabled: true });
     expect(normalizeSatanicZoneRefreshPreferences({ enabled: "true" })).toEqual({ enabled: false });

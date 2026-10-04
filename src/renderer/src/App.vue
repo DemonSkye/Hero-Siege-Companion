@@ -391,10 +391,14 @@ async function toggleCapture() {
 }
 
 async function resetStats() {
-  const previousRunCount = pastRuns.value.length;
-  state.value = await window.heroSiegeCompanion.resetStats();
-  resetItemFilterSession(state.value.stats.itemTimeline);
-  if ((state.value.pastRuns?.length ?? 0) > previousRunCount) activeTab.value = "past";
+  try {
+    const previousRunCount = pastRuns.value.length;
+    state.value = await window.heroSiegeCompanion.resetStats();
+    resetItemFilterSession(state.value.stats.itemTimeline);
+    if ((state.value.pastRuns?.length ?? 0) > previousRunCount) activeTab.value = "past";
+  } catch {
+    showToast("Run could not be saved. Current run retained; retry End Run when storage is available.");
+  }
 }
 
 async function refreshSatanicZone() {
