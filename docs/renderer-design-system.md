@@ -90,7 +90,13 @@ Run `npm test`, `npm run typecheck`, `npm run build`, and mock Electron tests.
 `tests/renderer/design-system.spec.ts` checks keyboard/focus/busy contracts.
 `tests/e2e/electron-design-system.spec.cjs` exercises the actual views, native
 readiness disclosure, nested confirmation focus, semantic Market states, public
-surface/input overrides in every theme and compact pause/resume. Existing layout,
+surface/input overrides in every theme and compact pause/resume. Settings-driven
+coverage also checks all six supplied palettes at minimum full window size and
+with eight compact tiles. Market error contrast uses computed text color and
+sampled composited screenshot backgrounds, with a 4.5:1 normal-text threshold.
+The internal error text/background roles alias public `appText`/`dangerBg`;
+imported themes retain the existing public API. This checks supplied defaults
+and does not guarantee contrast for arbitrary custom palettes. Existing layout,
 settings, filter, report, traffic and capture tests remain part of verification.
 
 Screenshots are opt-in with `HSC_UX_SCREENSHOTS=1` and written to the ignored

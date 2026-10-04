@@ -188,8 +188,8 @@
 
 .market-search-error {
   border-color: var(--status-danger-border);
-  background: var(--danger-bg);
-  color: var(--danger);
+  background: var(--status-error-bg);
+  color: var(--status-error-text);
 }
 
 .market-search-cache-note {
