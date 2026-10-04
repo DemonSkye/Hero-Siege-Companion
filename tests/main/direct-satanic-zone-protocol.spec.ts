@@ -22,6 +22,98 @@ function responseFrame(value: unknown): Buffer {
   return Buffer.concat([header, body]);
 }
 
+// Independent oracle transcribed from 00e8477, resources/satanic-zone-relay:
+// addon.py:_canonical_satanic_zone_body (3164), sz_frame.py:build_frame (53),
+// and sz_frame.py:_computed_token (534). Expected bytes never use the current
+// constructor, URLSearchParams, or its returned body/header as an input.
+// The historical domain is numeric IDs (20/32 digits maximum) and beta=0.
+// These invented sentinels prove byte parity only, not server acceptance,
+// broader identifier escaping, initialization, or game-flow injection safety.
+function historicalRelaySzFrame(uniqueAccountId: string, crossregionIdentifier: string, counter: number): Buffer {
+  if (!/^[0-9]{1,20}$/.test(uniqueAccountId) || !/^[0-9]{1,32}$/.test(crossregionIdentifier)) {
+    throw new Error("outside historical relay numeric domain");
+  }
+  const body = Buffer.from(
+    "\x03\x00\x01\x00satanic_zone_get\x00R\x00"
+      + `unique_account_id=${uniqueAccountId}&crossregion_identifier=${crossregionIdentifier}&beta=0\x00`,
+    "ascii",
+  );
+  const hashInput = Buffer.alloc(body.length + 1);
+  body.copy(hashInput);
+  hashInput.writeUInt8(counter, body.length);
+  const token = createHash("md5").update(hashInput).digest("hex").substring(0, 12);
+  const frame = Buffer.alloc(16 + body.length);
+  frame.write(token, 0, 12, "ascii");
+  frame.writeUInt32LE(body.length, 12);
+  body.copy(frame, 16);
+  return frame;
+}
+
+describe("historical relay SZ frame parity (offline, numeric IDs, beta=0)", () => {
+  const sentinels = [
+    { uniqueAccountId: "7", crossregionIdentifier: "9" },
+    { uniqueAccountId: "0007", crossregionIdentifier: "0000009" },
+    { uniqueAccountId: "12345678901234567890", crossregionIdentifier: "12345678901234567890123456789012" },
+  ];
+
+  // Fixed vectors produced by executing the historical Python body/token/frame
+  // functions with invented IDs 7/9. This is constructed data, not a capture;
+  // it independently anchors both the test oracle and the current constructor.
+  const goldenLengthAndBody = Buffer.from(
+    "4b00000003000100736174616e69635f7a6f6e655f676574005200756e697175655f6163636f756e745f69643d37"
+      + "2663726f7373726567696f6e5f6964656e7469666965723d3926626574613d3000",
+    "hex",
+  );
+  test.each([
+    { counter: 0, token: "b6dfdb19acaa" },
+    { counter: 1, token: "a69d434de2f1" },
+    { counter: 254, token: "c73229c30de9" },
+    { counter: 255, token: "2664ffc05a40" },
+  ])("matches fixed historical Python full-frame bytes at counter $counter", ({ counter, token }) => {
+    const expected = Buffer.concat([Buffer.from(token, "ascii"), goldenLengthAndBody]);
+    expect(historicalRelaySzFrame("7", "9", counter)).toEqual(expected);
+    expect(buildDirectSatanicZoneFrame({ ...context, ...sentinels[0], beta: "0" }, counter)).toEqual(expected);
+  });
+
+  test.each(sentinels)("matches the complete historical frame for $uniqueAccountId / $crossregionIdentifier", (ids) => {
+    for (const counter of [0, 1, 254, 255]) {
+      const actual = buildDirectSatanicZoneFrame({ ...context, ...ids, beta: "0" }, counter);
+      const expected = historicalRelaySzFrame(ids.uniqueAccountId, ids.crossregionIdentifier, counter);
+      expect(actual).toEqual(expected);
+      expect(actual.subarray(16)).toEqual(expected.subarray(16));
+      expect(actual.readUInt32LE(12)).toBe(expected.length - 16);
+      expect(actual.subarray(0, 12).toString("ascii")).toMatch(/^[0-9a-f]{12}$/);
+      expect(actual.subarray(0, 12)).toEqual(expected.subarray(0, 12));
+    }
+  });
+
+  // addon.py:2173 and counter_translation.py:140-150 establish modulo-256
+  // application-counter arithmetic. This tests frames at those explicit
+  // counters; the fresh-socket provider still uses only ping=0 and SZ=1.
+  test.each([
+    { clientCounter: 0, offset: 0, injectedCounter: 1, nextNativeCounter: 1, translatedCounter: 2 },
+    { clientCounter: 254, offset: 0, injectedCounter: 255, nextNativeCounter: 255, translatedCounter: 0 },
+    { clientCounter: 255, offset: 0, injectedCounter: 0, nextNativeCounter: 0, translatedCounter: 1 },
+    { clientCounter: 254, offset: 1, injectedCounter: 0, nextNativeCounter: 255, translatedCounter: 1 },
+    { clientCounter: 255, offset: 255, injectedCounter: 255, nextNativeCounter: 0, translatedCounter: 0 },
+  ])("matches inserted/next API frames across client=$clientCounter and offset=$offset", (counters) => {
+    const injectedCounter = (counters.clientCounter + counters.offset + 1) % 256;
+    const nextNativeCounter = (counters.clientCounter + 1) % 256;
+    const offsetAfterDispatch = (counters.offset + 1) % 256;
+    const translatedCounter = (nextNativeCounter + offsetAfterDispatch) % 256;
+    expect([injectedCounter, nextNativeCounter, translatedCounter]).toEqual([
+      counters.injectedCounter, counters.nextNativeCounter, counters.translatedCounter,
+    ]);
+    const numericContext = { ...context, ...sentinels[0], beta: "0" };
+    const inserted = buildDirectSatanicZoneFrame(numericContext, injectedCounter);
+    const following = buildDirectSatanicZoneFrame(numericContext, translatedCounter);
+    expect(inserted).toEqual(historicalRelaySzFrame("7", "9", counters.injectedCounter));
+    expect(following).toEqual(historicalRelaySzFrame("7", "9", counters.translatedCounter));
+    expect(following.subarray(12)).toEqual(inserted.subarray(12));
+    expect(following.subarray(0, 12)).not.toEqual(inserted.subarray(0, 12));
+  });
+});
+
 describe("direct Satanic Zone protocol", () => {
   test("builds the proven ping at counter zero and SZ request at counter one", () => {
     const ping = buildDirectApiPingFrame();
