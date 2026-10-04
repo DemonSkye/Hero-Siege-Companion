@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { CompactRunTileDisplay } from "../lib/compact-tiles";
+import InfoHint from "./InfoHint.vue";
 
 defineProps<{
   runTileDisplays: CompactRunTileDisplay[];
@@ -44,8 +45,8 @@ function toggleMetricCard(id: string) {
       <div class="metric-heading">
         <span class="metric-label">
           {{ tile.kind === "duration" ? "This Run" : tile.label }}
-          <span v-if="tile.kind === 'kills'" class="info-bubble" data-tip="Tracks positive changes from the character's lifetime kill statistic while this run is recording.">i</span>
-          <span v-else-if="tile.kind === 'gold'" class="info-bubble" data-tip="Gold starts from the first complete character and currency baseline, then tracks positive server-total changes during this run.">i</span>
+          <InfoHint v-if="tile.kind === 'kills'" text="Tracks positive changes from the character's lifetime kill statistic while this run is recording." />
+          <InfoHint v-else-if="tile.kind === 'gold'" text="Gold starts from the first complete character and currency baseline, then tracks positive server-total changes during this run." />
         </span>
         <button
           class="dashboard-card-toggle metric-toggle"

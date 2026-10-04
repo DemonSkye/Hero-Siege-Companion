@@ -6,6 +6,7 @@ const FOCUSABLE_SELECTOR = [
   "input:not([disabled])",
   "select:not([disabled])",
   "textarea:not([disabled])",
+  "summary",
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
@@ -63,9 +64,12 @@ export function useModalFocus(dialogRef: Ref<HTMLElement | null>, options: Modal
   }
 
   function handleModalFocusKeydown(event: KeyboardEvent) {
-    if (event.key !== "Tab") return;
+    if (event.key !== "Tab" || event.defaultPrevented) return;
     const dialog = dialogRef.value;
     if (!dialog) return;
+    // Only the innermost modal owns Tab while a confirmation is open.
+    const focusedDialog = document.activeElement?.closest('[aria-modal="true"]');
+    if (focusedDialog && focusedDialog !== dialog) return;
     const focusableElements = modalFocusableElements(dialog);
     if (!focusableElements.length) {
       event.preventDefault();
@@ -100,6 +104,17 @@ export function useModalFocus(dialogRef: Ref<HTMLElement | null>, options: Modal
 function modalFocusableElements(dialog: HTMLElement): HTMLElement[] {
   return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => {
     const tabIndex = element.getAttribute("tabindex");
-    return tabIndex !== "-1" && element.getAttribute("aria-hidden") !== "true";
+    if (tabIndex === "-1" || element.matches(":disabled")) return false;
+    for (let ancestor: HTMLElement | null = element; ancestor; ancestor = ancestor.parentElement) {
+      if (ancestor.hidden || ancestor.hasAttribute("inert") || ancestor.getAttribute("aria-hidden") === "true") return false;
+      const style = getComputedStyle(ancestor);
+      if (style.display === "none" || style.visibility === "hidden") return false;
+      if (ancestor instanceof HTMLDetailsElement && !ancestor.open) {
+        const summary = ancestor.querySelector(":scope > summary");
+        if (!summary?.contains(element)) return false;
+      }
+      if (ancestor === dialog) break;
+    }
+    return true;
   });
 }

@@ -215,7 +215,7 @@ describe("Vue component contracts", () => {
     expect(wrapper.find(".compact-zone-tile-with-refresh").exists()).toBe(false);
 
     await wrapper.get(".compact-zone-tray .compact-shopping-close").trigger("click");
-    await buttonByText(wrapper, "Stop").trigger("click");
+    await buttonByText(wrapper, "Pause Run").trigger("click");
     await buttonByText(wrapper, "End Run").trigger("click");
     await buttonByText(wrapper, "SZ Details").trigger("click");
 

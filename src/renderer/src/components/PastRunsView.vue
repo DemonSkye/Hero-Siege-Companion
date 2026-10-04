@@ -25,6 +25,8 @@ import PastRunCard from "./PastRunCard.vue";
 import PastRunDetailReport from "./PastRunDetailReport.vue";
 import PastRunReportConfigModal from "./PastRunReportConfigModal.vue";
 import TrashIcon from "./TrashIcon.vue";
+import UiButton from "./UiButton.vue";
+import InfoHint from "./InfoHint.vue";
 
 const props = defineProps<{
   pastRuns: PastRunSummary[];
@@ -267,24 +269,24 @@ function groupRunsByDate(runs: PastRunSummary[]): PastRunDateGroup[] {
           <p class="past-run-heading-copy">Choose all matching runs or one saved session, then read and share a single report.</p>
         </div>
         <div class="past-runs-heading-actions">
-          <button class="icon-button ghost" type="button" @click="showReportConfig = true">Configure Report</button>
-          <button
+          <UiButton @click="showReportConfig = true">Configure Report</UiButton>
+          <UiButton
             v-if="!deleteAllConfirmOpen"
-            class="icon-button danger icon-only past-run-delete-all"
-            type="button"
+            class="icon-only past-run-delete-all"
+            tone="danger"
             title="Delete all past runs"
             aria-label="Delete all past runs"
             :disabled="!pastRuns.length"
             @click="requestDeleteAllRuns"
           >
             <TrashIcon />
-          </button>
+          </UiButton>
           <div v-else class="past-run-delete-confirm past-run-delete-all-confirm" role="group" aria-label="Confirm delete all past runs">
             <span>Delete {{ deleteAllRunLabel }}?</span>
-            <button class="icon-button danger past-run-confirm-delete-all" type="button" @click="confirmDeleteAllRuns">Confirm</button>
-            <button class="icon-button ghost past-run-cancel-delete-all" type="button" @click="cancelDeleteAllRuns">Cancel</button>
+            <UiButton tone="danger" class="past-run-confirm-delete-all" @click="confirmDeleteAllRuns">Confirm</UiButton>
+            <UiButton class="past-run-cancel-delete-all" @click="cancelDeleteAllRuns">Cancel</UiButton>
           </div>
-          <span class="info-bubble" data-tip="The report uses the current search and configured report items without changing saved run data.">i</span>
+          <InfoHint text="The report uses the current search and configured report items without changing saved run data." />
           <span class="past-run-count">{{ pastRunCountLabel }}</span>
         </div>
       </div>
@@ -305,7 +307,7 @@ function groupRunsByDate(runs: PastRunSummary[]): PastRunDateGroup[] {
         <div v-if="allRunTags.length" class="past-run-tag-filters" aria-label="Saved run tags">
           <button v-for="tag in allRunTags" :key="tag" class="past-run-tag-filter" type="button" @click="addSearchTag(tag)">#{{ tag }}</button>
         </div>
-        <button v-if="runSearchQuery.trim()" class="icon-button ghost past-run-clear-search" type="button" @click="runSearchQuery = ''">Clear</button>
+        <UiButton v-if="runSearchQuery.trim()" class="past-run-clear-search" @click="runSearchQuery = ''">Clear</UiButton>
       </div>
 
       <p v-if="pastRuns.length" class="past-run-report-note">

@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import type { ItemFilterPackImportPreview } from "../lib/item-filters";
 import { useModalFocus } from "../lib/modal-focus";
+import UiButton from "./UiButton.vue";
 
 const props = defineProps<{
   groupCount: number;
@@ -56,10 +57,10 @@ function confirmImport() {
       <small>Share filter groups with only the custom sounds they actually use.</small>
     </div>
     <div class="item-filter-actions">
-      <button class="icon-button primary" type="button" :disabled="importBusy" @click="emit('importPack')">
+      <UiButton tone="primary" :disabled="importBusy" @click="emit('importPack')">
         {{ importBusy ? "Reading pack…" : "Import pack" }}
-      </button>
-      <button class="icon-button ghost" type="button" :disabled="!groupCount" @click="emit('exportPack')">Export pack</button>
+      </UiButton>
+      <UiButton :disabled="!groupCount" @click="emit('exportPack')">Export pack</UiButton>
     </div>
   </section>
 
@@ -90,8 +91,8 @@ function confirmImport() {
         </p>
       </div>
       <div class="settings-actions item-filter-confirm-actions">
-        <button class="icon-button ghost" type="button" @click="cancelImport">Cancel</button>
-        <button class="icon-button primary" type="button" @click="confirmImport">Add pack</button>
+        <UiButton @click="cancelImport">Cancel</UiButton>
+        <UiButton tone="primary" @click="confirmImport">Add pack</UiButton>
       </div>
     </section>
   </div>
