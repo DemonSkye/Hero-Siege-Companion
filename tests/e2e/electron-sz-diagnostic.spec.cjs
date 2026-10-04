@@ -1,0 +1,19 @@
+const { test, expect } = require("@playwright/test");
+const { withCompanionApp, getRendererState } = require("./support/companion-app.cjs");
+
+test("diagnostic preload stays idle until explicit Arm and cannot open native capture in mock mode", async () => {
+  await withCompanionApp(async ({ page }) => {
+    expect((await getRendererState(page)).satanicZoneDiagnostic.phase).toBe("idle");
+    const result = await page.evaluate(() => window.heroSiegeCompanion.armSatanicZoneDiagnostic());
+    expect(["arming", "unavailable"]).toContain(result.phase);
+    await expect.poll(async () => (await getRendererState(page)).satanicZoneDiagnostic.phase).toBe("unavailable");
+    const diagnostic = (await getRendererState(page)).satanicZoneDiagnostic;
+    expect(diagnostic).toMatchObject({ reason: "game-not-ready", requestDispatched: false, frames: [], bytesObserved: 0 });
+    expect(Object.keys(diagnostic).sort()).toEqual(["phase", "reason", "startedAt", "deadlineAt", "bytesObserved", "freshSyn", "attributed",
+      "initializationComplete", "naturalBaseline", "frames", "frameSummaryLimited", "requestDispatched", "directOutcome", "bootstrapPong",
+      "secondControl", "requestBodyMatchesNative", "peakOwnedBufferBytes", "directEvents", "nativeBootstrapControl", "secondControlMatchesNative"].sort());
+    const cancelled = await page.evaluate(() => window.heroSiegeCompanion.cancelSatanicZoneDiagnostic());
+    expect(cancelled.phase).toBe("unavailable");
+    expect((await getRendererState(page)).captureStatus).toBe("running");
+  });
+});

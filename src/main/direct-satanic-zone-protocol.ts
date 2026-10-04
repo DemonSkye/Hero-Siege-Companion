@@ -1,44 +1,54 @@
 import { createHash } from "node:crypto";
 import { createSatanicZoneInfo, type SatanicZoneInfo } from "../shared/parser";
 import type { SatanicZoneRequestContext } from "./captured-session-context";
+import type { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
 
 const MAX_RESPONSE_BYTES = 1_048_576;
 const API_CONTROL_RESPONSE_BYTES = 10;
 
-function buildDirectApiFrame(body: Buffer, counter: number): Buffer {
+function buildDirectApiFrame(body: Buffer, counter: number, budget?: SatanicZoneDiagnosticBufferBudget): Buffer {
   if (!Number.isInteger(counter) || counter < 0 || counter > 255) throw new Error("invalid API counter");
-  const token = createHash("md5").update(body).update(Buffer.from([counter])).digest("hex").slice(0, 12);
-  const length = Buffer.alloc(4);
-  length.writeUInt32LE(body.length, 0);
-  return Buffer.concat([Buffer.from(token, "ascii"), length, body]);
+  const counterByte = budget?.allocate(1) ?? Buffer.alloc(1);
+  counterByte[0] = counter;
+  try {
+    const token = createHash("md5").update(body).update(counterByte).digest("hex").slice(0, 12);
+    const frame = budget?.allocate(16 + body.length) ?? Buffer.alloc(16 + body.length);
+    frame.write(token, 0, 12, "ascii"); frame.writeUInt32LE(body.length, 12); body.copy(frame, 16);
+    return frame;
+  } finally { budget ? budget.release(counterByte) : counterByte.fill(0); }
 }
 
-export function buildDirectApiPingFrame(counter = 0): Buffer {
-  return buildDirectApiFrame(Buffer.from([1, 0]), counter);
+export function buildDirectApiPingFrame(counter = 0, budget?: SatanicZoneDiagnosticBufferBudget): Buffer {
+  const body = budget?.allocate(2) ?? Buffer.alloc(2); body[0] = 1;
+  try { return buildDirectApiFrame(body, counter, budget); }
+  finally { budget ? budget.release(body) : body.fill(0); }
 }
 
-export function buildDirectSatanicZoneFrame(context: SatanicZoneRequestContext, counter = 1): Buffer {
+export function buildDirectSatanicZoneFrame(context: SatanicZoneRequestContext, counter = 1, budget?: SatanicZoneDiagnosticBufferBudget): Buffer {
   const query = new URLSearchParams({
     unique_account_id: context.uniqueAccountId,
     crossregion_identifier: context.crossregionIdentifier,
     beta: context.beta,
   }).toString();
-  const body = Buffer.concat([
-    Buffer.from([3, 0, 1, 0]),
-    Buffer.from("satanic_zone_get\0R\0", "utf8"),
-    Buffer.from(query, "utf8"),
-    Buffer.from([0]),
-  ]);
-  return buildDirectApiFrame(body, counter);
+  const body = budget?.allocate(24 + Buffer.byteLength(query)) ?? Buffer.alloc(24 + Buffer.byteLength(query));
+  body.writeUInt16LE(3, 0); body.writeUInt16LE(1, 2);
+  body.write("satanic_zone_get\0R\0", 4, "utf8"); body.write(query, 23, "utf8");
+  try { return buildDirectApiFrame(body, counter, budget); }
+  finally { budget ? budget.release(body) : body.fill(0); }
 }
 
 export class DirectApiPingResponseDecoder {
-  private buffered = Buffer.alloc(0);
+  private buffered: Buffer = Buffer.alloc(0);
+  constructor(private readonly budget?: SatanicZoneDiagnosticBufferBudget) {}
+
+  dispose(): void { this.budget ? this.budget.release(this.buffered) : this.buffered.fill(0); this.buffered = Buffer.alloc(0); }
 
   push(chunk: Buffer): Buffer | null {
     if (chunk.length === 0) return null;
     if (this.buffered.length + chunk.length > MAX_RESPONSE_BYTES) throw new Error("ping response too large");
-    this.buffered = Buffer.concat([this.buffered, chunk]);
+    const previous = this.buffered;
+    this.buffered = this.budget?.concat([previous, chunk]) ?? Buffer.concat([previous, chunk]);
+    this.budget ? this.budget.release(previous) : previous.fill(0);
     if (this.buffered.length < 8) return null;
     if (this.buffered.readUInt32LE(4) !== 2) throw new Error("invalid ping response");
     if (this.buffered.length < API_CONTROL_RESPONSE_BYTES) return null;
@@ -48,12 +58,17 @@ export class DirectApiPingResponseDecoder {
 }
 
 export class DirectSatanicZoneResponseDecoder {
-  private buffered = Buffer.alloc(0);
+  private buffered: Buffer = Buffer.alloc(0);
+  constructor(private readonly budget?: SatanicZoneDiagnosticBufferBudget) {}
+
+  dispose(): void { this.budget ? this.budget.release(this.buffered) : this.buffered.fill(0); this.buffered = Buffer.alloc(0); }
 
   push(chunk: Buffer, observedAt: number): SatanicZoneInfo | null {
     if (chunk.length === 0) return null;
     if (this.buffered.length + chunk.length > MAX_RESPONSE_BYTES) throw new Error("response too large");
-    this.buffered = Buffer.concat([this.buffered, chunk]);
+    const previous = this.buffered;
+    this.buffered = this.budget?.concat([previous, chunk]) ?? Buffer.concat([previous, chunk]);
+    this.budget ? this.budget.release(previous) : previous.fill(0);
     // The independent socket can receive connection/status bytes before the
     // requested response, and capture evidence does not establish one envelope
     // for every server message. Keep the stream bounded and accept only a fully

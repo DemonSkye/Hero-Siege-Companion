@@ -17,6 +17,7 @@ import SettingsCaptureTab from "./SettingsCaptureTab.vue";
 import SettingsConfigTab from "./SettingsConfigTab.vue";
 import SettingsGeneralTab from "./SettingsGeneralTab.vue";
 import SettingsSupportTab from "./SettingsSupportTab.vue";
+import { createInitialSatanicZoneDiagnosticState, type SatanicZoneDiagnosticState } from "../../../shared/satanic-zone-diagnostic";
 
 interface ThemeOption {
   id: ThemeId;
@@ -31,6 +32,9 @@ const props = withDefaults(defineProps<{
   legacyThemeAvailable?: boolean;
   legacyCompactThemeAvailable?: boolean;
   captureDiagnostics: CaptureDiagnosticsState;
+  satanicZoneDiagnostic?: SatanicZoneDiagnosticState;
+  szDiagnosticBusy?: boolean;
+  szDiagnosticCancelBusy?: boolean;
   diagnosticsNow: number;
   diagnosticsBusyLevel?: CaptureDiagnosticsLevel | null;
   supportDiagnostics: string;
@@ -70,6 +74,8 @@ const emit = defineEmits<{
   copySupportDiagnosticsSummary: [];
   openNpcapGuide: [];
   setDiagnosticsMode: [level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode];
+  armSatanicZoneDiagnostic: [];
+  cancelSatanicZoneDiagnostic: [];
   resetWindowPosition: [];
   factoryReset: [deleteItemFilters: boolean];
   importTheme: [];
@@ -317,6 +323,9 @@ function saveStatusLabel(): string {
           <SettingsSupportTab
             v-else-if="activeSettingsSection === 'support'"
             :capture-diagnostics="captureDiagnostics"
+            :satanic-zone-diagnostic="satanicZoneDiagnostic ?? createInitialSatanicZoneDiagnosticState()"
+            :sz-diagnostic-busy="szDiagnosticBusy"
+            :sz-diagnostic-cancel-busy="szDiagnosticCancelBusy"
             :diagnostics-now="diagnosticsNow"
             :diagnostics-busy-level="diagnosticsBusyLevel"
             :support-diagnostics="supportDiagnostics"
@@ -335,6 +344,8 @@ function saveStatusLabel(): string {
             @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
             @open-npcap-guide="$emit('openNpcapGuide')"
             @set-diagnostics-mode="requestDiagnosticsMode"
+            @arm-satanic-zone-diagnostic="$emit('armSatanicZoneDiagnostic')"
+            @cancel-satanic-zone-diagnostic="$emit('cancelSatanicZoneDiagnostic')"
             @reset-window-position="$emit('resetWindowPosition')"
             @request-factory-reset="requestFactoryReset"
           />

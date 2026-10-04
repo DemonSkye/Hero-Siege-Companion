@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getPayload, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "../../src/main/packet-decoder";
+import { getPayload, getTcpSegment, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "../../src/main/packet-decoder";
 import { captureMessages, messageToEvents } from "../../src/shared/parser";
 import { StatsEngine } from "../../src/shared/stats";
 
@@ -9,6 +9,14 @@ interface TcpPacketOptions {
   flags?: number;
   trailingBytes?: Buffer;
 }
+
+describe("diagnostic TCP control segments", () => {
+  test.each([2, 18, 16])("retains empty control flags %s only for the diagnostic decoder", (flags) => {
+    const bytes = tcpPacket(Buffer.alloc(0), "RAW", { flags });
+    expect(getTcpSegment(bytes, bytes.length, "RAW")).toMatchObject({ flags, seq: 10, ack: 99, payloadLength: 0 });
+    expect(getPayload(bytes, bytes.length, "RAW")).toBeNull();
+  });
+});
 
 function tcpPacket(
   payloadValue: string | Buffer,

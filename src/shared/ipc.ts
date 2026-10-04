@@ -44,6 +44,8 @@ export const enum IpcChannel {
   supportOpenLogsDirectory = "support:open-logs-directory",
   supportSaveDiagnostics = "support:save-diagnostics",
   supportSetDiagnosticsMode = "support:set-diagnostics-mode",
+  satanicZoneDiagnosticArm = "satanic-zone-diagnostic:arm",
+  satanicZoneDiagnosticCancel = "satanic-zone-diagnostic:cancel",
   updatesCheck = "updates:check",
   updatesOpenRelease = "updates:open-release",
   docsOpenNpcapGuide = "docs:open-npcap-guide",
@@ -85,6 +87,8 @@ export const IPC_CHANNELS = {
   supportOpenLogsDirectory: IpcChannel.supportOpenLogsDirectory,
   supportSaveDiagnostics: IpcChannel.supportSaveDiagnostics,
   supportSetDiagnosticsMode: IpcChannel.supportSetDiagnosticsMode,
+  satanicZoneDiagnosticArm: IpcChannel.satanicZoneDiagnosticArm,
+  satanicZoneDiagnosticCancel: IpcChannel.satanicZoneDiagnosticCancel,
   updatesCheck: IpcChannel.updatesCheck,
   updatesOpenRelease: IpcChannel.updatesOpenRelease,
   docsOpenNpcapGuide: IpcChannel.docsOpenNpcapGuide,
@@ -127,6 +131,8 @@ export interface HeroSiegeCompanionApi {
   chooseGameExecutable: () => Promise<string | null>;
   resetStats: () => Promise<CompanionState>;
   refreshSatanicZone: () => Promise<CompanionState>;
+  armSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
+  cancelSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   searchMarket: (request: MarketSearchRequest) => Promise<MarketSearchResponse>;
   pauseRun: () => Promise<CompanionState>;
   resumeRun: () => Promise<CompanionState>;

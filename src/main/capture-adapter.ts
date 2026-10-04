@@ -42,9 +42,12 @@ export function openPacketCapture(
   filter: string,
   buffer: Buffer,
   onPacket: (nbytes: number, truncated: boolean) => void,
+  options: { nativeBufferBytes?: number } = {},
 ): { cap: PacketCaptureHandle; linkType: string } {
   const cap = new Cap();
-  const linkType = cap.open(device, filter, CAPTURE_BUFFER_BYTES, buffer);
+  const nativeBufferBytes = options.nativeBufferBytes ?? CAPTURE_BUFFER_BYTES;
+  if (!Number.isSafeInteger(nativeBufferBytes) || nativeBufferBytes < 65_536 || nativeBufferBytes > CAPTURE_BUFFER_BYTES) throw new Error("invalid capture capacity");
+  const linkType = cap.open(device, filter, nativeBufferBytes, buffer);
   cap.on("packet", onPacket);
   return { cap, linkType };
 }

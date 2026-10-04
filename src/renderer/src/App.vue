@@ -44,6 +44,7 @@ import { useSessionDisplay } from "./lib/session-display";
 import type { PastRunsExportPayload } from "./lib/past-runs";
 import { useShoppingListRuntime } from "./lib/shopping-list-runtime";
 import { useSupportDiagnosticsRuntime } from "./lib/support-diagnostics-runtime";
+import { useSatanicZoneDiagnosticRuntime } from "./lib/satanic-zone-diagnostic-runtime";
 import { useUpdateNotice } from "./lib/update-notice";
 import { useWhatsNewPrompt } from "./lib/whats-new-prompt";
 import { WHATS_NEW_RELEASE } from "./lib/whats-new";
@@ -117,6 +118,8 @@ const {
   updatePostRunReportConfig,
 } = useAppPreferences();
 const { toastMessage, showToast } = useToast();
+const { szDiagnosticBusy, szDiagnosticCancelBusy, armSatanicZoneDiagnostic, cancelSatanicZoneDiagnostic } =
+  useSatanicZoneDiagnosticRuntime({ state, showToast });
 const {
   supportDiagnosticsInfo,
   supportBundleBusy,
@@ -815,6 +818,9 @@ function toggleLog(log: LogEntry) {
       :legacy-theme-available="legacyThemeAvailable"
       :legacy-compact-theme-available="legacyCompactThemeAvailable"
       :capture-diagnostics="state.captureDiagnostics"
+      :satanic-zone-diagnostic="state.satanicZoneDiagnostic"
+      :sz-diagnostic-busy="szDiagnosticBusy"
+      :sz-diagnostic-cancel-busy="szDiagnosticCancelBusy"
       :diagnostics-now="now"
       :diagnostics-busy-level="diagnosticsBusyLevel"
       :support-diagnostics="supportDiagnostics"
@@ -841,6 +847,8 @@ function toggleLog(log: LogEntry) {
       @copy-support-diagnostics-summary="copySupportDiagnosticsSummary"
       @open-npcap-guide="openNpcapGuide"
       @set-diagnostics-mode="setDiagnosticsMode"
+      @arm-satanic-zone-diagnostic="armSatanicZoneDiagnostic"
+      @cancel-satanic-zone-diagnostic="cancelSatanicZoneDiagnostic"
       @reset-window-position="resetWindowPosition"
       @factory-reset="factoryReset"
       @import-theme="importTheme"

@@ -662,6 +662,13 @@ function sequenceDelta(sequence: number, reference: number): number {
 }
 
 export function getPayload(buffer: Buffer, nbytes: number, linkType: string): ParsedPayload | null {
+  const packet = getTcpSegment(buffer, nbytes, linkType);
+  return packet && packet.payloadLength > 0 ? packet : null;
+}
+
+// Diagnostic SYN/ACK attribution needs empty TCP segments. Normal capture keeps
+// its payload-only admission through getPayload.
+export function getTcpSegment(buffer: Buffer, nbytes: number, linkType: string, borrowPayload = false): ParsedPayload | null {
   if (!Number.isFinite(nbytes) || nbytes <= 0) return null;
   const capturedLength = Math.min(Math.trunc(nbytes), buffer.length);
   const ipOffset = ipv4OffsetForLinkType(buffer, capturedLength, linkType);
@@ -683,10 +690,9 @@ export function getPayload(buffer: Buffer, nbytes: number, linkType: string): Pa
   const tcpHeaderLength = ((buffer[tcpOffset + 12] >> 4) & 0x0f) * 4;
   if (tcpHeaderLength < 20) return null;
   const payloadOffset = tcpOffset + tcpHeaderLength;
-  if (payloadOffset >= packetEnd) return null;
+  if (payloadOffset > packetEnd) return null;
 
-  const payload = Buffer.from(buffer.subarray(payloadOffset, packetEnd));
-  if (payload.length === 0) return null;
+  const payload = borrowPayload ? buffer.subarray(payloadOffset, packetEnd) : Buffer.from(buffer.subarray(payloadOffset, packetEnd));
 
   return {
     src: ipv4Address(buffer, ipOffset + 12),
@@ -698,7 +704,7 @@ export function getPayload(buffer: Buffer, nbytes: number, linkType: string): Pa
     flags: buffer[tcpOffset + 13],
     payloadLength: payload.length,
     payload,
-    text: payload.toString("utf8"),
+    text: borrowPayload ? "" : payload.toString("utf8"),
   };
 }
 

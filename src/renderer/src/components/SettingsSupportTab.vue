@@ -8,9 +8,14 @@ import type {
 } from "../../../shared/app-state";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 import type { WhatsNewRelease } from "../lib/whats-new";
+import SatanicZoneDiagnosticCard from "./SatanicZoneDiagnosticCard.vue";
+import { createInitialSatanicZoneDiagnosticState, type SatanicZoneDiagnosticState } from "../../../shared/satanic-zone-diagnostic";
 
 const props = withDefaults(defineProps<{
   captureDiagnostics: CaptureDiagnosticsState;
+  satanicZoneDiagnostic?: SatanicZoneDiagnosticState;
+  szDiagnosticBusy?: boolean;
+  szDiagnosticCancelBusy?: boolean;
   diagnosticsNow: number;
   diagnosticsBusyLevel?: CaptureDiagnosticsLevel | null;
   supportDiagnostics: string;
@@ -24,6 +29,7 @@ const props = withDefaults(defineProps<{
   initiallyExpandWhatsNew?: boolean;
 }>(), {
   diagnosticsBusyLevel: null,
+  satanicZoneDiagnostic: createInitialSatanicZoneDiagnosticState,
   backupBusy: false,
   factoryResetBusy: false,
   initiallyExpandWhatsNew: false,
@@ -31,6 +37,8 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{
   exportBackup: [];
+  armSatanicZoneDiagnostic: [];
+  cancelSatanicZoneDiagnostic: [];
   chooseBackup: [];
   openSupportLogsDirectory: [];
   saveSupportDiagnostics: [];
@@ -121,6 +129,10 @@ function nextMode(state: CaptureDiagnosticsModeState, requested: Exclude<Capture
         </button>
       </div>
     </div>
+
+    <SatanicZoneDiagnosticCard :diagnostic="satanicZoneDiagnostic" :now="diagnosticsNow"
+      :busy="szDiagnosticBusy" :cancel-busy="szDiagnosticCancelBusy"
+      @arm="$emit('armSatanicZoneDiagnostic')" @cancel="$emit('cancelSatanicZoneDiagnostic')" />
 
     <div class="settings-ledger-row">
       <div class="settings-ledger-copy">

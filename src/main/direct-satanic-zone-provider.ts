@@ -25,7 +25,7 @@ export interface DirectSatanicZoneContextSource {
   subscribe(listener: () => void): () => void;
 }
 
-interface TransportRequest {
+export interface TransportRequest {
   dispatched: Promise<void>;
   outcome: Promise<SatanicZoneInfo>;
   abort(): void;
@@ -33,6 +33,19 @@ interface TransportRequest {
 
 type DirectSatanicZoneTransport = (context: SatanicZoneRequestContext, signal?: AbortSignal) => TransportRequest;
 type DirectSatanicZoneTransportLog = (type: string, data: Record<string, unknown>) => void;
+
+export type DirectSatanicZoneTransportTrace =
+  | { kind: "connected"; localAddress: string; localPort: number; remoteAddress: string; remotePort: number }
+  | { kind: "outgoing"; phase: "bootstrap" | "zone"; bytes: Buffer }
+  | { kind: "incoming"; bytes: Buffer }
+  | { kind: "bootstrapped" };
+
+export interface DirectSatanicZoneTransportOptions {
+  // Main-process only; borrowed buffers must never be passed to logging or IPC.
+  trace?: (event: DirectSatanicZoneTransportTrace) => void;
+  createSocket?: () => net.Socket;
+  bufferBudget?: import("./satanic-zone-diagnostic-budget").SatanicZoneDiagnosticBufferBudget;
+}
 
 export class DirectSatanicZoneRefreshProvider implements SatanicZoneRefreshProvider {
   readonly experimental = false;
@@ -63,6 +76,7 @@ export class DirectSatanicZoneRefreshProvider implements SatanicZoneRefreshProvi
 
     const correlationId = randomUUID().replace(/-/g, "");
     const request = this.transport(context, options.signal);
+    if (options.signal?.aborted) { request.abort(); return rejected("helper_unavailable"); }
     this.pending = { correlationId, context, request };
     try {
       await request.dispatched;
@@ -128,10 +142,11 @@ export function createDirectSatanicZoneTransport(
   context: SatanicZoneRequestContext,
   parentSignal?: AbortSignal,
   log: DirectSatanicZoneTransportLog = () => undefined,
+  options: DirectSatanicZoneTransportOptions = {},
 ): TransportRequest {
-  const socket = new net.Socket();
-  const pingDecoder = new DirectApiPingResponseDecoder();
-  const decoder = new DirectSatanicZoneResponseDecoder();
+  const socket = options.createSocket?.() ?? new net.Socket();
+  const pingDecoder = new DirectApiPingResponseDecoder(options.bufferBudget);
+  const decoder = new DirectSatanicZoneResponseDecoder(options.bufferBudget);
   const startedAt = Date.now();
   let responseBytes = 0;
   let responseChunks = 0;
@@ -143,6 +158,9 @@ export function createDirectSatanicZoneTransport(
   let outcomeResolve!: (zone: SatanicZoneInfo) => void;
   let outcomeReject!: (error: Error) => void;
   let settled = false;
+  const trace = (event: DirectSatanicZoneTransportTrace) => {
+    try { options.trace?.(event); } catch { /* Observers cannot alter transport or leak exceptions. */ }
+  };
   const dispatched = new Promise<void>((resolve, reject) => { dispatchedResolve = resolve; dispatchedReject = reject; });
   const outcome = new Promise<SatanicZoneInfo>((resolve, reject) => { outcomeResolve = resolve; outcomeReject = reject; });
   void outcome.catch(() => undefined);
@@ -167,6 +185,8 @@ export function createDirectSatanicZoneTransport(
     report("failed", reason);
     dispatchedReject(error);
     outcomeReject(error);
+    pingDecoder.dispose(); decoder.dispose();
+    parentSignal?.removeEventListener("abort", abort);
     socket.destroy();
   };
   const abort = () => fail(new Error("cancelled"), "cancelled");
@@ -185,6 +205,8 @@ export function createDirectSatanicZoneTransport(
       settled = true;
       report("succeeded");
       outcomeResolve(zone);
+      pingDecoder.dispose(); decoder.dispose();
+      parentSignal?.removeEventListener("abort", abort);
       socket.end();
     } catch {
       fail(new Error("invalid-response"), "response-too-large");
@@ -194,7 +216,13 @@ export function createDirectSatanicZoneTransport(
     responsePhase = "zone";
     bootstrapBytes = 10;
     report("bootstrapped");
-    socket.write(buildDirectSatanicZoneFrame(context, 1), (error) => {
+    trace({ kind: "bootstrapped" });
+    if (settled) return;
+    const frame = buildDirectSatanicZoneFrame(context, 1, options.bufferBudget);
+    trace({ kind: "outgoing", phase: "zone", bytes: frame });
+    if (settled) { options.bufferBudget?.release(frame); return; }
+    socket.write(frame, (error) => {
+      options.bufferBudget ? options.bufferBudget.release(frame) : frame.fill(0);
       if (error) fail(error, "write-error");
       else {
         wasDispatched = true;
@@ -203,28 +231,46 @@ export function createDirectSatanicZoneTransport(
       }
     });
     acceptZoneBytes(remainder);
+    pingDecoder.dispose();
   };
   socket.on("data", (chunk: Buffer) => {
     if (settled) return;
-    responseBytes += chunk.length;
-    responseChunks += 1;
-    if (responsePhase === "zone") {
-      acceptZoneBytes(chunk);
-      return;
-    }
+    let releaseChunk: (() => void) | undefined;
     try {
-      const remainder = pingDecoder.push(chunk);
-      if (remainder) dispatchZoneRequest(remainder);
-    } catch {
-      fail(new Error("invalid-bootstrap-response"), "invalid-bootstrap-response");
-    }
+      releaseChunk = options.bufferBudget?.reserve(chunk.length);
+      trace({ kind: "incoming", bytes: chunk });
+      if (settled) return;
+      responseBytes += chunk.length;
+      responseChunks += 1;
+      if (responsePhase === "zone") {
+        acceptZoneBytes(chunk);
+        return;
+      }
+      try {
+        const remainder = pingDecoder.push(chunk);
+        if (remainder) dispatchZoneRequest(remainder);
+      } catch {
+        fail(new Error("invalid-bootstrap-response"), "invalid-bootstrap-response");
+      }
+    } catch { fail(new Error("byte-limit"), "response-too-large"); }
+    finally { releaseChunk?.(); }
   });
+  if (parentSignal?.aborted) { abort(); return { dispatched, outcome, abort }; }
   socket.connect(context.endpoint.port, context.endpoint.address, () => {
     if (settled) return;
-    socket.write(buildDirectApiPingFrame(0), (error) => {
-      if (error) fail(error, "bootstrap-write-error");
-      else report("bootstrap-sent");
-    });
+    try {
+      trace({ kind: "connected", localAddress: socket.localAddress ?? "", localPort: socket.localPort ?? 0,
+        remoteAddress: context.endpoint.address, remotePort: context.endpoint.port });
+      if (settled) return;
+      const frame = buildDirectApiPingFrame(0, options.bufferBudget);
+      trace({ kind: "outgoing", phase: "bootstrap", bytes: frame });
+      if (settled) { options.bufferBudget?.release(frame); return; }
+      socket.write(frame, (error) => {
+        options.bufferBudget ? options.bufferBudget.release(frame) : frame.fill(0);
+        if (error) fail(error, "bootstrap-write-error");
+        else report("bootstrap-sent");
+      });
+    } catch { fail(new Error("byte-limit"), "bootstrap-failed"); }
   });
   return { dispatched, outcome, abort };
 }

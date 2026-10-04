@@ -8,6 +8,7 @@ import type {
 import { createInitialSatanicZoneState } from "./satanic-zone";
 import { createInitialStats } from "./stats";
 import { createInitialMarketReadiness } from "./market-readiness";
+import { createInitialSatanicZoneDiagnosticState } from "./satanic-zone-diagnostic";
 
 export const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
   skipEmptyRuns: true,
@@ -60,6 +61,7 @@ export function createInitialCompanionState(logs: LogEntry[] = []): CompanionSta
       enhanced: { ...DEFAULT_CAPTURE_DIAGNOSTICS_STATE.enhanced },
       deep: { ...DEFAULT_CAPTURE_DIAGNOSTICS_STATE.deep },
     },
+    satanicZoneDiagnostic: createInitialSatanicZoneDiagnosticState(),
     logs,
   };
 }
