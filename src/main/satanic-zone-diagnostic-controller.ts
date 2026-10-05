@@ -1,7 +1,7 @@
 import {
   copySatanicZoneDiagnosticState, createInitialSatanicZoneDiagnosticState,
   isSatanicZoneDiagnosticActive, SZ_DIAGNOSTIC_MAX_BYTES, SZ_DIAGNOSTIC_TIMEOUT_MS,
-  type SatanicZoneDiagnosticReason, type SatanicZoneDiagnosticState,
+  type SatanicZoneDiagnosticReason, type SatanicZoneDiagnosticState, type DiagnosticTransportEvent,
 } from "../shared/satanic-zone-diagnostic";
 import { CapturedSessionContextStore, type SatanicZoneRequestContext } from "./captured-session-context";
 import { extractSatanicZoneObservation } from "./direct-satanic-zone-protocol";
@@ -40,6 +40,8 @@ interface DiagnosticSession {
   pollInFlight: boolean;
   pid: number | null;
   zoneRequests: number;
+  nativeInboundFrames: number;
+  nativeControls: number;
   nativeZoneBody: Buffer | null;
   nativeControlBody: Buffer | null;
   directPrefix: Buffer;
@@ -79,7 +81,7 @@ export class SatanicZoneDiagnosticController {
     const session = {} as DiagnosticSession;
     Object.assign(session, {
       abort: new AbortController(), context, budget: new SatanicZoneDiagnosticBufferBudget(), scope: null, stream: null, handle: null,
-      poll: null, directTimer: null, pollInFlight: false, pid: null, zoneRequests: 0,
+      poll: null, directTimer: null, pollInFlight: false, pid: null, zoneRequests: 0, nativeInboundFrames: 0, nativeControls: 0,
       nativeZoneBody: null, nativeControlBody: null, directPrefix: Buffer.alloc(0), directAttributed: false,
       incomingBytes: 0, dispatchStarted: false,
     });
@@ -191,8 +193,13 @@ export class SatanicZoneDiagnosticController {
   private gameFrame(session: DiagnosticSession, frame: DiagnosticFrame): void {
     if (!this.current(session) || !session.scope) return;
     const control = frame.body.length === 2 ? (frame.body.readUInt16LE(0) === 1 ? "same-as-pong" : "other-control") : "not-control";
+    const inboundOrdinal = frame.outbound ? null : ++session.nativeInboundFrames;
+    const controlOrdinal = !frame.outbound && frame.body.length === 2 ? ++session.nativeControls : null;
+    // Same-flow/order association only; no request identifier is paired here.
+    const zoneObserved = !frame.outbound && session.zoneRequests === 1
+      && Boolean(extractSatanicZoneObservation(frame.body, this.now()));
     if (this.state.frames.length < 32) this.state.frames.push({ direction: frame.outbound ? "outbound" : "inbound",
-      kind: frame.kind, bodyBytes: frame.body.length, counter: frame.counter, control });
+      kind: frame.kind, bodyBytes: frame.body.length, counter: frame.counter, control, inboundOrdinal, controlOrdinal, zoneObserved });
     else this.state.frameSummaryLimited = true;
     if (frame.outbound) {
       session.context.observe({ text: frame.body.toString("utf8"), direction: "outbound",
@@ -207,7 +214,10 @@ export class SatanicZoneDiagnosticController {
         this.state.nativeBootstrapControl = control;
         if (frame.body.length === 2) session.nativeControlBody = session.budget.copy(frame.body);
       }
-      if (session.zoneRequests === 1 && extractSatanicZoneObservation(frame.body, this.now())) this.state.naturalBaseline = true;
+      if (zoneObserved) {
+        this.state.naturalBaseline = true;
+        this.state.nativeZoneInboundOrdinal ??= inboundOrdinal;
+      }
     }
   }
 
@@ -261,7 +271,7 @@ export class SatanicZoneDiagnosticController {
       if (!session.directAttributed) this.finish(session, "ambiguous", "ambiguous-flow");
     } else if (event.kind === "bootstrapped") {
       this.state.bootstrapPong = true;
-      this.directEvent({ kind: "bootstrap-pong", direction: "inbound", bytes: 10, control: "same-as-pong" });
+      this.directEvent({ kind: "bootstrap-pong", direction: "inbound", bytes: 10, control: "same-as-pong", controlOrdinal: 1 });
     }
     else {
       if (!session.directAttributed) { this.finish(session, "ambiguous", "ambiguous-flow"); return; }
@@ -282,7 +292,7 @@ export class SatanicZoneDiagnosticController {
         else if (session.directPrefix.length === 20 && this.state.secondControl === "not-observed") {
           this.state.secondControl = session.directPrefix.readUInt16LE(18) === 1 ? "same-as-pong" : "other-control";
           this.state.secondControlMatchesNative = session.nativeControlBody ? session.nativeControlBody.equals(session.directPrefix.subarray(18, 20)) : null;
-          this.directEvent({ kind: "second-control", direction: "inbound", bytes: 10, control: this.state.secondControl });
+          this.directEvent({ kind: "second-control", direction: "inbound", bytes: 10, control: this.state.secondControl, controlOrdinal: 2 });
         }
       }
     }
@@ -313,8 +323,9 @@ export class SatanicZoneDiagnosticController {
     this.publish();
   }
 
-  private directEvent(event: SatanicZoneDiagnosticState["directEvents"][number]): void {
-    if (this.state.directEvents.length < 32) this.state.directEvents.push(event);
+  private directEvent(event: Omit<DiagnosticTransportEvent, "controlOrdinal"> & { controlOrdinal?: 1 | 2 }): void {
+    if (this.state.directEvents.length < 32) this.state.directEvents.push({ kind: event.kind, direction: event.direction,
+      bytes: event.bytes, control: event.control, controlOrdinal: event.controlOrdinal ?? null });
     else this.state.frameSummaryLimited = true;
   }
 

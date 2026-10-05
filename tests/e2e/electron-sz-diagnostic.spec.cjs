@@ -10,7 +10,7 @@ test("diagnostic preload stays idle until explicit Arm and cannot open native ca
     const diagnostic = (await getRendererState(page)).satanicZoneDiagnostic;
     expect(diagnostic).toMatchObject({ reason: "game-not-ready", requestDispatched: false, frames: [], bytesObserved: 0 });
     expect(Object.keys(diagnostic).sort()).toEqual(["phase", "reason", "startedAt", "deadlineAt", "bytesObserved", "freshSyn", "attributed",
-      "initializationComplete", "naturalBaseline", "frames", "frameSummaryLimited", "requestDispatched", "directOutcome", "bootstrapPong",
+      "initializationComplete", "naturalBaseline", "nativeZoneInboundOrdinal", "frames", "frameSummaryLimited", "requestDispatched", "directOutcome", "bootstrapPong",
       "secondControl", "requestBodyMatchesNative", "peakOwnedBufferBytes", "directEvents", "nativeBootstrapControl", "secondControlMatchesNative"].sort());
     const cancelled = await page.evaluate(() => window.heroSiegeCompanion.cancelSatanicZoneDiagnostic());
     expect(cancelled.phase).toBe("unavailable");

@@ -19,6 +19,10 @@ export interface DiagnosticFrameSummary {
   bodyBytes: number;
   counter: number | null;
   control: DiagnosticControlClassification;
+  // One-based parsed frame/body ordinals; these do not pair requests and replies.
+  inboundOrdinal: number | null;
+  controlOrdinal: number | null;
+  zoneObserved: boolean;
 }
 
 export interface DiagnosticTransportEvent {
@@ -26,6 +30,7 @@ export interface DiagnosticTransportEvent {
   direction: "outbound" | "inbound" | "local";
   bytes: number;
   control: DiagnosticControlClassification;
+  controlOrdinal: 1 | 2 | null;
 }
 
 // This is the entire renderer/log contract. No payload, endpoint, hash, identity,
@@ -39,13 +44,17 @@ export interface SatanicZoneDiagnosticState {
   peakOwnedBufferBytes: number;
   freshSyn: boolean;
   attributed: boolean;
+  // Legacy key: complete captured framing, not independent-session initialization.
   initializationComplete: boolean;
   naturalBaseline: boolean;
+  // First validated zone object after the native SZ request on this flow.
+  nativeZoneInboundOrdinal: number | null;
   frames: DiagnosticFrameSummary[];
   directEvents: DiagnosticTransportEvent[];
   frameSummaryLimited: boolean;
   requestDispatched: boolean;
   directOutcome: "not-attempted" | "pending" | "success" | "timeout" | "failed" | "cancelled";
+  // Legacy key: the first direct frame has the validated two-byte 01 00 body.
   bootstrapPong: boolean;
   secondControl: DiagnosticControlClassification;
   nativeBootstrapControl: DiagnosticControlClassification;
@@ -57,7 +66,7 @@ export function createInitialSatanicZoneDiagnosticState(): SatanicZoneDiagnostic
   return {
     phase: "idle", reason: "none", startedAt: null, deadlineAt: null,
     bytesObserved: 0, peakOwnedBufferBytes: 0, freshSyn: false, attributed: false, initializationComplete: false,
-    naturalBaseline: false, frames: [], directEvents: [], frameSummaryLimited: false, requestDispatched: false,
+    naturalBaseline: false, nativeZoneInboundOrdinal: null, frames: [], directEvents: [], frameSummaryLimited: false, requestDispatched: false,
     directOutcome: "not-attempted", bootstrapPong: false, secondControl: "not-observed",
     nativeBootstrapControl: "not-observed", secondControlMatchesNative: null, requestBodyMatchesNative: null,
   };
@@ -74,10 +83,13 @@ export function copySatanicZoneDiagnosticState(state: SatanicZoneDiagnosticState
     bytesObserved: state.bytesObserved, freshSyn: state.freshSyn, attributed: state.attributed,
     peakOwnedBufferBytes: state.peakOwnedBufferBytes,
     initializationComplete: state.initializationComplete, naturalBaseline: state.naturalBaseline,
+    nativeZoneInboundOrdinal: state.nativeZoneInboundOrdinal,
     frames: state.frames.slice(0, 32).map((frame) => ({
       direction: frame.direction, kind: frame.kind, bodyBytes: frame.bodyBytes, counter: frame.counter, control: frame.control,
+      inboundOrdinal: frame.inboundOrdinal, controlOrdinal: frame.controlOrdinal, zoneObserved: frame.zoneObserved,
     })),
-    directEvents: state.directEvents.slice(0, 32).map((event) => ({ kind: event.kind, direction: event.direction, bytes: event.bytes, control: event.control })),
+    directEvents: state.directEvents.slice(0, 32).map((event) => ({ kind: event.kind, direction: event.direction,
+      bytes: event.bytes, control: event.control, controlOrdinal: event.controlOrdinal })),
     frameSummaryLimited: state.frameSummaryLimited, requestDispatched: state.requestDispatched,
     directOutcome: state.directOutcome, bootstrapPong: state.bootstrapPong,
     secondControl: state.secondControl, requestBodyMatchesNative: state.requestBodyMatchesNative,

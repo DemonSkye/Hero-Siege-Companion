@@ -8,7 +8,7 @@ const active = computed(() => isSatanicZoneDiagnosticActive(props.diagnostic));
 const remaining = computed(() => Math.max(0, Math.ceil(((props.diagnostic.deadlineAt ?? props.now) - props.now) / 1000)));
 const status = computed(() => ({
   idle: "Off", arming: "Checking capture scope", "waiting-initialization": "Armed: restart Hero Siege once",
-  collecting: "Recording fresh initialization", requesting: "Testing one independent refresh",
+  collecting: "Recording fresh game flow", requesting: "Testing one independent refresh",
   complete: "Diagnostic complete", incomplete: "Diagnostic incomplete", ambiguous: "Stopped: ambiguous flow",
   "timed-out": "Diagnostic timed out", cancelled: "Diagnostic cancelled", unavailable: "Diagnostic unavailable",
 }[props.diagnostic.phase] ?? "Diagnostic unavailable"));
@@ -29,11 +29,11 @@ const directResult = computed(() => ({
   timeout: "Timed out", failed: "Failed", cancelled: "Cancelled",
 }[props.diagnostic.directOutcome] ?? "Not verified"));
 const controlResult = computed(() => ({
-  "not-observed": "Not observed", "same-as-pong": "Same body as the bootstrap pong",
+  "not-observed": "Not observed", "same-as-pong": "Two-byte body 01 00",
   "other-control": "Different two-byte control body", "not-control": "Not a two-byte control frame",
 }[props.diagnostic.secondControl] ?? "Not classified"));
-const eventNames = { connected: "Connected", "bootstrap-write": "Ping write", "bootstrap-pong": "Pong validated",
-  "zone-write": "SZ write", "response-chunk": "Response bytes", "second-control": "Second control", "zone-observation": "Zone verified" };
+const eventNames = { connected: "Connected", "bootstrap-write": "Ping frame prepared", "bootstrap-pong": "First control body validated (01 00)",
+  "zone-write": "SZ frame prepared", "response-chunk": "Received chunk", "second-control": "Second control classified", "zone-observation": "Zone object validated" };
 </script>
 
 <template>
@@ -58,17 +58,18 @@ const eventNames = { connected: "Connected", "bootstrap-write": "Ping write", "b
       </div>
     </div>
     <div v-if="diagnostic.startedAt !== null" class="settings-ledger-copy">
-      <p>Initialization: {{ diagnostic.initializationComplete ? "complete and attributed" : "not verified" }}. Natural SZ baseline: {{ diagnostic.naturalBaseline ? "observed" : "not observed" }}.</p>
-      <p>Independent result: {{ directResult }}. Second control: {{ controlResult }}.</p>
-      <p>Native bootstrap: {{ diagnostic.nativeBootstrapControl === 'same-as-pong' ? 'pong body' : diagnostic.nativeBootstrapControl === 'other-control' ? 'other two-byte control' : diagnostic.nativeBootstrapControl === 'not-control' ? 'not a control frame' : 'not observed' }}. Second control matches native: {{ diagnostic.secondControlMatchesNative === null ? 'not compared' : diagnostic.secondControlMatchesNative ? 'yes' : 'no' }}.</p>
-      <p>Native/direct request body: {{ diagnostic.requestBodyMatchesNative === null ? "not compared" : diagnostic.requestBodyMatchesNative ? "matches" : "differs" }}. Collected: {{ diagnostic.bytesObserved }} bytes.</p>
+      <p>Captured fresh game flow: {{ diagnostic.initializationComplete ? "framed and attributed" : "not verified" }}. Native SZ object after SZ request: {{ diagnostic.naturalBaseline ? "observed" : "not observed" }}<span v-if="diagnostic.nativeZoneInboundOrdinal !== null"> in inbound frame #{{ diagnostic.nativeZoneInboundOrdinal }}</span>.</p>
+      <p>Independent result: {{ directResult }}. Direct second frame: {{ controlResult }}. SZ socket write completed: {{ diagnostic.requestDispatched ? "yes" : "no" }}.</p>
+      <p>First native inbound frame body: {{ diagnostic.nativeBootstrapControl === 'same-as-pong' ? 'two-byte body 01 00' : diagnostic.nativeBootstrapControl === 'other-control' ? 'other two-byte control body' : diagnostic.nativeBootstrapControl === 'not-control' ? 'not a two-byte control body' : 'not observed' }}. Direct control #2 body vs first native inbound frame body: {{ diagnostic.secondControlMatchesNative === null ? 'not compared' : diagnostic.secondControlMatchesNative ? 'equal' : 'different' }}.</p>
+      <p>Native/direct SZ bodies: {{ diagnostic.requestBodyMatchesNative === null ? "not compared" : diagnostic.requestBodyMatchesNative ? "equal" : "different" }}. Collected: {{ diagnostic.bytesObserved }} bytes.</p>
+      <p>Captured framing and equal control bodies do not establish session initialization or request acknowledgment. Socket write completion is local.</p>
       <p v-if="diagnostic.frameSummaryLimited">The frame summary reached its 32-frame display limit.</p>
       <p>Peak owned raw buffers: {{ diagnostic.peakOwnedBufferBytes }} bytes.</p>
-      <ol v-if="diagnostic.frames.length" aria-label="Initialization frame summary">
-        <li v-for="(frame, index) in diagnostic.frames" :key="index">{{ frame.direction === 'outbound' ? 'Outbound' : 'Inbound' }} {{ frame.kind === 'ping' ? 'ping' : frame.kind === 'zone-request' ? 'SZ request' : frame.kind === 'other-api' ? 'API frame' : 'generic frame' }}: {{ frame.bodyBytes }} body bytes<span v-if="frame.counter !== null">, counter {{ frame.counter }}</span><span v-if="frame.control === 'same-as-pong'">, pong body</span><span v-else-if="frame.control === 'other-control'">, other control</span></li>
+      <ol v-if="diagnostic.frames.length" aria-label="Captured native frame sequence">
+        <li v-for="(frame, index) in diagnostic.frames" :key="index">Frame #{{ index + 1 }}: {{ frame.direction === 'outbound' ? 'Outbound' : 'Inbound' }} {{ frame.kind === 'ping' ? 'two-byte ping' : frame.kind === 'zone-request' ? 'SZ request' : frame.kind === 'other-api' ? 'API frame' : 'generic frame' }}: {{ frame.bodyBytes }} body bytes<span v-if="frame.counter !== null">, counter {{ frame.counter }}</span><span v-if="frame.inboundOrdinal !== null">, inbound #{{ frame.inboundOrdinal }}</span><span v-if="frame.controlOrdinal !== null">, native control #{{ frame.controlOrdinal }}</span><span v-if="frame.control === 'same-as-pong'">, body 01 00</span><span v-else-if="frame.control === 'other-control'">, other control body</span><span v-if="frame.zoneObserved">, SZ object after request</span></li>
       </ol>
       <ol v-if="diagnostic.directEvents.length" aria-label="Independent transport event sequence">
-        <li v-for="(event, index) in diagnostic.directEvents" :key="index">{{ event.direction === 'outbound' ? 'Outbound' : event.direction === 'inbound' ? 'Inbound' : 'Local' }} {{ eventNames[event.kind] ?? 'Transport event' }}: {{ event.bytes }} bytes</li>
+        <li v-for="(event, index) in diagnostic.directEvents" :key="index">{{ event.direction === 'outbound' ? 'Outbound' : event.direction === 'inbound' ? 'Inbound' : 'Local' }} {{ eventNames[event.kind] ?? 'Transport event' }}: {{ event.bytes }} bytes<span v-if="event.controlOrdinal !== null">, direct control #{{ event.controlOrdinal }}</span></li>
       </ol>
     </div>
   </section>

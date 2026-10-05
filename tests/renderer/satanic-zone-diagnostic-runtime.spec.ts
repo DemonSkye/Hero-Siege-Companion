@@ -57,4 +57,34 @@ describe("explicit SZ diagnostic renderer controls", () => {
     await card.findAll("button")[1].trigger("click"); expect(card.emitted("cancel")).toHaveLength(1);
     expect(card.text()).toContain("119 seconds remaining"); expect(card.text()).toContain("Unknown protocol bytes cannot be reviewed afterward"); card.unmount();
   });
+  test("terminal copy distinguishes captured framing, control byte shape, comparison target and local write completion", () => {
+    const diagnostic = createInitialSatanicZoneDiagnosticState();
+    Object.assign(diagnostic, { phase: "timed-out", startedAt: 1000, initializationComplete: true, naturalBaseline: true,
+      nativeZoneInboundOrdinal: 3, directOutcome: "timeout", requestDispatched: true, bootstrapPong: true,
+      nativeBootstrapControl: "same-as-pong", secondControl: "same-as-pong", secondControlMatchesNative: true, requestBodyMatchesNative: true });
+    diagnostic.frames = [{ direction: "inbound", kind: "generic", bodyBytes: 2, counter: null, control: "same-as-pong",
+      inboundOrdinal: 1, controlOrdinal: 1, zoneObserved: false },
+    { direction: "inbound", kind: "generic", bodyBytes: 2, counter: null, control: "other-control",
+      inboundOrdinal: 2, controlOrdinal: 2, zoneObserved: false }];
+    diagnostic.directEvents = [{ kind: "bootstrap-pong", direction: "inbound", bytes: 10, control: "same-as-pong", controlOrdinal: 1 },
+      { kind: "second-control", direction: "inbound", bytes: 10, control: "same-as-pong", controlOrdinal: 2 }];
+    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 120000 } });
+    const text = card.text();
+    expect(text).toContain("Captured fresh game flow: framed and attributed");
+    expect(text).toContain("observed in inbound frame #3"); expect(text).toContain("SZ socket write completed: yes");
+    expect(text).toContain("Direct control #2 body vs first native inbound frame body: equal");
+    expect(text).toContain("native control #2"); expect(text).toContain("direct control #1");
+    expect(text).toContain("First control body validated (01 00)");
+    expect(text).not.toMatch(/Pong validated|Initialization: complete|Second control matches native/); card.unmount();
+  });
+  test("unknown operation/auth additions and missing comparisons never become displayed protocol names or acknowledgments", () => {
+    const diagnostic = createInitialSatanicZoneDiagnosticState(); diagnostic.startedAt = 1000;
+    diagnostic.frames = [{ direction: "outbound", kind: "other-api", bodyBytes: 126, counter: 0, control: "not-control",
+      inboundOrdinal: null, controlOrdinal: null, zoneObserved: false }];
+    Object.assign(diagnostic.frames[0], { operationName: "CANARY_AUTH_OPERATION", auth: "CANARY_PRIVATE" });
+    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001 } });
+    expect(card.text()).toContain("API frame: 126 body bytes, counter 0");
+    expect(card.text()).toContain("first native inbound frame body: not compared");
+    expect(card.text()).not.toMatch(/CANARY|undefined|NaN|pong body/); card.unmount();
+  });
 });

@@ -6,7 +6,7 @@ import type { DirectSatanicZoneTransportTrace } from "../../src/main/direct-sata
 import type { SatanicZoneRequestContext } from "../../src/main/captured-session-context";
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import type { SatanicZoneDiagnosticState } from "../../src/shared/satanic-zone-diagnostic";
-import { SZ_DIAGNOSTIC_MAX_BYTES } from "../../src/shared/satanic-zone-diagnostic";
+import { copySatanicZoneDiagnosticState, SZ_DIAGNOSTIC_MAX_BYTES } from "../../src/shared/satanic-zone-diagnostic";
 
 const scope = { localAddress: "192.0.2.10", remoteAddress: "198.51.100.20", remotePort: 6669 };
 const context: SatanicZoneRequestContext = { generation: 1, revision: 1, updatedAt: 0,
@@ -61,14 +61,15 @@ function harness() {
   const controller = new SatanicZoneDiagnosticController(dependencies);
   async function arm() { controller.arm(); await flush(); }
   function handshake() { receive(packet(true, 100, undefined, 2), false); receive(packet(false, 200, undefined, 18), false); gamePort = 5000; }
-  async function initialize(options: { gap?: boolean; split?: boolean; natural?: boolean } = {}) {
+  async function initialize(options: { gap?: boolean; split?: boolean; natural?: boolean; controls?: Buffer[]; extraInbound?: Buffer[] } = {}) {
     handshake();
     const requests = Buffer.concat([buildDirectApiPingFrame(0), buildDirectSatanicZoneFrame(context, 1)]);
     if (options.split) {
       receive(packet(true, 106, requests.subarray(5)), false);
       receive(packet(true, 101, requests.subarray(0, 5)), false);
     } else receive(packet(true, options.gap ? 102 : 101, requests), false);
-    const responses = Buffer.concat([pong, options.natural === false ? Buffer.alloc(0) : generic(body)]);
+    const responses = Buffer.concat([...(options.controls ?? [pong]), ...(options.extraInbound ?? []),
+      options.natural === false ? Buffer.alloc(0) : generic(body)]);
     receive(packet(false, 201, responses.subarray(0, 6)), false);
     receive(packet(false, 207, responses.subarray(6)), false);
     await vi.advanceTimersByTimeAsync(1000); await flush();
@@ -122,6 +123,73 @@ describe("bounded SZ diagnostic", () => {
     const report = JSON.stringify(fixture.updates);
     expect(report).not.toMatch(/CANARY|192\.0\.2|198\.51\.100|unique_account|crossregion|scopeKey|payload|endpoint/);
     expect(fixture.controller.snapshot().frames.map((frame) => frame.kind)).toEqual(["ping", "zone-request", "generic", "generic"]);
+    expect(fixture.controller.snapshot().frames.slice(2)).toMatchObject([
+      { inboundOrdinal: 1, controlOrdinal: 1, zoneObserved: false },
+      { inboundOrdinal: 2, controlOrdinal: null, zoneObserved: true },
+    ]);
+    expect(fixture.controller.snapshot().nativeZoneInboundOrdinal).toBe(2);
+    expect(fixture.controller.snapshot().directEvents.filter((event) => event.controlOrdinal !== null)
+      .map((event) => event.controlOrdinal)).toEqual([1, 2]);
+  });
+
+  test("the direct second control compares with the first native inbound body, not the second native control", async () => {
+    const fixture = harness(); await fixture.arm();
+    await fixture.initialize({ controls: [pong, generic(Buffer.from([2, 0]))] }); await fixture.direct();
+    const state = fixture.controller.snapshot();
+    expect(state.frames.filter((frame) => frame.controlOrdinal !== null)).toMatchObject([
+      { inboundOrdinal: 1, controlOrdinal: 1, control: "same-as-pong" },
+      { inboundOrdinal: 2, controlOrdinal: 2, control: "other-control" },
+    ]);
+    expect(state).toMatchObject({ nativeZoneInboundOrdinal: 3, secondControlMatchesNative: true, directOutcome: "pending" });
+    fixture.controller.cancel();
+  });
+
+  test("a later native control cannot replace the non-control first inbound comparison target", async () => {
+    const fixture = harness(); await fixture.arm();
+    await fixture.initialize({ controls: [], extraInbound: [generic(Buffer.from('{"ignored":"CANARY_PRIVATE"}')), pong] });
+    await fixture.direct();
+    expect(fixture.controller.snapshot()).toMatchObject({ nativeBootstrapControl: "not-control",
+      nativeZoneInboundOrdinal: 3, secondControlMatchesNative: null });
+    expect(fixture.controller.snapshot().frames[3]).toMatchObject({ inboundOrdinal: 2, controlOrdinal: 1 });
+    expect(JSON.stringify(fixture.updates)).not.toContain("CANARY"); fixture.controller.cancel();
+  });
+
+  test("a zone object before the SZ request cannot mark the baseline or its response ordinal", async () => {
+    const fixture = harness(); await fixture.arm(); fixture.handshake();
+    const ping = buildDirectApiPingFrame(0); const response = generic(body);
+    fixture.receive(packet(true, 101, ping)); fixture.receive(packet(false, 201, response));
+    await vi.advanceTimersByTimeAsync(1000); await flush();
+    expect(fixture.controller.snapshot()).toMatchObject({ naturalBaseline: false, nativeZoneInboundOrdinal: null });
+    expect(fixture.controller.snapshot().frames[1]).toMatchObject({ inboundOrdinal: 1, zoneObserved: false });
+    expect(fixture.dependencies.transport).not.toHaveBeenCalled();
+    fixture.receive(packet(true, 101 + ping.length, buildDirectSatanicZoneFrame(context, 1)));
+    fixture.receive(packet(false, 201 + response.length, response)); await flush();
+    expect(fixture.controller.snapshot()).toMatchObject({ naturalBaseline: true, nativeZoneInboundOrdinal: 2 });
+    expect(fixture.dependencies.transport).toHaveBeenCalledTimes(1); fixture.controller.cancel();
+  });
+
+  test("the first zone ordinal survives the frame display cap without retaining ignored response contents", async () => {
+    const fixture = harness(); await fixture.arm();
+    const ignored = generic(Buffer.from('{"ignored":"CANARY_PRIVATE_COMMAND_AND_AUTH"}'));
+    await fixture.initialize({ extraInbound: Array.from({ length: 32 }, () => ignored) });
+    const state = fixture.controller.snapshot();
+    expect(state).toMatchObject({ frameSummaryLimited: true, nativeZoneInboundOrdinal: 34, naturalBaseline: true });
+    expect(state.frames).toHaveLength(32); expect(state.frames.some((frame) => frame.zoneObserved)).toBe(false);
+    expect(state.frames.at(-1)).toMatchObject({ inboundOrdinal: 30, controlOrdinal: null });
+    expect(JSON.stringify(fixture.updates)).not.toContain("CANARY"); fixture.controller.cancel();
+  });
+
+  test("metadata projection strips arbitrary operation, field and response values from both sequences", async () => {
+    const fixture = harness(); await fixture.arm(); await fixture.initialize(); await fixture.direct();
+    const state = fixture.controller.snapshot();
+    Object.assign(state.frames[0], { operation: "CANARY_UNKNOWN_COMMAND", fieldValues: { auth: "CANARY_PRIVATE" } });
+    Object.assign(state.directEvents[0], { raw: Buffer.from("CANARY_PRIVATE"), response: "CANARY_PRIVATE" });
+    const projected = copySatanicZoneDiagnosticState(state);
+    expect(JSON.stringify(projected)).not.toContain("CANARY");
+    expect(Object.keys(projected.frames[0]).sort()).toEqual(["direction", "kind", "bodyBytes", "counter", "control",
+      "inboundOrdinal", "controlOrdinal", "zoneObserved"].sort());
+    expect(Object.keys(projected.directEvents[0]).sort()).toEqual(["kind", "direction", "bytes", "control", "controlOrdinal"].sort());
+    fixture.controller.cancel();
   });
 
   test("passive baseline never counts as direct success", async () => {
