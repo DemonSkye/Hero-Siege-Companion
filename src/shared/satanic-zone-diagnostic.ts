@@ -10,7 +10,7 @@ export type SatanicZoneDiagnosticReason =
   | "stream-gap" | "invalid-frame" | "ambiguous-flow" | "byte-limit"
   | "capture-truncated" | "capture-failed" | "context-unavailable" | "direct-failed"
   | "deadline" | "user-cancelled" | "shutdown";
-export type DiagnosticFrameKind = "ping" | "zone-request" | "other-api" | "generic";
+export type DiagnosticFrameKind = "ping" | "zone-request" | "connect-shaped" | "api-request" | "region-api-request" | "other-api" | "generic";
 export type DiagnosticControlClassification = "not-observed" | "same-as-pong" | "other-control" | "not-control";
 
 export interface DiagnosticFrameSummary {

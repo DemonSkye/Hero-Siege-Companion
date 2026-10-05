@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { DiagnosticFrameKind } from "../shared/satanic-zone-diagnostic";
 import type { ParsedPayload } from "./packet-decoder";
 import { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
+import { classifySatanicZoneDiagnosticApiBody } from "./satanic-zone-diagnostic-frame-kind";
 
 export interface DiagnosticCaptureScope {
   localAddress: string;
@@ -99,9 +100,7 @@ class OrderedDiagnosticBytes {
         throw new Error("invalid-frame" satisfies DiagnosticStreamFailure);
       }
       if (api) this.lastCounter = counter;
-      let kind: DiagnosticFrameKind = api ? "other-api" : "generic";
-      if (api && body.equals(Buffer.from([1, 0]))) kind = "ping";
-      else if (api && body.subarray(0, 23).equals(Buffer.from("\x03\0\x01\0satanic_zone_get\0R\0", "binary"))) kind = "zone-request";
+      const kind: DiagnosticFrameKind = api ? classifySatanicZoneDiagnosticApiBody(body, this.outbound) : "generic";
       this.parsed += header + length;
       // Copies are short lived; the caller must erase any retained body on cleanup.
       const frameBody = this.budget.copy(body);

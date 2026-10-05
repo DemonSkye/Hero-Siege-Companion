@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { SatanicZoneDiagnosticStream, type DiagnosticFrame } from "../../src/main/satanic-zone-diagnostic-stream";
 import { buildDirectApiPingFrame } from "../../src/main/direct-satanic-zone-protocol";
 import type { ParsedPayload } from "../../src/main/packet-decoder";
+import { connectDiagnosticBody, frameDiagnosticBody, requestDiagnosticBody } from "../fixtures/satanic-zone-diagnostic-frames";
 const scope = { localAddress: "192.0.2.10", remoteAddress: "198.51.100.20", remotePort: 6669 };
 function packet(outbound: boolean, seq: number, flags: number, payload: Buffer = Buffer.alloc(0)): ParsedPayload {
   return { src: outbound ? scope.localAddress : scope.remoteAddress, dst: outbound ? scope.remoteAddress : scope.localAddress,
@@ -13,6 +14,21 @@ function fixture(onFrame: (frame: DiagnosticFrame) => void = () => {}) {
   stream.push(packet(true, 100, 2)); stream.push(packet(false, 200, 18)); stream.attribute(); return stream;
 }
 describe("diagnostic stream attribution and framing", () => {
+  test("complete fragmented/coalesced frames distinguish connect shape, API families and ping", () => {
+    const kinds: string[] = []; const stream = fixture((frame) => kinds.push(frame.kind));
+    const bytes = Buffer.concat([frameDiagnosticBody(connectDiagnosticBody(), 0),
+      frameDiagnosticBody(requestDiagnosticBody(2), 1), frameDiagnosticBody(requestDiagnosticBody(3), 2), buildDirectApiPingFrame(3)]);
+    stream.push(packet(true, 101, 16, bytes.subarray(0, 25))); expect(kinds).toEqual([]);
+    stream.push(packet(true, 126, 16, bytes.subarray(25))); expect(kinds).toEqual(["connect-shaped", "api-request", "region-api-request", "ping"]);
+    expect(stream.complete).toBe(true); stream.dispose();
+  });
+  test("a complete connect-shaped body with an incomplete envelope or invalid token cannot produce a category", () => {
+    const kinds: string[] = []; const stream = fixture((frame) => kinds.push(frame.kind));
+    const bytes = frameDiagnosticBody(connectDiagnosticBody(), 0);
+    stream.push(packet(true, 101, 16, bytes.subarray(0, -1))); expect(kinds).toEqual([]); stream.dispose();
+    const invalid = fixture((frame) => kinds.push(frame.kind)); bytes[0] = bytes[0] === 97 ? 98 : 97;
+    expect(() => invalid.push(packet(true, 101, 16, bytes))).toThrow("invalid-frame"); expect(kinds).toEqual([]); invalid.dispose();
+  });
   test.each([8, 9, 11, 12, 15])("never treats a %s-byte API header fragment as a generic frame", (length) => {
     const kinds: string[] = []; const stream = fixture((frame) => kinds.push(frame.kind)); const bytes = buildDirectApiPingFrame();
     stream.push(packet(true, 101, 16, bytes.subarray(0, length))); expect(stream.complete).toBe(false); expect(kinds).toEqual([]);

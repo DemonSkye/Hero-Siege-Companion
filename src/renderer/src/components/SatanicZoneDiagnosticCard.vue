@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { isSatanicZoneDiagnosticActive, type SatanicZoneDiagnosticState } from "../../../shared/satanic-zone-diagnostic";
+import { isSatanicZoneDiagnosticActive, type SatanicZoneDiagnosticState, type DiagnosticFrameKind } from "../../../shared/satanic-zone-diagnostic";
 
 const props = defineProps<{ diagnostic: SatanicZoneDiagnosticState; now: number; busy?: boolean; cancelBusy?: boolean }>();
 defineEmits<{ arm: []; cancel: [] }>();
@@ -34,6 +34,9 @@ const controlResult = computed(() => ({
 }[props.diagnostic.secondControl] ?? "Not classified"));
 const eventNames = { connected: "Connected", "bootstrap-write": "Ping frame prepared", "bootstrap-pong": "First control body validated (01 00)",
   "zone-write": "SZ frame prepared", "response-chunk": "Received chunk", "second-control": "Second control classified", "zone-observation": "Zone object validated" };
+const frameNames: Record<DiagnosticFrameKind, string> = { ping: "two-byte ping", "zone-request": "SZ request",
+  "connect-shaped": "Connect-shaped API frame", "api-request": "API request frame", "region-api-request": "Region API request frame",
+  "other-api": "API frame", generic: "generic frame" };
 </script>
 
 <template>
@@ -63,10 +66,11 @@ const eventNames = { connected: "Connected", "bootstrap-write": "Ping frame prep
       <p>First native inbound frame body: {{ diagnostic.nativeBootstrapControl === 'same-as-pong' ? 'two-byte body 01 00' : diagnostic.nativeBootstrapControl === 'other-control' ? 'other two-byte control body' : diagnostic.nativeBootstrapControl === 'not-control' ? 'not a two-byte control body' : 'not observed' }}. Direct control #2 body vs first native inbound frame body: {{ diagnostic.secondControlMatchesNative === null ? 'not compared' : diagnostic.secondControlMatchesNative ? 'equal' : 'different' }}.</p>
       <p>Native/direct SZ bodies: {{ diagnostic.requestBodyMatchesNative === null ? "not compared" : diagnostic.requestBodyMatchesNative ? "equal" : "different" }}. Collected: {{ diagnostic.bytesObserved }} bytes.</p>
       <p>Captured framing and equal control bodies do not establish session initialization or request acknowledgment. Socket write completion is local.</p>
+      <p>Connect-shaped/API/Region API categories describe body structure; they do not identify login operations or prove initialization.</p>
       <p v-if="diagnostic.frameSummaryLimited">The frame summary reached its 32-frame display limit.</p>
       <p>Peak owned raw buffers: {{ diagnostic.peakOwnedBufferBytes }} bytes.</p>
       <ol v-if="diagnostic.frames.length" aria-label="Captured native frame sequence">
-        <li v-for="(frame, index) in diagnostic.frames" :key="index">Frame #{{ index + 1 }}: {{ frame.direction === 'outbound' ? 'Outbound' : 'Inbound' }} {{ frame.kind === 'ping' ? 'two-byte ping' : frame.kind === 'zone-request' ? 'SZ request' : frame.kind === 'other-api' ? 'API frame' : 'generic frame' }}: {{ frame.bodyBytes }} body bytes<span v-if="frame.counter !== null">, counter {{ frame.counter }}</span><span v-if="frame.inboundOrdinal !== null">, inbound #{{ frame.inboundOrdinal }}</span><span v-if="frame.controlOrdinal !== null">, native control #{{ frame.controlOrdinal }}</span><span v-if="frame.control === 'same-as-pong'">, body 01 00</span><span v-else-if="frame.control === 'other-control'">, other control body</span><span v-if="frame.zoneObserved">, SZ object after request</span></li>
+        <li v-for="(frame, index) in diagnostic.frames" :key="index">Frame #{{ index + 1 }}: {{ frame.direction === 'outbound' ? 'Outbound' : 'Inbound' }} {{ frameNames[frame.kind] ?? 'generic frame' }}: {{ frame.bodyBytes }} body bytes<span v-if="frame.counter !== null">, counter {{ frame.counter }}</span><span v-if="frame.inboundOrdinal !== null">, inbound #{{ frame.inboundOrdinal }}</span><span v-if="frame.controlOrdinal !== null">, native control #{{ frame.controlOrdinal }}</span><span v-if="frame.control === 'same-as-pong'">, body 01 00</span><span v-else-if="frame.control === 'other-control'">, other control body</span><span v-if="frame.zoneObserved">, SZ object after request</span></li>
       </ol>
       <ol v-if="diagnostic.directEvents.length" aria-label="Independent transport event sequence">
         <li v-for="(event, index) in diagnostic.directEvents" :key="index">{{ event.direction === 'outbound' ? 'Outbound' : event.direction === 'inbound' ? 'Inbound' : 'Local' }} {{ eventNames[event.kind] ?? 'Transport event' }}: {{ event.bytes }} bytes<span v-if="event.controlOrdinal !== null">, direct control #{{ event.controlOrdinal }}</span></li>

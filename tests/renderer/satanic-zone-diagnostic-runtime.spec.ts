@@ -87,4 +87,15 @@ describe("explicit SZ diagnostic renderer controls", () => {
     expect(card.text()).toContain("first native inbound frame body: not compared");
     expect(card.text()).not.toMatch(/CANARY|undefined|NaN|pong body/); card.unmount();
   });
+  test("structural categories display fixed shape labels without operation or session values", () => {
+    const diagnostic = createInitialSatanicZoneDiagnosticState(); diagnostic.startedAt = 1000;
+    diagnostic.frames = ["connect-shaped", "api-request", "region-api-request"].map((kind) => ({
+      direction: "outbound", kind: kind as "connect-shaped" | "api-request" | "region-api-request", bodyBytes: 126,
+      counter: 0, control: "not-control", inboundOrdinal: null, controlOrdinal: null, zoneObserved: false }));
+    Object.assign(diagnostic.frames[0], { account: "CANARY_PRIVATE", operationName: "CANARY_UNKNOWN_COMMAND" });
+    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001 } });
+    expect(card.text()).toContain("Connect-shaped API frame"); expect(card.text()).toContain("API request frame");
+    expect(card.text()).toContain("Region API request frame"); expect(card.text()).not.toMatch(/CANARY|undefined|NaN/);
+    expect(card.text()).toContain("do not identify login operations or prove initialization"); card.unmount();
+  });
 });

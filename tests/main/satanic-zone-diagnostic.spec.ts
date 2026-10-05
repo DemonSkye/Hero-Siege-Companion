@@ -7,6 +7,7 @@ import type { SatanicZoneRequestContext } from "../../src/main/captured-session-
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import type { SatanicZoneDiagnosticState } from "../../src/shared/satanic-zone-diagnostic";
 import { copySatanicZoneDiagnosticState, SZ_DIAGNOSTIC_MAX_BYTES } from "../../src/shared/satanic-zone-diagnostic";
+import { connectDiagnosticBody, frameDiagnosticBody, requestDiagnosticBody } from "../fixtures/satanic-zone-diagnostic-frames";
 
 const scope = { localAddress: "192.0.2.10", remoteAddress: "198.51.100.20", remotePort: 6669 };
 const context: SatanicZoneRequestContext = { generation: 1, revision: 1, updatedAt: 0,
@@ -61,9 +62,10 @@ function harness() {
   const controller = new SatanicZoneDiagnosticController(dependencies);
   async function arm() { controller.arm(); await flush(); }
   function handshake() { receive(packet(true, 100, undefined, 2), false); receive(packet(false, 200, undefined, 18), false); gamePort = 5000; }
-  async function initialize(options: { gap?: boolean; split?: boolean; natural?: boolean; controls?: Buffer[]; extraInbound?: Buffer[] } = {}) {
+  async function initialize(options: { gap?: boolean; split?: boolean; natural?: boolean; controls?: Buffer[]; extraInbound?: Buffer[]; startupBodies?: Buffer[] } = {}) {
     handshake();
-    const requests = Buffer.concat([buildDirectApiPingFrame(0), buildDirectSatanicZoneFrame(context, 1)]);
+    const startup = options.startupBodies ?? [];
+    const requests = Buffer.concat([...startup.map(frameDiagnosticBody), buildDirectApiPingFrame(startup.length), buildDirectSatanicZoneFrame(context, startup.length + 1)]);
     if (options.split) {
       receive(packet(true, 106, requests.subarray(5)), false);
       receive(packet(true, 101, requests.subarray(0, 5)), false);
@@ -198,6 +200,20 @@ describe("bounded SZ diagnostic", () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(fixture.controller.snapshot()).toMatchObject({ phase: "timed-out", directOutcome: "timeout", secondControl: "same-as-pong" });
     expect(fixture.dependencies.transport).toHaveBeenCalledTimes(1);
+  });
+
+  test("structural categories publish only enums and cannot dispatch without the existing SZ/baseline gate", async () => {
+    const fixture = harness(); await fixture.arm(); fixture.handshake();
+    const bodies = [connectDiagnosticBody(), requestDiagnosticBody(2), requestDiagnosticBody(3)];
+    const bytes = Buffer.concat(bodies.map(frameDiagnosticBody)); fixture.receive(packet(true, 101, bytes));
+    await vi.advanceTimersByTimeAsync(1000); await flush();
+    expect(fixture.controller.snapshot().frames.map((frame) => frame.kind)).toEqual(["connect-shaped", "api-request", "region-api-request"]);
+    expect(fixture.dependencies.transport).not.toHaveBeenCalled(); expect(fixture.controller.snapshot().naturalBaseline).toBe(false);
+    expect(JSON.stringify(fixture.updates)).not.toMatch(/CANARY|account_uid|checksum|operationName/); fixture.controller.cancel();
+    const ready = harness(); await ready.arm(); await ready.initialize({ startupBodies: bodies });
+    expect(ready.dependencies.transport).toHaveBeenCalledTimes(1); await ready.direct();
+    expect(ready.controller.snapshot()).toMatchObject({ naturalBaseline: true, directOutcome: "pending" });
+    expect(JSON.stringify(ready.updates)).not.toMatch(/CANARY|account_uid|checksum/); ready.controller.cancel();
   });
 
   test("classifies an unknown second control without exposing its value", async () => {
