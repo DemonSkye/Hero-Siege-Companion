@@ -5,6 +5,7 @@ import { createDiagnosticCaptureDependencies } from "./satanic-zone-diagnostic-r
 import { runInitializedSatanicZoneProbe } from "./satanic-zone-initialized-transport";
 import type { CapturedSessionPayload } from "./captured-session-context";
 import type { CaptureConnection } from "../shared/app-state";
+import type { CapturedTcpLifecycle } from "./packet-decoder";
 import type { SatanicZoneRefreshAvailability, SatanicZoneRefreshDispatchResult, SatanicZoneRefreshProvider,
   SatanicZoneRefreshRequestOptions, SatanicZoneProviderWaitOutcome, SatanicZoneObservationWaitOptions,
   SatanicZoneProviderObservation } from "./satanic-zone-refresh-provider";
@@ -43,32 +44,38 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       attempt: (input, signal, budget, progress) => options.syntheticOnly ? Promise.resolve("failed")
         : runInitializedSatanicZoneProbe(input, signal, budget, progress),
       ...options.dependencies, retainContext: true,
-      canArm: () => !this.disposed && !this.pending && this.now() >= this.nextAllowedAt && options.canPrepare(),
+      canArm: () => !this.disposed && !this.pending && options.canPrepare(),
       onChange: state => this.changed(state), onObservation: observation => this.observed(observation),
     });
   }
   get preparation(): SatanicZonePreparation { return projectPreparation(this.context.snapshot()); }
   get suppressRawLogging(): boolean { return this.context.active; }
   prepare(): void { if (!this.disposed) this.context.arm(); }
+  /** Enable/capture-start may open one bounded listener; never replay credentials. */
+  preparePassively(): void {
+    if (["idle", "expired", "unavailable"].includes(this.preparation.phase)) this.prepare();
+  }
   cancelPreparation(): void { this.stop(); }
+  cancelAttempt(): void { this.context.cancelAttempt(); }
   invalidate(): void { this.context.invalidate(); }
   observeProcessIds(ids: readonly number[]): void { this.context.observeProcessIds(ids); }
   observeSessionPayload(payload: CapturedSessionPayload): void { this.context.observeSessionPayload(payload); }
   observeConnections(connections: readonly CaptureConnection[]): void { this.context.observeConnections(connections); }
+  observeTcpLifecycle(packet: CapturedTcpLifecycle): void { this.context.observeTcpLifecycle(packet); }
   async getAvailability(): Promise<SatanicZoneRefreshAvailability> {
-    if (this.preparation.phase === "ready" && this.now() >= (this.preparation.expiresAt ?? 0)) this.context.invalidate();
     const available = !this.disposed && this.preparation.phase === "ready";
     return { available, experimental: true, errorCode: available ? null : "helper_not_ready" };
   }
   async requestRefresh(options: SatanicZoneRefreshRequestOptions = {}): Promise<SatanicZoneRefreshDispatchResult> {
     if (this.disposed || options.signal?.aborted) return rejected("helper_unavailable");
+    if (this.pending?.completed) { this.pending.cleanup(); this.pending = null; }
     if (this.pending) return rejected("refresh_in_progress");
     if (this.now() < this.nextAllowedAt) return rejected("refresh_cooldown");
-    if (this.preparation.phase !== "ready" || this.now() >= (this.preparation.expiresAt ?? 0)) return rejected("helper_not_ready");
+    if (this.preparation.phase !== "ready") return rejected("helper_not_ready");
     let dispatch!: Pending["dispatch"], settle!: Pending["settle"];
     const dispatched = new Promise<SatanicZoneRefreshDispatchResult>(resolve => { dispatch = resolve; });
     const outcome = new Promise<SatanicZoneProviderWaitOutcome>(resolve => { settle = resolve; });
-    const cancelled = () => this.context.cancel();
+    const cancelled = () => this.context.cancelAttempt();
     const pending: Pending = { id: `initialized-sz-${this.nextId++}`, dispatched, dispatch, outcome, settle,
       accepted: false, completed: false, cleanup: () => options.signal?.removeEventListener("abort", cancelled) };
     this.pending = pending; options.signal?.addEventListener("abort", cancelled, { once: true });
@@ -81,7 +88,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   async waitForObservation(id: string, options: SatanicZoneObservationWaitOptions): Promise<SatanicZoneProviderWaitOutcome | null> {
     const pending = this.pending;
     if (!pending || pending.id !== id) return null;
-    const cancelled = () => this.context.cancel();
+    const cancelled = () => this.context.cancelAttempt();
     options.signal?.addEventListener("abort", cancelled, { once: true });
     if (options.signal?.aborted) cancelled();
     // The transport/context already own an absolute <=30s deadline.
@@ -105,11 +112,12 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       pending.accepted = true; pending.cleanup(); this.nextAllowedAt = this.now() + 30_000;
       pending.dispatch({ accepted: true, errorCode: null, correlationId: pending.id });
     }
-    if (pending && !pending.completed && !["arming", "waiting-initialization", "collecting", "ready", "requesting"].includes(state.phase)) {
+    const retainedFailure = state.phase === "ready" && ["failed", "timeout", "cancelled"].includes(state.directOutcome);
+    if (pending && !pending.completed && (retainedFailure || !["arming", "waiting-initialization", "collecting", "ready", "requesting"].includes(state.phase))) {
       pending.completed = true; pending.cleanup();
-      const errorCode = state.phase === "timed-out" ? "response_timeout" : "helper_failed";
+      const errorCode = state.phase === "timed-out" || state.directOutcome === "timeout" ? "response_timeout" : "helper_failed";
       pending.dispatch(rejected(errorCode));
-      pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: false });
+      pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: retainedFailure });
     }
     this.options.onPreparation(projectPreparation(state));
   }

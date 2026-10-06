@@ -666,8 +666,11 @@ export function getPayload(buffer: Buffer, nbytes: number, linkType: string): Pa
   return packet && packet.payloadLength > 0 ? packet : null;
 }
 
-// Diagnostic SYN/ACK attribution needs empty TCP segments. Normal capture keeps
-// its payload-only admission through getPayload.
+/** Main-only TCP lifecycle metadata; deliberately excludes payload bytes/text. */
+export type CapturedTcpLifecycle = Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort" | "flags">;
+
+// SYN/ACK attribution and passive lifecycle observation need empty TCP segments.
+// Gameplay parsing still admits payload-bearing packets only.
 export function getTcpSegment(buffer: Buffer, nbytes: number, linkType: string, borrowPayload = false): ParsedPayload | null {
   if (!Number.isFinite(nbytes) || nbytes <= 0) return null;
   const capturedLength = Math.min(Math.trunc(nbytes), buffer.length);

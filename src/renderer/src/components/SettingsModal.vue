@@ -371,11 +371,12 @@ function saveStatusLabel(): string {
       >
         <p>SZ Refresh opens a short-lived, companion-owned connection to request the current Satanic Zone. It never redirects or modifies the game’s connection.</p>
         <ul>
-          <li>Start capture while Hero Siege is connected. Click Prepare refresh, wait for the connection cue, then reconnect or restart the game.</li>
+          <li>With this feature enabled, starting capture listens for the next fresh game API connection and complete login. You can keep playing while it waits.</li>
           <li>No certificate installation, administrator service, proxy, or special game launch is required.</li>
           <li>Refresh requests remain limited to once every 30 seconds.</li>
+          <li>The listener is bounded to two minutes. Already completed login cannot be recovered; Prepare refresh starts another listening window. A menu or character change is not known to provide full initialization.</li>
           <li>Once ready, click Refresh for a fresh result. Preparation alone sends no request.</li>
-          <li>Login context stays only in memory for up to two minutes from preparation. Expiry, connection changes, disable and shutdown clear it; raw traffic logs pause while it is held.</li>
+          <li>Login context stays only in memory for the current game session. Ready has no time expiry. Game process, connection or account changes, disable and shutdown clear it; raw traffic logs pause while it is held.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
       </SettingsActionDialog>
@@ -389,8 +390,8 @@ function saveStatusLabel(): string {
       >
         <p>The companion will enable manual requests over a short-lived, companion-owned connection.</p>
         <ul>
-          <li>Click Prepare refresh while capture is running with the game connected, then reconnect after the connection cue.</li>
-          <li>When ready, click Refresh. Login context stays only in memory for up to two minutes; raw traffic logs pause while it is held.</li>
+          <li>Capture listens for the next fresh game API connection and complete login. Already completed login cannot be recovered; Prepare refresh starts another bounded listening window.</li>
+          <li>When ready, click Refresh. Login context stays only in memory for the current game session. Ready has no time expiry; raw traffic logs pause while it is held.</li>
           <li>Requests remain limited to once every 30 seconds.</li>
           <li>Backup restoration never enables this feature.</li>
         </ul>

@@ -8,13 +8,13 @@ const NOW = new Date("2026-08-24T15:20:00.000Z").getTime();
 
 describe("SatanicZonePanel", () => {
   test.each([
-    ["idle", "Prepare Satanic Zone refresh", "wait for the connection cue"],
-    ["opening", "Cancel Satanic Zone refresh preparation", "Wait for the connection cue"],
-    ["waiting_connection", "Cancel Satanic Zone refresh preparation", "Reconnect or restart Hero Siege now"],
+    ["idle", "Prepare Satanic Zone refresh", "listen for game API initialization"],
+    ["opening", "Cancel Satanic Zone refresh preparation", "Preparation sends no request"],
+    ["waiting_connection", "Cancel Satanic Zone refresh preparation", "You can keep playing"],
     ["collecting", "Cancel Satanic Zone refresh preparation", "No refresh request has been sent"],
-    ["ready", "Refresh Satanic Zone", "Ready for manual refresh for 60s"],
-    ["expired", "Prepare Satanic Zone refresh", "login context was cleared"],
-    ["unavailable", "Prepare Satanic Zone refresh", "prepare again before reconnecting"],
+    ["ready", "Refresh Satanic Zone", "Ready for manual refresh for this game session"],
+    ["expired", "Prepare Satanic Zone refresh", "listening window ended"],
+    ["unavailable", "Prepare Satanic Zone refresh", "listen for the next game API initialization"],
   ] as const)("%s preparation explains the next action", async (phase, label, detail) => {
     const wrapper = mountPanel(currentZoneState({ refreshPreparation: { phase, expiresAt: NOW + 60_000 } }));
     expect(wrapper.get(".zone-preparation").text()).toContain(detail);
@@ -34,7 +34,7 @@ describe("SatanicZonePanel", () => {
     expect(wrapper.text()).toContain("Observed 2m ago");
     expect(wrapper.text()).toContain("Valid until");
     expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain(
-      "never modifies the game's connection",
+      "Ready has no time expiry",
     );
     expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain("Npcap must first observe");
 

@@ -44,7 +44,7 @@ defineEmits<{
     </div>
 
     <div class="settings-notice" role="note">
-      <p><strong>Npcap required.</strong> Start capture with the game connected, click Prepare refresh, wait for the connection cue, then reconnect the game. When ready, click Refresh. Login context stays in memory for up to two minutes and is cleared when the game connection changes. No proxy or certificate installation is required.</p>
+      <p><strong>Npcap required.</strong> Enabling capture listens for the next fresh API connection and complete game login. Already completed login cannot be recovered. Click Prepare refresh to listen again if needed; once ready, click Refresh. Login context stays only in memory for the current game session, with no Ready time expiry. No proxy or certificate installation is required.</p>
       <button class="icon-button ghost" type="button" @click="$emit('learnMore')">Learn More</button>
     </div>
   </section>

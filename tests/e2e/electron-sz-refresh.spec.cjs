@@ -30,18 +30,18 @@ function initialization() {
 test("normal Refresh prepares privately, keeps passive updates separate, returns owned zone and clears readiness on disable", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
     await page.evaluate(() => window.heroSiegeCompanion.setCaptureDiagnosticsMode("deep", "manual"));
-    await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(true));
     const invented = initialization();
     await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+    await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(true));
     const card = page.locator("#satanic-zone-card");
-    await card.getByRole("button", { name: "Prepare Satanic Zone refresh", exact: true }).click();
     await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("waiting_connection");
-    await expect(card.locator(".zone-preparation")).toContainText("Reconnect or restart Hero Siege now");
+    await expect(card.locator(".zone-preparation")).toContainText("You can keep playing");
     expect((await getRendererState(page)).capturePreferences).toEqual({ captureDebugLogging: false,
       capturePayloadLogging: false, captureWideLogging: false, satanicZoneDebugLogging: false });
     await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
     await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
     const ready = (await getRendererState(page)).satanicZone.refreshPreparation;
+    expect(ready.expiresAt).toBeNull();
     expect(Object.keys(ready).sort()).toEqual(["expiresAt", "phase"]);
     expect(JSON.stringify(ready)).not.toMatch(/CANARY|1234567890|9876543210/);
     await card.getByRole("button", { name: "Refresh Satanic Zone", exact: true }).click();
@@ -55,6 +55,10 @@ test("normal Refresh prepares privately, keeps passive updates separate, returns
     expect((await getRendererState(page)).satanicZone).toMatchObject({ source: "manual", current: { rawZone: "Act_04_03" },
       refreshPreparation: { phase: "ready", expiresAt: ready.expiresAt } });
     await expect(card.locator(".zone-status")).toContainText("Received through manual refresh.");
+    await page.evaluate(() => window.heroSiegeCompanion.stopCapture());
+    expect((await getRendererState(page)).satanicZone.refreshPreparation).toEqual({ phase: "ready", expiresAt: null });
+    await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+    expect((await getRendererState(page)).satanicZone.refreshPreparation).toEqual({ phase: "ready", expiresAt: null });
     await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(false));
     expect((await getRendererState(page)).satanicZone).toMatchObject({ refreshEnabled: false, refreshPreparation: { phase: "idle", expiresAt: null } });
     expect((await getRendererState(page)).capturePreferences.captureWideLogging).toBe(true);

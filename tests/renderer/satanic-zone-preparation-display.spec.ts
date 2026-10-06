@@ -15,11 +15,12 @@ describe("preparation guidance in the compact overlay", () => {
     expect(wrapper.emitted("update:showZone")?.[0]).toEqual([true]);
     state.satanicZone.refreshPreparation = { phase: "waiting_connection", expiresAt: 121_000 };
     await wrapper.setProps({ state: { ...state }, showZone: true });
-    expect(wrapper.get('[data-preparation="waiting_connection"]').text()).toContain("Reconnect or restart Hero Siege now");
+    expect(wrapper.get('[data-preparation="waiting_connection"]').text()).toContain("You can keep playing");
     expect(wrapper.get(".compact-zone-refresh-button").attributes("aria-label")).toBe("Cancel Satanic Zone refresh preparation");
   });
-  test("remaining lifetime never becomes negative and absent readiness leaves old state displays compatible", () => {
+  test("Ready has no countdown even with a legacy expiry and absent readiness leaves old displays compatible", () => {
     expect(satanicZonePreparationDetail(undefined, 1_000)).toBeNull();
-    expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: 0 }, 1_000)).toContain("for 0s");
+    expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: 0 }, 1_000)).toContain("for this game session");
+    expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: null }, 1_000)).not.toMatch(/\d+s|restart|reconnect/i);
   });
 });

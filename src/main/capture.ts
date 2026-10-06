@@ -26,7 +26,7 @@ import {
   type HeroSiegeNetworkState,
   type RetainedCaptureTarget,
 } from "./capture-network";
-import { getPayload, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "./packet-decoder";
+import { getTcpSegment, isLikelyParseablePayload, PacketBuffers, type ParsedPayload, type CapturedTcpLifecycle } from "./packet-decoder";
 import type { CaptureConnection, CaptureHealth, CapturePreferences, PlayerChatLogContext } from "../shared/app-state";
 import { EVENT_NAMES } from "../shared/constants";
 import type { MessageValue } from "../shared/fields";
@@ -160,7 +160,8 @@ export class CaptureService {
     private readonly wideDebugLogPath?: string,
     capturePreferences: CapturePreferences | boolean = DEFAULT_CAPTURE_PREFERENCES,
     private readonly observeSessionPayload: (payload: CapturedSessionPayload) => void = () => undefined,
-    private readonly observeGameProcessIds: (processIds: readonly number[]) => void = () => undefined,
+    private readonly observeGameProcessIds: (processIds: readonly number[], reason?: "capture-stopped") => void = () => undefined,
+    private readonly observeTcpLifecycle: (packet: CapturedTcpLifecycle) => void = () => undefined,
   ) {
     this.capturePreferences = captureLoggingPreferences(capturePreferences);
   }
@@ -275,7 +276,7 @@ export class CaptureService {
     this.captureRequested = false;
     this.stopTimers();
     this.resetCaptureSession();
-    this.observeGameProcessIdsSafely([]);
+    this.observeGameProcessIdsSafely([], "capture-stopped");
     this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
   }
 
@@ -429,9 +430,10 @@ export class CaptureService {
     this.openCapture(signature, captureConnections, connections, filter);
   }
 
-  private observeGameProcessIdsSafely(processIds: readonly number[]): void {
+  private observeGameProcessIdsSafely(processIds: readonly number[], reason?: "capture-stopped"): void {
     try {
-      this.observeGameProcessIds(processIds);
+      if (reason) this.observeGameProcessIds(processIds, reason);
+      else this.observeGameProcessIds(processIds);
     } catch {
       // Session context observation must never interrupt capture discovery.
     }
@@ -568,8 +570,12 @@ export class CaptureService {
   }
 
   private processPacket(nbytes: number, truncated: boolean): void {
-    const parsedPacket = getPayload(this.buffer, nbytes, this.activeLinkType);
+    const parsedPacket = getTcpSegment(this.buffer, nbytes, this.activeLinkType);
     if (!parsedPacket || !this.isCaptureFlowPacket(parsedPacket)) return;
+    if (parsedPacket.payloadLength === 0) {
+      if (!truncated) this.observeTcpLifecycleSafely(parsedPacket);
+      return;
+    }
 
     this.lastPacketAt = Date.now();
     this.packetsSeen += 1;
@@ -641,6 +647,7 @@ export class CaptureService {
         log: observedLogs.length === 1 ? observedLogs[0] : undefined,
         logs: observedLogs.length > 1 ? observedLogs : undefined,
       });
+      this.observeTcpLifecycleSafely(parsedPacket);
       return;
     }
 
@@ -664,6 +671,16 @@ export class CaptureService {
       log: logs.length === 1 ? logs[0] : undefined,
       logs: logs.length > 1 ? logs : undefined,
     });
+    this.observeTcpLifecycleSafely(parsedPacket);
+  }
+
+  private observeTcpLifecycleSafely(packet: ParsedPayload): void {
+    if ((packet.flags & 7) === 0) return;
+    // Defer until this packet's log boundaries have passed: invalidation may
+    // restore the user's raw logging preference synchronously.
+    const { src, dst, srcPort, dstPort, flags } = packet;
+    try { this.observeTcpLifecycle({ src, dst, srcPort, dstPort, flags }); }
+    catch { /* Lifecycle observation must not interrupt normal capture. */ }
   }
 
   private observeSessionPayloadSafely(packet: ParsedPayload, text: string): void {

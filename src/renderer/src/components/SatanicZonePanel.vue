@@ -31,7 +31,7 @@ const refreshControl = computed(() =>
 <template>
   <LiveDashboardCard id="satanic-zone-card" panel-class="zone-panel" :title="zone?.zone || 'Waiting for zone packet'">
     <template #eyebrow>
-      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses a short-lived Companion-owned connection and never modifies the game's connection. Npcap must first observe a fresh game login after Prepare refresh. Captured login context is kept only in memory for up to two minutes.">i</span>
+      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses a short-lived Companion-owned connection. Npcap must first observe a fresh API connection and complete game login. Login context stays only in memory for the current game session; Ready has no time expiry.">i</span>
     </template>
     <template #title>{{ zone?.zone || "Waiting for zone packet" }}</template>
     <template #actions>

@@ -221,7 +221,7 @@ describe("CaptureService lifecycle", () => {
     expect(emittedConnections).toContainEqual(gameConnection);
     expect(emittedConnections.every((item) => item.owningProcess === 123)).toBe(true);
     service.stop();
-    expect(observeGameProcessIds).toHaveBeenLastCalledWith([]);
+    expect(observeGameProcessIds).toHaveBeenLastCalledWith([], "capture-stopped");
   });
 
   afterEach(() => {
@@ -231,7 +231,8 @@ describe("CaptureService lifecycle", () => {
 
   test("closes the active capture and emits idle when the game process disappears", async () => {
     const updates: CaptureUpdate[] = [];
-    const service = new CaptureService((update) => updates.push(update));
+    const observeGameProcessIds = vi.fn();
+    const service = new CaptureService((update) => updates.push(update), undefined, undefined, undefined, undefined, observeGameProcessIds);
 
     mocks.getHeroSiegeNetworkState
       .mockResolvedValueOnce({ gameProcessIds: [123], antiCheatProcessIds: [], connections: [connection()] })
@@ -239,6 +240,7 @@ describe("CaptureService lifecycle", () => {
 
     await service.start();
     await (service as unknown as RefreshableCaptureService).refreshCaptureSafely("test");
+    expect(observeGameProcessIds).toHaveBeenLastCalledWith([]); // Actual query result, unlike capture Stop.
 
     expect(mocks.openPacketCapture).toHaveBeenCalledTimes(1);
     expect(mocks.closeCapture).toHaveBeenCalledTimes(1);
@@ -525,6 +527,36 @@ describe("CaptureService lifecycle", () => {
     expect(flowService.isCaptureFlowPacket(packet(), 4000)).toBe(false);
   });
 
+  test.each([1, 4, 2])("offers empty TCP lifecycle flags %s as metadata only before payload admission", flags => {
+    const observeTcpLifecycle = vi.fn();
+    const service = new CaptureService(() => undefined, undefined, undefined, undefined, undefined, undefined, observeTcpLifecycle);
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const capturedPacket = rawTcpPacket(""); capturedPacket[33] = flags;
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now()); const push = vi.spyOn(internals.packetBuffers, "push");
+    internals.processPacket(capturedPacket.length, true); expect(observeTcpLifecycle).not.toHaveBeenCalled();
+    internals.processPacket(capturedPacket.length, false);
+    expect(observeTcpLifecycle).toHaveBeenCalledWith({ src: "10.0.0.2", dst: "203.0.113.10", srcPort: 50000, dstPort: 26921, flags });
+    expect(push).not.toHaveBeenCalled();
+    capturedPacket.writeUInt16BE(50001, 20); internals.processPacket(capturedPacket.length, false);
+    expect(observeTcpLifecycle).toHaveBeenCalledTimes(1);
+    observeTcpLifecycle.mockImplementation(() => { throw new Error("invented observer failure"); });
+    capturedPacket.writeUInt16BE(50000, 20); expect(() => internals.processPacket(capturedPacket.length, false)).not.toThrow();
+  });
+  test("flow invalidation cannot restore raw logging before the terminating packet's payload is processed", () => {
+    const widePath = path.join(tempDir, "lifecycle-wide.jsonl"); const debugPath = path.join(tempDir, "lifecycle-debug.jsonl");
+    const observeTcpLifecycle = vi.fn(() => service.setCapturePreferences({ captureDebugLogging: true,
+      capturePayloadLogging: true, captureWideLogging: true, satanicZoneDebugLogging: true }));
+    const service = new CaptureService(() => undefined, debugPath, widePath, false, undefined, undefined, observeTcpLifecycle);
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const capturedPacket = rawTcpPacket('{"checksum":"CANARY_TERMINATING_PACKET"}\0'); capturedPacket[33] = 0x19;
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now()); internals.processPacket(capturedPacket.length, false);
+    expect(observeTcpLifecycle).toHaveBeenCalledTimes(1);
+    for (const logPath of [debugPath, widePath]) {
+      expect(fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "").not.toContain("CANARY_TERMINATING_PACKET");
+    }
+  });
   test("discards Npcap-truncated payloads before TCP reassembly", () => {
     const updates: CaptureUpdate[] = [];
     const service = new CaptureService((update) => updates.push(update));

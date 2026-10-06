@@ -91,8 +91,8 @@ describe("settings ledger", () => {
     await wrapper.get(".settings-switch input").trigger("change");
     expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toBeUndefined();
     expect(wrapper.get(".settings-action-dialog").text()).toContain("companion-owned connection");
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("reconnect after the connection cue");
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("memory for up to two minutes");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("Already completed login cannot be recovered");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("Ready has no time expiry");
     expect(wrapper.text()).not.toContain("Exclusive");
 
     await button(wrapper, "Enable SZ Refresh").trigger("click");

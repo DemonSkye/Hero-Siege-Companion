@@ -234,11 +234,10 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
   if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
-  if (update.running === false && ["ready", "requesting"].includes(satanicZoneRefreshProvider?.preparation.phase ?? "")) {
-    satanicZoneRefreshProvider?.invalidate();
-  }
+  if (update.running === false) satanicZoneRefreshProvider?.cancelAttempt();
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) { state.connections = update.connections; satanicZoneRefreshProvider?.observeConnections(update.connections); }
+  if (!previousCaptureRunning && state.captureRunning && state.satanicZone.refreshEnabled) satanicZoneRefreshProvider?.preparePassively();
   if (update.health) state.health = { ...state.health, ...update.health };
   if (update.running !== undefined || update.status || update.connections || update.health) {
     updateCrashReportCaptureContext();
@@ -415,7 +414,7 @@ ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
 ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
 ipcMain.handle(IPC_CHANNELS.captureStop, () => {
   satanicZoneDiagnostic?.cancel();
-  satanicZoneRefreshProvider?.stop();
+  satanicZoneRefreshProvider?.cancelAttempt();
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   applyPendingCaptureEvents();
   pauseRun("captureStopped");
@@ -541,6 +540,7 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, ena
   if (satanicZoneController) {
     await satanicZoneController.setRefreshEnabled(preferences.enabled);
     if (!preferences.enabled) satanicZoneRefreshProvider?.stop();
+    else if (state.captureRunning) satanicZoneRefreshProvider?.preparePassively();
   } else {
     state.satanicZone = {
       ...state.satanicZone,
@@ -809,8 +809,7 @@ app.whenReady().then(async () => {
     syntheticOnly: isElectronE2eTestMode(),
     dependencies: satanicZoneTestRuntime?.dependencies,
     canPrepare: () => state.satanicZone.refreshEnabled && state.captureRunning
-      && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh
-      && Date.now() >= (state.satanicZone.nextAllowedRefreshAt ?? 0),
+      && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh,
     onPreparation: preparation => {
       satanicZoneController?.setPreparation(preparation);
       applyCaptureDiagnosticPreferences(); publishState();
@@ -866,7 +865,11 @@ app.whenReady().then(async () => {
     wideDebugLogPath,
     state.capturePreferences,
     (payload) => { satanicZoneRefreshProvider?.observeSessionPayload(payload); capturedSessionContext?.observe(payload); },
-    (processIds) => { satanicZoneRefreshProvider?.observeProcessIds(processIds); capturedSessionContext?.observeGameProcessIds(processIds); },
+    (processIds, reason) => {
+      if (reason !== "capture-stopped") satanicZoneRefreshProvider?.observeProcessIds(processIds);
+      capturedSessionContext?.observeGameProcessIds(processIds);
+    },
+    packet => satanicZoneRefreshProvider?.observeTcpLifecycle(packet),
   );
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   updateCrashReportCaptureContext();
