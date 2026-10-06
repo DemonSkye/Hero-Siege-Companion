@@ -8,11 +8,12 @@ import { companionState } from "./fixtures";
 
 function fixture() {
   const arm = vi.fn().mockResolvedValue({ ...createInitialSatanicZoneDiagnosticState(), phase: "arming" });
+  const start = vi.fn().mockResolvedValue({ ...createInitialSatanicZoneDiagnosticState(), phase: "requesting" });
   const cancel = vi.fn().mockResolvedValue({ ...createInitialSatanicZoneDiagnosticState(), phase: "cancelled" });
   Object.defineProperty(window, "heroSiegeCompanion", { configurable: true,
-    value: { armSatanicZoneDiagnostic: arm, cancelSatanicZoneDiagnostic: cancel } });
+    value: { armSatanicZoneDiagnostic: arm, startSatanicZoneDiagnostic: start, cancelSatanicZoneDiagnostic: cancel } });
   const state = ref(companionState()); const showToast = vi.fn();
-  return { arm, cancel, state, showToast, runtime: useSatanicZoneDiagnosticRuntime({ state, showToast }) };
+  return { arm, start, cancel, state, showToast, runtime: useSatanicZoneDiagnosticRuntime({ state, showToast }) };
 }
 describe("explicit SZ diagnostic renderer controls", () => {
   test("construction and component mount never arm automatically", async () => {
@@ -50,52 +51,53 @@ describe("explicit SZ diagnostic renderer controls", () => {
     f.cancel.mockRejectedValueOnce(new Error("CANARY_SECRET")); await f.runtime.cancelSatanicZoneDiagnostic();
     expect(JSON.stringify(f.showToast.mock.calls)).not.toContain("CANARY"); await f.runtime.armSatanicZoneDiagnostic(); expect(f.arm).toHaveBeenCalledTimes(2);
   });
-  test("active collection disables Arm and exposes a functioning Cancel event", async () => {
+  test("collection disables Start and exposes Discard", async () => {
     const diagnostic = { ...createInitialSatanicZoneDiagnosticState(), phase: "collecting" as const, startedAt: 1, deadlineAt: 120001 };
-    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001, busy: false, cancelBusy: false } });
+    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001 } });
     expect(card.findAll("button")[0].attributes("disabled")).toBeDefined();
-    await card.findAll("button")[1].trigger("click"); expect(card.emitted("cancel")).toHaveLength(1);
-    expect(card.text()).toContain("119 seconds remaining"); expect(card.text()).toContain("Unknown protocol bytes cannot be reviewed afterward"); card.unmount();
+    expect(card.findAll("button")[1].attributes("disabled")).toBeDefined();
+    await card.findAll("button")[2].trigger("click"); expect(card.emitted("cancel")).toHaveLength(1);
+    expect(card.text()).toContain("119 seconds remaining"); card.unmount();
   });
-  test("terminal copy distinguishes captured framing, control byte shape, comparison target and local write completion", () => {
-    const diagnostic = createInitialSatanicZoneDiagnosticState();
-    Object.assign(diagnostic, { phase: "timed-out", startedAt: 1000, initializationComplete: true, naturalBaseline: true,
-      nativeZoneInboundOrdinal: 3, directOutcome: "timeout", requestDispatched: true, bootstrapPong: true,
-      nativeBootstrapControl: "same-as-pong", secondControl: "same-as-pong", secondControlMatchesNative: true, requestBodyMatchesNative: true });
-    diagnostic.frames = [{ direction: "inbound", kind: "generic", bodyBytes: 2, counter: null, control: "same-as-pong",
-      inboundOrdinal: 1, controlOrdinal: 1, zoneObserved: false },
-    { direction: "inbound", kind: "generic", bodyBytes: 2, counter: null, control: "other-control",
-      inboundOrdinal: 2, controlOrdinal: 2, zoneObserved: false }];
-    diagnostic.directEvents = [{ kind: "bootstrap-pong", direction: "inbound", bytes: 10, control: "same-as-pong", controlOrdinal: 1 },
-      { kind: "second-control", direction: "inbound", bytes: 10, control: "same-as-pong", controlOrdinal: 2 }];
+  test("the restart cue waits for capture open and exposes sanitized selection evidence", async () => {
+    const diagnostic = { ...createInitialSatanicZoneDiagnosticState(), phase: "arming" as const, startedAt: 1,
+      selectionStatus: "checking-capture" as const };
+    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001 } });
+    expect(card.get(".settings-ledger-title").text()).toBe("Checking capture scope");
+    expect(card.findAll("button")[1].attributes("disabled")).toBeDefined();
+    await card.setProps({ diagnostic: { ...diagnostic, phase: "waiting-initialization", selectionStatus: "endpoint-changed-no-syn",
+      capturePackets: 3, apiFlowCount: 1 } });
+    expect(card.get(".settings-ledger-title").text()).toBe("Capture ready: restart Hero Siege once");
+    expect(card.text()).toMatch(/wait for .Capture ready., then restart/);
+    expect(card.text()).toContain("Selection: endpoint-changed-no-syn");
+    expect(card.text()).toContain("Decoded capture packets: 3. Game API flows: 1. Fresh handshake: no. Owned flow: no.");
+    expect(card.findAll("button")[1].attributes("disabled")).toBeDefined(); card.unmount();
+  });
+  test("Ready enables a separate explicit Start, and duplicate inputs dispatch once", async () => {
+    const f = fixture(); await f.runtime.startSatanicZoneDiagnostic(); expect(f.start).not.toHaveBeenCalled();
+    const diagnostic = { ...createInitialSatanicZoneDiagnosticState(), phase: "ready" as const, probeStage: "ready" as const };
+    f.state.value = { ...f.state.value, satanicZoneDiagnostic: diagnostic };
+    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001 } });
+    expect(card.emitted("start")).toBeUndefined(); await card.findAll("button")[1].trigger("click");
+    expect(card.emitted("start")).toHaveLength(1);
+    await Promise.all([f.runtime.startSatanicZoneDiagnostic(), f.runtime.startSatanicZoneDiagnostic()]);
+    expect(f.start).toHaveBeenCalledTimes(1); card.unmount();
+  });
+  test("terminal display retains only stage/outcome/counts and distinguishes own-socket success", () => {
+    const diagnostic = { ...createInitialSatanicZoneDiagnosticState(), phase: "timed-out" as const, startedAt: 1000,
+      probeStage: "post-login" as const, directOutcome: "timeout" as const, outboundFrames: 3, inboundFrames: 2 };
+    Object.assign(diagnostic, { auth: "CANARY_PRIVATE", endpoint: "CANARY_ENDPOINT" });
     const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 120000 } });
-    const text = card.text();
-    expect(text).toContain("Captured fresh game flow: framed and attributed");
-    expect(text).toContain("observed in inbound frame #3"); expect(text).toContain("SZ socket write completed: yes");
-    expect(text).toContain("Direct control #2 body vs first native inbound frame body: equal");
-    expect(text).toContain("native control #2"); expect(text).toContain("direct control #1");
-    expect(text).toContain("First control body validated (01 00)");
-    expect(text).not.toMatch(/Pong validated|Initialization: complete|Second control matches native/); card.unmount();
+    expect(card.text()).toContain("Stage: post-login"); expect(card.text()).toContain("Own-connection outcome: timeout");
+    expect(card.text()).toContain("A passive game update cannot complete this probe");
+    expect(card.text()).not.toMatch(/CANARY|undefined|NaN/); card.unmount();
   });
-  test("unknown operation/auth additions and missing comparisons never become displayed protocol names or acknowledgments", () => {
-    const diagnostic = createInitialSatanicZoneDiagnosticState(); diagnostic.startedAt = 1000;
-    diagnostic.frames = [{ direction: "outbound", kind: "other-api", bodyBytes: 126, counter: 0, control: "not-control",
-      inboundOrdinal: null, controlOrdinal: null, zoneObserved: false }];
-    Object.assign(diagnostic.frames[0], { operationName: "CANARY_AUTH_OPERATION", auth: "CANARY_PRIVATE" });
+  test("acknowledgment rejection displays only structural metadata", () => {
+    const diagnostic = { ...createInitialSatanicZoneDiagnosticState(), phase: "incomplete" as const, startedAt: 1,
+      reason: "native-ack-format" as const, connectAcknowledgment: { bodyBytes: 5, opcode: "0x1000" as const, trailingNul: false, embeddedNul: true } };
+    Object.assign(diagnostic.connectAcknowledgment, { payload: "CANARY_PRIVATE" });
     const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001 } });
-    expect(card.text()).toContain("API frame: 126 body bytes, counter 0");
-    expect(card.text()).toContain("first native inbound frame body: not compared");
-    expect(card.text()).not.toMatch(/CANARY|undefined|NaN|pong body/); card.unmount();
-  });
-  test("structural categories display fixed shape labels without operation or session values", () => {
-    const diagnostic = createInitialSatanicZoneDiagnosticState(); diagnostic.startedAt = 1000;
-    diagnostic.frames = ["connect-shaped", "api-request", "region-api-request"].map((kind) => ({
-      direction: "outbound", kind: kind as "connect-shaped" | "api-request" | "region-api-request", bodyBytes: 126,
-      counter: 0, control: "not-control", inboundOrdinal: null, controlOrdinal: null, zoneObserved: false }));
-    Object.assign(diagnostic.frames[0], { account: "CANARY_PRIVATE", operationName: "CANARY_UNKNOWN_COMMAND" });
-    const card = mount(SatanicZoneDiagnosticCard, { props: { diagnostic, now: 1001 } });
-    expect(card.text()).toContain("Connect-shaped API frame"); expect(card.text()).toContain("API request frame");
-    expect(card.text()).toContain("Region API request frame"); expect(card.text()).not.toMatch(/CANARY|undefined|NaN/);
-    expect(card.text()).toContain("do not identify login operations or prove initialization"); card.unmount();
+    expect(card.text()).toContain("Connect acknowledgment: 5 body bytes; opcode 0x1000; trailing NUL no; embedded NUL yes.");
+    expect(card.text()).not.toContain("CANARY_PRIVATE"); card.unmount();
   });
 });

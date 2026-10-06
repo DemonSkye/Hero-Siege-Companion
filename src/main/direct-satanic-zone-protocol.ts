@@ -6,7 +6,7 @@ import type { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnosti
 const MAX_RESPONSE_BYTES = 1_048_576;
 const API_CONTROL_RESPONSE_BYTES = 10;
 
-function buildDirectApiFrame(body: Buffer, counter: number, budget?: SatanicZoneDiagnosticBufferBudget): Buffer {
+export function buildDirectApiFrame(body: Buffer, counter: number, budget?: SatanicZoneDiagnosticBufferBudget): Buffer {
   if (!Number.isInteger(counter) || counter < 0 || counter > 255) throw new Error("invalid API counter");
   const counterByte = budget?.allocate(1) ?? Buffer.alloc(1);
   counterByte[0] = counter;

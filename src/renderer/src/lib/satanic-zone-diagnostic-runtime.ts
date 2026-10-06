@@ -37,5 +37,18 @@ export function useSatanicZoneDiagnosticRuntime(options: { state: Ref<CompanionS
   }
 
   return { szDiagnosticBusy: computed(() => arming.value || cancelling.value), szDiagnosticCancelBusy: cancelling,
-    armSatanicZoneDiagnostic, cancelSatanicZoneDiagnostic };
+    armSatanicZoneDiagnostic, startSatanicZoneDiagnostic, cancelSatanicZoneDiagnostic };
+
+  async function startSatanicZoneDiagnostic(): Promise<void> {
+    if (arming.value || cancelling.value || options.state.value.satanicZoneDiagnostic.phase !== "ready") return;
+    const current = ++operation;
+    const initialStateVersion = stateVersion;
+    arming.value = true;
+    try {
+      const diagnostic = await window.heroSiegeCompanion.startSatanicZoneDiagnostic();
+      if (current === operation && stateVersion === initialStateVersion) options.state.value = { ...options.state.value, satanicZoneDiagnostic: diagnostic };
+    } catch {
+      if (current === operation) options.showToast("SZ probe could not start");
+    } finally { if (current === operation) arming.value = false; }
+  }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { SatanicZoneDiagnosticStream, type DiagnosticFrame } from "../../src/main/satanic-zone-diagnostic-stream";
+import { SatanicZoneDiagnosticStream, DiagnosticFrameError, type DiagnosticFrame } from "../../src/main/satanic-zone-diagnostic-stream";
 import { buildDirectApiPingFrame } from "../../src/main/direct-satanic-zone-protocol";
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import { connectDiagnosticBody, frameDiagnosticBody, requestDiagnosticBody } from "../fixtures/satanic-zone-diagnostic-frames";
@@ -14,6 +14,21 @@ function fixture(onFrame: (frame: DiagnosticFrame) => void = () => {}) {
   stream.push(packet(true, 100, 2)); stream.push(packet(false, 200, 18)); stream.attribute(); return stream;
 }
 describe("diagnostic stream attribution and framing", () => {
+  test("inbound API counters may jump or repeat while tokens and TCP order remain valid", () => {
+    const counters: (number | null)[] = []; const stream = fixture(frame => counters.push(frame.counter));
+    stream.push(packet(false, 201, 16, Buffer.concat([buildDirectApiPingFrame(201), buildDirectApiPingFrame(3), buildDirectApiPingFrame(3)])));
+    expect(counters).toEqual([201, 3, 3]); expect(stream.complete).toBe(true); stream.dispose();
+  });
+  test("outbound counter gaps still fail with a fixed reason, while bad inbound tokens remain rejected", () => {
+    const stream = fixture();
+    let failure: unknown;
+    try { stream.push(packet(true, 101, 16, Buffer.concat([buildDirectApiPingFrame(0), buildDirectApiPingFrame(2)]))); } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(DiagnosticFrameError);
+    expect(failure).toMatchObject({ message: "invalid-frame", reason: "native-request-counter", direction: "outbound" }); stream.dispose();
+    const incoming = fixture(); const invalid = buildDirectApiPingFrame(201); invalid[0] = invalid[0] === 97 ? 98 : 97;
+    try { incoming.push(packet(false, 201, 16, invalid)); } catch (error) { failure = error; }
+    expect(failure).toMatchObject({ reason: "native-frame-token", direction: "inbound" }); incoming.dispose();
+  });
   test("complete fragmented/coalesced frames distinguish connect shape, API families and ping", () => {
     const kinds: string[] = []; const stream = fixture((frame) => kinds.push(frame.kind));
     const bytes = Buffer.concat([frameDiagnosticBody(connectDiagnosticBody(), 0),

@@ -11,8 +11,8 @@ import {
   type CaptureUpdate,
 } from "./capture-runtime";
 import { CaptureDiagnosticsController } from "./capture-diagnostics-controller";
-import { createSatanicZoneDiagnosticRuntime, diagnosticCapturePreferences } from "./satanic-zone-diagnostic-runtime";
-import type { SatanicZoneDiagnosticController } from "./satanic-zone-diagnostic-controller";
+import { diagnosticCapturePreferences } from "./satanic-zone-diagnostic-runtime";
+import { createSatanicZoneInitializedProbeRuntime, type SatanicZoneInitializedProbeController } from "./satanic-zone-initialized-controller";
 import { isSatanicZoneDiagnosticActive } from "../shared/satanic-zone-diagnostic";
 import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
 import { showOpenDialogWithParent } from "./electron-dialogs";
@@ -98,7 +98,7 @@ let lastPendingCaptureEventsLogAt = 0;
 let appDiagnostics: AppDiagnostics | null = null;
 let satanicZoneController: SatanicZoneController | null = null;
 let satanicZoneRefreshProvider: DirectSatanicZoneRefreshProvider | null = null;
-let satanicZoneDiagnostic: SatanicZoneDiagnosticController | null = null;
+let satanicZoneDiagnostic: SatanicZoneInitializedProbeController | null = null;
 let directMarketSearchProvider: DirectMarketSearchProvider | null = null;
 let capturedSessionContext: CapturedSessionContextStore | null = null;
 let marketReadinessController: MarketReadinessController | null = null;
@@ -663,6 +663,7 @@ ipcMain.handle(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
 });
 ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData"), app.getVersion()));
 ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticArm, () => satanicZoneDiagnostic?.arm() ?? state.satanicZoneDiagnostic);
+ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticStart, () => satanicZoneDiagnostic?.startAttempt() ?? state.satanicZoneDiagnostic);
 ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticCancel, () => satanicZoneDiagnostic?.cancel() ?? state.satanicZoneDiagnostic);
 ipcMain.handle(IPC_CHANNELS.supportOpenLogsDirectory, openSupportLogsDirectory);
 ipcMain.handle(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
@@ -802,7 +803,7 @@ app.whenReady().then(async () => {
     initialState: state.satanicZone,
     onStateChange: applySatanicZoneState,
   });
-  satanicZoneDiagnostic = createSatanicZoneDiagnosticRuntime({
+  satanicZoneDiagnostic = createSatanicZoneInitializedProbeRuntime({
     syntheticOnly: isElectronE2eTestMode(),
     canArm: () => state.satanicZone.phase !== "refreshing"
       && Date.now() >= (state.satanicZone.nextAllowedRefreshAt ?? 0),

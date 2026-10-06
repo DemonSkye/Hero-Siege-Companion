@@ -75,6 +75,7 @@ const emit = defineEmits<{
   openNpcapGuide: [];
   setDiagnosticsMode: [level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode];
   armSatanicZoneDiagnostic: [];
+  startSatanicZoneDiagnostic: [];
   cancelSatanicZoneDiagnostic: [];
   resetWindowPosition: [];
   factoryReset: [deleteItemFilters: boolean];
@@ -345,6 +346,7 @@ function saveStatusLabel(): string {
             @open-npcap-guide="$emit('openNpcapGuide')"
             @set-diagnostics-mode="requestDiagnosticsMode"
             @arm-satanic-zone-diagnostic="$emit('armSatanicZoneDiagnostic')"
+            @start-satanic-zone-diagnostic="$emit('startSatanicZoneDiagnostic')"
             @cancel-satanic-zone-diagnostic="$emit('cancelSatanicZoneDiagnostic')"
             @reset-window-position="$emit('resetWindowPosition')"
             @request-factory-reset="requestFactoryReset"

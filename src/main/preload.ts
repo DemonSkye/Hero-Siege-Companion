@@ -11,6 +11,7 @@ const api: HeroSiegeCompanionApi = {
   resetStats: () => ipcRenderer.invoke(IpcChannel.statsReset),
   refreshSatanicZone: () => ipcRenderer.invoke(IpcChannel.satanicZoneRefresh),
   armSatanicZoneDiagnostic: () => ipcRenderer.invoke(IpcChannel.satanicZoneDiagnosticArm),
+  startSatanicZoneDiagnostic: () => ipcRenderer.invoke(IpcChannel.satanicZoneDiagnosticStart),
   cancelSatanicZoneDiagnostic: () => ipcRenderer.invoke(IpcChannel.satanicZoneDiagnosticCancel),
   searchMarket: (request) => ipcRenderer.invoke(IpcChannel.marketSearch, request),
   pauseRun: () => ipcRenderer.invoke(IpcChannel.runPause),

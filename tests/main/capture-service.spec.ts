@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CaptureService, type CaptureUpdate } from "../../src/main/capture";
+import { SatanicZoneInitializedProbeController } from "../../src/main/satanic-zone-initialized-controller";
+import { diagnosticCapturePreferences } from "../../src/main/satanic-zone-diagnostic-runtime";
+import { isSatanicZoneDiagnosticActive } from "../../src/shared/satanic-zone-diagnostic";
 import { CapturedSessionContextStore } from "../../src/main/captured-session-context";
 import { DirectMarketSearchProvider } from "../../src/main/direct-market-search-provider";
 import { MarketRegionDirectory } from "../../src/main/market-region-directory";
@@ -783,6 +786,31 @@ describe("CaptureService lifecycle", () => {
     expect(log).toContain("account_id=<redacted>");
     expect(log).toContain("identifier=<redacted>");
     expect(readJsonLog(wideLogPath)[0]).toMatchObject({ tcpSequence: 1, tcpFlags: 0x18, nullBytes: 0 });
+  });
+
+  test("probe pauses both existing raw wide-log paths before even preparing capture", async () => {
+    const wideLogPath = path.join(tempDir, "probe-privacy-wide.log");
+    const service = new CaptureService(() => undefined, undefined, wideLogPath, true);
+    const preferences = { captureDebugLogging: true, capturePayloadLogging: true, captureWideLogging: true, satanicZoneDebugLogging: true };
+    const wideService = service as unknown as WideDebugCaptureService;
+    const payload = Buffer.from('{"account":"CANARY_ACCOUNT","account_uid":"CANARY_UID"}');
+    const packet: ParsedPayload = { src: "192.0.2.10", srcPort: 5000, dst: "198.51.100.20", dstPort: 6669,
+      seq: 1, ack: 1, flags: 16, payloadLength: payload.length, payload, text: payload.toString() };
+    const prepare = vi.fn(async () => {
+      // The packet path logs fragments before context observation, so redaction
+      // cannot substitute for this pre-collection suppression.
+      wideService.writeWidePacketLog(packet, 128, false);
+      wideService.writeWidePayloadLog(packet, packet.text);
+      expect(fs.existsSync(wideLogPath)).toBe(false);
+      throw new Error("unavailable");
+    });
+    const controller = new SatanicZoneInitializedProbeController({ prepare, open: vi.fn(), networkState: vi.fn(), attempt: vi.fn(), canArm: () => true,
+      onChange: state => service.setCapturePreferences(diagnosticCapturePreferences(preferences, isSatanicZoneDiagnosticActive(state))) });
+    controller.arm(); await Promise.resolve(); await Promise.resolve();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    // Restoring requested logging may record preference metadata, never input.
+    if (fs.existsSync(wideLogPath)) expect(fs.readFileSync(wideLogPath, "utf8")).not.toMatch(/CANARY|account_uid/);
+    expect(controller.snapshot().phase).toBe("unavailable"); controller.dispose(); service.stop();
   });
 
   test("normal debug logs include parsed item event summaries without payload snippets", () => {

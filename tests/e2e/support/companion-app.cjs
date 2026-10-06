@@ -47,6 +47,7 @@ const EXPECTED_PRELOAD_API = [
   "setPastRunTags",
   "setSatanicZoneRefreshEnabled",
   "startCapture",
+  "startSatanicZoneDiagnostic",
   "stopCapture",
   "toggleMaximizeWindow",
   "writeClipboardText",

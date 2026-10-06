@@ -38,6 +38,7 @@ const props = withDefaults(defineProps<{
 defineEmits<{
   exportBackup: [];
   armSatanicZoneDiagnostic: [];
+  startSatanicZoneDiagnostic: [];
   cancelSatanicZoneDiagnostic: [];
   chooseBackup: [];
   openSupportLogsDirectory: [];
@@ -132,7 +133,7 @@ function nextMode(state: CaptureDiagnosticsModeState, requested: Exclude<Capture
 
     <SatanicZoneDiagnosticCard :diagnostic="satanicZoneDiagnostic" :now="diagnosticsNow"
       :busy="szDiagnosticBusy" :cancel-busy="szDiagnosticCancelBusy"
-      @arm="$emit('armSatanicZoneDiagnostic')" @cancel="$emit('cancelSatanicZoneDiagnostic')" />
+      @arm="$emit('armSatanicZoneDiagnostic')" @start="$emit('startSatanicZoneDiagnostic')" @cancel="$emit('cancelSatanicZoneDiagnostic')" />
 
     <div class="settings-ledger-row">
       <div class="settings-ledger-copy">

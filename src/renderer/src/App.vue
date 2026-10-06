@@ -118,7 +118,7 @@ const {
   updatePostRunReportConfig,
 } = useAppPreferences();
 const { toastMessage, showToast } = useToast();
-const { szDiagnosticBusy, szDiagnosticCancelBusy, armSatanicZoneDiagnostic, cancelSatanicZoneDiagnostic } =
+const { szDiagnosticBusy, szDiagnosticCancelBusy, armSatanicZoneDiagnostic, startSatanicZoneDiagnostic, cancelSatanicZoneDiagnostic } =
   useSatanicZoneDiagnosticRuntime({ state, showToast });
 const {
   supportDiagnosticsInfo,
@@ -848,6 +848,7 @@ function toggleLog(log: LogEntry) {
       @open-npcap-guide="openNpcapGuide"
       @set-diagnostics-mode="setDiagnosticsMode"
       @arm-satanic-zone-diagnostic="armSatanicZoneDiagnostic"
+      @start-satanic-zone-diagnostic="startSatanicZoneDiagnostic"
       @cancel-satanic-zone-diagnostic="cancelSatanicZoneDiagnostic"
       @reset-window-position="resetWindowPosition"
       @factory-reset="factoryReset"

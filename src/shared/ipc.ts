@@ -45,6 +45,7 @@ export const enum IpcChannel {
   supportSaveDiagnostics = "support:save-diagnostics",
   supportSetDiagnosticsMode = "support:set-diagnostics-mode",
   satanicZoneDiagnosticArm = "satanic-zone-diagnostic:arm",
+  satanicZoneDiagnosticStart = "satanic-zone-diagnostic:start",
   satanicZoneDiagnosticCancel = "satanic-zone-diagnostic:cancel",
   updatesCheck = "updates:check",
   updatesOpenRelease = "updates:open-release",
@@ -88,6 +89,7 @@ export const IPC_CHANNELS = {
   supportSaveDiagnostics: IpcChannel.supportSaveDiagnostics,
   supportSetDiagnosticsMode: IpcChannel.supportSetDiagnosticsMode,
   satanicZoneDiagnosticArm: IpcChannel.satanicZoneDiagnosticArm,
+  satanicZoneDiagnosticStart: IpcChannel.satanicZoneDiagnosticStart,
   satanicZoneDiagnosticCancel: IpcChannel.satanicZoneDiagnosticCancel,
   updatesCheck: IpcChannel.updatesCheck,
   updatesOpenRelease: IpcChannel.updatesOpenRelease,
@@ -132,6 +134,7 @@ export interface HeroSiegeCompanionApi {
   resetStats: () => Promise<CompanionState>;
   refreshSatanicZone: () => Promise<CompanionState>;
   armSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
+  startSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   cancelSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   searchMarket: (request: MarketSearchRequest) => Promise<MarketSearchResponse>;
   pauseRun: () => Promise<CompanionState>;

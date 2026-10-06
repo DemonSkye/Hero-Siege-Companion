@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { DiagnosticFrameKind } from "../shared/satanic-zone-diagnostic";
+import type { DiagnosticFrameKind, DiagnosticNativeFailure } from "../shared/satanic-zone-diagnostic";
 import type { ParsedPayload } from "./packet-decoder";
 import { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
 import { classifySatanicZoneDiagnosticApiBody } from "./satanic-zone-diagnostic-frame-kind";
@@ -17,6 +17,11 @@ export interface DiagnosticFrame {
 }
 export type DiagnosticStreamFailure = "stream-gap" | "invalid-frame" | "ambiguous-flow";
 const MAX_SEGMENTS = 4096;
+
+export class DiagnosticFrameError extends Error {
+  constructor(readonly reason: Extract<DiagnosticNativeFailure, "native-frame-length" | "native-frame-token" | "native-request-counter">,
+    readonly direction: "outbound" | "inbound") { super("invalid-frame"); }
+}
 
 function counterForFrame(token: Buffer, body: Buffer, budget: SatanicZoneDiagnosticBufferBudget): number | null {
   let found: number | null = null;
@@ -92,12 +97,17 @@ class OrderedDiagnosticBytes {
       const header = api ? 16 : 8;
       if (remaining.length < header) return;
       const length = remaining.readUInt32LE(api ? 12 : 4);
-      if (length > 1_048_576) throw new Error("invalid-frame" satisfies DiagnosticStreamFailure);
+      const direction = this.outbound ? "outbound" : "inbound";
+      if (length > 1_048_576) throw new DiagnosticFrameError("native-frame-length", direction);
       if (remaining.length < header + length) return;
       const body = remaining.subarray(header, header + length);
       const counter = api ? counterForFrame(remaining.subarray(0, 12), body, this.budget) : null;
-      if (api && (counter === null || (this.lastCounter !== null && counter !== ((this.lastCounter + 1) & 255)))) {
-        throw new Error("invalid-frame" satisfies DiagnosticStreamFailure);
+      if (api && counter === null) throw new DiagnosticFrameError("native-frame-token", direction);
+      // Native outbound application counters are continuous. Server response
+      // ordering is not established; the working SZ response parser permits
+      // independent counters. Keep token validation without imposing that order.
+      if (api && this.outbound && this.lastCounter !== null && counter !== ((this.lastCounter + 1) & 255)) {
+        throw new DiagnosticFrameError("native-request-counter", direction);
       }
       if (api) this.lastCounter = counter;
       const kind: DiagnosticFrameKind = api ? classifySatanicZoneDiagnosticApiBody(body, this.outbound) : "generic";

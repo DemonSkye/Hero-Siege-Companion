@@ -16,19 +16,28 @@ export function createSatanicZoneDiagnosticRuntime(options: Pick<SatanicZoneDiag
   & { syntheticOnly?: boolean }): SatanicZoneDiagnosticController {
   return new SatanicZoneDiagnosticController({
     ...options,
+    ...createDiagnosticCaptureDependencies(options.syntheticOnly),
+    transport: (context, signal, trace, bufferBudget) => createDirectSatanicZoneTransport(context, signal, () => undefined, { trace, bufferBudget }),
+  });
+}
+
+export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpointPolicy: "fixed" | "fresh-api" = "fixed"):
+  Pick<SatanicZoneDiagnosticDependencies, "prepare" | "open" | "networkState"> {
+  return {
     async prepare() {
       // Test application boot must never load cap or inspect real connections.
-      if (options.syntheticOnly) throw new Error("unavailable");
+      if (syntheticOnly) throw new Error("unavailable");
       const state = await getHeroSiegeNetworkState();
       const connections = state.connections.filter((connection) => state.gameProcessIds.includes(connection.owningProcess)
         && [6668, 6669].includes(connection.remotePort) && IPV4.test(connection.localAddress)
         && IPV4.test(connection.remoteAddress));
-      if (connections.length !== 1) throw new Error("unavailable");
+      if (connections.length === 0 || (endpointPolicy === "fixed" && connections.length !== 1)
+        || new Set(connections.map(connection => connection.localAddress)).size !== 1) throw new Error("unavailable");
       const connection = connections[0];
       return { localAddress: connection.localAddress, remoteAddress: connection.remoteAddress, remotePort: connection.remotePort };
     },
     async open(scope, onPacket, failed, budget) {
-      if (options.syntheticOnly) throw new Error("unavailable");
+      if (syntheticOnly) throw new Error("unavailable");
       const { findNpcapDevice, openPacketCapture } = await import("./capture-adapter");
       const device = findNpcapDevice(scope.localAddress);
       if (!device) throw new Error("unavailable");
@@ -36,7 +45,11 @@ export function createSatanicZoneDiagnosticRuntime(options: Pick<SatanicZoneDiag
       let releaseNative: (() => void) | undefined;
       try {
         releaseNative = budget.reserve(65_536);
-        const filter = `ip and tcp and host ${scope.localAddress} and host ${scope.remoteAddress} and port ${scope.remotePort}`;
+        // A restart may change native API server/port. Capture those two known
+        // ports on the selected adapter before the fresh SYN pins an endpoint.
+        const filter = endpointPolicy === "fresh-api"
+          ? `ip and tcp and host ${scope.localAddress} and (port 6668 or port 6669)`
+          : `ip and tcp and host ${scope.localAddress} and host ${scope.remoteAddress} and port ${scope.remotePort}`;
         let linkType = "";
         const handle = openPacketCapture(device, filter, buffer, (nbytes, truncated) => {
           let packet: ReturnType<typeof getTcpSegment> = null;
@@ -55,6 +68,5 @@ export function createSatanicZoneDiagnosticRuntime(options: Pick<SatanicZoneDiag
       } catch { budget.release(buffer); releaseNative?.(); throw new Error("unavailable"); }
     },
     networkState: getHeroSiegeNetworkState,
-    transport: (context, signal, trace, bufferBudget) => createDirectSatanicZoneTransport(context, signal, () => undefined, { trace, bufferBudget }),
-  });
+  };
 }
