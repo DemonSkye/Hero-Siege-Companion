@@ -112,3 +112,52 @@ test("saved Off survives startup and no watcher can silently enable it", async (
     });
   } finally { cleanupUserDataDir(userDataDir); }
 });
+
+test("experimental cache saves invented encrypted fixture, survives reopen, validates and sends only on explicit Refresh", async () => {
+  const userDataDir = createUserDataDir(), file = path.join(userDataDir, "sz-login-cache.encrypted");
+  const invented = initialization();
+  try {
+    await withCompanionApp({ userDataDir }, async ({ electronApp, page }) => {
+      expect((await getRendererState(page)).satanicZoneLoginCache).toEqual({ enabled: false, status: "disabled" });
+      await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneLoginCacheEnabled(true));
+      await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+      await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
+      await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("saved");
+      expect((await getRendererState(page)).satanicZone.lastAttemptAt).toBeNull();
+      expect(fs.readFileSync(file).toString()).not.toMatch(/CANARY|123456789/);
+    });
+    expect(fs.existsSync(file)).toBe(true);
+    await withCompanionApp({ userDataDir }, async ({ electronApp, page }) => {
+      const card = page.locator("#satanic-zone-card");
+      expect((await getRendererState(page)).satanicZoneLoginCache).toEqual({ enabled: true, status: "unverified" });
+      await expect(card.locator(".zone-preparation")).toContainText("fresh account and mode");
+      expect((await getRendererState(page)).satanicZone.lastAttemptAt).toBeNull();
+      await page.evaluate(() => window.heroSiegeCompanion.refreshSatanicZone());
+      expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(0);
+      await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+      await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.emitSessionContext([42], [{
+        text: "unique_account_id=12345678901234567890&beta=0", direction: "outbound", localAddress: "192.0.2.10",
+        localPort: 5000, remoteAddress: "198.51.100.20", remotePort: 6669,
+      }]));
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation).toEqual({ phase: "ready", expiresAt: null, origin: "cached" });
+      await expect(card.locator(".zone-preparation")).toContainText("Experimental saved sign-in");
+      expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(0);
+      await card.getByRole("button", { name: "Refresh Satanic Zone", exact: true }).click();
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("refreshing");
+      expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(1);
+      await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.completeSatanicZoneTestResponse(
+        [...Buffer.from('{"satanicZoneName":"Act_04_03","buffs":"","debuffs":""}')]));
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.source).toBe("manual");
+      const projection = (await getRendererState(page)).satanicZoneLoginCache;
+      expect(Object.keys(projection).sort()).toEqual(["enabled", "status"]);
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("button", { name: "Features", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "Remember sign-in (experimental)", exact: true })).toBeChecked();
+      await page.getByRole("button", { name: "Clear saved sign-in", exact: true }).click();
+      await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("empty");
+      expect(fs.existsSync(file)).toBe(false); expect((await getRendererState(page)).satanicZone.refreshAvailable).toBe(false);
+      await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(false));
+      expect((await getRendererState(page)).satanicZoneLoginCache.enabled).toBe(false);
+    });
+  } finally { cleanupUserDataDir(userDataDir); }
+});

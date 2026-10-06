@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import SatanicZoneLoginCacheSettings from "./SatanicZoneLoginCacheSettings.vue";
 defineProps<{
   satanicZoneRefreshEnabled: boolean;
+  satanicZoneLoginCache?: import("../../../shared/satanic-zone-login-cache").SatanicZoneLoginCacheState;
 }>();
 
 defineEmits<{
@@ -44,8 +46,9 @@ defineEmits<{
     </div>
 
     <div class="settings-notice" role="note">
-      <p><strong>Npcap required.</strong> Open Companion before signing into the game, or launch the game here. If this login was already completed, you can keep playing; Refresh will be ready after the game next signs in. Capture interruptions pause Refresh until a new sign-in is observed. Sign-in data stays in memory and is cleared when you disable this feature or close Companion. Existing saved Off settings are preserved.</p>
+      <p><strong>Npcap required.</strong> Open Companion before signing into the game, or launch the game here. If this login was already completed, you can keep playing; Refresh will be ready after the game next signs in. Capture interruptions pause Refresh until a new sign-in is observed. With Remember sign-in off, data stays in memory and is cleared when you disable this feature or close Companion. Existing saved Off settings are preserved.</p>
       <button class="icon-button ghost" type="button" @click="$emit('learnMore')">Learn More</button>
     </div>
+    <SatanicZoneLoginCacheSettings :refresh-enabled="satanicZoneRefreshEnabled" :state="satanicZoneLoginCache" />
   </section>
 </template>

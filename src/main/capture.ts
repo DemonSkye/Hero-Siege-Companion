@@ -722,6 +722,8 @@ export class CaptureService {
         direction: outbound ? "outbound" : "inbound",
         remoteAddress: outbound ? packet.dst : packet.src,
         remotePort: outbound ? packet.dstPort : packet.srcPort,
+        localAddress: outbound ? packet.src : packet.dst,
+        localPort: outbound ? packet.srcPort : packet.dstPort,
         observedAt: Date.now(),
       });
     } catch {

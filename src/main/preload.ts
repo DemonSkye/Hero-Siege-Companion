@@ -23,6 +23,8 @@ const api: HeroSiegeCompanionApi = {
   deleteAllPastRuns: (): Promise<CompanionState> =>
     ipcRenderer.invoke(IpcChannel.pastRunsDeleteAll),
   setSatanicZoneRefreshEnabled: (enabled) => ipcRenderer.invoke(IpcChannel.preferencesSetSatanicZoneRefresh, enabled),
+  setSatanicZoneLoginCacheEnabled: enabled => ipcRenderer.invoke(IpcChannel.satanicZoneLoginCacheSet, enabled),
+  clearSatanicZoneLoginCache: () => ipcRenderer.invoke(IpcChannel.satanicZoneLoginCacheClear),
   exportConfiguration: (json, options) => ipcRenderer.invoke(IpcChannel.configurationExport, json, options),
   importConfiguration: () => ipcRenderer.invoke(IpcChannel.configurationImport),
   installConfigurationSounds: (json) => ipcRenderer.invoke(IpcChannel.configurationInstallSounds, json),

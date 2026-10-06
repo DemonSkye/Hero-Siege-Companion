@@ -87,6 +87,7 @@ export interface CompanionState {
   connections: CaptureConnection[];
   health: CaptureHealth;
   satanicZone: SatanicZoneState;
+  satanicZoneLoginCache?: import("./satanic-zone-login-cache").SatanicZoneLoginCacheState;
   marketReadiness: MarketReadiness;
   stats: CompanionStats;
   pastRuns: PastRunSummary[];

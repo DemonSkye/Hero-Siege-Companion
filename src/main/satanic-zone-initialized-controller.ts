@@ -6,7 +6,7 @@ import { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-bud
 import { SatanicZoneDiagnosticStream, DiagnosticFrameError, type DiagnosticFrame, type DiagnosticCaptureScope, type SatanicZoneListenScope } from "./satanic-zone-diagnostic-stream";
 import { connectProbeIdentity, coherentProbePostLogin, isProbePostLogin, isProbeConnectAcknowledgment, summarizeProbeConnectAcknowledgment, successfulProbeIdentifier,
   type InitializedProbeIdentity } from "./satanic-zone-initialized-protocol";
-import { runInitializedSatanicZoneProbe, INITIALIZED_PROBE_ATTEMPT_MS } from "./satanic-zone-initialized-transport";
+import { runInitializedSatanicZoneProbe, INITIALIZED_PROBE_ATTEMPT_MS, type InitializedProbeInput } from "./satanic-zone-initialized-transport";
 import { createDiagnosticCaptureDependencies } from "./satanic-zone-diagnostic-runtime";
 import type { ParsedPayload, CapturedTcpLifecycle } from "./packet-decoder";
 import type { SatanicZoneProviderObservation } from "./satanic-zone-refresh-provider";
@@ -25,6 +25,8 @@ export interface InitializedProbeDependencies extends Pick<SatanicZoneDiagnostic
   /** Product owner shares one budget with a suspended context during reacquisition. */
   bufferBudget?: SatanicZoneDiagnosticBufferBudget;
   onObservation?: (observation: SatanicZoneProviderObservation) => void;
+  onPrepared?: (input: InitializedProbeInput, pid: number) => void;
+  validateCached?: (scope: import("./satanic-zone-session-scope").SatanicZoneSessionScope) => Promise<boolean>;
 }
 interface Session {
   budget: SatanicZoneDiagnosticBufferBudget;
@@ -50,6 +52,7 @@ interface Session {
   suspended: boolean;
   ownedFlows: Array<DiagnosticCaptureScope & { localPort: number }>;
   pendingSyn: ParsedPayload[] | null;
+  cached: boolean;
 }
 const STREAM_FAILURES = new Set<string>(["stream-gap", "invalid-frame", "ambiguous-flow", "byte-limit", ...SZ_DIAGNOSTIC_NATIVE_FAILURES]);
 
@@ -64,6 +67,27 @@ export class SatanicZoneInitializedProbeController {
   snapshot(): SatanicZoneDiagnosticState { return copySatanicZoneDiagnosticState(this.state); }
   get active(): boolean { return isSatanicZoneDiagnosticActive(this.state); }
   get continuitySuspended(): boolean { return this.session?.suspended ?? false; }
+  get cachedContext(): boolean { return this.session?.cached ?? false; }
+  rememberCurrent(): void {
+    const session = this.session;
+    if (session?.prepared && !session.cached && !session.suspended) this.dependencies.onPrepared?.(this.preparedInput(session), session.pid!);
+  }
+  /** Experimental restore has fresh identity/build validation, distinct from native initialization. */
+  restoreCached(input: InitializedProbeInput & { pid: number }): boolean {
+    const session = this.session;
+    if (!session?.handle || session.prepared || session.stream || session.suspended || input.scope.localAddress !== session.captureScope?.localAddress
+      || !this.dependencies.autoWatch || !this.dependencies.validateCached) return false;
+    try {
+      session.connectBody = session.budget.copy(input.connectBody);
+      session.postLoginBody = session.budget.copy(input.postLoginBody);
+      session.identity = { ...input.identity }; session.scope = { ...input.scope };
+      session.pid = input.pid; session.nativePort = input.nativePort;
+      session.prepared = true; session.cached = true; session.loginSuccess = true;
+      if (session.poll) clearTimeout(session.poll); session.poll = null;
+      this.state.phase = "ready"; this.state.probeStage = "ready"; this.state.attributed = true;
+      this.publish(); return true;
+    } catch { this.finish(session, "incomplete", "byte-limit"); return false; }
+  }
   get blocksManualRefresh(): boolean { return this.active || this.now() < this.nextAllowedAt; }
   async waitForListener(): Promise<boolean> { return this.session ? this.session.opening : false; }
   arm(): SatanicZoneDiagnosticState {
@@ -75,7 +99,7 @@ export class SatanicZoneInitializedProbeController {
     const session: Session = { budget: this.dependencies.bufferBudget ?? new SatanicZoneDiagnosticBufferBudget(), abort: new AbortController(),
       scope: null, captureScope: null, stream: null, handle: null, poll: null, polling: false, pid: null, identity: null, connectBody: null, postLoginBody: null,
       readyControl: false, loginSuccess: false, starting: false, nativePort: null, prepared: false, suspended: false,
-      attemptAbort: null, opening: Promise.resolve(false), ownedFlows: [], pendingSyn: null,
+      attemptAbort: null, opening: Promise.resolve(false), ownedFlows: [], pendingSyn: null, cached: false,
       deadline: this.dependencies.autoWatch ? null : setTimeout(() => this.finish(session, "timed-out", this.state.phase === "ready" ? "deadline" : "missing-initialization"), SZ_DIAGNOSTIC_TIMEOUT_MS) };
     session.deadline?.unref?.(); this.session = session;
     this.state.phase = "arming"; this.state.probeStage = "collecting";
@@ -292,6 +316,7 @@ export class SatanicZoneInitializedProbeController {
           if (session.poll) clearTimeout(session.poll); session.poll = null;
           session.stream?.dispose(); session.stream = null;
         } else if (!this.closeCapture(session)) this.finish(session, "incomplete", "capture-failed");
+        if (this.current(session)) this.dependencies.onPrepared?.(this.preparedInput(session), session.pid!);
       }
     } else if (this.state.phase === "ready") { this.state.phase = "collecting"; this.state.probeStage = "collecting"; }
   }
@@ -315,6 +340,10 @@ export class SatanicZoneInitializedProbeController {
     const scope = session.scope;
     if (session.prepared) {
       if (session.suspended) { this.restoreReady(session, "failed"); return false; }
+      if (session.cached && !await this.dependencies.validateCached?.({ ...scope, pid: session.pid!, localPort: session.nativePort! })) {
+        if (this.current(session)) this.finish(session, "incomplete", "scope-changed"); return false;
+      }
+      if (!this.current(session) || (attemptAbort && !this.currentAttempt(session, attemptAbort))) return false;
       const status = network.gameProcessIds.includes(session.pid!)
         ? satanicZoneSessionScopeStatus({ ...scope, pid: session.pid!, localPort: session.nativePort! }, network.connections) : "changed";
       if (status === "changed") this.finish(session, "incomplete", "scope-changed");
@@ -335,6 +364,10 @@ export class SatanicZoneInitializedProbeController {
       this.state.selectionStatus = "waiting-owner"; this.publish();
     }
     return session.pid !== null;
+  }
+  private preparedInput(session: Session): InitializedProbeInput {
+    return { connectBody: session.connectBody!, postLoginBody: session.postLoginBody!, identity: session.identity!,
+      scope: session.scope!, nativePort: session.nativePort! };
   }
   private async poll(session: Session): Promise<void> {
     if (session.polling || !this.current(session)) return;
@@ -422,6 +455,7 @@ export class SatanicZoneInitializedProbeController {
     session.ownedFlows = [];
     if (session.pendingSyn) for (const packet of session.pendingSyn) session.budget.release(packet.payload);
     session.pendingSyn = null;
+    session.cached = false;
     this.state = createInitialSatanicZoneDiagnosticState();
     this.state.phase = "waiting-initialization"; this.state.directOutcome = "cancelled";
     this.state.startedAt = this.now(); this.publish();

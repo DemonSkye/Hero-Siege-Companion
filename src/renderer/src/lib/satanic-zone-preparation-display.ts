@@ -2,6 +2,11 @@ import type { SatanicZonePreparation } from "../../../shared/satanic-zone-prepar
 
 export function satanicZonePreparationDetail(state: SatanicZonePreparation | undefined, _now: number): string | null {
   if (!state) return null;
+  if (state.reason === "cache_identity_required") return "Experimental saved sign-in needs fresh account and mode evidence from the game. Refresh is unavailable until they match.";
+  if (state.reason === "cache_identity_mismatch") return "The account or mode did not match the saved sign-in. It was cleared.";
+  if (state.reason === "cache_build_unavailable") return "Cannot verify the running game build for saved sign-in. Refresh is unavailable.";
+  if (state.reason === "cache_build_mismatch") return "The game build changed. The saved sign-in was cleared.";
+  if (state.origin === "cached" && state.phase === "ready") return "Experimental saved sign-in matched this account and game build. Click Refresh to test it.";
   if (state.reason === "login_missed") return "This login was already completed. Refresh will be ready after the game next signs in. You can keep playing.";
   switch (state.phase) {
     case "opening": return "Getting Refresh ready…";

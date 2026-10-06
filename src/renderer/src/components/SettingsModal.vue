@@ -33,6 +33,7 @@ const props = withDefaults(defineProps<{
   legacyCompactThemeAvailable?: boolean;
   captureDiagnostics: CaptureDiagnosticsState;
   satanicZoneDiagnostic?: SatanicZoneDiagnosticState;
+  satanicZoneLoginCache?: import("../../../shared/satanic-zone-login-cache").SatanicZoneLoginCacheState;
   szDiagnosticBusy?: boolean;
   szDiagnosticCancelBusy?: boolean;
   diagnosticsNow: number;
@@ -310,6 +311,7 @@ function saveStatusLabel(): string {
           <SettingsCaptureTab
             v-else-if="activeSettingsSection === 'features'"
             :satanic-zone-refresh-enabled="satanicZoneRefreshEnabled"
+            :satanic-zone-login-cache="satanicZoneLoginCache"
             @request-satanic-zone-refresh-change="requestSatanicZoneRefreshChange"
             @learn-more="nestedDialog = 'sz-learn-more'"
           />
@@ -368,7 +370,8 @@ function saveStatusLabel(): string {
           <li>Open Companion before signing into the game, or launch the game here. Refresh gets ready automatically while capture is enabled.</li>
           <li>If Companion missed this sign-in, keep playing. Refresh will be available after the game next signs in; changing characters may not do that.</li>
           <li>Requests are sent only when you click Refresh. A ready game session has no time limit.</li>
-          <li>Capture interruptions pause Refresh until a new sign-in is observed. Sign-in data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
+            <li>Capture interruptions pause Refresh until a new sign-in is observed. With Remember sign-in off, data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
+            <li>Remember sign-in is an optional experiment using Windows encryption. Restored sign-in requires fresh account, mode and build matching; Clear saved sign-in removes it.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
       </SettingsActionDialog>

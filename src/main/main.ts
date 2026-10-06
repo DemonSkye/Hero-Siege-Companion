@@ -1,4 +1,4 @@
-import { app, clipboard, crashReporter, ipcMain, shell } from "electron";
+import { app, clipboard, crashReporter, ipcMain, shell, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { createAppDiagnostics, type AppDiagnostics } from "./app-diagnostics";
@@ -20,6 +20,9 @@ import { GameCaptureCoordinator } from "./game-capture-coordinator";
 import { CapturedSessionContextStore } from "./captured-session-context";
 import { DirectMarketSearchProvider } from "./direct-market-search-provider";
 import { InitializedSatanicZoneRefreshProvider } from "./initialized-satanic-zone-provider";
+import { SatanicZoneLoginCache } from "./satanic-zone-login-cache";
+import { SatanicZoneLoginCacheStore } from "./satanic-zone-login-cache-store";
+import { getHeroSiegeBuildIdentity, getHeroSiegeNetworkState } from "./capture-network";
 import { ElectronSatanicZoneTestRuntime } from "./electron-satanic-zone-test-runtime";
 import { MarketRegionDirectoryCache } from "./market-region-directory";
 import { MarketReadinessController } from "./market-readiness-controller";
@@ -29,6 +32,8 @@ import {
   loadPastRuns,
   loadSatanicZoneCache,
   loadSatanicZoneRefreshPreferences,
+  loadSatanicZoneLoginCacheEnabled,
+  saveSatanicZoneLoginCacheEnabled,
   loadWindowBounds,
   normalizeSatanicZoneRefreshPreferences,
   savePastRuns,
@@ -96,6 +101,7 @@ let lastPendingCaptureEventsLogAt = 0;
 let appDiagnostics: AppDiagnostics | null = null;
 let satanicZoneController: SatanicZoneController | null = null;
 let satanicZoneRefreshProvider: InitializedSatanicZoneRefreshProvider | null = null;
+let satanicZoneLoginCache: SatanicZoneLoginCache | null = null;
 let satanicZoneDiagnostic: SatanicZoneInitializedProbeController | null = null;
 const satanicZoneTestRuntime = isElectronE2eTestMode() ? new ElectronSatanicZoneTestRuntime() : null;
 let directMarketSearchProvider: DirectMarketSearchProvider | null = null;
@@ -539,7 +545,7 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, ena
   saveSatanicZoneRefreshPreferences(preferencesPath, preferences, writeAppLog);
   if (satanicZoneController) {
     await satanicZoneController.setRefreshEnabled(preferences.enabled);
-    if (!preferences.enabled) satanicZoneRefreshProvider?.stop();
+    if (!preferences.enabled) { saveSatanicZoneLoginCacheEnabled(preferencesPath, false); satanicZoneRefreshProvider?.stop(); }
     else if (gameCaptureCoordinator.captureEnabled) await satanicZoneRefreshProvider?.preparePassively();
   } else {
     state.satanicZone = {
@@ -553,6 +559,17 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, ena
   addLog("info", `Manual Satanic Zone refresh ${preferences.enabled ? "enabled" : "disabled"}.`);
   publishState();
   return state;
+});
+ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown) => {
+  const requested = enabled === true && state.satanicZone.refreshEnabled;
+  const saved = saveSatanicZoneLoginCacheEnabled(preferencesPath, requested);
+  satanicZoneLoginCache?.configure(saved && requested);
+  if (saved && requested) satanicZoneRefreshProvider?.rememberCurrent();
+  if (!saved) state.satanicZoneLoginCache = { enabled: false, status: "storage_error" };
+  publishStateNow(); return state;
+});
+ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheClear, () => {
+  satanicZoneLoginCache?.clear(); publishStateNow(); return state;
 });
 ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string, options?: ConfigurationExportOptions) => {
   const contents = embedConfigurationSoundData(String(json ?? ""), app.getPath("userData"));
@@ -805,7 +822,18 @@ app.whenReady().then(async () => {
       }),
     );
   }
+  satanicZoneLoginCache = new SatanicZoneLoginCache({
+    store: new SatanicZoneLoginCacheStore(path.join(userDataPath, "sz-login-cache.encrypted"),
+      satanicZoneTestRuntime?.cacheEncryption ?? safeStorage),
+    networkState: satanicZoneTestRuntime?.dependencies.networkState ?? getHeroSiegeNetworkState,
+    buildIdentity: satanicZoneTestRuntime?.buildIdentity ?? getHeroSiegeBuildIdentity,
+    onChange: cacheState => {
+      state.satanicZoneLoginCache = cacheState; satanicZoneRefreshProvider?.cacheChanged();
+      applyCaptureDiagnosticPreferences(); publishState();
+    },
+  });
   satanicZoneRefreshProvider = new InitializedSatanicZoneRefreshProvider({
+    loginCache: satanicZoneLoginCache,
     syntheticOnly: isElectronE2eTestMode(),
     dependencies: satanicZoneTestRuntime?.dependencies,
     canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
@@ -820,6 +848,7 @@ app.whenReady().then(async () => {
     initialState: state.satanicZone,
     onStateChange: applySatanicZoneState,
   });
+  satanicZoneLoginCache.configure(state.satanicZone.refreshEnabled && loadSatanicZoneLoginCacheEnabled(preferencesPath));
   satanicZoneDiagnostic = createSatanicZoneInitializedProbeRuntime({
     syntheticOnly: isElectronE2eTestMode(),
     canArm: () => state.satanicZone.phase !== "refreshing"
@@ -874,6 +903,7 @@ app.whenReady().then(async () => {
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   updateCrashReportCaptureContext();
   installElectronE2eMainHooks({
+    getSatanicZoneTestAttemptCount: () => satanicZoneTestRuntime?.attemptCount ?? 0,
     setSatanicZoneTestNetwork: network => satanicZoneTestRuntime?.setNetwork(network),
     emitSatanicZoneTestPackets: packets => satanicZoneTestRuntime?.emitPackets(packets),
     completeSatanicZoneTestResponse: body => satanicZoneTestRuntime?.completeResponse(body),
@@ -886,8 +916,9 @@ app.whenReady().then(async () => {
       publishStateNow();
     },
     emitSessionContext: (processIds, payloads) => {
+      satanicZoneRefreshProvider?.observeProcessIds(processIds);
       capturedSessionContext?.observeGameProcessIds(processIds);
-      for (const payload of payloads) capturedSessionContext?.observe(payload);
+      for (const payload of payloads) { satanicZoneRefreshProvider?.observeSessionPayload(payload); capturedSessionContext?.observe(payload); }
       publishStateNow();
     },
     getState: () => state,

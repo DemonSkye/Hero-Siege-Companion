@@ -226,6 +226,18 @@ export function normalizeSatanicZoneRefreshPreferences(preferences: unknown): Sa
   };
 }
 
+export function loadSatanicZoneLoginCacheEnabled(filePath: string): boolean {
+  try { return (loadPreferencesFile(filePath) as { satanicZoneLoginCache?: { enabled?: unknown } }).satanicZoneLoginCache?.enabled === true; }
+  catch { return false; }
+}
+export function saveSatanicZoneLoginCacheEnabled(filePath: string, enabled: boolean): boolean {
+  try {
+    savePreferencesFile(filePath, { ...withoutRetiredMainPreferenceSections(loadPreferencesFile(filePath)),
+      satanicZoneLoginCache: { enabled: enabled === true } });
+    return true;
+  } catch { return false; }
+}
+
 export function loadPreferencesFile(filePath: string): Record<string, unknown> {
   if (!filePath || !fs.existsSync(filePath)) return {};
   const parsed = readJsonFile(filePath);

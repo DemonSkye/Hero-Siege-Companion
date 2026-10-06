@@ -20,6 +20,7 @@ export interface ElectronE2eMainHooks {
   emitCapturePayloads: (payloads: string[]) => void;
   emitSessionContext: (processIds: number[], payloads: CapturedSessionPayload[]) => void;
   setSatanicZoneTestNetwork: (network: HeroSiegeNetworkState) => void;
+  getSatanicZoneTestAttemptCount: () => number;
   emitSatanicZoneTestPackets: (packets: ElectronSatanicZoneTestPacket[]) => void;
   completeSatanicZoneTestResponse: (body: number[]) => void;
   getState: () => CompanionState;

@@ -19,6 +19,8 @@ export interface CapturedSessionPayload {
   remoteAddress: string;
   remotePort: number;
   observedAt?: number;
+  localAddress?: string;
+  localPort?: number;
 }
 
 interface FieldEvidence {

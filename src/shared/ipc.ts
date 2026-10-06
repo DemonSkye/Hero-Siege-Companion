@@ -17,6 +17,8 @@ export const enum IpcChannel {
   gameChooseExecutable = "game:choose-executable",
   statsReset = "stats:reset",
   satanicZoneRefresh = "satanic-zone:refresh",
+  satanicZoneLoginCacheSet = "satanic-zone-login-cache:set",
+  satanicZoneLoginCacheClear = "satanic-zone-login-cache:clear",
   marketSearch = "market:search",
   runPause = "run:pause",
   runResume = "run:resume",
@@ -61,6 +63,8 @@ export const IPC_CHANNELS = {
   gameChooseExecutable: IpcChannel.gameChooseExecutable,
   statsReset: IpcChannel.statsReset,
   satanicZoneRefresh: IpcChannel.satanicZoneRefresh,
+  satanicZoneLoginCacheSet: IpcChannel.satanicZoneLoginCacheSet,
+  satanicZoneLoginCacheClear: IpcChannel.satanicZoneLoginCacheClear,
   marketSearch: IpcChannel.marketSearch,
   runPause: IpcChannel.runPause,
   runResume: IpcChannel.runResume,
@@ -133,6 +137,8 @@ export interface HeroSiegeCompanionApi {
   chooseGameExecutable: () => Promise<string | null>;
   resetStats: () => Promise<CompanionState>;
   refreshSatanicZone: () => Promise<CompanionState>;
+  setSatanicZoneLoginCacheEnabled: (enabled: boolean) => Promise<CompanionState>;
+  clearSatanicZoneLoginCache: () => Promise<CompanionState>;
   armSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   startSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   cancelSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;

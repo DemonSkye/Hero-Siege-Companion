@@ -123,6 +123,18 @@ export async function getDefaultCaptureLocalAddress(): Promise<string | null> {
   return selectDefaultCaptureLocalAddress(output ? JSON.parse(output) : []);
 }
 
+/** Experimental cache binds to the currently running executable; no path is retained or logged. */
+export async function getHeroSiegeBuildIdentity(pid: number): Promise<string | null> {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  try {
+    const hash = await runPowerShell(`$game = Get-Process -Id ${pid} -ErrorAction Stop;
+      $name = ($game.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant();
+      if (-not $name.StartsWith('herosiege') -or $name.Contains('companion') -or -not $game.Path) { exit 1 };
+      (Get-FileHash -LiteralPath $game.Path -Algorithm SHA256 -ErrorAction Stop).Hash`);
+    return /^[a-f0-9]{64}$/i.test(hash.trim()) ? hash.trim().toLowerCase() : null;
+  } catch { return null; }
+}
+
 export function selectDefaultCaptureLocalAddress(value: unknown): string | null {
   const rows = Array.isArray(value) ? value : [value];
   const candidates = rows.filter((row): row is { address: string; metric: number } => Boolean(row)

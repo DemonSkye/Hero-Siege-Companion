@@ -1,6 +1,11 @@
 import { EventEmitter } from "node:events";
 import type net from "node:net";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { SatanicZoneLoginCache } from "../../src/main/satanic-zone-login-cache";
+import { SatanicZoneLoginCacheStore } from "../../src/main/satanic-zone-login-cache-store";
+import { ElectronSatanicZoneTestRuntime } from "../../src/main/electron-satanic-zone-test-runtime";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { InitializedSatanicZoneRefreshProvider } from "../../src/main/initialized-satanic-zone-provider";
 import { runInitializedSatanicZoneProbe, type InitializedProbeInput } from "../../src/main/satanic-zone-initialized-transport";
@@ -26,7 +31,7 @@ class Socket extends EventEmitter {
   destroy = vi.fn(() => this);
   receive(body: Buffer) { this.emit("data", generic(body)); }
 }
-function fixture() {
+function fixture(loginCache?: SatanicZoneLoginCache) {
   vi.useFakeTimers(); vi.setSystemTime(1_000);
   let receive!: (packet: ParsedPayload, truncated: boolean) => void;
   const snapshots: SatanicZonePreparation[] = [], sockets: Socket[] = [], inputs: InitializedProbeInput[] = [];
@@ -36,7 +41,7 @@ function fixture() {
     connections: [{ ...scope, localPort: 4999, owningProcess: 42, state: "established" }] };
   const prepare = vi.fn(async () => scope), open = vi.fn(async (_scope, callback, _failed, budget) => { receive = callback; budgets.push(budget); return { close }; });
   const networkState = vi.fn(async () => network);
-  const provider = new InitializedSatanicZoneRefreshProvider({ canPrepare: () => canPrepare,
+  const provider = new InitializedSatanicZoneRefreshProvider({ canPrepare: () => canPrepare, loginCache,
     onPreparation: state => snapshots.push(state), dependencies: { prepare, open, networkState,
       attempt: (input, signal, budget, progress) => {
         inputs.push(input); const socket = new Socket(); sockets.push(socket);
@@ -69,8 +74,55 @@ function fixture() {
     receive: (value: ParsedPayload, truncated = false) => receive(value, truncated),
     denyPreparation: () => { canPrepare = false; } };
 }
-afterEach(() => vi.useRealTimers());
+const cacheDirectories: string[] = [];
+function cacheFixture(file: string) {
+  let f: ReturnType<typeof fixture> | undefined;
+  const cache = new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file, new ElectronSatanicZoneTestRuntime().cacheEncryption),
+    networkState: async () => f!.network, buildIdentity: async () => "e".repeat(64), onChange: () => f?.provider.cacheChanged() });
+  f = fixture(cache); return { ...f, cache };
+}
+function cacheFile() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-provider-cache-")); cacheDirectories.push(directory);
+  return path.join(directory, "login.encrypted");
+}
+afterEach(() => { vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
+  test("collect once, close/reopen, validate cached identity/build and explicit Refresh alone sends", async () => {
+    const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true);
+    await original.collect(); await flush(); expect(original.cache.snapshot().status).toBe("saved");
+    expect(original.sockets).toHaveLength(0); original.provider.dispose();
+    const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively(); await flush();
+    expect(f.provider.preparation).toMatchObject({ phase: "waiting_connection", reason: "cache_identity_required" });
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0);
+    f.network.connections[0].localPort = 5000;
+    f.provider.observeSessionPayload({ ...scope, localPort: 5000, direction: "outbound",
+      text: "unique_account_id=12345678901234567890&beta=0" }); await flush();
+    expect(f.provider.preparation).toEqual({ phase: "ready", expiresAt: null, origin: "cached" });
+    expect(f.sockets).toHaveLength(0); const request = await f.dispatch();
+    expect(request.accepted).toBe(true); expect(f.sockets).toHaveLength(1);
+    expect(f.inputs[0].connectBody).toEqual(inventedConnect());
+    const wait = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[0].receive(inventedZoneBody); expect((await wait)?.kind).toBe("observation");
+    f.provider.dispose(); expect(fs.existsSync(file)).toBe(true);
+  });
+  test("cached Ready loses validation on Stop and the same old numeric tuple cannot resume it", async () => {
+    const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true); await original.collect(); await flush(); original.provider.dispose();
+    const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively(); f.network.connections[0].localPort = 5000;
+    const payload = { ...scope, localPort: 5000, direction: "outbound" as const, text: "unique_account_id=12345678901234567890&beta=0" };
+    f.provider.observeSessionPayload(payload); await flush(); expect(f.provider.preparation.origin).toBe("cached");
+    f.provider.suspend(); await f.provider.preparePassively(); await flush();
+    expect(f.provider.preparation.phase).not.toBe("ready"); expect((await f.provider.requestRefresh()).accepted).toBe(false);
+    expect(f.sockets).toHaveLength(0); f.provider.observeSessionPayload(payload); await flush();
+    expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
+    f.cache.clear(); expect(f.provider.preparation.phase).not.toBe("ready"); expect(fs.existsSync(file)).toBe(false); f.provider.dispose();
+  });
+  test("wrong current account clears restored cache and cannot invoke the transport", async () => {
+    const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true); await original.collect(); await flush(); original.provider.dispose();
+    const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively(); f.network.connections[0].localPort = 5000;
+    f.provider.observeSessionPayload({ ...scope, localPort: 5000, direction: "outbound", text: "unique_account_id=888888&beta=0" }); await flush();
+    expect(f.cache.snapshot().status).toBe("identity_mismatch"); expect((await f.provider.requestRefresh()).accepted).toBe(false);
+    expect(f.sockets).toHaveLength(0); expect(fs.existsSync(file)).toBe(false); f.provider.dispose();
+  });
   test.each([true, false])("HSC opens the listener before launch (Steam=%s) delivers the first SYN and login; only explicit Refresh sends", async steam => {
     const f = fixture(), order: string[] = [];
     f.network.gameProcessIds = []; f.network.connections = [];

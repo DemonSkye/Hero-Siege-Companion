@@ -819,6 +819,7 @@ function toggleLog(log: LogEntry) {
       :legacy-compact-theme-available="legacyCompactThemeAvailable"
       :capture-diagnostics="state.captureDiagnostics"
       :satanic-zone-diagnostic="state.satanicZoneDiagnostic"
+      :satanic-zone-login-cache="state.satanicZoneLoginCache"
       :sz-diagnostic-busy="szDiagnosticBusy"
       :sz-diagnostic-cancel-busy="szDiagnosticCancelBusy"
       :diagnostics-now="now"
