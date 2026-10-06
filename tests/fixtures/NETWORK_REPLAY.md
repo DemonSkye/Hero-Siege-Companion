@@ -20,19 +20,34 @@ reduction. Native capture/process/build lookups, sockets, launch and the worker
 boundary are mocked. Saved-pair encryption is the explicitly fake test cipher;
 no OS encryption or server authentication is exercised.
 
-The journeys cover listener-before-launch and Ready without sending, late attach
+The journeys cover listener-before-launch, initial passive SZ display and Ready
+without sending, late attach
 and fresh initialization, repeated explicit Refresh, encrypted
 fixture persistence across Companion disposal/reopen with fresh parsed identity,
 SZ then Market in one Companion and after reopen, and an incomplete TCP message
-that must not manufacture Ready. The production CaptureService/main/IPC/UI wiring
+that must not manufacture Ready. Native passive SZ during an owned Refresh updates
+display while the request remains pending until its owned response arrives. Other
+local sockets and packets after an observation gap cannot supply a native update.
+The production CaptureService/main/IPC/UI wiring
 has separate mocked Electron regressions; this composed test is not a live capture.
 
-One `test.fails` records an unresolved startup display defect: before gameplay
-capture starts, the private initialization listener reaches Ready but does not
-forward the initial passive SZ to the display. The passing launch test checks
-Ready and explicit Refresh, not that missing passive update. Fixing that defect
-must turn the expected failure into an ordinary passing assertion. No readiness
-correction or owner vote-reset success is presented as fixing the on-load display.
+The startup display regression is an ordinary passing assertion: only the private
+listener is open, and it forwards a strictly parsed SZ from the attributed game
+stream before gameplay capture starts. After Ready the same stream observes only
+incoming bytes and erases complete frames. Stream tests send over a MiB across
+TCP wrap with a 1 KiB test budget, covering out-of-order/coalesced/overlapping
+segments, consumed retransmissions, conflicts and cancellation. Original diagnostic
+initialization still keeps its strict coherence/history behavior.
+
+The cache replay saves a coherent invented pair with a mocked build and fake
+encryption, disposes Companion with the game flow logically still present, reloads
+the file, then receives a newly framed ordinary outbound UID/beta on the current
+game-owned flow through the real decoder/reassembler. Matching fresh identity/build
+permits cached Ready without a new native login. Only explicit Refresh sends the
+pair on a fake owned socket and consumes that socket's fresh identifier/zone.
+Reopen with no saved pair, no fresh identity, or UID without beta remains unavailable
+and sends nothing. This covers local lifecycle validation, not server reuse of real
+credentials, OS encryption, or availability of suitable fresh traffic in owner play.
 
 Inventory found the redacted Market summary and packet metadata, but no pcap/pcapng/
 HAR or complete Connect/PostLogin exchange in the relevant retained research/debug

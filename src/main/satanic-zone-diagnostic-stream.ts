@@ -46,14 +46,21 @@ class OrderedDiagnosticBytes {
   private pending: { offset: number; bytes: Buffer }[] = [];
   private lastCounter: number | null = null;
   private disposed = false;
+  private compactCompletedFrames = false;
 
-  constructor(private readonly firstSequence: number, private readonly outbound: boolean,
+  constructor(private firstSequence: number, private readonly outbound: boolean,
     private readonly onFrame: (frame: DiagnosticFrame) => void, private readonly budget: SatanicZoneDiagnosticBufferBudget) {}
 
   push(sequence: number, bytes: Buffer): void {
     if (this.disposed) return;
-    const offset = (sequence - this.firstSequence) | 0;
-    if (offset < 0) throw new Error("stream-gap" satisfies DiagnosticStreamFailure);
+    let offset = (sequence - this.firstSequence) | 0;
+    if (offset < 0) {
+      if (!this.compactCompletedFrames) throw new Error("stream-gap" satisfies DiagnosticStreamFailure);
+      // Completed passive bytes have been erased. Ignore old retransmissions;
+      // a segment spanning the current boundary contributes only its new tail.
+      if (offset + bytes.length <= 0) return;
+      bytes = bytes.subarray(-offset); offset = 0;
+    }
     if (offset > this.bytes.length) {
       if (this.pending.length >= MAX_SEGMENTS) throw new Error("stream-gap" satisfies DiagnosticStreamFailure);
       this.pending.push({ offset, bytes: this.budget.copy(bytes) });
@@ -67,9 +74,23 @@ class OrderedDiagnosticBytes {
       try { this.append(segment.offset, segment.bytes); } finally { this.budget.release(segment.bytes); }
     }
     this.drain();
+    if (this.compactCompletedFrames) this.eraseCompletedFrames();
   }
 
   get complete(): boolean { return this.pending.length === 0 && this.parsed === this.bytes.length; }
+
+  continueWithoutHistory(): void {
+    this.compactCompletedFrames = true; this.eraseCompletedFrames();
+  }
+
+  private eraseCompletedFrames(): void {
+    if (this.disposed || !this.parsed) return;
+    const consumed = this.parsed, previous = this.bytes;
+    this.bytes = consumed === previous.length ? Buffer.alloc(0) : this.budget.copy(previous.subarray(consumed));
+    this.parsed = 0; this.firstSequence = (this.firstSequence + consumed) >>> 0;
+    for (const segment of this.pending) segment.offset -= consumed;
+    this.budget.release(previous);
+  }
 
   dispose(): void {
     this.disposed = true;
@@ -132,6 +153,7 @@ export class SatanicZoneDiagnosticStream {
   private attributed = false;
   private queued: ParsedPayload[] = [];
   private disposed = false;
+  private incomingOnly = false;
 
   constructor(readonly scope: DiagnosticCaptureScope, private readonly onFrame: (frame: DiagnosticFrame) => void,
     private readonly budget = new SatanicZoneDiagnosticBufferBudget()) {}
@@ -140,7 +162,14 @@ export class SatanicZoneDiagnosticStream {
   get freshSyn(): boolean { return this.clientSyn !== null; }
   get complete(): boolean {
     return this.attributed && this.queued.length === 0 && this.clientSyn !== null && this.serverSyn !== null
-      && Boolean(this.outgoing?.complete && this.incoming?.complete);
+      && Boolean((this.incomingOnly || this.outgoing?.complete) && this.incoming?.complete);
+  }
+
+  /** After Ready, keep only bounded unparsed inbound bytes for passive updates. */
+  continueIncoming(): void {
+    this.incomingOnly = true;
+    this.outgoing?.dispose(); this.outgoing = null;
+    this.incoming?.continueWithoutHistory();
   }
 
   matches(packet: ParsedPayload): boolean {
@@ -154,6 +183,7 @@ export class SatanicZoneDiagnosticStream {
   push(packet: ParsedPayload): void {
     if (this.disposed || !this.matches(packet)) return;
     const outbound = packet.src === this.scope.localAddress;
+    if (this.incomingOnly && outbound) return;
     const port = outbound ? packet.srcPort : packet.dstPort;
     const syn = (packet.flags & 2) !== 0;
     const ack = (packet.flags & 16) !== 0;

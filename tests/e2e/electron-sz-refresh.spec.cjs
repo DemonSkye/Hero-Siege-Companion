@@ -29,6 +29,51 @@ function initialization() {
   return { network, packets };
 }
 
+test("early private listener forwards initial and subsequent native SZ without completing an owned Refresh", async () => {
+  await withCompanionApp(async ({ electronApp, page, userDataDir }) => {
+    const invented = initialization(), login = invented.packets.at(-1);
+    const zonePacket = (zone, seq) => {
+      const body = Buffer.from(JSON.stringify({ satanicZoneName: zone, buffs: "", debuffs: "" }));
+      const frame = Buffer.alloc(8 + body.length); frame.writeUInt32LE(body.length, 4); body.copy(frame, 8);
+      return { ...login, seq, flags: 24, payloadLength: frame.length, payload: [...frame] };
+    };
+    const initial = zonePacket("Act_04_03", login.seq + login.payload.length);
+    await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+    await page.evaluate(() => window.heroSiegeCompanion.setCaptureDiagnosticsMode("deep", "manual"));
+    await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(true));
+    await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), [...invented.packets, initial]);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.current?.rawZone).toBe("Act_04_03");
+    expect((await getRendererState(page)).satanicZone.source).toBe("captured");
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(0);
+    const card = page.locator("#satanic-zone-card");
+    await card.getByRole("button", { name: "Refresh Satanic Zone", exact: true }).click();
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("refreshing");
+    const native = zonePacket("Act_01_01", initial.seq + initial.payload.length);
+    await electronApp.evaluate((_electron, packet) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets([packet]), native);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.current?.rawZone).toBe("Act_01_01");
+    expect((await getRendererState(page)).satanicZone).toMatchObject({ phase: "refreshing", source: "captured" });
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(1);
+    await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.completeSatanicZoneTestResponse(
+      [...Buffer.from('{"satanicZoneName":"Act_04_03","buffs":"","debuffs":""}')]));
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("current");
+    expect((await getRendererState(page)).satanicZone.source).toBe("manual");
+    expect((await getRendererState(page)).capturePreferences.capturePayloadLogging).toBe(false);
+    const log = fs.readFileSync(path.join(userDataDir, "logs", "app-debug.log"), "utf8");
+    expect(log).not.toMatch(/CANARY|1234567890|9876543210|account_uid|checksum/);
+    // Exercise main's production applyCaptureUpdate forwarding, not a direct provider call.
+    await electronApp.evaluate((_electron, packet) => {
+      const hooks = globalThis.heroSiegeCompanionE2e;
+      hooks.emitCaptureUpdate({ running: true, status: "running" });
+      hooks.emitCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" });
+      hooks.emitSatanicZoneTestPackets([packet]);
+    }, invented.packets[4]);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).not.toBe("ready");
+    expect((await getRendererState(page)).satanicZone.refreshAvailable).toBe(false);
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(1);
+  });
+});
+
 test("gameplay capture reconfiguration during sign-in reaches native Ready and saves without losing the independent API listener", async () => {
   await withCompanionApp(async ({ electronApp, page, userDataDir }) => {
     const invented = initialization();

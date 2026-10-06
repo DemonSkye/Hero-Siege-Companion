@@ -22,7 +22,7 @@ import { createInitialCompanionState } from "../../src/shared/initial-state";
 import { captureMessages, messageToEvents, type SatanicZoneInfo } from "../../src/shared/parser";
 import { frameDiagnosticBody } from "../fixtures/satanic-zone-diagnostic-frames";
 import { genericProbeFrame, inventedZoneBody } from "../fixtures/satanic-zone-initialized";
-import { evidence, replayAck, replayChecksumRejection, replayIdentity, replayInitialization, replayLogin,
+import { evidence, fragmentedFrame, replayAck, replayChecksumRejection, replayIdentity, replayInitialization, replayLogin,
   replayMarketIdentifier, replayMarketRequest, replayOwnedIdentifier, replayPacket, replayScope, type ReplaySegment } from "../fixtures/network-replay";
 
 const launch = vi.hoisted(() => ({ steam: vi.fn(), executable: vi.fn() }));
@@ -128,15 +128,51 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     await coordinator.launchOrCapture({ launchThroughSteam: true, executablePath: "" });
     expect(f.events.indexOf("listener-open")).toBeLessThan(f.events.indexOf("first-syn"));
     expect(f.provider.preparation.phase).toBe("ready");
-    expect(f.zone.getState()).toMatchObject({ current: null, refreshAvailable: true });
+    expect(f.zone.getState()).toMatchObject({ source: "captured", current: { rawZone: "Act_04_03" }, refreshAvailable: true });
     expect(f.sockets).toHaveLength(0); expect(service.start).not.toHaveBeenCalled();
     await f.refresh(); expect(f.sockets).toHaveLength(1); coordinator.clearLaunchCaptureTimer();
   });
 
-  test.fails("known startup display gap: the initial passive SZ should arrive while only the private API listener is open", async () => {
+  test("initial passive SZ arrives while only the private API listener is open", async () => {
     const f = harness(undefined, false); await f.provider.preparePassively(); await f.initialize();
     expect(f.provider.preparation.phase).toBe("ready"); expect(f.sockets).toHaveLength(0);
     expect(f.zone.getState().current?.rawZone).toBe("Act_04_03");
+  });
+
+  test("native passive SZ after Ready uses bounded reassembly and never requires an explicit request", async () => {
+    const f = harness(undefined, false); await f.provider.preparePassively(); await f.initialize();
+    const previous = replayInitialization().at(-1)!;
+    const frame = genericProbeFrame(Buffer.from('{"satanicZoneName":"Act_01_01","buffs":"","debuffs":""}'));
+    fragmentedFrame(false, previous.sequence + previous.payload.length, frame).forEach(segment => f.feed(segment));
+    expect(f.zone.getState()).toMatchObject({ source: "captured", current: { rawZone: "Act_01_01" } });
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.sockets).toHaveLength(0);
+  });
+
+  test("native passive SZ during manual Refresh updates display but cannot complete the owned request", async () => {
+    const f = harness(undefined, false); await f.provider.preparePassively(); await f.initialize();
+    const pending = f.zone.refreshNow(); await flush(); const socket = f.sockets[0];
+    socket.receive(replayAck); await flush(); socket.receive(replayLogin());
+    expect((await pending).accepted).toBe(true); await flush();
+    const previous = replayInitialization().at(-1)!;
+    const frame = genericProbeFrame(Buffer.from('{"satanicZoneName":"Act_01_01","buffs":"","debuffs":""}'));
+    fragmentedFrame(false, previous.sequence + previous.payload.length, frame).forEach(segment => f.feed(segment)); await flush();
+    expect(f.zone.getState()).toMatchObject({ phase: "refreshing", source: "captured", current: { rawZone: "Act_01_01" } });
+    expect(socket.destroy).not.toHaveBeenCalled(); expect(f.sockets).toHaveLength(1);
+    socket.receive(inventedZoneBody); await flush();
+    expect(f.zone.getState()).toMatchObject({ phase: "current", source: "manual", current: { rawZone: "Act_04_03" } });
+  });
+
+  test("another local socket and a blind interval cannot supply a passive native observation", async () => {
+    const f = harness(undefined, false); await f.provider.preparePassively(); await f.initialize();
+    const before = f.zone.getState(), previous = replayInitialization().at(-1)!;
+    const frame = genericProbeFrame(Buffer.from('{"satanicZoneName":"Act_01_01","buffs":"","debuffs":""}'));
+    f.feed({ outbound: false, sequence: previous.sequence + previous.payload.length, payload: frame, flags: 24 }, 6000);
+    expect(f.zone.getState()).toEqual(before);
+    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    await f.provider.preparePassively(); await flush();
+    f.feed({ outbound: false, sequence: previous.sequence + previous.payload.length, payload: frame, flags: 24 });
+    expect(f.zone.getState().current).toEqual(before.current); expect(f.zone.getState().lastSuccessAt).toBe(before.lastSuccessAt);
+    expect(f.provider.preparation.phase).not.toBe("ready"); expect(f.sockets).toHaveLength(0);
   });
 
   test("late Companion cannot recover missed login; simulated new initialization after the reported vote reset allows explicit Refresh", async () => {
@@ -165,6 +201,25 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     restored.feed({ outbound: true, sequence: 9009, payload: frame.subarray(9), flags: 24 }); await flush();
     expect(restored.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
     expect(restored.sockets).toHaveLength(0); await restored.refresh();
+  });
+
+  test.each(["no saved pair", "no fresh identity", "fresh UID without beta"])("cache reopen remains unavailable with %s and sends nothing", async missing => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-evidence-cache-gap-")), file = path.join(directory, "login.encrypted");
+    expect(path.dirname(fs.realpathSync(directory))).toBe(fs.realpathSync(os.tmpdir()));
+    cleanups.unshift(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const original = harness(file);
+    if (missing !== "no saved pair") {
+      await original.provider.preparePassively(); await original.initialize(); await flush();
+      expect(original.cache!.snapshot().status).toBe("saved");
+    }
+    original.dispose(); const restored = harness(file); restored.game(); await restored.provider.preparePassively();
+    if (missing !== "no fresh identity") {
+      const identity = missing === "fresh UID without beta" ? Buffer.from(replayIdentity().toString().replace("&beta=0", "")) : replayIdentity();
+      restored.feed({ outbound: true, sequence: 9000, payload: frameDiagnosticBody(identity, 10), flags: 24 }); await flush();
+    }
+    expect(restored.provider.preparation.phase).not.toBe("ready");
+    expect(restored.provider.preparation.reason).toBe(missing === "no saved pair" ? "cache_empty" : "cache_identity_required");
+    expect((await restored.zone.refreshNow()).accepted).toBe(false); expect(restored.sockets).toHaveLength(0);
   });
 
   test.each(["same Companion", "reopened Companion"])("SZ then Market in %s keeps context separate and exposes the observed rejection category", async journey => {

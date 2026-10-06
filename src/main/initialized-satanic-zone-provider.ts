@@ -12,7 +12,7 @@ import type { SatanicZoneLoginCacheState } from "../shared/satanic-zone-login-ca
 import type { CaptureUpdate } from "./capture";
 import type { SatanicZoneRefreshAvailability, SatanicZoneRefreshDispatchResult, SatanicZoneRefreshProvider,
   SatanicZoneRefreshRequestOptions, SatanicZoneProviderWaitOutcome, SatanicZoneObservationWaitOptions,
-  SatanicZoneProviderObservation } from "./satanic-zone-refresh-provider";
+  SatanicZoneProviderObservation, SatanicZonePassiveObservationListener } from "./satanic-zone-refresh-provider";
 
 const CACHE_REASONS: Partial<Record<SatanicZoneLoginCacheState["status"], NonNullable<SatanicZonePreparation["reason"]>>> = {
   empty: "cache_empty",
@@ -60,6 +60,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   private readonly now: () => number;
   private diagnosticKey = "";
   private diagnosticAt = 0;
+  private readonly passiveListeners = new Set<SatanicZonePassiveObservationListener>();
   constructor(private readonly options: InitializedSatanicZoneProviderOptions) {
     this.now = options.dependencies?.now ?? Date.now;
     options.loginCache?.attachBudget(this.budget);
@@ -75,6 +76,10 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       canArm: () => !this.disposed && !this.pending && this.options.canPrepare(),
       onChange: state => this.changed(context, state),
       onObservation: observation => { if (this.context === context && !context.continuitySuspended) this.observed(observation); },
+      onPassiveObservation: observation => {
+        if (this.context !== context || context.continuitySuspended || this.disposed) return;
+        for (const listener of this.passiveListeners) listener(observation);
+      },
       onPrepared: (input, pid) => { void this.options.loginCache?.remember(input, pid); },
       validateCached: scope => this.options.loginCache?.preflight(scope) ?? Promise.resolve(false),
     });
@@ -90,6 +95,9 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     return state;
   }
   rememberCurrent(): void { this.context.rememberCurrent(); }
+  subscribeToPassiveObservations(listener: SatanicZonePassiveObservationListener): () => void {
+    this.passiveListeners.add(listener); return () => this.passiveListeners.delete(listener);
+  }
   get suppressRawLogging(): boolean { return this.watching || this.context.active || Boolean(this.retainedContext?.active) || Boolean(this.options.loginCache?.holdsSecrets); }
   cacheChanged(): void {
     const cache = this.options.loginCache;
@@ -180,6 +188,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     this.disposed = true; this.options.loginCache?.dispose();
     this.watching = false; this.clearRetry(); this.retainedContext?.dispose(); this.retainedContext = null;
     this.context.dispose(); this.pending?.cleanup(); this.pending = null; this.budget.dispose();
+    this.passiveListeners.clear();
   }
   private observed(observation: SatanicZoneProviderObservation): void {
     const pending = this.pending;
