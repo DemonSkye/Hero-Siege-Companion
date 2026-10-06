@@ -3,6 +3,7 @@ import {
   type SatanicZonePhase,
   type SatanicZoneState,
 } from "../../../shared/satanic-zone";
+import { satanicZonePreparationDetail } from "./satanic-zone-preparation-display";
 
 export interface SatanicZoneDisplay {
   phase: SatanicZonePhase;
@@ -61,9 +62,6 @@ export function satanicZoneRefreshControl(
   }
 
   const preparation = state.refreshPreparation;
-  if (preparation?.phase === "suspended") return {
-    visible: true, disabled: false, title: "Prepare refresh", ariaLabel: "Prepare Satanic Zone refresh",
-  };
   const nextAllowedRefreshAt = state.nextAllowedRefreshAt;
   if (
     nextAllowedRefreshAt !== null
@@ -83,12 +81,10 @@ export function satanicZoneRefreshControl(
     if (preparation.phase === "requesting") return {
       visible: true, disabled: true, title: "Requesting Satanic Zone.", ariaLabel: "Refresh Satanic Zone: requesting",
     };
-    if (["opening", "waiting_connection", "collecting"].includes(preparation.phase)) return {
-      visible: true, disabled: false, title: "Cancel refresh preparation", ariaLabel: "Cancel Satanic Zone refresh preparation",
-    };
-    if (preparation.phase !== "ready") return {
-      visible: true, disabled: false, title: "Prepare refresh", ariaLabel: "Prepare Satanic Zone refresh",
-    };
+    if (preparation.phase !== "ready") {
+      const reason = satanicZonePreparationDetail(preparation, now) ?? "Refresh is unavailable.";
+      return { visible: true, disabled: true, title: reason, ariaLabel: `Refresh Satanic Zone unavailable: ${reason}` };
+    }
   }
 
   return {
@@ -141,7 +137,7 @@ function zoneStatusDetail(phase: SatanicZonePhase, state: SatanicZoneState): str
         return "Manual refresh is unavailable for the rest of this Companion session.";
       }
       if (state.errorCode === "helper_not_ready") {
-        return "Current session identifiers are not ready yet. Keep Npcap capture running while the game connects.";
+        return "Refresh is waiting for the game to sign in. Keep capture running.";
       }
       return "Manual refresh is unavailable. Passive capture can still update the zone.";
     case "waiting":

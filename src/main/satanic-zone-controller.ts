@@ -83,7 +83,8 @@ export class SatanicZoneController {
     return { ...this.state };
   }
   setPreparation(preparation: NonNullable<SatanicZoneState["refreshPreparation"]>): void {
-    this.updateState({ refreshPreparation: { phase: preparation.phase, expiresAt: preparation.expiresAt },
+    this.updateState({ refreshPreparation: { phase: preparation.phase, expiresAt: preparation.expiresAt,
+      ...(preparation.reason === "login_missed" ? { reason: "login_missed" as const } : {}) },
       refreshAvailable: this.state.refreshEnabled && preparation.phase === "ready" });
   }
 

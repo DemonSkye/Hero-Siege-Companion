@@ -25,7 +25,7 @@ interface ThemeOption {
 }
 
 type SettingsSection = "app" | "appearance" | "features" | "support" | "developers";
-type SettingsDialogKind = "sz-enable" | "sz-learn-more" | "deep" | "restore" | "factory-reset";
+type SettingsDialogKind = "sz-learn-more" | "deep" | "restore" | "factory-reset";
 
 const props = withDefaults(defineProps<{
   themeOptions: readonly ThemeOption[];
@@ -180,11 +180,7 @@ function handleSettingsKeydownCapture(event: KeyboardEvent) {
 }
 
 function requestSatanicZoneRefreshChange(enabled: boolean) {
-  if (!enabled) {
-    satanicZoneRefreshEnabled.value = false;
-    return;
-  }
-  nestedDialog.value = "sz-enable";
+  satanicZoneRefreshEnabled.value = enabled;
 }
 
 function requestDiagnosticsMode(level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode) {
@@ -206,10 +202,6 @@ function closeNestedDialog() {
   nestedDialog.value = null;
 }
 
-function confirmSatanicZoneRefresh() {
-  satanicZoneRefreshEnabled.value = true;
-  nestedDialog.value = null;
-}
 
 function confirmDeepDiagnostics() {
   emit("setDiagnosticsMode", "deep", pendingDeepMode.value);
@@ -365,37 +357,19 @@ function saveStatusLabel(): string {
 
       <SettingsActionDialog
         v-if="nestedDialog === 'sz-learn-more'"
-        title="How SZ Refresh connects"
+        title="Using SZ Refresh"
         dismiss-only
         @close="closeNestedDialog"
       >
-        <p>SZ Refresh opens a short-lived, companion-owned connection to request the current Satanic Zone. It never redirects or modifies the game’s connection.</p>
+        <p>Keep capture enabled and play normally. Click Refresh when you want to check the current Satanic Zone.</p>
         <ul>
-          <li>With this feature enabled, starting capture listens for the next fresh game API connection and complete login. You can keep playing while it waits.</li>
           <li>No certificate installation, administrator service, proxy, or special game launch is required.</li>
           <li>Refresh requests remain limited to once every 30 seconds.</li>
-          <li>The listener is bounded to two minutes. Already completed login cannot be recovered; Prepare refresh starts another listening window. A menu or character change is not known to provide full initialization.</li>
-          <li>Once ready, click Refresh for a fresh result. Preparation alone sends no request.</li>
-          <li>Login context stays only in memory for the current game session. Ready has no time expiry. Game process, connection or account changes, disable and shutdown clear it; raw traffic logs pause while it is held.</li>
-          <li>Capture stop, recovery or evidence loss suspends refresh while preserving RAM context. A matching process ID and connection cannot restore it; complete fresh game initialization is needed.</li>
+          <li>Open Companion before signing into the game, or launch the game here. Refresh gets ready automatically while capture is enabled.</li>
+          <li>If Companion missed this sign-in, keep playing. Refresh will be available after the game next signs in; changing characters may not do that.</li>
+          <li>Requests are sent only when you click Refresh. A ready game session has no time limit.</li>
+          <li>Capture interruptions pause Refresh until a new sign-in is observed. Sign-in data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
-        </ul>
-      </SettingsActionDialog>
-
-      <SettingsActionDialog
-        v-else-if="nestedDialog === 'sz-enable'"
-        title="Enable SZ Refresh?"
-        confirm-label="Enable SZ Refresh"
-        @close="closeNestedDialog"
-        @confirm="confirmSatanicZoneRefresh"
-      >
-        <p>The companion will enable manual requests over a short-lived, companion-owned connection.</p>
-        <ul>
-          <li>Capture listens for the next fresh game API connection and complete login. Already completed login cannot be recovered; Prepare refresh starts another bounded listening window.</li>
-          <li>When ready, click Refresh. Login context stays only in memory for the current game session. Ready has no time expiry; raw traffic logs pause while it is held.</li>
-          <li>Capture interruptions suspend refresh. RAM context is retained, but a matching process ID and connection cannot authorize replay after a blind interval.</li>
-          <li>Requests remain limited to once every 30 seconds.</li>
-          <li>Backup restoration never enables this feature.</li>
         </ul>
       </SettingsActionDialog>
 

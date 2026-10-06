@@ -15,7 +15,7 @@ const status = computed(() => ({ idle: "Off", arming: "Checking capture scope", 
   <section class="settings-ledger-section" aria-labelledby="sz-diagnostic-title">
     <div class="settings-ledger-section-heading">
       <h3 id="sz-diagnostic-title">One-shot initialized SZ probe</h3>
-      <p>Collect a fresh native login, then explicitly start one app connection.</p>
+      <p>Advanced test: turn off normal SZ Refresh first, then collect a fresh native login and explicitly start one app connection.</p>
     </div>
     <p class="settings-ledger-footnote">Start with Hero Siege connected. Click Collect, wait for “Capture ready”, then restart the game once and enter the world normally. When Ready appears, Start sends the captured login bodies and requests SZ once. This second login may disconnect the game or change its session identifier.</p>
     <p class="settings-ledger-footnote">Collection and readiness expire after 120 seconds. The active attempt stops after 30 seconds. One adapter, then one attributable fresh game flow, 1 MiB observed payload and 1 MiB owned raw buffers. No retries. Normal Refresh remains separate.</p>

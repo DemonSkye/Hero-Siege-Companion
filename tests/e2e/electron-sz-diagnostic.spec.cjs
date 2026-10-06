@@ -4,6 +4,7 @@ const { withCompanionApp, getRendererState } = require("./support/companion-app.
 test("diagnostic preload stays idle until explicit Arm and cannot open native capture in mock mode", async () => {
   await withCompanionApp(async ({ page }) => {
     expect((await getRendererState(page)).satanicZoneDiagnostic.phase).toBe("idle");
+    await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(false));
     const result = await page.evaluate(() => window.heroSiegeCompanion.armSatanicZoneDiagnostic());
     expect(["arming", "unavailable"]).toContain(result.phase);
     await expect.poll(async () => (await getRendererState(page)).satanicZoneDiagnostic.phase).toBe("unavailable");

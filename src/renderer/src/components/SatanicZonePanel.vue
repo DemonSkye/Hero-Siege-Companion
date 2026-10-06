@@ -29,11 +29,11 @@ const refreshControl = computed(() =>
 </script>
 
 <template>
-  <LiveDashboardCard id="satanic-zone-card" panel-class="zone-panel" :title="zone?.zone || 'Waiting for zone packet'">
+  <LiveDashboardCard id="satanic-zone-card" panel-class="zone-panel" :title="zone?.zone || 'Waiting for zone update'">
     <template #eyebrow>
-      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses a short-lived Companion-owned connection. Npcap must first observe a fresh API connection and complete game login. Login context stays only in memory for the current game session; Ready has no time expiry.">i</span>
+      Satanic Zone <span class="info-bubble" data-tip="Open Companion before signing into the game. Refresh becomes ready automatically while capture is enabled and sends a request only when you click it.">i</span>
     </template>
-    <template #title>{{ zone?.zone || "Waiting for zone packet" }}</template>
+    <template #title>{{ zone?.zone || "Waiting for zone update" }}</template>
     <template #actions>
       <div class="countdown">
         <span>{{ zoneCountdown }}</span>
@@ -49,6 +49,7 @@ const refreshControl = computed(() =>
         @click="$emit('refresh')"
       >
         <RefreshIcon />
+        <span>Refresh</span>
       </button>
     </template>
 

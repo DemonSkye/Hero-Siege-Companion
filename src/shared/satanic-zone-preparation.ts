@@ -1,8 +1,9 @@
 /** Renderer-safe readiness only. Login bodies and flow identifiers stay in main. */
 export interface SatanicZonePreparation {
   phase: "idle" | "opening" | "waiting_connection" | "collecting" | "ready" | "suspended" | "requesting" | "expired" | "unavailable";
-  /** Collection/request deadline; Ready context has no clock expiry. */
+  /** Request deadline only; automatic watching and Ready have no clock expiry. */
   expiresAt: number | null;
+  reason?: "login_missed";
 }
 
 export function initialSatanicZonePreparation(): SatanicZonePreparation {

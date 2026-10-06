@@ -18,7 +18,7 @@ export interface SatanicZoneRefreshPreferences {
 }
 
 export const DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES: SatanicZoneRefreshPreferences = {
-  enabled: false,
+  enabled: true,
 };
 
 export interface SatanicZoneState {

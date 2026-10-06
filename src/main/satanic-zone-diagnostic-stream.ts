@@ -9,6 +9,8 @@ export interface DiagnosticCaptureScope {
   remoteAddress: string;
   remotePort: number;
 }
+/** A startup listener has no remote endpoint until a fresh SYN selects it. */
+export type SatanicZoneListenScope = Pick<DiagnosticCaptureScope, "localAddress"> & Partial<DiagnosticCaptureScope>;
 export interface DiagnosticFrame {
   outbound: boolean;
   kind: DiagnosticFrameKind;

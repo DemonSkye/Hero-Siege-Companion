@@ -29,7 +29,7 @@ export interface InitializedSatanicZoneProviderOptions {
   dependencies?: Pick<InitializedProbeDependencies, "prepare" | "open" | "networkState" | "attempt" | "now">;
 }
 
-/** Explicit preparation and clicks; no automatic login replay or SZ request. */
+/** Automatic passive readiness; only explicit Refresh can replay login or request SZ. */
 export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefreshProvider {
   readonly experimental = true;
   private context: SatanicZoneInitializedProbeController;
@@ -39,6 +39,8 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   private nextId = 1;
   private nextAllowedAt = 0;
   private disposed = false;
+  private watching = false;
+  private retry: ReturnType<typeof setTimeout> | null = null;
   private readonly now: () => number;
   constructor(private readonly options: InitializedSatanicZoneProviderOptions) {
     this.now = options.dependencies?.now ?? Date.now;
@@ -47,10 +49,10 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   private createContext(): SatanicZoneInitializedProbeController {
     let context!: SatanicZoneInitializedProbeController;
     context = new SatanicZoneInitializedProbeController({
-      ...createDiagnosticCaptureDependencies(this.options.syntheticOnly, "fresh-api"),
+      ...createDiagnosticCaptureDependencies(this.options.syntheticOnly ?? false, "startup-api"),
       attempt: (input, signal, budget, progress) => this.options.syntheticOnly ? Promise.resolve("failed")
         : runInitializedSatanicZoneProbe(input, signal, budget, progress),
-      ...this.options.dependencies, retainContext: true, bufferBudget: this.budget,
+      ...this.options.dependencies, retainContext: true, autoWatch: true, bufferBudget: this.budget,
       canArm: () => !this.disposed && !this.pending && this.options.canPrepare(),
       onChange: state => this.changed(context, state),
       onObservation: observation => { if (this.context === context && !context.continuitySuspended) this.observed(observation); },
@@ -58,7 +60,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     return context;
   }
   get preparation(): SatanicZonePreparation { return projectPreparation(this.context.snapshot(), this.context.continuitySuspended); }
-  get suppressRawLogging(): boolean { return this.context.active || Boolean(this.retainedContext?.active); }
+  get suppressRawLogging(): boolean { return this.watching || this.context.active || Boolean(this.retainedContext?.active); }
   prepare(): void {
     if (this.disposed) return;
     if (this.pending?.completed) { this.pending.cleanup(); this.pending = null; }
@@ -67,13 +69,16 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     }
     this.context.arm();
   }
-  /** Enable/capture-start may open one bounded listener; never replay credentials. */
-  preparePassively(): void {
+  /** Resolves after listener open, so launch can wait before the game's first SYN. */
+  async preparePassively(): Promise<boolean> {
+    if (this.disposed || !this.options.canPrepare()) return false;
+    this.watching = true; this.clearRetry();
     if (["idle", "expired", "unavailable", "suspended"].includes(this.preparation.phase)) this.prepare();
+    return this.context.waitForListener();
   }
-  cancelPreparation(): void { this.context.cancelAttempt(); }
+  cancelPreparation(): void { this.watching = false; this.clearRetry(); this.context.cancelAttempt(); }
   cancelAttempt(): void { this.context.cancelAttempt(); }
-  suspend(): void { this.retainedContext?.suspend(); this.context.suspend(); }
+  suspend(): void { this.watching = false; this.clearRetry(); this.retainedContext?.suspend(); this.context.suspend(); }
   invalidate(): void { this.retainedContext?.invalidate(); this.context.invalidate(); }
   observeProcessIds(ids: readonly number[]): void { this.retainedContext?.observeProcessIds(ids); this.context.observeProcessIds(ids); }
   observeSessionPayload(payload: CapturedSessionPayload): void { this.retainedContext?.observeSessionPayload(payload); this.context.observeSessionPayload(payload); }
@@ -116,6 +121,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     }
   }
   stop(): void {
+    this.watching = false; this.clearRetry();
     const retained = this.retainedContext; this.retainedContext = null; retained?.dispose();
     this.context.cancel(); this.pending?.cleanup(); this.pending = null;
     this.budget.dispose(); this.budget = new SatanicZoneDiagnosticBufferBudget(); this.context = this.createContext();
@@ -145,14 +151,23 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       pending.dispatch({ accepted: true, errorCode: null, correlationId: pending.id });
     }
     const retainedFailure = state.phase === "ready" && ["failed", "timeout", "cancelled"].includes(state.directOutcome);
-    if (pending && !pending.completed && (retainedFailure || !["arming", "waiting-initialization", "collecting", "ready", "requesting"].includes(state.phase))) {
+    const reinitializing = state.phase === "waiting-initialization" && state.directOutcome === "cancelled";
+    if (pending && !pending.completed && (retainedFailure || reinitializing || !["arming", "waiting-initialization", "collecting", "ready", "requesting"].includes(state.phase))) {
       pending.completed = true; pending.cleanup();
       const errorCode = state.phase === "timed-out" || state.directOutcome === "timeout" ? "response_timeout" : "helper_failed";
       pending.dispatch(rejected(errorCode));
       pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: retainedFailure && !context.continuitySuspended });
     }
     this.options.onPreparation(projectPreparation(state, context.continuitySuspended));
+    if (this.watching && !this.disposed && (!context.active || context.continuitySuspended) && !this.retry) {
+      this.retry = setTimeout(() => {
+        this.retry = null;
+        if (this.watching && this.options.canPrepare()) void this.preparePassively();
+      }, 5_000);
+      this.retry.unref?.();
+    }
   }
+  private clearRetry(): void { if (this.retry) clearTimeout(this.retry); this.retry = null; }
 }
 
 function projectPreparation(state: SatanicZoneDiagnosticState, suspended: boolean): SatanicZonePreparation {
@@ -160,7 +175,9 @@ function projectPreparation(state: SatanicZoneDiagnosticState, suspended: boolea
     : state.phase === "waiting-initialization" ? "waiting_connection" : state.phase === "collecting" ? "collecting"
     : state.phase === "ready" ? "ready" : state.phase === "requesting" ? "requesting"
     : state.phase === "idle" || state.phase === "cancelled" ? "idle" : state.phase === "timed-out" ? "expired" : "unavailable";
-  return { phase, expiresAt: ["opening", "waiting_connection", "collecting", "ready", "requesting"].includes(phase) ? state.deadlineAt : null };
+  const missedLogin = phase === "waiting_connection" && ["api-flow-no-syn", "endpoint-changed-no-syn"].includes(state.selectionStatus);
+  return { phase, expiresAt: phase === "requesting" ? state.deadlineAt : null,
+    ...(missedLogin ? { reason: "login_missed" as const } : {}) };
 }
 function rejected(errorCode: SatanicZoneRefreshDispatchResult["errorCode"]): SatanicZoneRefreshDispatchResult {
   return { accepted: false, errorCode, correlationId: null };

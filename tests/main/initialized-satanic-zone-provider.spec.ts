@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type net from "node:net";
+import fs from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { InitializedSatanicZoneRefreshProvider } from "../../src/main/initialized-satanic-zone-provider";
 import { runInitializedSatanicZoneProbe, type InitializedProbeInput } from "../../src/main/satanic-zone-initialized-transport";
@@ -10,6 +11,10 @@ import type { SatanicZoneDiagnosticBufferBudget } from "../../src/main/satanic-z
 import { frameDiagnosticBody } from "../fixtures/satanic-zone-diagnostic-frames";
 import { inventedProbeScope as scope, inventedConnect, inventedPostLogin, genericProbeFrame as generic,
   opcodeOnlyReadyBody, inventedLoginSuccess, inventedZoneBody } from "../fixtures/satanic-zone-initialized";
+const launch = vi.hoisted(() => ({ steam: vi.fn(), executable: vi.fn() }));
+vi.mock("electron", () => ({ shell: { openExternal: launch.steam, openPath: launch.executable } }));
+import { GameCaptureCoordinator } from "../../src/main/game-capture-coordinator";
+import { createInitialCompanionState } from "../../src/shared/initial-state";
 
 async function flush() { for (let i = 0; i < 30; i++) await Promise.resolve(); }
 class Socket extends EventEmitter {
@@ -42,14 +47,17 @@ function fixture() {
       srcPort: outbound ? 5000 : scope.remotePort, dstPort: outbound ? scope.remotePort : 5000,
       seq, ack: outbound ? 201 : 101, flags, payload, payloadLength: payload.length, text: "" };
   }
-  async function collect(connectBody = inventedConnect(), postLoginBody = inventedPostLogin()) {
-    provider.prepare(); await flush();
-    network.connections[0].localPort = 5000;
-    receive(packet(true, 100, undefined, 2), false); receive(packet(false, 200, undefined, 18), false);
+  async function collect(connectBody = inventedConnect(), postLoginBody = inventedPostLogin(), prepareNow = true, nextScope = scope, localPort = 5000) {
+    if (prepareNow) provider.prepare(); await flush();
+    network.connections[0] = { ...network.connections[0], ...nextScope, localPort };
+    const send = (outbound: boolean, seq: number, payload?: Buffer, flags?: number) => receive({ ...packet(outbound, seq, payload, flags),
+      src: outbound ? nextScope.localAddress : nextScope.remoteAddress, dst: outbound ? nextScope.remoteAddress : nextScope.localAddress,
+      srcPort: outbound ? localPort : nextScope.remotePort, dstPort: outbound ? nextScope.remotePort : localPort }, false);
+    send(true, 100, undefined, 2); send(false, 200, undefined, 18);
     const connect = frameDiagnosticBody(connectBody, 7), ack = generic(opcodeOnlyReadyBody);
-    receive(packet(true, 101, connect), false); receive(packet(false, 201, ack), false);
-    receive(packet(true, 101 + connect.length, frameDiagnosticBody(postLoginBody, 8)), false);
-    receive(packet(false, 201 + ack.length, generic(inventedLoginSuccess())), false);
+    send(true, 101, connect); send(false, 201, ack);
+    send(true, 101 + connect.length, frameDiagnosticBody(postLoginBody, 8));
+    send(false, 201 + ack.length, generic(inventedLoginSuccess()));
     await vi.advanceTimersByTimeAsync(1_000); await flush();
   }
   async function dispatch(signal?: AbortSignal) {
@@ -57,17 +65,143 @@ function fixture() {
     sockets.at(-1)!.receive(opcodeOnlyReadyBody); sockets.at(-1)!.receive(inventedLoginSuccess());
     return request;
   }
-  return { provider, collect, dispatch, sockets, inputs, snapshots, network, networkState, close, prepare, open, budgets,
+  return { provider, collect, dispatch, sockets, inputs, snapshots, network, networkState, close, prepare, open, budgets, packet,
+    receive: (value: ParsedPayload, truncated = false) => receive(value, truncated),
     denyPreparation: () => { canPrepare = false; } };
 }
 afterEach(() => vi.useRealTimers());
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
-  test("preparation is explicit, emits only two readiness fields, closes capture at Ready and sends nothing", async () => {
+  test.each([true, false])("HSC opens the listener before launch (Steam=%s) delivers the first SYN and login; only explicit Refresh sends", async steam => {
+    const f = fixture(), order: string[] = [];
+    f.network.gameProcessIds = []; f.network.connections = [];
+    const originalOpen = f.open.getMockImplementation()!;
+    f.open.mockImplementation(async (_scope, callback, _failed, budget) => {
+      order.push("listener");
+      // Preserve the fixture's invented packet receiver.
+      return originalOpen(_scope, callback, _failed, budget);
+    });
+    const coordinator = new GameCaptureCoordinator({ state: createInitialCompanionState(),
+      getCaptureService: () => ({ hasHeroSiegeProcess: async () => false, start: vi.fn(), stop: vi.fn(),
+        diagnostics: async () => ({}), setCapturePreferences: vi.fn() }),
+      beforeCapture: () => f.provider.preparePassively(),
+      addLog: vi.fn(), publishState: vi.fn(), writeAppLog: vi.fn() });
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    const launched = async () => {
+      order.push("launch"); expect(f.open).toHaveBeenCalledTimes(1);
+      f.network.gameProcessIds = [42];
+      f.network.connections = [{ ...scope, localPort: 4999, owningProcess: 42, state: "established" }];
+      await f.collect(inventedConnect(), inventedPostLogin(), false);
+      return "";
+    };
+    launch.steam.mockImplementation(launched); launch.executable.mockImplementation(launched);
+    await coordinator.launchOrCapture({ launchThroughSteam: steam, executablePath: "invented.exe" });
+    expect(order).toEqual(["listener", "launch"]);
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.sockets).toHaveLength(0);
+    expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1);
+    f.provider.dispose(); coordinator.clearLaunchCaptureTimer();
+  });
+  test("launch waits for a delayed listener open; cancelling it cannot accept late login or send", async () => {
+    const f = fixture(); let opened!: (handle: { close: () => void }) => void;
+    f.open.mockImplementationOnce(() => new Promise(resolve => { opened = resolve; }));
+    let listening = false;
+    const watch = f.provider.preparePassively().then(value => { listening = value; });
+    await flush(); expect(listening).toBe(false); expect(f.provider.preparation.phase).toBe("opening");
+    f.provider.stop(); opened({ close: f.close }); await watch;
+    expect(listening).toBe(false); expect(f.close).toHaveBeenCalledTimes(1);
+    expect(f.provider.preparation.phase).toBe("idle"); expect(f.sockets).toHaveLength(0);
+  });
+  test("Companion before game keeps watching past two minutes, then becomes Ready automatically without authentication", async () => {
+    const f = fixture(); f.network.connections = []; f.network.gameProcessIds = [];
+    await f.provider.preparePassively(); await vi.advanceTimersByTimeAsync(125_000);
+    expect(f.provider.preparation).toEqual({ phase: "waiting_connection", expiresAt: null });
+    f.network.gameProcessIds = [42]; f.network.connections = [{ ...scope, localPort: 4999, owningProcess: 42, state: "established" }];
+    await f.collect(inventedConnect(), inventedPostLogin(), false);
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.sockets).toHaveLength(0);
+    expect(f.open).toHaveBeenCalledTimes(1); f.provider.dispose();
+  });
+  test("Companion after login reports the missed sign-in and partial traffic cannot invent readiness", async () => {
+    const f = fixture(); await f.provider.preparePassively(); await flush();
+    expect(f.provider.preparation.reason).toBe("login_missed");
+    f.receive(f.packet(true, 101, frameDiagnosticBody(inventedConnect(), 7)));
+    f.receive(f.packet(false, 201, generic(inventedLoginSuccess())));
+    await vi.advanceTimersByTimeAsync(125_000);
+    expect(f.provider.preparation.phase).toBe("waiting_connection");
+    expect(await f.provider.requestRefresh()).toMatchObject({ accepted: false, errorCode: "helper_not_ready" });
+    expect(f.sockets).toHaveLength(0); f.provider.dispose();
+  });
+  test.each(["fresh-syn", "fin", "reset"])("%s reconnect automatically reuses the open listener, clears old bodies and needs a complete new login", async change => {
+    const f = fixture(); await f.provider.preparePassively(); await f.collect();
+    const request = await f.dispatch(), wait = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[0].receive(inventedZoneBody); await wait; await flush();
+    if (change !== "fresh-syn") f.receive(f.packet(true, 1000, undefined, change === "fin" ? 1 : 4));
+    const uid = "77777777777777777777", connect = Buffer.from(inventedConnect().toString().replace("12345678901234567890", uid));
+    await f.collect(connect, inventedPostLogin(uid), false);
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.open).toHaveBeenCalledTimes(1);
+    expect(f.inputs[0].connectBody.every(byte => byte === 0)).toBe(true);
+    expect(f.inputs[0].postLoginBody.every(byte => byte === 0)).toBe(true);
+    expect(f.sockets).toHaveLength(1); expect(f.budgets[0].peakBytes).toBeLessThanOrEqual(1024 * 1024);
+    f.provider.dispose(); expect(f.budgets[0].usedBytes).toBe(0);
+  });
+  test("listener failure retries passive acquisition only; disabling cancels retries", async () => {
+    const f = fixture(); f.prepare.mockRejectedValueOnce(new Error("CANARY_PRIVATE_FAILURE"));
+    await f.provider.preparePassively(); expect(f.provider.preparation.phase).toBe("unavailable");
+    expect(f.provider.suppressRawLogging).toBe(true);
+    await vi.advanceTimersByTimeAsync(5_000); expect(f.open).toHaveBeenCalledTimes(1);
+    expect(f.provider.preparation.phase).toBe("waiting_connection"); expect(f.sockets).toHaveLength(0);
+    expect(JSON.stringify(f.snapshots)).not.toContain("CANARY_PRIVATE");
+    f.provider.stop(); await vi.advanceTimersByTimeAsync(30_000);
+    expect(f.open).toHaveBeenCalledTimes(1); expect(f.provider.suppressRawLogging).toBe(false);
+  });
+  test("ordinary server and local-port changes on the same adapter reacquire from the first SYN without reopening", async () => {
+    const f = fixture(); await f.provider.preparePassively(); await f.collect();
+    const changed = { ...scope, remoteAddress: "203.0.113.30", remotePort: 6668 };
+    await f.collect(inventedConnect(), inventedPostLogin(), false, changed, 5001);
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.open).toHaveBeenCalledTimes(1);
+    expect(f.sockets).toHaveLength(0); f.provider.dispose();
+  });
+  test("a SYN belonging to the explicit app request cannot replace the native game context", async () => {
+    const f = fixture(); await f.collect(); const request = f.provider.requestRefresh(); await flush();
+    f.receive({ ...f.packet(true, 100, undefined, 2), srcPort: 6000 });
+    expect(f.provider.preparation.phase).toBe("requesting");
+    f.sockets[0].receive(opcodeOnlyReadyBody); f.sockets[0].receive(inventedLoginSuccess());
+    const result = await request, wait = f.provider.waitForObservation(result.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[0].receive(inventedZoneBody); expect((await wait)?.kind).toBe("observation");
+    expect(f.inputs[0].connectBody).toEqual(inventedConnect()); f.provider.dispose();
+  });
+  test("delayed capture of the failed app socket SYN cannot erase Ready before another explicit Refresh", async () => {
+    const f = fixture(); await f.collect(); const failed = f.provider.requestRefresh(); await flush();
+    f.sockets[0].emit("error", new Error("invented connection failure")); await failed; await flush();
+    expect(f.provider.preparation.phase).toBe("ready");
+    f.receive({ ...f.packet(true, 100, undefined, 2), srcPort: 6000 });
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.inputs[0].connectBody).toEqual(inventedConnect());
+    const request = await f.dispatch(), wait = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[1].receive(inventedZoneBody); expect((await wait)?.kind).toBe("observation"); f.provider.dispose();
+  });
+  test("an adapter change closes the old listener and reselects passively; completed login is never reconstructed", async () => {
+    const f = fixture(); await f.provider.preparePassively(); await f.collect();
+    const changed = { ...scope, localAddress: "192.0.2.11" };
+    f.network.connections[0] = { ...f.network.connections[0], ...changed }; f.provider.observeConnections(f.network.connections);
+    await flush(); expect(f.close).toHaveBeenCalledTimes(1);
+    f.prepare.mockResolvedValue(changed); await vi.advanceTimersByTimeAsync(5_000);
+    expect(f.open).toHaveBeenCalledTimes(2); expect(f.provider.preparation.reason).toBe("login_missed");
+    expect(f.provider.preparation.phase).toBe("waiting_connection"); expect(f.sockets).toHaveLength(0);
+    await f.collect(inventedConnect(), inventedPostLogin(), false, changed);
+    expect(f.provider.preparation.phase).toBe("ready"); f.provider.dispose();
+  });
+  test("a failed or timed-out native candidate is bounded and automatically watches the next sign-in without authentication", async () => {
+    const f = fixture(); await f.provider.preparePassively();
+    f.receive(f.packet(true, 100, undefined, 2)); await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.provider.preparation.phase).toBe("expired");
+    await vi.advanceTimersByTimeAsync(5_000); expect(f.open).toHaveBeenCalledTimes(2);
+    await f.collect(inventedConnect(), inventedPostLogin(), false);
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.sockets).toHaveLength(0); f.provider.dispose();
+  });
+  test("readiness uses allowlisted fields, keeps the listener open at Ready and sends nothing", async () => {
     const f = fixture(); expect(f.prepare).not.toHaveBeenCalled(); await f.collect();
     expect(f.provider.preparation).toEqual({ phase: "ready", expiresAt: null });
-    expect(f.close).toHaveBeenCalledTimes(1); expect(f.sockets).toHaveLength(0);
+    expect(f.close).not.toHaveBeenCalled(); expect(f.sockets).toHaveLength(0);
     expect(f.provider.suppressRawLogging).toBe(true);
-    expect(f.snapshots.every(snapshot => Object.keys(snapshot).sort().join() === "expiresAt,phase")).toBe(true);
+    expect(f.snapshots.every(snapshot => Object.keys(snapshot).every(key => ["expiresAt", "phase", "reason"].includes(key)))).toBe(true);
     expect(JSON.stringify(f.snapshots)).not.toMatch(/CANARY|1234567890|9876543210|checksum|192\.0\.2/);
     f.provider.dispose(); expect(f.provider.suppressRawLogging).toBe(false);
   });
@@ -110,8 +244,8 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     if (change === "closed-flow") f.network.connections[0].state = "closewait";
     if (change === "pid") f.provider.observeProcessIds(f.network.gameProcessIds);
     else f.provider.observeConnections(f.network.connections);
-    expect(f.provider.preparation.phase).toBe("unavailable"); expect(f.sockets).toHaveLength(0);
-    expect(f.provider.suppressRawLogging).toBe(false);
+    expect(f.provider.preparation.phase).toBe("waiting_connection"); expect(f.sockets).toHaveLength(0);
+    expect(f.provider.suppressRawLogging).toBe(true);
     expect(await f.provider.requestRefresh()).toMatchObject({ accepted: false, errorCode: "helper_not_ready" });
   });
   test.each([[1, true], [4, false], [2, true]] as const)("observed FIN/reset/new SYN flags %s outbound=%s erase context before topology catches up", async (flags, outbound) => {
@@ -122,7 +256,7 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     f.provider.observeTcpLifecycle({ ...native, srcPort: 6000 }); expect(f.provider.preparation.phase).toBe("requesting");
     f.provider.observeTcpLifecycle({ ...native, flags: 18 }); expect(f.provider.preparation.phase).toBe("requesting");
     f.provider.observeTcpLifecycle(native); expect((await wait)?.kind).toBe("terminal");
-    expect(f.provider.preparation.phase).toBe("unavailable"); expect(f.inputs[0].connectBody.every(byte => byte === 0)).toBe(true);
+    expect(f.provider.preparation.phase).toBe("waiting_connection"); expect(f.inputs[0].connectBody.every(byte => byte === 0)).toBe(true);
     expect(f.sockets[0].destroy).toHaveBeenCalledTimes(1); f.provider.dispose();
   });
   test("scope is revalidated before login writes and invalidation during initialization cancels the socket", async () => {
@@ -166,7 +300,7 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     f.sockets[0].receive(inventedZoneBody); await flush();
     expect(f.provider.preparation.phase).not.toBe("ready");
     expect(f.inputs[0].connectBody.every(byte => byte === 0)).toBe(true);
-    expect(f.provider.suppressRawLogging).toBe(false);
+    expect(f.provider.suppressRawLogging).toBe(!["stop", "dispose"].includes(action));
   });
   test("one flight, deadline and no automatic retry after missing owned response", async () => {
     const f = fixture(); await f.collect(); const dispatched = await f.dispatch();
@@ -237,12 +371,11 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     const nextWait = f.provider.waitForObservation(next.correlationId!, { timeoutMs: 30_000 });
     f.sockets[1].receive(inventedZoneBody); expect((await nextWait)?.kind).toBe("observation"); f.provider.dispose();
   });
-  test.each(["timeout", "cancel", "second-gap"])("%s during passive reacquisition returns suspended RAM context without replay or a renewed Ready lifetime", async action => {
+  test.each(["cancel", "second-gap"])("%s during passive reacquisition returns suspended RAM context without replay or a renewed Ready lifetime", async action => {
     const f = fixture(); await f.collect(); const first = await f.dispatch();
     const wait = f.provider.waitForObservation(first.correlationId!, { timeoutMs: 30_000 });
     f.sockets[0].receive(inventedZoneBody); await wait; await flush(); f.provider.suspend();
     f.provider.preparePassively(); await flush(); expect(f.inputs[0].connectBody).toEqual(inventedConnect());
-    if (action === "timeout") await vi.advanceTimersByTimeAsync(120_000);
     if (action === "cancel") f.provider.cancelPreparation();
     if (action === "second-gap") f.provider.suspend();
     expect(f.provider.preparation).toEqual({ phase: "suspended", expiresAt: null });
@@ -298,10 +431,10 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     const request = await next; const wait = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
     f.sockets[0].receive(inventedZoneBody); expect((await wait)?.kind).toBe("observation"); f.provider.dispose();
   });
-  test("passive preparation opens one bounded listener and never restarts itself or sends authentication", async () => {
+  test("passive watching has no two-minute window and never sends authentication", async () => {
     const f = fixture(); f.provider.preparePassively(); await flush(); f.provider.preparePassively();
     expect(f.open).toHaveBeenCalledTimes(1); expect(f.sockets).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(120_000); expect(f.provider.preparation.phase).toBe("expired");
+    await vi.advanceTimersByTimeAsync(120_000); expect(f.provider.preparation).toMatchObject({ phase: "waiting_connection", expiresAt: null, reason: "login_missed" });
     await vi.advanceTimersByTimeAsync(60_000); expect(f.open).toHaveBeenCalledTimes(1); expect(f.sockets).toHaveLength(0);
     f.provider.dispose();
   });

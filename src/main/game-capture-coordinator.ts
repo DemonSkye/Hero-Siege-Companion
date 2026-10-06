@@ -14,9 +14,11 @@ interface GameCaptureCoordinatorOptions {
   addLog: (level: LogEntry["level"], message: string) => void;
   publishState: () => void;
   writeAppLog: (type: string, data: Record<string, unknown>) => void;
+  beforeCapture?: () => Promise<boolean>;
 }
 
 export class GameCaptureCoordinator {
+  captureEnabled = true;
   private launchCaptureTimer: NodeJS.Timeout | null = null;
   private gameProcessMonitorTimer: NodeJS.Timeout | null = null;
   private gameProcessMonitorActive = false;
@@ -25,10 +27,12 @@ export class GameCaptureCoordinator {
   constructor(private readonly options: GameCaptureCoordinatorOptions) {}
 
   async launchOrCapture(launchOptions: LaunchGameOptions): Promise<CompanionState> {
+    this.captureEnabled = true;
     const service = this.options.getCaptureService();
     if (service && (await service.hasHeroSiegeProcess())) {
       this.clearLaunchCaptureTimer();
-      await service.start();
+      await this.options.beforeCapture?.();
+      if (this.captureEnabled) await service.start();
       return this.options.state;
     }
 
@@ -47,6 +51,7 @@ export class GameCaptureCoordinator {
     clearTimeout(this.launchCaptureTimer);
     this.launchCaptureTimer = null;
   }
+  setCaptureEnabled(enabled: boolean): void { this.captureEnabled = enabled; if (!enabled) this.clearLaunchCaptureTimer(); }
 
   startMonitor(): void {
     if (this.gameProcessMonitorTimer) return;
@@ -65,8 +70,9 @@ export class GameCaptureCoordinator {
 
   private async launchThroughSteam(): Promise<void> {
     try {
+      await this.options.beforeCapture?.();
       await shell.openExternal(STEAM_HERO_SIEGE_URL);
-      this.options.addLog("info", "Launched Hero Siege through Steam. Capture will try to start automatically in about 45 seconds.");
+      this.options.addLog("info", "Launched Hero Siege through Steam. Capture is watching for the game.");
       this.scheduleLaunchCaptureAttempt();
     } catch (error) {
       this.options.addLog("error", `Failed to launch Hero Siege through Steam: ${error instanceof Error ? error.message : String(error)}`);
@@ -86,18 +92,20 @@ export class GameCaptureCoordinator {
       return;
     }
 
+    await this.options.beforeCapture?.();
     const launchError = await shell.openPath(executablePath);
     if (launchError) {
       this.options.addLog("error", `Failed to launch Hero Siege: ${launchError}`);
       return;
     }
 
-    this.options.addLog("info", "Launched Hero Siege. Capture will try to start automatically in about 45 seconds.");
+    this.options.addLog("info", "Launched Hero Siege. Capture is watching for the game.");
     this.scheduleLaunchCaptureAttempt();
   }
 
   private scheduleLaunchCaptureAttempt(): void {
     this.clearLaunchCaptureTimer();
+    if (!this.captureEnabled) return;
     this.launchCaptureTimer = setTimeout(() => {
       this.launchCaptureTimer = null;
       void this.attemptCaptureAfterLaunch();
@@ -107,7 +115,7 @@ export class GameCaptureCoordinator {
 
   private async attemptCaptureAfterLaunch(): Promise<void> {
     const service = this.options.getCaptureService();
-    if (!service || this.options.state.captureRunning) return;
+    if (!service || !this.captureEnabled || this.options.state.captureRunning) return;
     this.options.addLog("info", "Checking for Hero Siege after launch delay.");
     await service.start();
     this.options.publishState();
@@ -115,10 +123,10 @@ export class GameCaptureCoordinator {
 
   private async syncCaptureToGameProcess(source: string): Promise<void> {
     const service = this.options.getCaptureService();
-    if (!service || this.options.state.captureRunning || this.gameProcessMonitorActive) return;
+    if (!service || !this.captureEnabled || this.options.state.captureRunning || this.gameProcessMonitorActive) return;
     this.gameProcessMonitorActive = true;
     try {
-      if (!(await service.hasHeroSiegeProcess())) return;
+      if (!(await service.hasHeroSiegeProcess()) || !this.captureEnabled) return;
       this.options.writeAppLog("game-process-detected", { source, captureStatus: this.options.state.captureStatus });
       const now = Date.now();
       if (now - this.lastGameProcessAutoStartLogAt > 60_000) {
@@ -126,7 +134,8 @@ export class GameCaptureCoordinator {
         this.options.addLog("info", "Hero Siege is running; starting capture automatically.");
       }
       this.clearLaunchCaptureTimer();
-      await service.start();
+      await this.options.beforeCapture?.();
+      if (this.captureEnabled) await service.start();
       this.options.publishState();
     } finally {
       this.gameProcessMonitorActive = false;

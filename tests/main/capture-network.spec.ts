@@ -9,6 +9,7 @@ import {
   stableCaptureFilter,
   summarizeConnections,
   uniqueCaptureTargets,
+  selectDefaultCaptureLocalAddress,
 } from "../../src/main/capture-network";
 
 function connection(overrides: Partial<CaptureConnection> = {}): CaptureConnection {
@@ -24,6 +25,17 @@ function connection(overrides: Partial<CaptureConnection> = {}): CaptureConnecti
 }
 
 describe("capture network helpers", () => {
+  test("startup adapter follows one best IPv4 route, permits duplicate routes and rejects ties or invalid values", () => {
+    expect(selectDefaultCaptureLocalAddress([{ address: "192.0.2.10", metric: 15 }, { address: "192.0.2.11", metric: 30 }])).toBe("192.0.2.10");
+    expect(selectDefaultCaptureLocalAddress([{ address: "192.0.2.10", metric: 15 }, { address: "192.0.2.10", metric: 15 }])).toBe("192.0.2.10");
+    expect(selectDefaultCaptureLocalAddress([{ address: "192.0.2.10", metric: 15 }, { address: "192.0.2.11", metric: 15 }])).toBeNull();
+    for (const address of ["127.0.0.1", "169.254.2.1", "0.0.0.0", "999.2.3.4", "::1", "CANARY"]) {
+      expect(selectDefaultCaptureLocalAddress({ address, metric: 10 })).toBeNull();
+    }
+    for (const value of [[], null, { address: "192.0.2.10", metric: -1 }, { address: "192.0.2.10", metric: "10" }]) {
+      expect(selectDefaultCaptureLocalAddress(value)).toBeNull();
+    }
+  });
   test("filters launcher and web connections before capture selection", () => {
     const game = connection({ remotePort: 26921 });
     const web = connection({ remoteAddress: "198.51.100.1", remotePort: 443 });

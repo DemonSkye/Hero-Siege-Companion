@@ -15,7 +15,7 @@ export class ElectronSatanicZoneTestRuntime {
   readonly dependencies: Pick<InitializedProbeDependencies, "prepare" | "open" | "networkState" | "attempt"> = {
     prepare: async () => {
       const flow = this.network.connections[0];
-      if (!flow) throw new Error("synthetic-context-unavailable");
+      if (!flow) return { localAddress: "192.0.2.10" };
       return { localAddress: flow.localAddress, remoteAddress: flow.remoteAddress, remotePort: flow.remotePort };
     },
     open: async (_scope, receive) => {

@@ -120,6 +120,7 @@ function applyCaptureDiagnosticPreferences(): void {
 const gameCaptureCoordinator = new GameCaptureCoordinator({
   state,
   getCaptureService: () => captureService,
+  beforeCapture: () => satanicZoneRefreshProvider?.preparePassively() ?? Promise.resolve(false),
   addLog,
   publishState,
   writeAppLog,
@@ -234,11 +235,12 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
   if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
-  if (update.observationGap || update.running === false || (update.status && update.status !== "running")) satanicZoneRefreshProvider?.suspend();
+  if (update.observationGap || update.status === "error" || (previousCaptureRunning && (update.running === false
+    || (update.status && update.status !== "running")))) satanicZoneRefreshProvider?.suspend();
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) { state.connections = update.connections; satanicZoneRefreshProvider?.observeConnections(update.connections); }
-  if (state.captureRunning && state.satanicZone.refreshEnabled && (!previousCaptureRunning
-    || (update.running === true && satanicZoneRefreshProvider?.preparation.phase === "suspended"))) satanicZoneRefreshProvider?.preparePassively();
+  if (state.captureRunning && state.captureStatus === "running" && state.satanicZone.refreshEnabled && (!previousCaptureRunning
+    || update.observationGap || satanicZoneRefreshProvider?.preparation.phase === "suspended")) void satanicZoneRefreshProvider?.preparePassively();
   if (update.health) state.health = { ...state.health, ...update.health };
   if (update.running !== undefined || update.status || update.connections || update.health) {
     updateCrashReportCaptureContext();
@@ -408,12 +410,15 @@ ipcMain.handle(IPC_CHANNELS.stateGet, () => {
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
+  gameCaptureCoordinator.setCaptureEnabled(true);
   gameCaptureCoordinator.clearLaunchCaptureTimer();
-  await captureService?.start();
+  await satanicZoneRefreshProvider?.preparePassively();
+  if (gameCaptureCoordinator.captureEnabled) await captureService?.start();
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
 ipcMain.handle(IPC_CHANNELS.captureStop, () => {
+  gameCaptureCoordinator.setCaptureEnabled(false);
   satanicZoneDiagnostic?.cancel();
   satanicZoneRefreshProvider?.suspend();
   gameCaptureCoordinator.clearLaunchCaptureTimer();
@@ -451,17 +456,10 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
     publishState();
     return state;
   }
-  const preparation = satanicZoneRefreshProvider?.preparation.phase;
-  if (preparation && ["opening", "waiting_connection", "collecting"].includes(preparation)) {
-    satanicZoneRefreshProvider?.cancelPreparation(); publishStateNow(); return state;
-  }
   if (!state.captureRunning || state.captureStatus !== "running") {
     satanicZoneController?.markUnavailable("capture_unavailable");
     addLog("warning", "Start capture before requesting a Satanic Zone refresh.");
     return state;
-  }
-  if (preparation && ["idle", "expired", "unavailable", "suspended"].includes(preparation)) {
-    satanicZoneRefreshProvider?.prepare(); publishStateNow(); return state;
   }
   const result = await satanicZoneController?.refreshNow();
   writeAppLog("satanic-zone-refresh-requested", {
@@ -541,7 +539,7 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, ena
   if (satanicZoneController) {
     await satanicZoneController.setRefreshEnabled(preferences.enabled);
     if (!preferences.enabled) satanicZoneRefreshProvider?.stop();
-    else if (state.captureRunning) satanicZoneRefreshProvider?.preparePassively();
+    else if (gameCaptureCoordinator.captureEnabled) await satanicZoneRefreshProvider?.preparePassively();
   } else {
     state.satanicZone = {
       ...state.satanicZone,
@@ -809,7 +807,7 @@ app.whenReady().then(async () => {
   satanicZoneRefreshProvider = new InitializedSatanicZoneRefreshProvider({
     syntheticOnly: isElectronE2eTestMode(),
     dependencies: satanicZoneTestRuntime?.dependencies,
-    canPrepare: () => state.satanicZone.refreshEnabled && state.captureRunning
+    canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
       && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh,
     onPreparation: preparation => {
       satanicZoneController?.setPreparation(preparation);
@@ -908,10 +906,11 @@ app.whenReady().then(async () => {
     publishStateNow();
     return;
   }
+  await satanicZoneRefreshProvider.preparePassively();
   if (await captureService.hasHeroSiegeProcess()) {
     await captureService.start();
   } else {
-    addLog("info", "Hero Siege is not running yet. Launch the game, wait for the main menu, then click Launch Game.");
+    addLog("info", "Watching for Hero Siege. Launch the game here or open it normally.");
     publishState();
   }
   gameCaptureCoordinator.startMonitor();

@@ -1,6 +1,8 @@
 const { test, expect } = require("@playwright/test");
 const { createHash } = require("node:crypto");
-const { withCompanionApp, getRendererState, emitCapturePayloads } = require("./support/companion-app.cjs");
+const fs = require("node:fs");
+const path = require("node:path");
+const { withCompanionApp, getRendererState, emitCapturePayloads, createUserDataDir, cleanupUserDataDir } = require("./support/companion-app.cjs");
 
 // Invented CANARY login; no captured account, native process or socket is used.
 function initialization() {
@@ -27,7 +29,7 @@ function initialization() {
   return { network, packets };
 }
 
-test("normal Refresh prepares privately, keeps passive updates separate, returns owned zone and clears readiness on disable", async () => {
+test("normal Refresh gets ready automatically, keeps passive updates separate, returns owned zone and clears readiness on disable", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
     await page.evaluate(() => window.heroSiegeCompanion.setCaptureDiagnosticsMode("deep", "manual"));
     const invented = initialization();
@@ -58,7 +60,7 @@ test("normal Refresh prepares privately, keeps passive updates separate, returns
     await page.evaluate(() => window.heroSiegeCompanion.stopCapture());
     expect((await getRendererState(page)).satanicZone.refreshPreparation).toEqual({ phase: "suspended", expiresAt: null });
     expect((await getRendererState(page)).satanicZone.refreshAvailable).toBe(false);
-    await expect(card.locator(".zone-preparation")).toContainText("capture continuity was interrupted");
+    await expect(card.locator(".zone-preparation")).toContainText("capture interruption");
     await page.evaluate(() => window.heroSiegeCompanion.startCapture());
     await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("waiting_connection");
     expect((await getRendererState(page)).satanicZone.refreshAvailable).toBe(false);
@@ -70,4 +72,43 @@ test("normal Refresh prepares privately, keeps passive updates separate, returns
     expect((await getRendererState(page)).capturePreferences.captureWideLogging).toBe(true);
     await expect(card.locator(".zone-refresh-button")).toHaveCount(0);
   });
+});
+
+test("default startup watches before the game; late sign-in and reconnect get ready without a Prepare action", async () => {
+  await withCompanionApp({ gameRunning: false }, async ({ electronApp, page }) => {
+    const card = page.locator("#satanic-zone-card");
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("waiting_connection");
+    expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
+    await expect(card.getByRole("button", { name: /Refresh Satanic Zone unavailable/ })).toBeDisabled();
+    const invented = initialization();
+    await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+    // A topology snapshot without the first SYN cannot reconstruct login.
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.reason).toBe("login_missed");
+    await expect(card.locator(".zone-preparation")).toContainText("already completed");
+    await page.evaluate(() => window.heroSiegeCompanion.refreshSatanicZone());
+    expect((await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("waiting_connection");
+    await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+    await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+    expect((await getRendererState(page)).satanicZone.lastAttemptAt).toBeNull();
+    // A second complete initialization is observed by the same open listener.
+    await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+    expect((await getRendererState(page)).satanicZone.lastAttemptAt).toBeNull();
+    await expect(card.getByRole("button", { name: "Refresh Satanic Zone", exact: true })).toBeEnabled();
+    await expect(card.locator(".zone-preparation")).not.toContainText(/Prepare|API|two.minutes/);
+  });
+});
+
+test("saved Off survives startup and no watcher can silently enable it", async () => {
+  const userDataDir = createUserDataDir();
+  try {
+    fs.writeFileSync(path.join(userDataDir, "preferences.json"), JSON.stringify({ satanicZoneRefresh: { enabled: false } }));
+    await withCompanionApp({ userDataDir }, async ({ page }) => {
+      expect((await getRendererState(page)).satanicZone).toMatchObject({ refreshEnabled: false, refreshPreparation: { phase: "idle" } });
+      await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+      expect((await getRendererState(page)).satanicZone).toMatchObject({ refreshEnabled: false, refreshPreparation: { phase: "idle" } });
+      await expect(page.locator("#satanic-zone-card .zone-refresh-button")).toHaveCount(0);
+    });
+  } finally { cleanupUserDataDir(userDataDir); }
 });

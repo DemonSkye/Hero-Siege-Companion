@@ -550,10 +550,12 @@
 
 .zone-refresh-button {
   align-self: center;
-  display: grid;
-  width: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
   min-height: 36px;
-  padding: 0;
+  padding: 0 10px;
   place-items: center;
   border-radius: 999px;
 }

@@ -527,7 +527,18 @@
 }
 
 .compact-run-cover .compact-cover-grid .compact-zone-tile-with-refresh {
+  position: relative;
   grid-column: span 2;
+}
+
+.compact-zone-tile-with-refresh .compact-zone-clock {
+  padding-right: 28px;
+}
+
+.compact-zone-tile-with-refresh .compact-zone-refresh-button {
+  position: absolute;
+  right: 7px;
+  bottom: 4px;
 }
 
 .compact-run-cover .compact-cover-grid strong {

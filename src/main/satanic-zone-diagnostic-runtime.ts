@@ -1,8 +1,9 @@
-import { getHeroSiegeNetworkState } from "./capture-network";
+import { getDefaultCaptureLocalAddress, getHeroSiegeNetworkState } from "./capture-network";
 import { createDirectSatanicZoneTransport } from "./direct-satanic-zone-provider";
 import { getTcpSegment } from "./packet-decoder";
 import { SatanicZoneDiagnosticController, type SatanicZoneDiagnosticDependencies } from "./satanic-zone-diagnostic-controller";
 import type { CapturePreferences } from "../shared/app-state";
+import type { SatanicZoneListenScope } from "./satanic-zone-diagnostic-stream";
 
 export function diagnosticCapturePreferences(preferences: CapturePreferences, active: boolean): CapturePreferences {
   return active ? { captureDebugLogging: false, capturePayloadLogging: false, captureWideLogging: false,
@@ -21,8 +22,11 @@ export function createSatanicZoneDiagnosticRuntime(options: Pick<SatanicZoneDiag
   });
 }
 
-export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpointPolicy: "fixed" | "fresh-api" = "fixed"):
-  Pick<SatanicZoneDiagnosticDependencies, "prepare" | "open" | "networkState"> {
+type CaptureDependencies<Scope> = Pick<SatanicZoneDiagnosticDependencies<Scope>, "prepare" | "open" | "networkState">;
+export function createDiagnosticCaptureDependencies(syntheticOnly: boolean, endpointPolicy: "startup-api"): CaptureDependencies<SatanicZoneListenScope>;
+export function createDiagnosticCaptureDependencies(syntheticOnly?: boolean, endpointPolicy?: "fixed" | "fresh-api"): Pick<SatanicZoneDiagnosticDependencies, "prepare" | "open" | "networkState">;
+export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpointPolicy: "fixed" | "fresh-api" | "startup-api" = "fixed"):
+  CaptureDependencies<SatanicZoneListenScope> {
   return {
     async prepare() {
       // Test application boot must never load cap or inspect real connections.
@@ -31,6 +35,11 @@ export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpo
       const connections = state.connections.filter((connection) => state.gameProcessIds.includes(connection.owningProcess)
         && [6668, 6669].includes(connection.remotePort) && IPV4.test(connection.localAddress)
         && IPV4.test(connection.remoteAddress));
+      if (endpointPolicy === "startup-api" && connections.length === 0) {
+        const localAddress = await getDefaultCaptureLocalAddress();
+        if (!localAddress) throw new Error("unavailable");
+        return { localAddress };
+      }
       if (connections.length === 0 || (endpointPolicy === "fixed" && connections.length !== 1)
         || new Set(connections.map(connection => connection.localAddress)).size !== 1) throw new Error("unavailable");
       const connection = connections[0];
@@ -47,7 +56,7 @@ export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpo
         releaseNative = budget.reserve(65_536);
         // A restart may change native API server/port. Capture those two known
         // ports on the selected adapter before the fresh SYN pins an endpoint.
-        const filter = endpointPolicy === "fresh-api"
+        const filter = endpointPolicy !== "fixed"
           ? `ip and tcp and host ${scope.localAddress} and (port 6668 or port 6669)`
           : `ip and tcp and host ${scope.localAddress} and host ${scope.remoteAddress} and port ${scope.remotePort}`;
         let linkType = "";

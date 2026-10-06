@@ -189,12 +189,17 @@ export function loadSatanicZoneRefreshPreferences(
   try {
     if (!filePath || !fs.existsSync(filePath)) return DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES;
     const parsed = loadPreferencesFile(filePath) as { satanicZoneRefresh?: Partial<SatanicZoneRefreshPreferences> };
-    return parsed.satanicZoneRefresh === undefined
-      ? DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES
-      : normalizeSatanicZoneRefreshPreferences(parsed.satanicZoneRefresh);
+    if (parsed.satanicZoneRefresh === undefined) return DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES;
+    if (!isRecord(parsed.satanicZoneRefresh) || typeof parsed.satanicZoneRefresh.enabled !== "boolean") {
+      log("satanic-zone-preference-migration", { outcome: "ambiguous-saved-value-kept-disabled" });
+      return { enabled: false };
+    }
+    // Older false values do not record whether the user disabled it or accepted
+    // the old default. Preserve either; migration cannot recover that intent.
+    return normalizeSatanicZoneRefreshPreferences(parsed.satanicZoneRefresh);
   } catch (error) {
     logStorageError(log, "preferences-load-error", error);
-    return DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES;
+    return { enabled: false };
   }
 }
 
@@ -217,7 +222,7 @@ export function saveSatanicZoneRefreshPreferences(
 export function normalizeSatanicZoneRefreshPreferences(preferences: unknown): SatanicZoneRefreshPreferences {
   const record = isRecord(preferences) ? preferences : {};
   return {
-    enabled: booleanField(record.enabled, DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled),
+    enabled: booleanField(record.enabled, false),
   };
 }
 

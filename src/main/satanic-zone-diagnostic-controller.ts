@@ -14,9 +14,9 @@ import { SatanicZoneDiagnosticStream, type DiagnosticCaptureScope, type Diagnost
 import { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
 
 export interface DiagnosticCaptureHandle { close(): void }
-export interface SatanicZoneDiagnosticDependencies {
-  prepare(): Promise<DiagnosticCaptureScope>;
-  open(scope: DiagnosticCaptureScope, packet: (packet: ParsedPayload, truncated: boolean) => void,
+export interface SatanicZoneDiagnosticDependencies<Scope = DiagnosticCaptureScope> {
+  prepare(): Promise<Scope>;
+  open(scope: Scope, packet: (packet: ParsedPayload, truncated: boolean) => void,
     failed: () => void, budget: SatanicZoneDiagnosticBufferBudget): Promise<DiagnosticCaptureHandle>;
   networkState(): Promise<HeroSiegeNetworkState>;
   transport(context: SatanicZoneRequestContext, signal: AbortSignal | undefined,

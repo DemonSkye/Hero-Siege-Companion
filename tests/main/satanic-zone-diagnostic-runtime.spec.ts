@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ network: vi.fn(), findDevice: vi.fn(), open: vi.fn(), close: vi.fn() }));
-vi.mock("../../src/main/capture-network", () => ({ getHeroSiegeNetworkState: mocks.network }));
+const mocks = vi.hoisted(() => ({ network: vi.fn(), defaultAddress: vi.fn(), findDevice: vi.fn(), open: vi.fn(), close: vi.fn() }));
+vi.mock("../../src/main/capture-network", () => ({ getHeroSiegeNetworkState: mocks.network, getDefaultCaptureLocalAddress: mocks.defaultAddress }));
 vi.mock("../../src/main/capture-adapter", () => ({ findNpcapDevice: mocks.findDevice, openPacketCapture: mocks.open }));
 import { createDiagnosticCaptureDependencies, createSatanicZoneDiagnosticRuntime } from "../../src/main/satanic-zone-diagnostic-runtime";
 import { SatanicZoneDiagnosticBufferBudget } from "../../src/main/satanic-zone-diagnostic-budget";
@@ -12,6 +12,25 @@ function fixture() {
   return createSatanicZoneDiagnosticRuntime({ canArm: () => true, onChange: () => {} });
 }
 describe("diagnostic adapter wiring with mocked native module", () => {
+  test("startup listener opens on the default route before any game process or API connection exists", async () => {
+    const legacy = fixture(); mocks.network.mockResolvedValue({ gameProcessIds: [], antiCheatProcessIds: [], connections: [] });
+    mocks.defaultAddress.mockResolvedValue("192.0.2.10");
+    const dependencies = createDiagnosticCaptureDependencies(false, "startup-api");
+    const scope = await dependencies.prepare(); expect(scope).toEqual({ localAddress: "192.0.2.10" });
+    const budget = new SatanicZoneDiagnosticBufferBudget(), handle = await dependencies.open(scope, vi.fn(), vi.fn(), budget);
+    expect(mocks.findDevice).toHaveBeenCalledWith("192.0.2.10");
+    expect(mocks.open.mock.calls[0][1]).toBe("ip and tcp and host 192.0.2.10 and (port 6668 or port 6669)");
+    expect(budget.peakBytes).toBe(131_071); handle.close(); budget.dispose(); legacy.dispose();
+  });
+  test("startup selection uses the actual game adapter after login and fails closed on an ambiguous default route", async () => {
+    const legacy = fixture();
+    await expect(createDiagnosticCaptureDependencies(false, "startup-api").prepare()).resolves.toMatchObject({ localAddress: "192.0.2.10" });
+    expect(mocks.defaultAddress).not.toHaveBeenCalled();
+    mocks.network.mockResolvedValue({ gameProcessIds: [], antiCheatProcessIds: [], connections: [] });
+    mocks.defaultAddress.mockResolvedValue(null);
+    await expect(createDiagnosticCaptureDependencies(false, "startup-api").prepare()).rejects.toThrow("unavailable");
+    expect(mocks.open).not.toHaveBeenCalled(); legacy.dispose();
+  });
   test("fresh API collection listens before restart on both API ports rather than the old server", async () => {
     const legacy = fixture(), dependencies = createDiagnosticCaptureDependencies(false, "fresh-api");
     const scope = await dependencies.prepare(), budget = new SatanicZoneDiagnosticBufferBudget();

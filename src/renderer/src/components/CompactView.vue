@@ -50,7 +50,7 @@ defineEmits<{
       <div class="compact-shopping-head">
         <div>
           <span>Satanic Zone · {{ zonePhaseLabel }}</span>
-          <strong>{{ state.satanicZone.current?.zone || "Waiting for zone packet" }}</strong>
+          <strong>{{ state.satanicZone.current?.zone || "Waiting for zone update" }}</strong>
         </div>
         <button
           class="compact-shopping-close"
@@ -75,7 +75,7 @@ defineEmits<{
           <p v-for="effect in state.satanicZone.current.cons" :key="`con-${effect.id}`"><strong>{{ effect.name }}</strong></p>
         </div>
       </div>
-      <p v-else class="compact-shopping-empty">Zone details appear after the game sends a Satanic Zone packet.</p>
+      <p v-else class="compact-shopping-empty">Zone details appear after the next update.</p>
     </section>
     <section class="compact-cover compact-run-cover compact-run-home" aria-label="This run details">
       <div class="compact-cover-head compact-run-cover-head">

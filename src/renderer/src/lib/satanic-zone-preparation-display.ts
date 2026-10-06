@@ -2,15 +2,16 @@ import type { SatanicZonePreparation } from "../../../shared/satanic-zone-prepar
 
 export function satanicZonePreparationDetail(state: SatanicZonePreparation | undefined, _now: number): string | null {
   if (!state) return null;
+  if (state.reason === "login_missed") return "This login was already completed. Refresh will be ready after the game next signs in. You can keep playing.";
   switch (state.phase) {
-    case "opening": return "Opening a listener for the game's next API initialization. Preparation sends no request.";
-    case "waiting_connection": return "Listening for a fresh game API connection and complete login. You can keep playing. Already completed login cannot be recovered; this listening window ends after two minutes. Click again to cancel.";
-    case "collecting": return "Observing the game connection and login. No refresh request has been sent. Click again to cancel preparation.";
-    case "ready": return "Ready for manual refresh for this game session. Click Refresh to request the zone. Login context stays only in memory until the game session changes or the feature closes.";
-    case "suspended": return "Login context is retained in memory, but refresh is suspended because capture continuity was interrupted. Matching process IDs or connections cannot verify it. Prepare refresh listens for complete fresh game API initialization; no restart is requested.";
-    case "requesting": return "Requesting the zone on a separate Companion connection. Game updates do not complete this request.";
-    case "expired": return "The listening window ended without a complete login. Click Prepare refresh to listen again. Ready context has no two-minute expiry.";
-    case "unavailable": return "Refresh context is unavailable. Keep capture running and click Prepare refresh to listen for the next game API initialization.";
-    case "idle": return "Enable capture to listen for game API initialization, or click Prepare refresh to listen again. Once ready, Refresh remains an explicit action. No proxy installation is needed.";
+    case "opening": return "Getting Refresh ready…";
+    case "waiting_connection": return "Waiting for the game to sign in. You can keep playing.";
+    case "collecting": return "Getting Refresh ready as the game signs in…";
+    case "ready": return "Ready to refresh.";
+    case "suspended": return "Refresh paused after a capture interruption. Resume capture; waiting for the game to sign in again.";
+    case "requesting": return "Refreshing the zone…";
+    case "expired":
+    case "unavailable": return "Refresh is unavailable. Checking again automatically while capture is enabled.";
+    case "idle": return "Start capture to get Refresh ready automatically.";
   }
 }

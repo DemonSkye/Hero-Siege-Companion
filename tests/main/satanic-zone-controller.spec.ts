@@ -19,10 +19,11 @@ afterEach(() => {
 });
 
 describe("SatanicZoneController", () => {
-  test("keeps manual refresh main-authoritatively off until explicitly enabled", async () => {
+  test("keeps an intentionally disabled refresh main-authoritatively off until enabled", async () => {
     const refreshProvider = provider({ availability: { available: false, experimental: true, errorCode: "helper_not_ready" } });
     const controller = new SatanicZoneController({
       provider: refreshProvider,
+      initialState: { ...createInitialSatanicZoneState(), refreshEnabled: false },
       onStateChange: vi.fn(),
     });
 
@@ -71,7 +72,7 @@ describe("SatanicZoneController", () => {
       current: observed,
       source: "captured",
       lastSuccessAt: WINDOW_TIME + 100,
-      errorCode: "refresh_disabled",
+      errorCode: null,
     });
 
     controller.observePassiveRequest(WINDOW_TIME + 200);

@@ -485,9 +485,8 @@ describe("Vue component contracts", () => {
 
     await wrapper.get('[data-settings-section="features"]').trigger("click");
     await wrapper.get(".settings-switch input").trigger("change");
-    expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toBeUndefined();
+    expect(wrapper.emitted("update:satanicZoneRefreshEnabled")?.[0]).toEqual([true]);
     expect(wrapper.text()).not.toContain("Exclusive");
-    await buttonByText(wrapper, "Enable SZ Refresh").trigger("click");
     await buttonByText(wrapper, "Learn More").trigger("click");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("No certificate installation");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("once every 30 seconds");

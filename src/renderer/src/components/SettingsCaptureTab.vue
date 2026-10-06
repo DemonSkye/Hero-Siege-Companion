@@ -19,7 +19,7 @@ defineEmits<{
     <div class="settings-feature-heading">
       <div>
         <h3 id="settings-sz-refresh-title">Satanic Zone Refresh</h3>
-        <p>Request the latest Satanic Zone without waiting for the game’s next save query.</p>
+        <p>Check the current Satanic Zone when you need it.</p>
       </div>
       <span :class="['settings-status-badge', { active: satanicZoneRefreshEnabled }]">
         {{ satanicZoneRefreshEnabled ? "Enabled" : "Disabled" }}
@@ -29,7 +29,7 @@ defineEmits<{
     <div class="settings-ledger-row">
       <div class="settings-ledger-copy">
         <span id="settings-sz-refresh-label" class="settings-ledger-title">Enable SZ Refresh</span>
-        <p>Adds Refresh controls that use a short-lived companion-owned connection.</p>
+        <p>Gets ready automatically while capture is enabled. Requests are sent only when you click Refresh.</p>
       </div>
       <label class="settings-switch">
         <input
@@ -44,7 +44,7 @@ defineEmits<{
     </div>
 
     <div class="settings-notice" role="note">
-      <p><strong>Npcap required.</strong> Enabling capture listens for the next fresh API connection and complete game login. Already completed login cannot be recovered. Click Prepare refresh to listen again if needed; once ready, click Refresh. Login context stays only in memory with no Ready time expiry. Capture interruptions suspend refresh until complete fresh initialization is observed. No proxy or certificate installation is required.</p>
+      <p><strong>Npcap required.</strong> Open Companion before signing into the game, or launch the game here. If this login was already completed, you can keep playing; Refresh will be ready after the game next signs in. Capture interruptions pause Refresh until a new sign-in is observed. Sign-in data stays in memory and is cleared when you disable this feature or close Companion. Existing saved Off settings are preserved.</p>
       <button class="icon-button ghost" type="button" @click="$emit('learnMore')">Learn More</button>
     </div>
   </section>

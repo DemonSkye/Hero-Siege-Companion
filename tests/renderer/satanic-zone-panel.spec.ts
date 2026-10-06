@@ -8,24 +8,27 @@ const NOW = new Date("2026-08-24T15:20:00.000Z").getTime();
 
 describe("SatanicZonePanel", () => {
   test.each([
-    ["idle", "Prepare Satanic Zone refresh", "listen for game API initialization"],
-    ["opening", "Cancel Satanic Zone refresh preparation", "Preparation sends no request"],
-    ["waiting_connection", "Cancel Satanic Zone refresh preparation", "You can keep playing"],
-    ["collecting", "Cancel Satanic Zone refresh preparation", "No refresh request has been sent"],
-    ["ready", "Refresh Satanic Zone", "Ready for manual refresh for this game session"],
-    ["suspended", "Prepare Satanic Zone refresh", "capture continuity was interrupted"],
-    ["expired", "Prepare Satanic Zone refresh", "listening window ended"],
-    ["unavailable", "Prepare Satanic Zone refresh", "listen for the next game API initialization"],
-  ] as const)("%s preparation explains the next action", async (phase, label, detail) => {
+    ["idle", "Start capture"],
+    ["opening", "Getting Refresh ready"],
+    ["waiting_connection", "You can keep playing"],
+    ["collecting", "as the game signs in"],
+    ["ready", "Ready to refresh"],
+    ["suspended", "capture interruption"],
+    ["expired", "Checking again automatically"],
+    ["unavailable", "Checking again automatically"],
+  ] as const)("%s readiness gives a short reason and enables only Refresh when ready", async (phase, detail) => {
     const wrapper = mountPanel(currentZoneState({ refreshPreparation: { phase, expiresAt: NOW + 60_000 } }));
     expect(wrapper.get(".zone-preparation").text()).toContain(detail);
-    expect(wrapper.get(".zone-refresh-button").attributes("aria-label")).toBe(label);
-    await wrapper.get(".zone-refresh-button").trigger("click"); expect(wrapper.emitted("refresh")).toHaveLength(1);
+    expect(wrapper.get(".zone-refresh-button").attributes("aria-label")).toMatch(phase === "ready" ? /^Refresh Satanic Zone$/ : /^Refresh Satanic Zone unavailable:/);
+    await wrapper.get(".zone-refresh-button").trigger("click");
+    if (phase === "ready") expect(wrapper.emitted("refresh")).toHaveLength(1);
+    else { expect(wrapper.get(".zone-refresh-button").attributes("disabled")).toBeDefined(); expect(wrapper.emitted("refresh")).toBeUndefined(); }
+    expect(wrapper.text()).not.toMatch(/Prepare|two.minutes|API|protocol|checksum/i);
   });
   test("owned request disables the control and keeps readiness guidance separate from displayed zone freshness", () => {
     const wrapper = mountPanel(currentZoneState({ refreshPreparation: { phase: "requesting", expiresAt: NOW + 30_000 } }));
     expect(wrapper.get(".zone-refresh-button").attributes("disabled")).toBeDefined();
-    expect(wrapper.get(".zone-preparation").text()).toContain("Game updates do not complete this request");
+    expect(wrapper.get(".zone-preparation").text()).toContain("Refreshing the zone");
   });
   test("shows current freshness and emits one manual refresh", async () => {
     const wrapper = mountPanel(currentZoneState());
@@ -35,9 +38,9 @@ describe("SatanicZonePanel", () => {
     expect(wrapper.text()).toContain("Observed 2m ago");
     expect(wrapper.text()).toContain("Valid until");
     expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain(
-      "Ready has no time expiry",
+      "Refresh becomes ready automatically",
     );
-    expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain("Npcap must first observe");
+    expect(wrapper.get(".info-bubble").attributes("data-tip")).toContain("only when you click");
 
     const refreshButton = wrapper.get(".zone-refresh-button");
     expect(refreshButton.attributes("disabled")).toBeUndefined();
@@ -87,7 +90,7 @@ describe("SatanicZonePanel", () => {
     }));
 
     expect(wrapper.get('.zone-status[data-phase="unavailable"]').text()).toContain(
-      "Current session identifiers are not ready yet",
+      "Refresh is waiting for the game to sign in",
     );
     expect(wrapper.findAll(".effect-column")).toHaveLength(2);
     expect(wrapper.findAll(".zone-effect-empty")[0].text()).toContain("Positive modifiers will appear");

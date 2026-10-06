@@ -84,22 +84,20 @@ describe("settings ledger", () => {
     expect(wrapper.findAll("option").filter((option) => option.text().includes("Legacy Custom"))).toHaveLength(2);
   });
 
-  test("requires confirmation before enabling SZ Refresh and keeps the explainer factual", async () => {
+  test("SZ Refresh toggles directly and explains automatic readiness and missed sign-in", async () => {
     const wrapper = mount(SettingsModal, { props: settingsProps() });
     await button(wrapper, "Features").trigger("click");
 
     await wrapper.get(".settings-switch input").trigger("change");
-    expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toBeUndefined();
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("companion-owned connection");
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("Already completed login cannot be recovered");
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("Ready has no time expiry");
-    expect(wrapper.text()).not.toContain("Exclusive");
-
-    await button(wrapper, "Enable SZ Refresh").trigger("click");
     expect(wrapper.emitted("update:satanicZoneRefreshEnabled")?.[0]).toEqual([true]);
+    expect(wrapper.find(".settings-action-dialog").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Existing saved Off settings are preserved");
 
     await button(wrapper, "Learn More").trigger("click");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("No certificate installation");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("gets ready automatically");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("after the game next signs in");
+    expect(wrapper.get(".settings-action-dialog").text()).not.toMatch(/Prepare|two.minutes|API|protocol/i);
     expect(wrapper.find('a[href*="mitmproxy"]').exists()).toBe(false);
   });
 
@@ -166,7 +164,7 @@ describe("settings ledger", () => {
 
     expect(document.activeElement).toBe(wrapper.get('[role="dialog"]').element);
     await button(wrapper, "Features").trigger("click");
-    await wrapper.get(".settings-switch input").trigger("change");
+    await button(wrapper, "Learn More").trigger("click");
     await nextTick();
     expect((document.activeElement as HTMLElement).getAttribute("aria-label")).toBe("Close dialog");
 

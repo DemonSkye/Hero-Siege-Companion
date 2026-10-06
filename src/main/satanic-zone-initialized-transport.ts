@@ -24,6 +24,8 @@ export interface InitializedProbeProgress {
   zoneWritten: boolean;
   /** Main-only, present exclusively for a validated owned-socket response. */
   observation?: SatanicZoneProviderObservation;
+  /** Main-only tuple, used to exclude delayed capture of this explicit socket. */
+  ownedFlow?: DiagnosticCaptureScope & { localPort: number };
 }
 export type InitializedProbeOutcome = "success" | "timeout" | "failed" | "cancelled" | "byte-limit";
 export const INITIALIZED_PROBE_ATTEMPT_MS = 30_000;
@@ -43,7 +45,8 @@ export function runInitializedSatanicZoneProbe(input: InitializedProbeInput, sig
     let globalIdentifier: string | null = null;
     let connectAcknowledgment: InitializedProbeProgress["connectAcknowledgment"] = null;
     let observation: SatanicZoneProviderObservation | undefined;
-    const publish = () => progress({ stage, inboundFrames, outboundFrames, controlFrames, bytes, zoneWritten, connectAcknowledgment, observation });
+    let ownedFlow: InitializedProbeProgress["ownedFlow"];
+    const publish = () => progress({ stage, inboundFrames, outboundFrames, controlFrames, bytes, zoneWritten, connectAcknowledgment, observation, ownedFlow });
     const timer = setTimeout(() => finish("timeout"), INITIALIZED_PROBE_ATTEMPT_MS);
     timer.unref?.();
     const aborted = () => finish("cancelled");
@@ -137,6 +140,7 @@ export function runInitializedSatanicZoneProbe(input: InitializedProbeInput, sig
           finish("failed"); return;
         }
         try {
+          ownedFlow = { ...input.scope, localPort: socket!.localPort };
           stage = "connect"; publish();
           write(buildDirectApiFrame(input.connectBody, counter++, budget), () => {
             // The verified native sender permits pings between initialization

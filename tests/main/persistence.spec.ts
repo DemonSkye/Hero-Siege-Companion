@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   SATANIC_ZONE_CACHE_SCHEMA_VERSION,
   loadPastRuns,
@@ -75,12 +75,31 @@ describe("main process persistence helpers", () => {
   });
 
   test("loads default main-process preferences when files or sections are missing", () => {
+    expect(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled).toBe(true);
     expect(loadSatanicZoneRefreshPreferences(tempFile("missing.json"))).toEqual(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES);
 
     const preferencesPath = tempFile("partial-preferences.json");
     fs.writeFileSync(preferencesPath, `${JSON.stringify({ untouched: { value: 42 } })}\n`, "utf8");
 
     expect(loadSatanicZoneRefreshPreferences(preferencesPath)).toEqual(DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES);
+  });
+
+  test("preserves saved Off without guessing whether it was intentional or the legacy default", () => {
+    const file = tempFile("legacy-disabled.json");
+    fs.writeFileSync(file, JSON.stringify({ satanicZoneRefresh: { enabled: false } }));
+    expect(loadSatanicZoneRefreshPreferences(file)).toEqual({ enabled: false });
+    expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ satanicZoneRefresh: { enabled: false } });
+  });
+  test.each([null, {}, { enabled: "false" }, { enabled: "true" }])("ambiguous saved choice %j stays disabled", value => {
+    const file = tempFile("ambiguous.json");
+    fs.writeFileSync(file, JSON.stringify({ satanicZoneRefresh: value }));
+    const log = vi.fn();
+    expect(loadSatanicZoneRefreshPreferences(file, log)).toEqual({ enabled: false });
+    expect(log).toHaveBeenCalledWith("satanic-zone-preference-migration", { outcome: "ambiguous-saved-value-kept-disabled" });
+  });
+  test("unreadable preference contents cannot silently enable the new default", () => {
+    const file = tempFile("corrupt.json"); fs.writeFileSync(file, "{");
+    expect(loadSatanicZoneRefreshPreferences(file)).toEqual({ enabled: false });
   });
 
   test.each([1, 2])("starts clean without restoring schema-v%s Satanic Zone observations", (schemaVersion) => {

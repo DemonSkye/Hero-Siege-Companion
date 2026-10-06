@@ -107,6 +107,34 @@ export async function getNpcapServiceStatus(): Promise<string> {
   return output || "Unknown";
 }
 
+/** One unambiguous preferred IPv4 address on the lowest-metric default route. */
+export async function getDefaultCaptureLocalAddress(): Promise<string | null> {
+  const output = await runPowerShell(`
+    $candidates = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+      ForEach-Object {
+        $route = $_;
+        Get-NetIPAddress -InterfaceIndex $route.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop |
+          Where-Object { $_.AddressState -eq 'Preferred' -and -not $_.SkipAsSource -and
+            $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+          ForEach-Object { [PSCustomObject]@{ address = $_.IPAddress; metric = ($route.RouteMetric + $route.InterfaceMetric) } }
+      });
+    @($candidates) | ConvertTo-Json -Compress
+  `);
+  return selectDefaultCaptureLocalAddress(output ? JSON.parse(output) : []);
+}
+
+export function selectDefaultCaptureLocalAddress(value: unknown): string | null {
+  const rows = Array.isArray(value) ? value : [value];
+  const candidates = rows.filter((row): row is { address: string; metric: number } => Boolean(row)
+    && typeof row.address === "string" && /^(?:\d{1,3}\.){3}\d{1,3}$/.test(row.address)
+    && row.address.split(".").every((part: string) => Number(part) <= 255)
+    && !/^(?:0\.|127\.|169\.254\.)/.test(row.address)
+    && typeof row.metric === "number" && Number.isFinite(row.metric) && row.metric >= 0);
+  const best = Math.min(...candidates.map(row => row.metric));
+  const addresses = new Set(candidates.filter(row => row.metric === best).map(row => row.address));
+  return addresses.size === 1 ? [...addresses][0] : null;
+}
+
 export async function getNpcapRegistry(): Promise<{ adminOnly: boolean; winPcapCompatible: boolean }> {
   const output = await runPowerShell(
     "Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\WOW6432Node\\Npcap' -ErrorAction SilentlyContinue | Select-Object AdminOnly,WinPcapCompatible | ConvertTo-Json -Compress",

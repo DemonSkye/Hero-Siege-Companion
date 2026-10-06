@@ -14,7 +14,7 @@ const { e2eTrafficPayloads } = require("./support/fixtures.cjs");
 
 const STANDALONE_EXECUTABLE = "C:\\Games\\Hero Siege\\Hero_Siege.exe";
 
-test("autosaves the settings ledger and persists launch, theme, and confirmed SZ choices", async () => {
+test("autosaves the settings ledger and persists launch, theme, and SZ choices", async () => {
   const userDataDir = createUserDataDir();
 
   try {
@@ -39,6 +39,7 @@ test("autosaves the settings ledger and persists launch, theme, and confirmed SZ
 
 test("controls manual and timed diagnostics through the main-owned mode bridge", async () => {
   await launchAndUseSettings(async ({ page }) => {
+    await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(false));
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings.getByRole("button", { name: "Help & Support", exact: true }).click();
 
@@ -169,7 +170,7 @@ test("keeps full-window pinning session-only and resets window bounds from suppo
 });
 
 async function configureDurableSettings({ electronApp, page }) {
-  expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
+  expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
   await emitCapturePayloads(electronApp, e2eTrafficPayloads());
   await expect(page.getByText("Aurelion Fury").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Check Aurelion Fury on the market" })).toHaveCount(0);
@@ -203,10 +204,8 @@ async function configureDurableSettings({ electronApp, page }) {
 
   await settings.getByRole("button", { name: "Features", exact: true }).click();
   await settings.getByRole("checkbox", { name: /Enable SZ Refresh/ }).click();
-  const confirmation = page.getByRole("dialog", { name: "Enable SZ Refresh?" });
-  await expect(confirmation).toBeVisible();
-  expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
-  await confirmation.getByRole("button", { name: "Enable SZ Refresh", exact: true }).click();
+  await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
+  await settings.getByRole("checkbox", { name: /Enable SZ Refresh/ }).click();
   await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
 
   await settings.getByRole("button", { name: "Help & Support", exact: true }).click();

@@ -5,8 +5,9 @@ import { createInitialCompanionState } from "../../src/shared/initial-state";
 import { satanicZonePreparationDetail } from "../../src/renderer/src/lib/satanic-zone-preparation-display";
 
 describe("preparation guidance in the compact overlay", () => {
-  test("Prepare opens zone details so connection and cancellation cues are visible", async () => {
+  test("Refresh opens zone details when ready; waiting shows the reason and cannot dispatch", async () => {
     const state = createInitialCompanionState(); state.satanicZone.refreshEnabled = true;
+    state.satanicZone.refreshPreparation = { phase: "ready", expiresAt: null };
     const wrapper = mount(CompactView, { props: { state, now: 1_000, showZone: false,
       compactRunTileDisplays: [{ id: "sz", kind: "sz", label: "SZ", value: "--" }],
       runPausedLabel: "Paused", canToggleRunPaused: true, satanicZoneRefreshSubmitting: false } });
@@ -16,16 +17,21 @@ describe("preparation guidance in the compact overlay", () => {
     state.satanicZone.refreshPreparation = { phase: "waiting_connection", expiresAt: 121_000 };
     await wrapper.setProps({ state: { ...state }, showZone: true });
     expect(wrapper.get('[data-preparation="waiting_connection"]').text()).toContain("You can keep playing");
-    expect(wrapper.get(".compact-zone-refresh-button").attributes("aria-label")).toBe("Cancel Satanic Zone refresh preparation");
+    expect(wrapper.get(".compact-zone-refresh-button").attributes("aria-label")).toContain("Refresh Satanic Zone unavailable");
+    expect(wrapper.get(".compact-zone-refresh-button").attributes("disabled")).toBeDefined();
   });
   test("Ready has no countdown even with a legacy expiry and absent readiness leaves old displays compatible", () => {
     expect(satanicZonePreparationDetail(undefined, 1_000)).toBeNull();
-    expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: 0 }, 1_000)).toContain("for this game session");
+    expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: 0 }, 1_000)).toBe("Ready to refresh.");
     expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: null }, 1_000)).not.toMatch(/\d+s|restart|reconnect/i);
   });
-  test("suspended guidance distinguishes retained RAM from permission to replay and requests no restart", () => {
+  test("suspended guidance explains capture and new sign-in without requesting a restart", () => {
     const detail = satanicZonePreparationDetail({ phase: "suspended", expiresAt: null }, 1_000);
-    expect(detail).toContain("retained in memory"); expect(detail).toContain("Matching process IDs or connections cannot verify it");
-    expect(detail).toContain("complete fresh game API initialization"); expect(detail).not.toContain("restart is required");
+    expect(detail).toContain("Resume capture"); expect(detail).toContain("sign in again");
+    expect(detail).not.toMatch(/Prepare|restart|API|protocol|two.minutes/i);
+  });
+  test("missed login is honest about availability and allows continued play", () => {
+    const detail = satanicZonePreparationDetail({ phase: "waiting_connection", expiresAt: null, reason: "login_missed" }, 1_000);
+    expect(detail).toContain("already completed"); expect(detail).toContain("next signs in"); expect(detail).toContain("keep playing");
   });
 });

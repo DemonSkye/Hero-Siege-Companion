@@ -44,7 +44,7 @@ describe("Satanic Zone half-hour windows", () => {
 });
 
 describe("Satanic Zone state", () => {
-  test("starts in a passive waiting state with refresh disabled", () => {
+  test("starts waiting with refresh enabled but no request or readiness", () => {
     expect(createInitialSatanicZoneState()).toEqual({
       current: null,
       phase: "waiting",
@@ -54,7 +54,7 @@ describe("Satanic Zone state", () => {
       validUntil: null,
       nextAllowedRefreshAt: null,
       errorCode: null,
-      refreshEnabled: false,
+      refreshEnabled: true,
       refreshAvailable: false,
       refreshExperimental: false,
       refreshPreparation: { phase: "idle", expiresAt: null },
