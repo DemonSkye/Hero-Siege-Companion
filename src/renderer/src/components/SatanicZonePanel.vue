@@ -3,6 +3,7 @@ import { computed } from "vue";
 
 import type { SatanicZoneState } from "../../../shared/satanic-zone";
 import { satanicZoneDisplay, satanicZoneRefreshControl } from "../lib/satanic-zone-display";
+import { satanicZonePreparationDetail } from "../lib/satanic-zone-preparation-display";
 import LiveDashboardCard from "./LiveDashboardCard.vue";
 import RefreshIcon from "./RefreshIcon.vue";
 
@@ -20,6 +21,8 @@ defineEmits<{
 
 const zone = computed(() => props.zoneState.current);
 const display = computed(() => satanicZoneDisplay(props.zoneState, props.now));
+const preparationDetail = computed(() => props.zoneState.refreshEnabled
+  ? satanicZonePreparationDetail(props.zoneState.refreshPreparation, props.now) : null);
 const refreshControl = computed(() =>
   satanicZoneRefreshControl(props.zoneState, props.now, props.refreshSubmitting),
 );
@@ -28,7 +31,7 @@ const refreshControl = computed(() =>
 <template>
   <LiveDashboardCard id="satanic-zone-card" panel-class="zone-panel" :title="zone?.zone || 'Waiting for zone packet'">
     <template #eyebrow>
-      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses a short-lived Companion-owned connection and never modifies the game's connection. Npcap must first observe the current session identifiers.">i</span>
+      Satanic Zone <span class="info-bubble" data-tip="Manual refresh uses a short-lived Companion-owned connection and never modifies the game's connection. Npcap must first observe a fresh game login after Prepare refresh. Captured login context is kept only in memory for up to two minutes.">i</span>
     </template>
     <template #title>{{ zone?.zone || "Waiting for zone packet" }}</template>
     <template #actions>
@@ -50,7 +53,8 @@ const refreshControl = computed(() =>
     </template>
 
     <div class="status-details zone-status" role="status" aria-live="polite" :data-phase="display.phase">
-      <p><strong>{{ display.statusLabel }}</strong> — {{ display.statusDetail }}</p>
+      <p><strong>{{ display.statusLabel }}</strong> - {{ display.statusDetail }}</p>
+      <p v-if="preparationDetail" class="zone-preparation" :data-preparation="zoneState.refreshPreparation?.phase">{{ preparationDetail }}</p>
       <p v-if="display.observedLabel || display.validUntilLabel" class="zone-freshness">
         <span v-if="display.observedLabel">{{ display.observedLabel }}</span>
         <span v-if="display.observedLabel && display.validUntilLabel" aria-hidden="true"> · </span>

@@ -45,6 +45,8 @@ describe("initialized probe with invented bodies and a mocked owned socket", () 
     expect(f.progress.at(-1)?.connectAcknowledgment).toEqual({ bodyBytes: 2, opcode: "0x1000", trailingNul: false, embeddedNul: false });
     f.incoming(inventedLoginSuccess()); f.incoming(inventedZoneBody);
     expect(await f.result).toBe("success"); expect(f.budget.usedBytes).toBe(0);
+    expect(f.progress.at(-1)).toMatchObject({ inboundFrames: 4, outboundFrames: 4, controlFrames: 2,
+      observation: { zone: { rawZone: "Act_04_03" } } });
   });
   test("malformed ack evidence contains only length, known opcode and NUL flags", async () => {
     const f = fixture(); f.socket.connected(); f.incoming(Buffer.from([0, 16, 65, 0, 66]));

@@ -57,6 +57,7 @@ describe("Satanic Zone state", () => {
       refreshEnabled: false,
       refreshAvailable: false,
       refreshExperimental: false,
+      refreshPreparation: { phase: "idle", expiresAt: null },
     });
   });
 

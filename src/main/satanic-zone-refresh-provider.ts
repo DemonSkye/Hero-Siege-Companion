@@ -47,11 +47,14 @@ export type SatanicZoneProviderWaitOutcome =
       kind: "observation";
       observation: SatanicZoneProviderObservation;
       availabilityConsumed: boolean;
+      /** A recoverable session context can become unavailable without being consumed. */
+      refreshAvailable?: boolean;
     }
   | {
       kind: "terminal";
       errorCode: SatanicZoneProviderTerminalErrorCode;
       availabilityConsumed: boolean;
+      refreshAvailable?: boolean;
     };
 
 export interface SatanicZoneObservationWaitOptions {

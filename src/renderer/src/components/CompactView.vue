@@ -4,6 +4,7 @@ import type { CompanionState } from "../../../shared/app-state";
 import { effectiveSatanicZonePhase } from "../../../shared/satanic-zone";
 import type { CompactRunTileDisplay } from "../lib/compact-tiles";
 import { satanicZoneRefreshControl } from "../lib/satanic-zone-display";
+import { satanicZonePreparationDetail } from "../lib/satanic-zone-preparation-display";
 import RefreshIcon from "./RefreshIcon.vue";
 
 const props = defineProps<{
@@ -32,6 +33,8 @@ const refreshControl = computed(() =>
     props.satanicZoneRefreshSubmitting,
   ),
 );
+const preparationDetail = computed(() => props.state.satanicZone.refreshEnabled
+  ? satanicZonePreparationDetail(props.state.satanicZone.refreshPreparation, props.now) : null);
 
 defineEmits<{
   "update:showZone": [value: boolean];
@@ -59,6 +62,7 @@ defineEmits<{
           x
         </button>
       </div>
+      <p v-if="preparationDetail" class="compact-shopping-empty" :data-preparation="state.satanicZone.refreshPreparation?.phase">{{ preparationDetail }}</p>
       <div v-if="state.satanicZone.current" class="compact-zone-effects">
         <div class="compact-zone-pros">
           <span>Pros</span>
@@ -113,7 +117,7 @@ defineEmits<{
               :disabled="refreshControl.disabled"
               :title="refreshControl.title"
               :aria-label="refreshControl.ariaLabel"
-              @click="$emit('refreshSatanicZone')"
+              @click="$emit('update:showZone', true); $emit('refreshSatanicZone')"
             >
               <RefreshIcon />
             </button>

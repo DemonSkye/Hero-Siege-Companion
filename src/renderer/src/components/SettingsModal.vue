@@ -371,10 +371,11 @@ function saveStatusLabel(): string {
       >
         <p>SZ Refresh opens a short-lived, companion-owned connection to request the current Satanic Zone. It never redirects or modifies the game’s connection.</p>
         <ul>
-          <li>Npcap must be available so the companion can observe the current session identifiers.</li>
+          <li>Start capture while Hero Siege is connected. Click Prepare refresh, wait for the connection cue, then reconnect or restart the game.</li>
           <li>No certificate installation, administrator service, proxy, or special game launch is required.</li>
           <li>Refresh requests remain limited to once every 30 seconds.</li>
-          <li>Each click requests a fresh result, even when the displayed result is still current.</li>
+          <li>Once ready, click Refresh for a fresh result. Preparation alone sends no request.</li>
+          <li>Login context stays only in memory for up to two minutes from preparation. Expiry, connection changes, disable and shutdown clear it; raw traffic logs pause while it is held.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
       </SettingsActionDialog>
@@ -388,8 +389,8 @@ function saveStatusLabel(): string {
       >
         <p>The companion will enable manual requests over a short-lived, companion-owned connection.</p>
         <ul>
-          <li>Npcap capture must observe the current game session before Refresh becomes ready.</li>
-          <li>The game can keep running normally; no reconnect or special launch is required.</li>
+          <li>Click Prepare refresh while capture is running with the game connected, then reconnect after the connection cue.</li>
+          <li>When ready, click Refresh. Login context stays only in memory for up to two minutes; raw traffic logs pause while it is held.</li>
           <li>Requests remain limited to once every 30 seconds.</li>
           <li>Backup restoration never enables this feature.</li>
         </ul>

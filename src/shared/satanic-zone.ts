@@ -1,4 +1,5 @@
 import type { SatanicZoneInfo } from "./parser";
+import { initialSatanicZonePreparation, type SatanicZonePreparation } from "./satanic-zone-preparation";
 
 export type SatanicZonePhase =
   | "waiting"
@@ -32,6 +33,7 @@ export interface SatanicZoneState {
   refreshEnabled: boolean;
   refreshAvailable: boolean;
   refreshExperimental: boolean;
+  refreshPreparation?: SatanicZonePreparation;
 }
 
 export function createInitialSatanicZoneState(): SatanicZoneState {
@@ -47,6 +49,7 @@ export function createInitialSatanicZoneState(): SatanicZoneState {
     refreshEnabled: DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES.enabled,
     refreshAvailable: false,
     refreshExperimental: false,
+    refreshPreparation: initialSatanicZonePreparation(),
   };
 }
 

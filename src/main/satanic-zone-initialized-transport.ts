@@ -5,6 +5,7 @@ import type { InitializedProbeIdentity } from "./satanic-zone-initialized-protoc
 import { InitializedProbeResponseFrames, isProbeConnectAcknowledgment, summarizeProbeConnectAcknowledgment, successfulProbeIdentifier } from "./satanic-zone-initialized-protocol";
 import type { DiagnosticCaptureScope } from "./satanic-zone-diagnostic-stream";
 import type { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
+import type { SatanicZoneProviderObservation } from "./satanic-zone-refresh-provider";
 
 export interface InitializedProbeInput {
   connectBody: Buffer;
@@ -21,6 +22,8 @@ export interface InitializedProbeProgress {
   controlFrames: number;
   bytes: number;
   zoneWritten: boolean;
+  /** Main-only, present exclusively for a validated owned-socket response. */
+  observation?: SatanicZoneProviderObservation;
 }
 export type InitializedProbeOutcome = "success" | "timeout" | "failed" | "cancelled" | "byte-limit";
 export const INITIALIZED_PROBE_ATTEMPT_MS = 30_000;
@@ -39,7 +42,8 @@ export function runInitializedSatanicZoneProbe(input: InitializedProbeInput, sig
     let zoneWritten = false;
     let globalIdentifier: string | null = null;
     let connectAcknowledgment: InitializedProbeProgress["connectAcknowledgment"] = null;
-    const publish = () => progress({ stage, inboundFrames, outboundFrames, controlFrames, bytes, zoneWritten, connectAcknowledgment });
+    let observation: SatanicZoneProviderObservation | undefined;
+    const publish = () => progress({ stage, inboundFrames, outboundFrames, controlFrames, bytes, zoneWritten, connectAcknowledgment, observation });
     const timer = setTimeout(() => finish("timeout"), INITIALIZED_PROBE_ATTEMPT_MS);
     timer.unref?.();
     const aborted = () => finish("cancelled");
@@ -54,7 +58,7 @@ export function runInitializedSatanicZoneProbe(input: InitializedProbeInput, sig
       frames.dispose();
       for (const frame of pendingWrites) budget.release(frame);
       pendingWrites.clear(); globalIdentifier = null;
-      resolve(outcome);
+      try { publish(); } finally { observation = undefined; resolve(outcome); }
     }
     function failed(): void { finish(budget.exceeded ? "byte-limit" : "failed"); }
     function closed(): void { finish("failed"); }
@@ -84,7 +88,7 @@ export function runInitializedSatanicZoneProbe(input: InitializedProbeInput, sig
           if (done) return;
           inboundFrames++;
           const opcode = body.readUInt16LE(0);
-          if (opcode === 0x1000) { connectAcknowledgment = summarizeProbeConnectAcknowledgment(body); publish(); }
+          if (opcode === 0x1000) connectAcknowledgment = summarizeProbeConnectAcknowledgment(body);
           if (body.length === 2 || opcode === 0x1000) controlFrames++;
           if (opcode === 1 && body.length === 2) return;
           if (receiveStage === "connect" && opcode === 0x1000) {
@@ -97,7 +101,10 @@ export function runInitializedSatanicZoneProbe(input: InitializedProbeInput, sig
           }
           // A success/status arriving out of stage is ambiguous, never reusable.
           if (opcode === 0x53 || opcode === 0x1000) throw new Error("invalid-frame");
-          if (receiveStage === "zone" && zoneWritten && extractSatanicZoneObservation(body, Date.now())) finish("success");
+          if (receiveStage === "zone" && zoneWritten) {
+            const zone = extractSatanicZoneObservation(body, Date.now());
+            if (zone) { observation = { zone, observedAt: zone.updatedAt }; finish("success"); }
+          }
         });
         if (done) return;
         publish();

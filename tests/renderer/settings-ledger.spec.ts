@@ -91,7 +91,8 @@ describe("settings ledger", () => {
     await wrapper.get(".settings-switch input").trigger("change");
     expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toBeUndefined();
     expect(wrapper.get(".settings-action-dialog").text()).toContain("companion-owned connection");
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("no reconnect or special launch is required");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("reconnect after the connection cue");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("memory for up to two minutes");
     expect(wrapper.text()).not.toContain("Exclusive");
 
     await button(wrapper, "Enable SZ Refresh").trigger("click");

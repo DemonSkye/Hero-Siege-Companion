@@ -75,6 +75,19 @@ export function satanicZoneRefreshControl(
     };
   }
 
+  const preparation = state.refreshPreparation;
+  if (preparation) {
+    if (preparation.phase === "requesting") return {
+      visible: true, disabled: true, title: "Requesting Satanic Zone.", ariaLabel: "Refresh Satanic Zone: requesting",
+    };
+    if (["opening", "waiting_connection", "collecting"].includes(preparation.phase)) return {
+      visible: true, disabled: false, title: "Cancel refresh preparation", ariaLabel: "Cancel Satanic Zone refresh preparation",
+    };
+    if (preparation.phase !== "ready") return {
+      visible: true, disabled: false, title: "Prepare refresh", ariaLabel: "Prepare Satanic Zone refresh",
+    };
+  }
+
   return {
     visible: true,
     disabled: false,

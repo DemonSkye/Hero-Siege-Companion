@@ -7,6 +7,25 @@ import type { SatanicZoneState } from "../../src/shared/satanic-zone";
 const NOW = new Date("2026-08-24T15:20:00.000Z").getTime();
 
 describe("SatanicZonePanel", () => {
+  test.each([
+    ["idle", "Prepare Satanic Zone refresh", "wait for the connection cue"],
+    ["opening", "Cancel Satanic Zone refresh preparation", "Wait for the connection cue"],
+    ["waiting_connection", "Cancel Satanic Zone refresh preparation", "Reconnect or restart Hero Siege now"],
+    ["collecting", "Cancel Satanic Zone refresh preparation", "No refresh request has been sent"],
+    ["ready", "Refresh Satanic Zone", "Ready for manual refresh for 60s"],
+    ["expired", "Prepare Satanic Zone refresh", "login context was cleared"],
+    ["unavailable", "Prepare Satanic Zone refresh", "prepare again before reconnecting"],
+  ] as const)("%s preparation explains the next action", async (phase, label, detail) => {
+    const wrapper = mountPanel(currentZoneState({ refreshPreparation: { phase, expiresAt: NOW + 60_000 } }));
+    expect(wrapper.get(".zone-preparation").text()).toContain(detail);
+    expect(wrapper.get(".zone-refresh-button").attributes("aria-label")).toBe(label);
+    await wrapper.get(".zone-refresh-button").trigger("click"); expect(wrapper.emitted("refresh")).toHaveLength(1);
+  });
+  test("owned request disables the control and keeps readiness guidance separate from displayed zone freshness", () => {
+    const wrapper = mountPanel(currentZoneState({ refreshPreparation: { phase: "requesting", expiresAt: NOW + 30_000 } }));
+    expect(wrapper.get(".zone-refresh-button").attributes("disabled")).toBeDefined();
+    expect(wrapper.get(".zone-preparation").text()).toContain("Game updates do not complete this request");
+  });
   test("shows current freshness and emits one manual refresh", async () => {
     const wrapper = mountPanel(currentZoneState());
 

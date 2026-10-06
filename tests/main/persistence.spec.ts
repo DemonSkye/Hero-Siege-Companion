@@ -151,6 +151,10 @@ describe("main process persistence helpers", () => {
       nextAllowedRefreshAt,
     };
 
+    // Readiness and transient private fields must never enter the disk schema.
+    Object.assign(state, { refreshPreparation: { phase: "ready", expiresAt: now + 120_000,
+      unexpectedPrivateValue: "CANARY_PRIVATE_LOGIN" } });
+
     saveSatanicZoneCache(cachePath, state, undefined, now);
 
     expect(JSON.parse(fs.readFileSync(cachePath, "utf8"))).toEqual({

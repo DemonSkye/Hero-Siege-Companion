@@ -82,6 +82,10 @@ export class SatanicZoneController {
   getState(): SatanicZoneState {
     return { ...this.state };
   }
+  setPreparation(preparation: NonNullable<SatanicZoneState["refreshPreparation"]>): void {
+    this.updateState({ refreshPreparation: { phase: preparation.phase, expiresAt: preparation.expiresAt },
+      refreshAvailable: this.state.refreshEnabled && preparation.phase === "ready" });
+  }
 
   async refreshAvailability(): Promise<SatanicZoneRefreshAvailability> {
     const checkId = this.nextAvailabilityCheckId();
@@ -130,6 +134,7 @@ export class SatanicZoneController {
 
   observePassiveRequest(observedAt = this.now()): void {
     if (suppressesPassiveRequest(this.manualTimeoutSuppression, observedAt)) return;
+    if (this.activeRefresh && this.provider?.waitForObservation) return;
     this.updateState({
       phase: this.activeRefresh ? "refreshing" : "updating",
       lastAttemptAt: finiteTimestamp(observedAt, this.state.lastAttemptAt),
@@ -139,6 +144,14 @@ export class SatanicZoneController {
 
   observePassiveResponse(zone: SatanicZoneInfo, observedAt = this.now()): void {
     const activeRefresh = this.activeRefresh;
+    // Own-socket providers cannot be settled by game updates, including during
+    // preflight/initialization before the SZ request has been dispatched.
+    if (activeRefresh && this.provider?.waitForObservation) {
+      const merged = mergeSatanicZoneObservation(this.state, zone, "captured", observedAt);
+      this.setState({ ...merged, phase: "refreshing", lastAttemptAt: this.state.lastAttemptAt,
+        errorCode: this.state.errorCode });
+      return;
+    }
     const source = activeRefresh && activeRefresh.stage !== "preflight" ? "manual" : "captured";
     this.acceptObservation(zone, observedAt, source);
   }
@@ -350,6 +363,7 @@ export class SatanicZoneController {
     errorCode: SatanicZoneRefreshErrorCode,
     observedAt: number,
     availabilityConsumed?: boolean,
+    refreshAvailable?: boolean,
   ): void {
     const activeRefresh = this.activeRefresh;
     const refreshEnabled = this.state.refreshEnabled;
@@ -378,7 +392,7 @@ export class SatanicZoneController {
         ? { refreshAvailable: false }
         : availabilityConsumed === undefined
           ? {}
-          : { refreshAvailable: !availabilityConsumed }),
+          : { refreshAvailable: refreshAvailable ?? !availabilityConsumed }),
       nextAllowedRefreshAt,
     });
   }
@@ -399,7 +413,7 @@ export class SatanicZoneController {
         return;
       }
       if (outcome.kind === "terminal") {
-        this.failActiveRefresh(outcome.errorCode, this.now(), outcome.availabilityConsumed);
+        this.failActiveRefresh(outcome.errorCode, this.now(), outcome.availabilityConsumed, outcome.refreshAvailable);
         return;
       }
       this.acceptObservation(
@@ -407,6 +421,7 @@ export class SatanicZoneController {
         outcome.observation.observedAt,
         "manual",
         outcome.availabilityConsumed,
+        outcome.refreshAvailable,
       );
     }).catch(() => {
       if (this.isActiveRefresh(refreshId)) this.failActiveRefresh("helper_failed", this.now());
@@ -418,6 +433,7 @@ export class SatanicZoneController {
     observedAt: number,
     source: "captured" | "manual",
     availabilityConsumed = false,
+    refreshAvailable?: boolean,
   ): void {
     const activeRefresh = this.activeRefresh;
     const refreshEnabled = this.state.refreshEnabled;
@@ -435,7 +451,7 @@ export class SatanicZoneController {
     const next = mergeSatanicZoneObservation(this.state, zone, source, observedAt);
     this.setState({
       ...next,
-      refreshAvailable: refreshEnabled && !availabilityConsumed ? next.refreshAvailable : false,
+      refreshAvailable: refreshEnabled && !availabilityConsumed ? refreshAvailable ?? next.refreshAvailable : false,
       errorCode: !refreshEnabled
         ? "refresh_disabled"
         : availabilityConsumed ? "one_shot_consumed" : next.errorCode,

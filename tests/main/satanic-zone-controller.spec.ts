@@ -811,7 +811,7 @@ describe("SatanicZoneController", () => {
     });
   });
 
-  test("lets an ordinary passive response win the race and aborts the provider observation", async () => {
+  test("keeps passive updates captured while the owned response remains pending", async () => {
     let resolveObservation!: (outcome: SatanicZoneProviderWaitOutcome | null) => void;
     const observationPromise = new Promise<SatanicZoneProviderWaitOutcome | null>((resolve) => {
       resolveObservation = resolve;
@@ -832,16 +832,45 @@ describe("SatanicZoneController", () => {
     await controller.refreshNow();
     const captured = zone(WINDOW_TIME + 10);
     controller.observePassiveResponse(captured, WINDOW_TIME + 20);
-    expect(observationSignal?.aborted).toBe(true);
+    expect(observationSignal?.aborted).toBe(false);
+    expect(controller.getState()).toMatchObject({ current: captured, source: "captured", phase: "refreshing" });
 
     resolveObservation({
       kind: "observation",
       observation: { zone: zone(WINDOW_TIME + 1000), observedAt: WINDOW_TIME + 1000 },
       availabilityConsumed: true,
     });
-    await Promise.resolve();
-    expect(controller.getState().current).toBe(captured);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(controller.getState().current?.updatedAt).toBe(WINDOW_TIME + 1000);
+    expect(controller.getState().source).toBe("manual");
     expect(controller.getState().phase).toBe("current");
+  });
+
+  test.each(["preflight", "dispatching"])("a passive zone during %s cannot suppress the owned request", async stage => {
+    let releaseAvailability!: (value: SatanicZoneRefreshAvailability) => void;
+    let releaseDispatch!: (value: SatanicZoneRefreshDispatchResult) => void;
+    let releaseObservation!: (value: SatanicZoneProviderWaitOutcome) => void;
+    const availability = new Promise<SatanicZoneRefreshAvailability>(yes => { releaseAvailability = yes; });
+    const dispatch = new Promise<SatanicZoneRefreshDispatchResult>(yes => { releaseDispatch = yes; });
+    const outcome = new Promise<SatanicZoneProviderWaitOutcome>(yes => { releaseObservation = yes; });
+    const refreshProvider = provider({ availability, dispatch, waitForObservation: async () => outcome });
+    const controller = new SatanicZoneController({ provider: refreshProvider, initialState: enabledState(),
+      onStateChange: vi.fn(), now: () => WINDOW_TIME });
+    const request = controller.refreshNow();
+    if (stage === "dispatching") {
+      releaseAvailability({ available: true, experimental: true, errorCode: null });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    }
+    controller.observePassiveResponse(zone(WINDOW_TIME + 10), WINDOW_TIME + 10);
+    expect(controller.getState()).toMatchObject({ phase: "refreshing", source: "captured", lastAttemptAt: WINDOW_TIME });
+    expect(await controller.refreshNow()).toMatchObject({ accepted: false, errorCode: "refresh_in_progress" });
+    releaseAvailability({ available: true, experimental: true, errorCode: null });
+    releaseDispatch({ accepted: true, errorCode: null, correlationId: "owned" });
+    expect(await request).toMatchObject({ accepted: true });
+    expect(refreshProvider.requestRefresh).toHaveBeenCalledTimes(1);
+    releaseObservation({ kind: "terminal", errorCode: "response_timeout", availabilityConsumed: false });
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(controller.getState()).toMatchObject({ phase: "failed", source: "captured", errorCode: "response_timeout" });
   });
 
   test("uses the provider's bounded observation wait instead of arming a second timeout", async () => {
@@ -860,6 +889,15 @@ describe("SatanicZoneController", () => {
     await vi.waitFor(() => expect(controller.getState().phase).toBe("failed"));
     expect(controller.getState().errorCode).toBe("response_timeout");
     expect(scheduleTimeout).not.toHaveBeenCalled();
+  });
+
+  test("a recoverable context loss clears availability without consuming the whole Companion session", async () => {
+    const refreshProvider = provider({ waitForObservation: async () => ({ kind: "terminal", errorCode: "helper_failed",
+      availabilityConsumed: false, refreshAvailable: false }) });
+    const controller = new SatanicZoneController({ provider: refreshProvider, initialState: enabledState(), onStateChange: vi.fn() });
+    await controller.refreshNow();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(controller.getState()).toMatchObject({ phase: "failed", errorCode: "helper_failed", refreshAvailable: false });
   });
 
   test.each([

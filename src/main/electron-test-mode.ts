@@ -3,6 +3,8 @@ import fs from "node:fs";
 import type { CompanionState } from "../shared/app-state";
 import type { ParsedEvent } from "../shared/parser";
 import type { CapturedSessionPayload } from "./captured-session-context";
+import type { HeroSiegeNetworkState } from "./capture-network";
+import type { ElectronSatanicZoneTestPacket } from "./electron-satanic-zone-test-runtime";
 
 const E2E_ENV_FLAG = "HERO_SIEGE_COMPANION_E2E";
 const E2E_USER_DATA_ENV = "HERO_SIEGE_COMPANION_E2E_USER_DATA";
@@ -17,6 +19,9 @@ export interface ElectronE2eMainHooks {
   emitCaptureEvents: (events: ParsedEvent[]) => void;
   emitCapturePayloads: (payloads: string[]) => void;
   emitSessionContext: (processIds: number[], payloads: CapturedSessionPayload[]) => void;
+  setSatanicZoneTestNetwork: (network: HeroSiegeNetworkState) => void;
+  emitSatanicZoneTestPackets: (packets: ElectronSatanicZoneTestPacket[]) => void;
+  completeSatanicZoneTestResponse: (body: number[]) => void;
   getState: () => CompanionState;
   getWindowState: () => ElectronE2eWindowState;
 }

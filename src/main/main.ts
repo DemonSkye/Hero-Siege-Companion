@@ -19,10 +19,8 @@ import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
 import { CapturedSessionContextStore } from "./captured-session-context";
 import { DirectMarketSearchProvider } from "./direct-market-search-provider";
-import {
-  createDirectSatanicZoneTransport,
-  DirectSatanicZoneRefreshProvider,
-} from "./direct-satanic-zone-provider";
+import { InitializedSatanicZoneRefreshProvider } from "./initialized-satanic-zone-provider";
+import { ElectronSatanicZoneTestRuntime } from "./electron-satanic-zone-test-runtime";
 import { MarketRegionDirectoryCache } from "./market-region-directory";
 import { MarketReadinessController } from "./market-readiness-controller";
 import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
@@ -97,8 +95,9 @@ let pastRunsPendingPublish = false;
 let lastPendingCaptureEventsLogAt = 0;
 let appDiagnostics: AppDiagnostics | null = null;
 let satanicZoneController: SatanicZoneController | null = null;
-let satanicZoneRefreshProvider: DirectSatanicZoneRefreshProvider | null = null;
+let satanicZoneRefreshProvider: InitializedSatanicZoneRefreshProvider | null = null;
 let satanicZoneDiagnostic: SatanicZoneInitializedProbeController | null = null;
+const satanicZoneTestRuntime = isElectronE2eTestMode() ? new ElectronSatanicZoneTestRuntime() : null;
 let directMarketSearchProvider: DirectMarketSearchProvider | null = null;
 let capturedSessionContext: CapturedSessionContextStore | null = null;
 let marketReadinessController: MarketReadinessController | null = null;
@@ -115,7 +114,7 @@ const captureDiagnosticsController = new CaptureDiagnosticsController({
 });
 function applyCaptureDiagnosticPreferences(): void {
   state.capturePreferences = diagnosticCapturePreferences(captureDiagnosticsController.capturePreferences(),
-    isSatanicZoneDiagnosticActive(state.satanicZoneDiagnostic));
+    isSatanicZoneDiagnosticActive(state.satanicZoneDiagnostic) || satanicZoneRefreshProvider?.suppressRawLogging === true);
   captureService?.setCapturePreferences(state.capturePreferences);
 }
 const gameCaptureCoordinator = new GameCaptureCoordinator({
@@ -235,8 +234,11 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
   if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
+  if (update.running === false && ["ready", "requesting"].includes(satanicZoneRefreshProvider?.preparation.phase ?? "")) {
+    satanicZoneRefreshProvider?.invalidate();
+  }
   if (update.error !== undefined) state.captureError = update.error;
-  if (update.connections) state.connections = update.connections;
+  if (update.connections) { state.connections = update.connections; satanicZoneRefreshProvider?.observeConnections(update.connections); }
   if (update.health) state.health = { ...state.health, ...update.health };
   if (update.running !== undefined || update.status || update.connections || update.health) {
     updateCrashReportCaptureContext();
@@ -413,6 +415,7 @@ ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
 ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
 ipcMain.handle(IPC_CHANNELS.captureStop, () => {
   satanicZoneDiagnostic?.cancel();
+  satanicZoneRefreshProvider?.stop();
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   applyPendingCaptureEvents();
   pauseRun("captureStopped");
@@ -448,10 +451,17 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
     publishState();
     return state;
   }
+  const preparation = satanicZoneRefreshProvider?.preparation.phase;
+  if (preparation && ["opening", "waiting_connection", "collecting"].includes(preparation)) {
+    satanicZoneRefreshProvider?.cancelPreparation(); publishStateNow(); return state;
+  }
   if (!state.captureRunning || state.captureStatus !== "running") {
     satanicZoneController?.markUnavailable("capture_unavailable");
     addLog("warning", "Start capture before requesting a Satanic Zone refresh.");
     return state;
+  }
+  if (preparation && ["idle", "expired", "unavailable"].includes(preparation)) {
+    satanicZoneRefreshProvider?.prepare(); publishStateNow(); return state;
   }
   const result = await satanicZoneController?.refreshNow();
   writeAppLog("satanic-zone-refresh-requested", {
@@ -647,6 +657,7 @@ ipcMain.handle(IPC_CHANNELS.windowToggleMaximize, () => {
 });
 ipcMain.handle(IPC_CHANNELS.windowClose, () => {
   satanicZoneDiagnostic?.dispose();
+  satanicZoneRefreshProvider?.dispose();
   windowManager?.close();
 });
 ipcMain.handle(IPC_CHANNELS.windowSetAlwaysOnTop, (_event, enabled: boolean) => {
@@ -793,11 +804,18 @@ app.whenReady().then(async () => {
         capturedSessionContext?.applyRegionDirectory(await regionDirectoryCache.get(signal));
       }),
     );
-    satanicZoneRefreshProvider = new DirectSatanicZoneRefreshProvider(
-      capturedSessionContext,
-      (context, signal) => createDirectSatanicZoneTransport(context, signal, writeAppLog),
-    );
   }
+  satanicZoneRefreshProvider = new InitializedSatanicZoneRefreshProvider({
+    syntheticOnly: isElectronE2eTestMode(),
+    dependencies: satanicZoneTestRuntime?.dependencies,
+    canPrepare: () => state.satanicZone.refreshEnabled && state.captureRunning
+      && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh
+      && Date.now() >= (state.satanicZone.nextAllowedRefreshAt ?? 0),
+    onPreparation: preparation => {
+      satanicZoneController?.setPreparation(preparation);
+      applyCaptureDiagnosticPreferences(); publishState();
+    },
+  });
   satanicZoneController = new SatanicZoneController({
     provider: satanicZoneRefreshProvider,
     initialState: state.satanicZone,
@@ -806,6 +824,7 @@ app.whenReady().then(async () => {
   satanicZoneDiagnostic = createSatanicZoneInitializedProbeRuntime({
     syntheticOnly: isElectronE2eTestMode(),
     canArm: () => state.satanicZone.phase !== "refreshing"
+      && !satanicZoneRefreshProvider?.suppressRawLogging
       && Date.now() >= (state.satanicZone.nextAllowedRefreshAt ?? 0),
     onChange: (diagnostic) => {
       state.satanicZoneDiagnostic = diagnostic;
@@ -846,12 +865,15 @@ app.whenReady().then(async () => {
     debugLogPath,
     wideDebugLogPath,
     state.capturePreferences,
-    (payload) => capturedSessionContext?.observe(payload),
-    (processIds) => capturedSessionContext?.observeGameProcessIds(processIds),
+    (payload) => { satanicZoneRefreshProvider?.observeSessionPayload(payload); capturedSessionContext?.observe(payload); },
+    (processIds) => { satanicZoneRefreshProvider?.observeProcessIds(processIds); capturedSessionContext?.observeGameProcessIds(processIds); },
   );
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   updateCrashReportCaptureContext();
   installElectronE2eMainHooks({
+    setSatanicZoneTestNetwork: network => satanicZoneTestRuntime?.setNetwork(network),
+    emitSatanicZoneTestPackets: packets => satanicZoneTestRuntime?.emitPackets(packets),
+    completeSatanicZoneTestResponse: body => satanicZoneTestRuntime?.completeResponse(body),
     emitCaptureEvents: (events) => {
       if (!emitElectronE2eCaptureEvents(captureService, events)) applyCaptureUpdate({ events });
       publishStateNow();
