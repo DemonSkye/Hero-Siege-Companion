@@ -558,6 +558,70 @@ describe("CaptureService lifecycle", () => {
       expect(fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "").not.toContain("CANARY_TERMINATING_PACKET");
     }
   });
+  test("gap callback restoration cannot log the current truncated Connect packet", () => {
+    const widePath = path.join(tempDir, "gap-wide.jsonl"); const debugPath = path.join(tempDir, "gap-debug.jsonl");
+    const restored = { captureDebugLogging: true, capturePayloadLogging: true, captureWideLogging: true, satanicZoneDebugLogging: true };
+    const suppressed = { captureDebugLogging: false, capturePayloadLogging: false, captureWideLogging: false, satanicZoneDebugLogging: false };
+    const onGap = vi.fn((update: CaptureUpdate) => { if (update.observationGap) service.setCapturePreferences(restored); });
+    const service = new CaptureService(onGap, debugPath, widePath, suppressed);
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const connectBody = Buffer.from('Connect\0!\0{"account":"CANARY_CONNECT_ACCOUNT","account_uid":"CANARY_CONNECT_UID"}\0');
+    const header = Buffer.alloc(16); header.write("0123456789ab", 0, "ascii"); header.writeUInt32LE(connectBody.length, 12);
+    const capturedPacket = rawTcpPacket(Buffer.concat([header, connectBody])); capturedPacket.writeUInt16BE(6669, 22);
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection({ remotePort: 6669 })], Date.now());
+    internals.processPacket(capturedPacket.length, true);
+    expect(onGap).toHaveBeenCalledWith({ observationGap: true });
+    for (const logPath of [debugPath, widePath]) {
+      const contents = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+      expect(contents).not.toContain("CANARY_CONNECT_ACCOUNT"); expect(contents).not.toContain("CANARY_CONNECT_UID");
+    }
+    const nextPacket = rawTcpPacket('{"account":"CANARY_NEXT_PACKET_ALLOWED"}'); nextPacket.writeUInt16BE(6669, 22);
+    internals.buffer = nextPacket; internals.processPacket(nextPacket.length, true);
+    expect(fs.readFileSync(widePath, "utf8")).toContain("CANARY_NEXT_PACKET_ALLOWED");
+  });
+  test.each([false, true])("session observer cannot reenable logging for coalesced payloads (initial logging %s)", initialLogging => {
+    const widePath = path.join(tempDir, "coalesced-wide.jsonl"); const debugPath = path.join(tempDir, "coalesced-debug.jsonl");
+    const restored = { captureDebugLogging: true, capturePayloadLogging: true, captureWideLogging: true, satanicZoneDebugLogging: true };
+    const suppressed = { captureDebugLogging: false, capturePayloadLogging: false, captureWideLogging: false, satanicZoneDebugLogging: false };
+    const observeSessionPayload = vi.fn(() => {
+      if (observeSessionPayload.mock.calls.length !== 1) return;
+      if (initialLogging) service.setCapturePreferences(suppressed);
+      service.setCapturePreferences(restored);
+    });
+    const service = new CaptureService(() => undefined, debugPath, widePath, initialLogging ? restored : suppressed, observeSessionPayload);
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const capturedPacket = rawTcpPacket("SAFE_WIRE");
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now());
+    vi.spyOn(internals.packetBuffers, "push").mockReturnValue([
+      { packet: packet(), text: "SAFE_FIRST", observationOnly: true },
+      { packet: packet(), text: '{"account":"CANARY_COALESCED_ACCOUNT","account_uid":"CANARY_COALESCED_UID","gold":1}' },
+    ]);
+    internals.processPacket(capturedPacket.length, false);
+    expect(observeSessionPayload).toHaveBeenCalledTimes(2);
+    for (const logPath of [debugPath, widePath]) {
+      const contents = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+      expect(contents).not.toContain("CANARY_COALESCED_ACCOUNT"); expect(contents).not.toContain("CANARY_COALESCED_UID");
+    }
+  });
+  test("packet logging cap is released after an exception", () => {
+    const widePath = path.join(tempDir, "exception-wide.jsonl");
+    const restored = { captureDebugLogging: true, capturePayloadLogging: true, captureWideLogging: true, satanicZoneDebugLogging: true };
+    const service = new CaptureService(() => undefined, undefined, widePath,
+      { captureDebugLogging: false, capturePayloadLogging: false, captureWideLogging: false, satanicZoneDebugLogging: false });
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const capturedPacket = rawTcpPacket("SAFE_WIRE");
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection()], Date.now());
+    vi.spyOn(internals.packetBuffers, "push").mockImplementationOnce(() => {
+      service.setCapturePreferences(restored); throw new Error("invented reassembly failure");
+    });
+    expect(() => internals.processPacket(capturedPacket.length, false)).toThrow("invented reassembly failure");
+    const nextPacket = rawTcpPacket('{"account":"CANARY_AFTER_EXCEPTION_ALLOWED"}');
+    internals.buffer = nextPacket; internals.processPacket(nextPacket.length, true);
+    expect(fs.readFileSync(widePath, "utf8")).toContain("CANARY_AFTER_EXCEPTION_ALLOWED");
+  });
   test.each([
     { missingBytes: 0, shortenedBuffer: false, truncated: true },
     { missingBytes: 1, shortenedBuffer: false, truncated: true },

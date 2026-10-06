@@ -170,11 +170,22 @@ export class CaptureService {
   }
 
   private capturePreferences: CapturePreferences;
+  private readonly packetLoggingPreferences: CapturePreferences[] = [];
+
+  private get loggingPreferences(): CapturePreferences {
+    return this.packetLoggingPreferences.at(-1) ?? this.capturePreferences;
+  }
 
   setCapturePreferences(preferences: CapturePreferences): void {
     const nextPreferences = captureLoggingPreferences(preferences);
     if (capturePreferencesEqual(this.capturePreferences, nextPreferences)) return;
     this.capturePreferences = nextPreferences;
+    // A callback may suppress logging now, but cannot widen any active packet's cap.
+    for (const packetPreferences of this.packetLoggingPreferences) {
+      for (const key of ["captureDebugLogging", "capturePayloadLogging", "captureWideLogging", "satanicZoneDebugLogging"] as const) {
+        packetPreferences[key] &&= nextPreferences[key];
+      }
+    }
     this.writeDebugLog("capture-logging-preferences", {
       preferences: nextPreferences,
       debugLogPath: this.debugLogPath ?? null,
@@ -565,14 +576,26 @@ export class CaptureService {
   }
 
   private onPacket(nbytes: number, truncated: boolean): void {
-    try {
-      this.processPacket(nbytes, truncated);
-    } catch (error) {
-      this.recordParserFailure("packet", error, "");
-    }
+    this.withPacketLogging(() => {
+      try {
+        this.processPacket(nbytes, truncated);
+      } catch (error) {
+        this.recordParserFailure("packet", error, "");
+      }
+    });
   }
 
   private processPacket(nbytes: number, truncated: boolean): void {
+    this.withPacketLogging(() => this.processCapturedPacket(nbytes, truncated));
+  }
+
+  private withPacketLogging(process: () => void): void {
+    this.packetLoggingPreferences.push(captureLoggingPreferences(this.loggingPreferences));
+    try { process(); }
+    finally { this.packetLoggingPreferences.pop(); }
+  }
+
+  private processCapturedPacket(nbytes: number, truncated: boolean): void {
     const parsedPacket = getTcpSegment(this.buffer, nbytes, this.activeLinkType);
     const endpoints = parsedPacket ?? getTcpPacketEndpoints(this.buffer, nbytes, this.activeLinkType);
     if (!endpoints || !this.isCaptureFlowPacket(endpoints)) return;
@@ -894,7 +917,7 @@ export class CaptureService {
   }
 
   private probeDebugPayload(payloadText: string, messages: MessageValue[], events: ParsedEvent[]): void {
-    if (!this.capturePreferences.captureDebugLogging || !this.capturePreferences.capturePayloadLogging) return;
+    if (!this.loggingPreferences.captureDebugLogging || !this.loggingPreferences.capturePayloadLogging) return;
     if (!shouldDebugPayload(payloadText, messages, events)) return;
     if (isOnlyItemEvents(events) && !this.shouldWriteItemDebugPayload()) return;
 
@@ -975,12 +998,12 @@ export class CaptureService {
         requestCount,
         requestedAt,
         endpoint,
-        snippet: this.capturePreferences.satanicZoneDebugLogging ? sanitizeDebugSnippet(payloadText) : "",
+        snippet: this.loggingPreferences.satanicZoneDebugLogging ? sanitizeDebugSnippet(payloadText) : "",
         timeout,
       };
       this.pendingSatanicZoneRequests.set(id, pending);
       this.emit({ satanicZoneActivity: { kind: "request", observedAt: requestedAt } });
-      if (this.capturePreferences.satanicZoneDebugLogging) {
+      if (this.loggingPreferences.satanicZoneDebugLogging) {
         this.writeDebugLog("satanic-zone-request", this.satanicZoneRequestLogData(pending));
       }
       this.trimPendingSatanicZoneRequests();
@@ -1000,7 +1023,7 @@ export class CaptureService {
         requestedAt: pending.requestedAt,
       },
     });
-    if (this.capturePreferences.satanicZoneDebugLogging) {
+    if (this.loggingPreferences.satanicZoneDebugLogging) {
       this.writeDebugLog("satanic-zone-request-timeout", {
         ...this.satanicZoneRequestLogData(pending),
         timedOutAt: new Date(timedOutAt).toISOString(),
@@ -1018,7 +1041,7 @@ export class CaptureService {
     const responseEndpoint = endpointIdentity(packet, this.activeLocalAddress);
     const pending = Array.from(this.pendingSatanicZoneRequests.values());
     this.clearPendingSatanicZoneRequests();
-    if (!this.capturePreferences.satanicZoneDebugLogging) return;
+    if (!this.loggingPreferences.satanicZoneDebugLogging) return;
     this.writeDebugLog("satanic-zone-request-resolved", {
       requestIds: pending.map((request) => request.id),
       resolvedAt: new Date().toISOString(),
@@ -1060,12 +1083,12 @@ export class CaptureService {
   }
 
   private writeDebugLog(type: string, data: Record<string, unknown>): void {
-    if (!this.capturePreferences.captureDebugLogging) return;
+    if (!this.loggingPreferences.captureDebugLogging) return;
     appendJsonLog(this.debugLogPath, MAX_DEBUG_LOG_BYTES, type, data);
   }
 
   private writeWidePacketLog(packet: ParsedPayload, nbytes: number, truncated: boolean): void {
-    if (!this.capturePreferences.captureWideLogging) return;
+    if (!this.loggingPreferences.captureWideLogging) return;
 
     this.writeWideDebugLog("packet", {
       recordSequence: ++this.widePacketSequence,
@@ -1086,7 +1109,7 @@ export class CaptureService {
   }
 
   private writeWidePayloadLog(packet: ParsedPayload, payloadText: string): void {
-    if (!this.capturePreferences.captureWideLogging) return;
+    if (!this.loggingPreferences.captureWideLogging) return;
 
     this.writeWideDebugLog("assembled-payload", {
       recordSequence: ++this.widePayloadSequence,
@@ -1103,7 +1126,7 @@ export class CaptureService {
   }
 
   private writeWideDebugLog(type: string, data: Record<string, unknown>): void {
-    if (!this.capturePreferences.captureWideLogging || !this.wideDebugLogPath) return;
+    if (!this.loggingPreferences.captureWideLogging || !this.wideDebugLogPath) return;
     appendJsonLog(this.wideDebugLogPath, MAX_WIDE_DEBUG_LOG_BYTES, type, data);
   }
 
