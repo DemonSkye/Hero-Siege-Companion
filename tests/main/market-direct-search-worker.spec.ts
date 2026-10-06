@@ -4,7 +4,8 @@ import { describe, expect, test } from "vitest";
 import { CapturedSessionContextStore, type CompleteCapturedSessionContext } from "../../src/main/captured-session-context";
 import { MarketRegionDirectory } from "../../src/main/market-region-directory";
 import { extractSessionContextMessages } from "../../src/main/session-context-fields";
-import { buildDirectMarketRequestBody, reduceDirectMarketResponse } from "../../src/main/market-direct-search-worker";
+import { buildDirectMarketRequestBody } from "../../src/main/market-direct-search-worker";
+import { inspectDirectMarketResponse } from "../../src/main/market-direct-response";
 import evidence from "../fixtures/market-native-evidence.json";
 
 const context: CompleteCapturedSessionContext = {
@@ -136,19 +137,19 @@ describe("direct market search worker", () => {
   test("reduces a substituted compressed response to safe sorted price listings", () => {
     const response = evidence.syntheticResponses.success;
     const items = deflateSync(Buffer.from(JSON.stringify(response.decodedItems))).toString("base64");
-    expect(reduceDirectMarketResponse(Buffer.from(JSON.stringify({ status: response.status, itemCount: response.itemCount, items })), 200))
+    expect(inspectDirectMarketResponse(Buffer.from(JSON.stringify({ status: response.status, itemCount: response.itemCount, items })), 200).response)
       .toEqual({ ok: true, result: evidence.syntheticResponses.expectedSuccess });
   });
   test("documented decimal string unit_price is safely projected without seller data", () => {
     const response = evidence.syntheticResponses.success;
     expect(response.decodedItems.find(item => item.unit_price !== undefined)?.unit_price).toBe("100000");
     const items = deflateSync(Buffer.from(JSON.stringify(response.decodedItems))).toString("base64");
-    const reduced = reduceDirectMarketResponse(Buffer.from(JSON.stringify({ status: response.status, itemCount: response.itemCount, items })), 200);
+    const reduced = inspectDirectMarketResponse(Buffer.from(JSON.stringify({ status: response.status, itemCount: response.itemCount, items })), 200).response;
     expect(reduced).toMatchObject({ ok: true, result: { listings: [{ price: 200_000, unitPrice: 100_000 }, { price: 500_000 }, { price: 900_000 }], returnedCount: 3 } });
     expect(JSON.stringify(reduced)).not.toMatch(/unit_price|synthetic-seller|synthetic-a/);
   });
   test("HTTP 200 with the observed application rejection status fails instead of manufacturing empty success", () => {
-    expect(reduceDirectMarketResponse(Buffer.from(JSON.stringify(evidence.syntheticResponses.rejection)), evidence.observedOutcomes.rejectedHttpStatus))
+    expect(inspectDirectMarketResponse(Buffer.from(JSON.stringify(evidence.syntheticResponses.rejection)), evidence.observedOutcomes.rejectedHttpStatus).response)
       .toEqual(evidence.syntheticResponses.expectedRejection);
   });
 });

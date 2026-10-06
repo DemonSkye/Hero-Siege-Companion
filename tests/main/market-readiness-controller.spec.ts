@@ -92,6 +92,31 @@ describe("sanitized Market readiness", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  test("keeps renewed expiry across repeated updates and cancels it while capture is stopped", async () => {
+    const state = setup();
+    state.collect();
+    state.store.applyRegionDirectory(state.directory);
+    await vi.advanceTimersByTimeAsync(5_000);
+    state.observe();
+    state.controller.setCaptureRunning(true);
+    state.controller.setCaptureRunning(true);
+    expect(vi.getTimerCount()).toBe(1);
+
+    state.controller.setCaptureRunning(false);
+    expect(state.latest()).toMatchObject({ phase: "waiting", reason: "capture_inactive" });
+    expect(vi.getTimerCount()).toBe(0);
+    const stoppedUpdates = state.updates.length;
+    await vi.advanceTimersByTimeAsync(595_001);
+    expect(state.updates).toHaveLength(stoppedUpdates);
+
+    state.controller.setCaptureRunning(true);
+    expect(state.latest()).toMatchObject({ phase: "ready", expiresAt: 606_000 });
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(state.latest()).toMatchObject({ phase: "expired", canSearch: false });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   test("blocks mixed endpoints and incomplete replacement accounts, then clears on capture stop and game replacement", () => {
     const state = setup();
     state.collect();

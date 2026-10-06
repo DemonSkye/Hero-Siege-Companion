@@ -49,6 +49,10 @@ export class MarketReadinessController {
   dispose(): void {
     this.disposed = true;
     this.unsubscribe();
+    this.clearExpiryTimer();
+  }
+
+  private clearExpiryTimer(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }
@@ -66,8 +70,7 @@ export class MarketReadinessController {
         readiness = { ...context, phase: "region-error", reason: "region_unavailable" };
       }
     }
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
+    this.clearExpiryTimer();
     if (this.captureRunning && context.expiresAt !== null && context.phase !== "expired") {
       // A valid snapshot can cross its deadline before scheduling. Always recheck
       // it on the next tick in that case; never leave a stale snapshot untimed.

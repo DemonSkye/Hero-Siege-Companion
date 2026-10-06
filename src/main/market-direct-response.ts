@@ -103,10 +103,6 @@ export function inspectDirectMarketResponse(body: Buffer, statusCode: number | u
   }
 }
 
-export function reduceDirectMarketResponse(body: Buffer, statusCode: number | undefined): MarketSearchResponse {
-  return inspectDirectMarketResponse(body, statusCode).response;
-}
-
 export function classifyDirectMarketNetworkError(code: string | undefined): DirectMarketFailure {
   if (code && /CERT|TLS|SSL/.test(code)) return "tls";
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "dns";

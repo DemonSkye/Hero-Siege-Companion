@@ -2,7 +2,6 @@ import https from "node:https";
 import { parentPort, workerData } from "node:worker_threads";
 import { classifyDirectMarketNetworkError, directMarketFailure, inspectDirectMarketResponse,
   type DirectMarketPrivateProgress, type DirectMarketWorkerProgress, type DirectMarketWorkerResult } from "./market-direct-response";
-export { reduceDirectMarketResponse } from "./market-direct-response";
 import { normalizeMarketSearchRequest, type MarketSearchRequest } from "../shared/market-search";
 import { buildMarketFetchItemsChecksum } from "./market-checksum";
 import { buildMarketFetchItemsMultipass, MARKET_FETCH_ITEMS_API_SCRIPT } from "./market-multipass";

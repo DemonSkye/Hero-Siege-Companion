@@ -31,7 +31,9 @@ passive Npcap capture and focused, explicit product actions.
 - Exact searches are appropriate for graph blind spots (Vue templates, CSS,
   strings, configs, package scripts, generated assets and dynamic IPC), or to
   confirm a graph lead. If Graphify is unavailable, read its JSON/report and state
-  the limitation — do not silently substitute a broad search.
+  the limitation — do not silently substitute a broad search. If no map/tool is
+  available, report that and inspect focused source/contracts; do not implicitly
+  install tooling or use a provider.
 - Keep `src/main/main.ts`, `src/main/capture.ts` and `src/renderer/src/App.vue`
   as coordinators. Extend the focused owner first — wiring should stay readable.
 - Main owns filesystem/dialog/native/network lifecycles; `src/shared` owns pure
