@@ -5,6 +5,7 @@ import type { ParsedEvent } from "../shared/parser";
 import type { CapturedSessionPayload } from "./captured-session-context";
 import type { HeroSiegeNetworkState } from "./capture-network";
 import type { ElectronSatanicZoneTestPacket } from "./electron-satanic-zone-test-runtime";
+import type { CaptureUpdate } from "./capture";
 
 const E2E_ENV_FLAG = "HERO_SIEGE_COMPANION_E2E";
 const E2E_USER_DATA_ENV = "HERO_SIEGE_COMPANION_E2E_USER_DATA";
@@ -16,6 +17,7 @@ export interface ElectronE2eWindowState {
 }
 
 export interface ElectronE2eMainHooks {
+  emitCaptureUpdate: (update: Pick<CaptureUpdate, "observationGap" | "observationGapSource" | "status" | "running">) => void;
   emitCaptureEvents: (events: ParsedEvent[]) => void;
   emitCapturePayloads: (payloads: string[]) => void;
   emitSessionContext: (processIds: number[], payloads: CapturedSessionPayload[]) => void;

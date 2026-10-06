@@ -56,6 +56,8 @@ const SATANIC_ZONE_REQUEST_ROUTE = "satanic_zone_get";
 export interface CaptureUpdate {
   /** Main-only signal: the native observer stopped or lost relevant packet evidence. */
   observationGap?: true;
+  /** This gameplay handle changed; the separate SZ API listener may remain continuous. */
+  observationGapSource?: "gameplay-reconfigure";
   connections?: CaptureConnection[];
   health?: Partial<CaptureHealth>;
   events?: ParsedEvent[];
@@ -854,7 +856,8 @@ export class CaptureService {
 
   private closeCapture(reason = "close"): void {
     if (!this.cap) return;
-    this.emit({ observationGap: true });
+    const reconfigure = ["reopen", "no-game-server-connections", "anti-cheat-waiting"].includes(reason);
+    this.emit({ observationGap: true, ...(reconfigure ? { observationGapSource: "gameplay-reconfigure" as const } : {}) });
     const generation = this.activeCaptureGeneration;
     const targetCount = this.activeCaptureTargetCount;
     const connectionCount = this.activeCaptureConnectionCount;

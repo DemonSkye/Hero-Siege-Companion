@@ -19,6 +19,16 @@ afterEach(() => {
 });
 
 describe("SatanicZoneController", () => {
+  test("empty saved sign-in reason reaches renderer state while unknown fields/reasons stay private", () => {
+    const controller = new SatanicZoneController({ provider: provider({ availability: { available: false, experimental: true, errorCode: "helper_not_ready" } }),
+      initialState: createInitialSatanicZoneState(), onStateChange: vi.fn() });
+    const preparation = { phase: "waiting_connection" as const, expiresAt: null, reason: "cache_empty" as const };
+    controller.setPreparation(preparation);
+    expect(controller.getState().refreshPreparation).toEqual(preparation);
+    Object.assign(preparation, { reason: "CANARY_PRIVATE", auth: "CANARY_BODY" }); controller.setPreparation(preparation);
+    expect(controller.getState().refreshPreparation).toEqual({ phase: "waiting_connection", expiresAt: null });
+    expect(JSON.stringify(controller.getState())).not.toContain("CANARY");
+  });
   test("keeps an intentionally disabled refresh main-authoritatively off until enabled", async () => {
     const refreshProvider = provider({ availability: { available: false, experimental: true, errorCode: "helper_not_ready" } });
     const controller = new SatanicZoneController({

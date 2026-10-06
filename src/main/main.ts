@@ -242,8 +242,7 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
   if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
-  if (update.observationGap || update.status === "error" || (previousCaptureRunning && (update.running === false
-    || (update.status && update.status !== "running")))) satanicZoneRefreshProvider?.suspend();
+  satanicZoneRefreshProvider?.observeCaptureUpdate(update, previousCaptureRunning);
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) { state.connections = update.connections; satanicZoneRefreshProvider?.observeConnections(update.connections); }
   if (state.captureRunning && state.captureStatus === "running" && state.satanicZone.refreshEnabled && (!previousCaptureRunning
@@ -836,6 +835,7 @@ app.whenReady().then(async () => {
     loginCache: satanicZoneLoginCache,
     syntheticOnly: isElectronE2eTestMode(),
     dependencies: satanicZoneTestRuntime?.dependencies,
+    onReadinessDiagnostic: diagnostic => writeAppLog("sz-refresh-readiness", diagnostic),
     canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
       && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh,
     onPreparation: preparation => {
@@ -911,6 +911,7 @@ app.whenReady().then(async () => {
       if (!emitElectronE2eCaptureEvents(captureService, events)) applyCaptureUpdate({ events });
       publishStateNow();
     },
+    emitCaptureUpdate: update => { applyCaptureUpdate(update); publishStateNow(); },
     emitCapturePayloads: (payloads) => {
       emitElectronE2eCapturePayloads(captureService, payloads);
       publishStateNow();

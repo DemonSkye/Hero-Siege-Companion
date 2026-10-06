@@ -368,6 +368,7 @@ describe("CaptureService lifecycle", () => {
       "tcp and host 10.0.0.2 + targets:203.0.113.10:6668,203.0.113.20:6600",
     );
     expect(mocks.closeCapture).toHaveBeenCalledTimes(1);
+    expect(updates).toContainEqual({ observationGap: true, observationGapSource: "gameplay-reconfigure" });
     service.stop();
   });
 

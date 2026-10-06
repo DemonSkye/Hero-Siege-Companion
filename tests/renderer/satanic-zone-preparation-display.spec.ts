@@ -32,6 +32,11 @@ describe("preparation guidance in the compact overlay", () => {
   });
   test("missed login is honest about availability and allows continued play", () => {
     const detail = satanicZonePreparationDetail({ phase: "waiting_connection", expiresAt: null, reason: "login_missed" }, 1_000);
-    expect(detail).toContain("already completed"); expect(detail).toContain("next signs in"); expect(detail).toContain("keep playing");
+    expect(detail).toContain("was not observed"); expect(detail).toContain("unavailable"); expect(detail).toContain("keep playing");
+    expect(detail).not.toContain("already completed");
+  });
+  test("an enabled empty cache identifies missing saved sign-in instead of promising restore", () => {
+    const detail = satanicZonePreparationDetail({ phase: "waiting_connection", expiresAt: null, reason: "cache_empty" }, 1_000);
+    expect(detail).toContain("No saved sign-in"); expect(detail).toContain("complete sign-in");
   });
 });

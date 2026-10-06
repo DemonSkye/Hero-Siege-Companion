@@ -35,6 +35,7 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
   vi.useFakeTimers(); vi.setSystemTime(1_000);
   let receive!: (packet: ParsedPayload, truncated: boolean) => void;
   const snapshots: SatanicZonePreparation[] = [], sockets: Socket[] = [], inputs: InitializedProbeInput[] = [];
+  const diagnostics: unknown[] = [];
   const close = vi.fn(); let canPrepare = true;
   const budgets: SatanicZoneDiagnosticBufferBudget[] = [];
   const network: HeroSiegeNetworkState = { gameProcessIds: [42], antiCheatProcessIds: [],
@@ -42,6 +43,7 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
   const prepare = vi.fn(async () => scope), open = vi.fn(async (_scope, callback, _failed, budget) => { receive = callback; budgets.push(budget); return { close }; });
   const networkState = vi.fn(async () => network);
   const provider = new InitializedSatanicZoneRefreshProvider({ canPrepare: () => canPrepare, loginCache,
+    onReadinessDiagnostic: diagnostic => diagnostics.push(diagnostic),
     onPreparation: state => snapshots.push(state), dependencies: { prepare, open, networkState,
       attempt: (input, signal, budget, progress) => {
         inputs.push(input); const socket = new Socket(); sockets.push(socket);
@@ -52,7 +54,8 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
       srcPort: outbound ? 5000 : scope.remotePort, dstPort: outbound ? scope.remotePort : 5000,
       seq, ack: outbound ? 201 : 101, flags, payload, payloadLength: payload.length, text: "" };
   }
-  async function collect(connectBody = inventedConnect(), postLoginBody = inventedPostLogin(), prepareNow = true, nextScope = scope, localPort = 5000) {
+  async function collect(connectBody = inventedConnect(), postLoginBody = inventedPostLogin(), prepareNow = true, nextScope = scope, localPort = 5000,
+    afterAcknowledgment?: () => void) {
     if (prepareNow) provider.prepare(); await flush();
     network.connections[0] = { ...network.connections[0], ...nextScope, localPort };
     const send = (outbound: boolean, seq: number, payload?: Buffer, flags?: number) => receive({ ...packet(outbound, seq, payload, flags),
@@ -61,6 +64,7 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
     send(true, 100, undefined, 2); send(false, 200, undefined, 18);
     const connect = frameDiagnosticBody(connectBody, 7), ack = generic(opcodeOnlyReadyBody);
     send(true, 101, connect); send(false, 201, ack);
+    afterAcknowledgment?.();
     send(true, 101 + connect.length, frameDiagnosticBody(postLoginBody, 8));
     send(false, 201 + ack.length, generic(inventedLoginSuccess()));
     await vi.advanceTimersByTimeAsync(1_000); await flush();
@@ -70,7 +74,7 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
     sockets.at(-1)!.receive(opcodeOnlyReadyBody); sockets.at(-1)!.receive(inventedLoginSuccess());
     return request;
   }
-  return { provider, collect, dispatch, sockets, inputs, snapshots, network, networkState, close, prepare, open, budgets, packet,
+  return { provider, collect, dispatch, sockets, inputs, snapshots, diagnostics, network, networkState, close, prepare, open, budgets, packet,
     receive: (value: ParsedPayload, truncated = false) => receive(value, truncated),
     denyPreparation: () => { canPrepare = false; } };
 }
@@ -99,6 +103,72 @@ async function restoredCacheFixture() {
 }
 afterEach(() => { vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
+  test("readiness diagnostics report safe stage/counts, throttle unchanged stages and never include identity or bodies", async () => {
+    const f = fixture(); await f.provider.preparePassively(); await flush();
+    const count = f.diagnostics.length;
+    for (let i = 0; i < 10; i++) f.receive(f.packet(true, 101, inventedConnect()));
+    expect(f.diagnostics).toHaveLength(count);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(f.diagnostics.at(-1)).toMatchObject({ phase: "waiting-initialization", selectionStatus: "api-flow-no-syn",
+      capturePackets: 10, freshSyn: false, attributed: false, initializationComplete: false });
+    await f.collect(); expect(f.diagnostics.at(-1)).toMatchObject({ phase: "ready", attributed: true, initializationComplete: true });
+    expect(JSON.stringify(f.diagnostics)).not.toMatch(/CANARY|1234567890|9876543210|192\.0\.2|198\.51\.100|checksum|account_uid/);
+    expect(Object.keys(f.diagnostics.at(-1)!).sort()).toEqual(["phase", "reason", "selectionStatus", "probeStage", "capturePackets",
+      "bytesObserved", "freshSyn", "attributed", "initializationComplete", "outboundFrames", "inboundFrames",
+      "preparationReason", "cacheEnabled", "cacheStatus"].sort()); f.provider.dispose();
+  });
+  test("gameplay capture reconfiguration during sign-in preserves the independent listener, reaches Ready and saves without sending", async () => {
+    const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
+    await f.collect(inventedConnect(), inventedPostLogin(), true, scope, 5000, () => {
+      f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+      f.provider.observeCaptureUpdate({ status: "waiting" }, true);
+    }); await flush();
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.cache.snapshot().status).toBe("saved");
+    expect(fs.existsSync(file)).toBe(true); expect(f.close).not.toHaveBeenCalled(); expect(f.sockets).toHaveLength(0);
+    expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1); f.provider.dispose();
+  });
+  test("gameplay filter changes retain continuously observed native Ready without closing its API listener", async () => {
+    const f = fixture(); await f.collect();
+    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    f.provider.observeCaptureUpdate({ status: "waiting" }, true);
+    f.provider.observeCaptureUpdate({ status: "running", running: true }, true);
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.close).not.toHaveBeenCalled();
+    expect(f.sockets).toHaveLength(0); expect((await f.dispatch()).accepted).toBe(true); f.provider.dispose();
+  });
+  test("gameplay reconfiguration during an async native save can resave the continuously observed pair, never a cached pair", async () => {
+    const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true); let release!: (build: string) => void;
+    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    await f.collect(); expect(f.provider.preparation.phase).toBe("ready"); expect(fs.existsSync(file)).toBe(false);
+    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true); await flush();
+    expect(f.cache.snapshot().status).toBe("saved"); expect(fs.existsSync(file)).toBe(true);
+    release("e".repeat(64)); await flush(); expect(f.cache.snapshot().status).toBe("saved");
+    expect(f.close).not.toHaveBeenCalled(); expect(f.sockets).toHaveLength(0); f.provider.dispose();
+    expect(f.budgets[0].usedBytes).toBe(0);
+  });
+  test.each([{ observationGap: true as const }, { status: "error" as const }, { running: false }])(
+    "an unclassified gap, error or actual Stop still suspends native Ready: %j", async update => {
+      const f = fixture(); await f.collect(); f.provider.observeCaptureUpdate(update, true);
+      expect(f.provider.preparation.phase).toBe("suspended"); expect(f.close).toHaveBeenCalledTimes(1);
+      expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0); f.provider.dispose();
+    });
+  test("gameplay reconfiguration invalidates cached identity and requires new evidence without background authentication", async () => {
+    const f = await restoredCacheFixture();
+    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    expect(f.cache.restoreInput()).toBeNull(); expect(f.provider.preparation.phase).not.toBe("ready");
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.close).not.toHaveBeenCalled();
+    await f.provider.preparePassively(); expect(f.provider.preparation.phase).not.toBe("ready");
+    f.provider.observeSessionPayload(f.payload); await flush();
+    expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
+    expect(f.sockets).toHaveLength(0); f.provider.dispose();
+  });
+  test("an independent API listener failure invalidates cached validation before passive retry", async () => {
+    const f = await restoredCacheFixture(); f.open.mock.calls[0][2](); await flush();
+    expect(f.cache.restoreInput()).toBeNull(); expect(f.provider.preparation.phase).not.toBe("ready");
+    await vi.advanceTimersByTimeAsync(5_000); expect(f.open).toHaveBeenCalledTimes(2);
+    expect(f.provider.preparation.phase).not.toBe("ready"); expect(f.sockets).toHaveLength(0);
+    f.provider.observeSessionPayload(f.payload); await flush();
+    expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" }); f.provider.dispose();
+  });
   test("identical ordinary evidence during deferred cached preflight still permits the explicit send", async () => {
     const f = await restoredCacheFixture(); let release!: (build: string) => void;
     f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));

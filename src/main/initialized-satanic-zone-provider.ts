@@ -9,14 +9,22 @@ import type { CapturedTcpLifecycle } from "./packet-decoder";
 import { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
 import type { SatanicZoneLoginCache } from "./satanic-zone-login-cache";
 import type { SatanicZoneLoginCacheState } from "../shared/satanic-zone-login-cache";
+import type { CaptureUpdate } from "./capture";
 import type { SatanicZoneRefreshAvailability, SatanicZoneRefreshDispatchResult, SatanicZoneRefreshProvider,
   SatanicZoneRefreshRequestOptions, SatanicZoneProviderWaitOutcome, SatanicZoneObservationWaitOptions,
   SatanicZoneProviderObservation } from "./satanic-zone-refresh-provider";
 
 const CACHE_REASONS: Partial<Record<SatanicZoneLoginCacheState["status"], NonNullable<SatanicZonePreparation["reason"]>>> = {
+  empty: "cache_empty",
   unverified: "cache_identity_required", identity_mismatch: "cache_identity_mismatch",
   build_unavailable: "cache_build_unavailable", build_mismatch: "cache_build_mismatch",
 };
+export type SatanicZoneReadinessDiagnostic = Pick<SatanicZoneDiagnosticState,
+  "phase" | "reason" | "selectionStatus" | "probeStage" | "capturePackets" | "bytesObserved" | "freshSyn"
+  | "attributed" | "initializationComplete" | "outboundFrames" | "inboundFrames"> & {
+    preparationReason: SatanicZonePreparation["reason"] | null;
+    cacheEnabled: boolean; cacheStatus: SatanicZoneLoginCacheState["status"];
+  };
 interface Pending {
   id: string;
   dispatched: Promise<SatanicZoneRefreshDispatchResult>;
@@ -30,6 +38,7 @@ interface Pending {
 export interface InitializedSatanicZoneProviderOptions {
   canPrepare: () => boolean;
   onPreparation: (state: SatanicZonePreparation) => void;
+  onReadinessDiagnostic?: (state: SatanicZoneReadinessDiagnostic) => void;
   syntheticOnly?: boolean;
   loginCache?: SatanicZoneLoginCache;
   /** Offline tests inject every native/network/socket boundary. */
@@ -49,6 +58,8 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   private watching = false;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private readonly now: () => number;
+  private diagnosticKey = "";
+  private diagnosticAt = 0;
   constructor(private readonly options: InitializedSatanicZoneProviderOptions) {
     this.now = options.dependencies?.now ?? Date.now;
     options.loginCache?.attachBudget(this.budget);
@@ -86,6 +97,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     const input = cache?.restoreInput();
     if (input && this.options.canPrepare()) this.context?.restoreCached(input);
     this.options.onPreparation(this.preparation);
+    this.publishReadinessDiagnostic();
   }
   prepare(): void {
     if (this.disposed) return;
@@ -104,6 +116,17 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   }
   cancelPreparation(): void { this.watching = false; this.clearRetry(); this.context.cancelAttempt(); }
   cancelAttempt(): void { this.context.cancelAttempt(); }
+  observeCaptureUpdate(update: CaptureUpdate, previousRunning: boolean): void {
+    if (update.status === "error" || (previousRunning && update.running === false)
+      || (update.observationGap && update.observationGapSource !== "gameplay-reconfigure")) this.suspend();
+    // Reopening gameplay capture does not close the independently owned API listener.
+    // Cached identity evidence comes from gameplay capture, so its validation does lapse.
+    else if (update.observationGap) {
+      this.options.loginCache?.suspend();
+      // A coherent native pair still covered by this listener can finish saving.
+      if (!this.context.cachedContext) this.context.rememberCurrent();
+    }
+  }
   suspend(): void { this.options.loginCache?.suspend(); this.watching = false; this.clearRetry(); this.retainedContext?.suspend(); this.context.suspend(); }
   invalidate(): void { this.retainedContext?.invalidate(); this.context.invalidate(); }
   observeProcessIds(ids: readonly number[]): void { this.options.loginCache?.observeProcesses(ids); this.retainedContext?.observeProcessIds(ids); this.context.observeProcessIds(ids); }
@@ -190,6 +213,8 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: retainedFailure && !context.continuitySuspended });
     }
     this.options.onPreparation(this.preparation);
+    if (!context.active) this.options.loginCache?.suspend();
+    this.publishReadinessDiagnostic(state);
     if (this.watching && !this.disposed && (!context.active || context.continuitySuspended) && !this.retry) {
       this.retry = setTimeout(() => {
         this.retry = null;
@@ -199,6 +224,18 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     }
   }
   private clearRetry(): void { if (this.retry) clearTimeout(this.retry); this.retry = null; }
+  private publishReadinessDiagnostic(state = this.context.snapshot()): void {
+    if (!this.options.onReadinessDiagnostic || this.disposed) return;
+    const cache = this.options.loginCache?.snapshot(), preparationReason = this.preparation.reason ?? null;
+    const key = JSON.stringify([state.phase, state.reason, state.selectionStatus, state.probeStage, preparationReason, cache?.status]);
+    if (key === this.diagnosticKey && this.now() - this.diagnosticAt < 30_000) return;
+    this.diagnosticKey = key; this.diagnosticAt = this.now();
+    this.options.onReadinessDiagnostic({ phase: state.phase, reason: state.reason, selectionStatus: state.selectionStatus,
+      probeStage: state.probeStage, capturePackets: state.capturePackets, bytesObserved: state.bytesObserved,
+      freshSyn: state.freshSyn, attributed: state.attributed, initializationComplete: state.initializationComplete,
+      outboundFrames: state.outboundFrames, inboundFrames: state.inboundFrames, preparationReason,
+      cacheEnabled: cache?.enabled ?? false, cacheStatus: cache?.status ?? "disabled" });
+  }
 }
 
 function projectPreparation(state: SatanicZoneDiagnosticState, suspended: boolean, cached = false): SatanicZonePreparation {
