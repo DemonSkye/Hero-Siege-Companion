@@ -120,7 +120,8 @@ function applyCaptureDiagnosticPreferences(): void {
 const gameCaptureCoordinator = new GameCaptureCoordinator({
   state,
   getCaptureService: () => captureService,
-  beforeCapture: () => satanicZoneRefreshProvider?.preparePassively() ?? Promise.resolve(false),
+  beforeCapture: () => state.satanicZone.refreshEnabled
+    ? satanicZoneRefreshProvider?.preparePassively() ?? Promise.resolve(false) : Promise.resolve(true),
   addLog,
   publishState,
   writeAppLog,

@@ -70,7 +70,7 @@ export class GameCaptureCoordinator {
 
   private async launchThroughSteam(): Promise<void> {
     try {
-      await this.options.beforeCapture?.();
+      if (!await this.prepareForLaunch()) return;
       await shell.openExternal(STEAM_HERO_SIEGE_URL);
       this.options.addLog("info", "Launched Hero Siege through Steam. Capture is watching for the game.");
       this.scheduleLaunchCaptureAttempt();
@@ -92,7 +92,7 @@ export class GameCaptureCoordinator {
       return;
     }
 
-    await this.options.beforeCapture?.();
+    if (!await this.prepareForLaunch()) return;
     const launchError = await shell.openPath(executablePath);
     if (launchError) {
       this.options.addLog("error", `Failed to launch Hero Siege: ${launchError}`);
@@ -101,6 +101,19 @@ export class GameCaptureCoordinator {
 
     this.options.addLog("info", "Launched Hero Siege. Capture is watching for the game.");
     this.scheduleLaunchCaptureAttempt();
+  }
+
+  private async prepareForLaunch(): Promise<boolean> {
+    let opened = false;
+    try { opened = await this.options.beforeCapture?.() ?? true; } catch {}
+    if (!this.captureEnabled) {
+      this.options.addLog("info", "Game launch cancelled."); return false;
+    }
+    if (!opened) {
+      this.options.addLog("warning", "Game launch paused because SZ Refresh could not start watching. Try again, or turn off SZ Refresh in Settings.");
+      return false;
+    }
+    return true;
   }
 
   private scheduleLaunchCaptureAttempt(): void {

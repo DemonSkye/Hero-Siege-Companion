@@ -177,6 +177,27 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     const request = await f.dispatch(), wait = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
     f.sockets[1].receive(inventedZoneBody); expect((await wait)?.kind).toBe("observation"); f.provider.dispose();
   });
+  test("an app socket failing before connect has no registered tuple; its delayed SYN cannot erase Ready", async () => {
+    const f = fixture(); await f.collect();
+    vi.spyOn(Socket.prototype, "connect").mockImplementationOnce(function () {
+      this.emit("error", new Error("invented pre-connect failure")); return this;
+    });
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); await flush();
+    const preserved = f.inputs[0].connectBody;
+    f.receive({ ...f.packet(true, 100, undefined, 2), srcPort: 6000 }); await flush();
+    expect(f.provider.preparation.phase).toBe("ready"); expect(preserved).toEqual(inventedConnect());
+    expect(f.sockets).toHaveLength(1); expect(f.sockets[0].writes).toHaveLength(0);
+    expect((await f.dispatch()).accepted).toBe(true); f.provider.dispose();
+  });
+  test("ownership lookup can finish after queued new login frames without losing the game reconnect", async () => {
+    const f = fixture(); await f.collect(); let release!: (network: HeroSiegeNetworkState) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const collection = f.collect(inventedConnect(), inventedPostLogin(), false, scope, 5001);
+    await flush(); expect(f.provider.preparation.phase).toBe("ready");
+    release(f.network); await collection; await flush();
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.open).toHaveBeenCalledTimes(1);
+    expect(f.sockets).toHaveLength(0); f.provider.dispose();
+  });
   test("an adapter change closes the old listener and reselects passively; completed login is never reconstructed", async () => {
     const f = fixture(); await f.provider.preparePassively(); await f.collect();
     const changed = { ...scope, localAddress: "192.0.2.11" };

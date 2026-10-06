@@ -16,6 +16,30 @@ function fixture() {
 }
 afterEach(() => vi.useRealTimers());
 describe("launch and capture coordination with mocked Electron", () => {
+  test.each([true, false])("listener failure blocks launch (Steam=%s) without a false watching log", async steam => {
+    const f = fixture(); f.beforeCapture.mockResolvedValue(false);
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    await f.coordinator.launchOrCapture({ launchThroughSteam: steam, executablePath: "invented.exe" });
+    expect(shell.openExternal).not.toHaveBeenCalled(); expect(shell.openPath).not.toHaveBeenCalled();
+    expect(f.addLog.mock.calls.map(call => call[1]).join()).toContain("launch paused");
+    expect(f.addLog.mock.calls.map(call => call[1]).join()).not.toContain("Capture is watching");
+  });
+  test.each([true, false])("Stop while opening the listener cancels launch (Steam=%s)", async steam => {
+    const f = fixture(); let release!: (opened: boolean) => void;
+    f.beforeCapture.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    const launch = f.coordinator.launchOrCapture({ launchThroughSteam: steam, executablePath: "invented.exe" });
+    await flush(); f.coordinator.setCaptureEnabled(false); release(true); await launch;
+    expect(shell.openExternal).not.toHaveBeenCalled(); expect(shell.openPath).not.toHaveBeenCalled();
+    expect(f.addLog).toHaveBeenCalledWith("info", "Game launch cancelled.");
+  });
+  test("an explicitly disabled feature permits launch without requiring a listener", async () => {
+    const f = fixture(); shell.openExternal.mockResolvedValue(undefined);
+    // Main maps intentional saved Off to a successful no-listener prerequisite.
+    f.beforeCapture.mockResolvedValue(true);
+    await f.coordinator.launchOrCapture({ launchThroughSteam: true });
+    expect(shell.openExternal).toHaveBeenCalledTimes(1); f.coordinator.clearLaunchCaptureTimer();
+  });
   test("an existing game waits for listener readiness before starting gameplay capture", async () => {
     const f = fixture(); f.service.hasHeroSiegeProcess.mockResolvedValue(true);
     let release!: () => void; f.beforeCapture.mockImplementation(() => new Promise(resolve => { release = () => resolve(true); }));

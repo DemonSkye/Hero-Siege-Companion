@@ -49,6 +49,7 @@ interface Session {
   prepared: boolean;
   suspended: boolean;
   ownedFlows: Array<DiagnosticCaptureScope & { localPort: number }>;
+  pendingSyn: ParsedPayload[] | null;
 }
 const STREAM_FAILURES = new Set<string>(["stream-gap", "invalid-frame", "ambiguous-flow", "byte-limit", ...SZ_DIAGNOSTIC_NATIVE_FAILURES]);
 
@@ -74,7 +75,7 @@ export class SatanicZoneInitializedProbeController {
     const session: Session = { budget: this.dependencies.bufferBudget ?? new SatanicZoneDiagnosticBufferBudget(), abort: new AbortController(),
       scope: null, captureScope: null, stream: null, handle: null, poll: null, polling: false, pid: null, identity: null, connectBody: null, postLoginBody: null,
       readyControl: false, loginSuccess: false, starting: false, nativePort: null, prepared: false, suspended: false,
-      attemptAbort: null, opening: Promise.resolve(false), ownedFlows: [],
+      attemptAbort: null, opening: Promise.resolve(false), ownedFlows: [], pendingSyn: null,
       deadline: this.dependencies.autoWatch ? null : setTimeout(() => this.finish(session, "timed-out", this.state.phase === "ready" ? "deadline" : "missing-initialization"), SZ_DIAGNOSTIC_TIMEOUT_MS) };
     session.deadline?.unref?.(); this.session = session;
     this.state.phase = "arming"; this.state.probeStage = "collecting";
@@ -172,12 +173,16 @@ export class SatanicZoneInitializedProbeController {
     const freshSyn = outbound && (packet.flags & 2) !== 0 && (packet.flags & 16) === 0;
     if (freshSyn && session.ownedFlows.some(flow => flow.localAddress === packet.src && flow.localPort === packet.srcPort
       && flow.remoteAddress === packet.dst && flow.remotePort === packet.dstPort)) return;
+    if (session.pendingSyn && samePacketFlow(session.pendingSyn[0], packet)) {
+      this.queueSynPacket(session, packet); return;
+    }
     if (session.prepared) {
       const terminated = session.scope && satanicZoneSessionTerminated(
         { ...session.scope, pid: session.pid!, localPort: session.nativePort! }, packet);
       // Our explicit owned connection is a separate tuple. It must not replace
       // game readiness; game scope changes are still checked before/after sending.
       if (!this.dependencies.autoWatch || (!terminated && (!freshSyn || session.starting))) return;
+      if (freshSyn) { this.verifyReconnectSyn(session, packet); return; }
       this.resetInitialization(session);
       if (!freshSyn) return;
     }
@@ -206,6 +211,36 @@ export class SatanicZoneInitializedProbeController {
       if (this.state.freshSyn && this.state.phase === "waiting-initialization") this.state.phase = "collecting";
       this.checkReady(session); this.publish();
     } catch (error) { this.collectionFailure(session, error, "invalid-frame"); }
+  }
+  /** Preserve Ready until a new SYN is attributed to the game, including pre-connect owned failures. */
+  private verifyReconnectSyn(session: Session, packet: ParsedPayload): void {
+    if (session.pendingSyn) return;
+    session.pendingSyn = [];
+    if (!this.queueSynPacket(session, packet)) return;
+    const queued = session.pendingSyn;
+    void this.dependencies.networkState().then(network => {
+      if (!this.current(session) || session.pendingSyn !== queued || !session.prepared) return;
+      const owned = network.connections.filter(flow => network.gameProcessIds.includes(flow.owningProcess)
+        && flow.localAddress === packet.src && flow.localPort === packet.srcPort
+        && flow.remoteAddress === packet.dst && flow.remotePort === packet.dstPort);
+      if (owned.length !== 1) return;
+      session.pendingSyn = null;
+      this.resetInitialization(session);
+      for (const captured of queued) this.packet(session, captured, false);
+    }).catch(() => undefined).finally(() => {
+      if (session.pendingSyn === queued) session.pendingSyn = null;
+      for (const captured of queued) session.budget.release(captured.payload);
+    });
+  }
+  private queueSynPacket(session: Session, packet: ParsedPayload): boolean {
+    const queue = session.pendingSyn;
+    if (!queue) return false;
+    try {
+      if (queue.length >= 128) throw new Error();
+      queue.push({ ...packet, payload: session.budget.copy(packet.payload), text: "" }); return true;
+    } catch {
+      session.pendingSyn = null; for (const captured of queue) session.budget.release(captured.payload); return false;
+    }
   }
   private frame(session: Session, frame: DiagnosticFrame): void {
     if (!this.current(session)) return;
@@ -385,6 +420,8 @@ export class SatanicZoneInitializedProbeController {
     session.scope = null; session.pid = null; session.nativePort = null;
     session.prepared = false; session.starting = false; session.readyControl = false; session.loginSuccess = false;
     session.ownedFlows = [];
+    if (session.pendingSyn) for (const packet of session.pendingSyn) session.budget.release(packet.payload);
+    session.pendingSyn = null;
     this.state = createInitialSatanicZoneDiagnosticState();
     this.state.phase = "waiting-initialization"; this.state.directOutcome = "cancelled";
     this.state.startedAt = this.now(); this.publish();
@@ -408,6 +445,8 @@ export class SatanicZoneInitializedProbeController {
     if (session.identity) { session.identity.uniqueAccountId = ""; session.identity.beta = ""; }
     session.identity = null; session.scope = null; session.captureScope = null; session.pid = null;
     session.ownedFlows = [];
+    if (session.pendingSyn) for (const packet of session.pendingSyn) session.budget.release(packet.payload);
+    session.pendingSyn = null;
     this.state.peakOwnedBufferBytes = session.budget.peakBytes;
     if (this.state.directOutcome === "pending") this.state.directOutcome = phase === "cancelled" ? "cancelled" : phase === "timed-out" ? "timeout" : "failed";
     this.state.phase = phase; this.state.reason = reason;
@@ -418,6 +457,11 @@ export class SatanicZoneInitializedProbeController {
     if (this.session) this.state.peakOwnedBufferBytes = this.session.budget.peakBytes;
     this.dependencies.onChange(this.snapshot());
   }
+}
+
+function samePacketFlow(first: ParsedPayload, packet: ParsedPayload): boolean {
+  return (first.src === packet.src && first.srcPort === packet.srcPort && first.dst === packet.dst && first.dstPort === packet.dstPort)
+    || (first.src === packet.dst && first.srcPort === packet.dstPort && first.dst === packet.src && first.dstPort === packet.srcPort);
 }
 
 export function createSatanicZoneInitializedProbeRuntime(options: Pick<InitializedProbeDependencies, "canArm" | "onChange"> & { syntheticOnly?: boolean }): SatanicZoneInitializedProbeController {
