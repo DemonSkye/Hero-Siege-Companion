@@ -88,9 +88,11 @@ passive Npcap capture and focused, explicit product actions.
 - Packaging, previews/dev servers, screenshot/visual loops, live capture,
   authentication, installed-game access and research execution require explicit
   task authorization — automated verification does not authorize live operations.
-- Release/push/publish require explicit authorization, confirmed destination/account
-  and recorded Windows/Npcap/game UAT; use the private release checklist when
-  available — automated builds alone cannot prove native release readiness.
+- Ordinary source pushes require explicit authorization and confirmed
+  destination/account — repository writes must match the owner's intended target.
+- Release pushes/publication require explicit authorization, confirmed
+  destination/account and recorded Windows/Npcap/game UAT; use the private release
+  checklist when available — automated builds alone cannot prove native release readiness.
 - Do not bypass denied actions, silently broaden consequential scope, discard
   original evidence or permanently delete ambiguous artifacts — report the exact
   action, target and blocker and continue independent work.
