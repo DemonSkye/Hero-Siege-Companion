@@ -105,8 +105,13 @@ export class SatanicZoneLoginCache {
       if (epoch !== this.epoch || bodies !== this.bodies || this.disposed) return;
       if (!build) { this.status = "build_unavailable"; return; }
       if (build !== bodies.build) { this.clear(); if (this.status !== "clear_failed") this.status = "build_mismatch"; return; }
-      this.validated = { localAddress: flows[0].localAddress, localPort: flows[0].localPort,
-        remoteAddress: flows[0].remoteAddress, remotePort: flows[0].remotePort, pid: flows[0].owningProcess };
+      const flow = flows[0], current = this.validated;
+      // Identical evidence must not invalidate an in-flight pre/postflight token.
+      if (!current || current.pid !== flow.owningProcess || current.localAddress !== flow.localAddress
+        || current.localPort !== flow.localPort || current.remoteAddress !== flow.remoteAddress || current.remotePort !== flow.remotePort) {
+        this.validated = { localAddress: flow.localAddress, localPort: flow.localPort,
+          remoteAddress: flow.remoteAddress, remotePort: flow.remotePort, pid: flow.owningProcess };
+      }
       this.status = "validated";
     } catch { if (epoch === this.epoch) this.status = "build_unavailable"; }
     finally { this.checking = false; this.publish(); }

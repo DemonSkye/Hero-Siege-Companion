@@ -77,16 +77,73 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
 const cacheDirectories: string[] = [];
 function cacheFixture(file: string) {
   let f: ReturnType<typeof fixture> | undefined;
+  const cacheBuildIdentity = vi.fn(async () => "e".repeat(64));
   const cache = new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file, new ElectronSatanicZoneTestRuntime().cacheEncryption),
-    networkState: async () => f!.network, buildIdentity: async () => "e".repeat(64), onChange: () => f?.provider.cacheChanged() });
-  f = fixture(cache); return { ...f, cache };
+    networkState: async () => f!.network, buildIdentity: cacheBuildIdentity, onChange: () => f?.provider.cacheChanged() });
+  f = fixture(cache); return { ...f, cache, cacheBuildIdentity };
 }
 function cacheFile() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-provider-cache-")); cacheDirectories.push(directory);
   return path.join(directory, "login.encrypted");
 }
+async function restoredCacheFixture() {
+  const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true);
+  await original.collect(); await flush(); original.provider.dispose();
+  const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively();
+  f.network.connections[0].localPort = 5000;
+  const payload = { ...scope, localPort: 5000, direction: "outbound" as const,
+    text: "unique_account_id=12345678901234567890&beta=0&account_id=CANARY_ACCOUNT" };
+  f.provider.observeSessionPayload(payload); await flush();
+  expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
+  return { ...f, file, payload };
+}
 afterEach(() => { vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
+  test("identical ordinary evidence during deferred cached preflight still permits the explicit send", async () => {
+    const f = await restoredCacheFixture(); let release!: (build: string) => void;
+    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const pending = f.provider.requestRefresh(); await flush();
+    expect(release).toBeTypeOf("function"); expect(f.sockets).toHaveLength(0);
+    const validation = f.cache.restoreInput()!.scope;
+    f.provider.observeSessionPayload({ ...f.payload }); await flush();
+    release("e".repeat(64)); await flush();
+    expect(f.sockets).toHaveLength(1);
+    f.sockets[0].receive(opcodeOnlyReadyBody); f.sockets[0].receive(inventedLoginSuccess()); await flush();
+    const request = await pending;
+    expect(request.accepted).toBe(true); expect(f.sockets).toHaveLength(1);
+    expect(f.cache.restoreInput()!.scope).toBe(validation);
+    f.provider.dispose();
+  });
+  test("identical ordinary evidence during deferred cached postflight preserves a successful response", async () => {
+    const f = await restoredCacheFixture(), request = await f.dispatch();
+    const waiting = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
+    let release!: (build: string) => void;
+    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    f.sockets[0].receive(inventedZoneBody); await flush(); expect(release).toBeTypeOf("function");
+    const validation = f.cache.restoreInput()!.scope;
+    f.provider.observeSessionPayload({ ...f.payload }); await flush();
+    release("e".repeat(64)); await flush();
+    expect((await waiting)?.kind).toBe("observation"); expect(f.sockets).toHaveLength(1);
+    expect(f.cache.restoreInput()!.scope).toBe(validation);
+    expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" }); f.provider.dispose();
+  });
+  test.each(["preflight", "postflight"] as const)("wrong identity or an observation gap still rejects deferred cached %s", async stage => {
+    for (const invalidation of ["identity", "gap"] as const) {
+      const f = await restoredCacheFixture(); let release!: (build: string) => void;
+      const request = stage === "postflight" ? await f.dispatch() : null;
+      f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      const pending = request ? f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 }) : f.provider.requestRefresh();
+      if (request) f.sockets[0].receive(inventedZoneBody);
+      await flush(); expect(release).toBeTypeOf("function");
+      if (invalidation === "identity") f.provider.observeSessionPayload({ ...f.payload, text: "unique_account_id=888888&beta=0" });
+      else { f.provider.suspend(); await f.provider.preparePassively(); f.provider.observeSessionPayload({ ...f.payload }); }
+      await flush(); release("e".repeat(64)); await flush();
+      const result = await pending;
+      if (request) expect(result).not.toMatchObject({ kind: "observation" });
+      else expect(result).toMatchObject({ accepted: false });
+      expect(f.sockets).toHaveLength(request ? 1 : 0); f.provider.dispose();
+    }
+  });
   test("collect once, close/reopen, validate cached identity/build and explicit Refresh alone sends", async () => {
     const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true);
     await original.collect(); await flush(); expect(original.cache.snapshot().status).toBe("saved");
