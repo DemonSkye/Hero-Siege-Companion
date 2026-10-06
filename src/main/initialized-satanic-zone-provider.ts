@@ -119,12 +119,11 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   observeCaptureUpdate(update: CaptureUpdate, previousRunning: boolean): void {
     if (update.status === "error" || (previousRunning && update.running === false)
       || (update.observationGap && update.observationGapSource !== "gameplay-reconfigure")) this.suspend();
-    // Reopening gameplay capture does not close the independently owned API listener.
-    // Cached identity evidence comes from gameplay capture, so its validation does lapse.
+    // Partial collection has its own complete API observer. After Ready, ordinary
+    // UID/beta changes rely on gameplay capture; an open private handle alone is insufficient.
     else if (update.observationGap) {
-      this.options.loginCache?.suspend();
-      // A coherent native pair still covered by this listener can finish saving.
-      if (!this.context.cachedContext) this.context.rememberCurrent();
+      if (["ready", "requesting"].includes(this.context.snapshot().phase)) this.suspend();
+      else this.options.loginCache?.suspend();
     }
   }
   suspend(): void { this.options.loginCache?.suspend(); this.watching = false; this.clearRetry(); this.retainedContext?.suspend(); this.context.suspend(); }

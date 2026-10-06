@@ -65,6 +65,30 @@ test("gameplay capture reconfiguration during sign-in reaches native Ready and s
   });
 });
 
+test("gameplay identity gap suspends a pending native Refresh and private identity alone cannot resume it", async () => {
+  await withCompanionApp(async ({ electronApp, page }) => {
+    const invented = initialization();
+    await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+    await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(true));
+    await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+    await page.locator("#satanic-zone-card").getByRole("button", { name: "Refresh Satanic Zone", exact: true }).click();
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("refreshing");
+    await electronApp.evaluate((_electron, packet) => {
+      const hooks = globalThis.heroSiegeCompanionE2e;
+      hooks.emitCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" });
+      hooks.emitSatanicZoneTestPackets([packet]);
+      hooks.completeSatanicZoneTestResponse([...Buffer.from('{"satanicZoneName":"Act_04_03","buffs":"","debuffs":""}')]);
+    }, invented.packets[4]);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).not.toBe("refreshing");
+    const state = (await getRendererState(page)).satanicZone;
+    expect(state.refreshPreparation.phase).not.toBe("ready"); expect(state.lastSuccessAt).toBeNull();
+    expect(state.current).toBeNull();
+    await page.evaluate(() => window.heroSiegeCompanion.refreshSatanicZone());
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(1);
+  });
+});
+
 test("normal Refresh gets ready automatically, keeps passive updates separate, returns owned zone and clears readiness on disable", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
     await page.evaluate(() => window.heroSiegeCompanion.setCaptureDiagnosticsMode("deep", "manual"));

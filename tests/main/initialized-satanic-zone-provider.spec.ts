@@ -127,22 +127,53 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     expect(fs.existsSync(file)).toBe(true); expect(f.close).not.toHaveBeenCalled(); expect(f.sockets).toHaveLength(0);
     expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1); f.provider.dispose();
   });
-  test("gameplay filter changes retain continuously observed native Ready without closing its API listener", async () => {
+  test.each([
+    ["changed UID", "77777777777777777777", "0"], ["changed beta", "12345678901234567890", "1"],
+    ["unchanged identity", "12345678901234567890", "0"],
+  ])("Ready then gameplay gap with %s via private listener only cannot send on the same PID/tuple", async (_label, uid, beta) => {
     const f = fixture(); await f.collect();
+    const topology = JSON.stringify(f.network);
     f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
-    f.provider.observeCaptureUpdate({ status: "waiting" }, true);
-    f.provider.observeCaptureUpdate({ status: "running", running: true }, true);
-    expect(f.provider.preparation.phase).toBe("ready"); expect(f.close).not.toHaveBeenCalled();
-    expect(f.sockets).toHaveLength(0); expect((await f.dispatch()).accepted).toBe(true); f.provider.dispose();
+    await f.provider.preparePassively(); await flush();
+    // Ordinary identity frame, no SYN/coherent initialization; never offered to gameplay observer.
+    f.receive(f.packet(true, 1000, frameDiagnosticBody(inventedPostLogin(uid, beta), 9)));
+    expect(JSON.stringify(f.network)).toBe(topology);
+    const request = f.provider.requestRefresh(); await flush();
+    expect(f.sockets).toHaveLength(0); expect((await request).accepted).toBe(false);
+    expect(f.provider.preparation.phase).not.toBe("ready");
+    if (_label === "unchanged identity") {
+      await f.collect(inventedConnect(), inventedPostLogin(), false);
+      expect(f.provider.preparation.phase).toBe("ready"); expect(f.sockets).toHaveLength(0);
+      expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1);
+    }
+    f.provider.dispose();
   });
-  test("gameplay reconfiguration during an async native save can resave the continuously observed pair, never a cached pair", async () => {
+  test.each([
+    ["changed UID", "77777777777777777777", "0"], ["changed beta", "12345678901234567890", "1"],
+    ["unchanged identity", "12345678901234567890", "0"],
+  ])("gameplay gap with %s via private listener rejects the pending response and sends no retry", async (_label, uid, beta) => {
+    const f = fixture(); await f.collect(); const request = await f.dispatch();
+    const waiting = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
+    const topology = JSON.stringify(f.network), writes = f.sockets[0].writes.length;
+    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    await f.provider.preparePassively(); await flush();
+    f.receive(f.packet(true, 1000, frameDiagnosticBody(inventedPostLogin(uid, beta), 9)));
+    f.sockets[0].receive(inventedZoneBody); await flush();
+    expect((await waiting)?.kind).not.toBe("observation");
+    expect(JSON.stringify(f.network)).toBe(topology);
+    expect(f.sockets[0].destroy).toHaveBeenCalled(); expect(f.sockets[0].writes).toHaveLength(writes);
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(1);
+    f.provider.dispose();
+  });
+  test("gameplay reconfiguration cancels an async save of a prepared pair without resaving old identity", async () => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true); let release!: (build: string) => void;
     f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     await f.collect(); expect(f.provider.preparation.phase).toBe("ready"); expect(fs.existsSync(file)).toBe(false);
     f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true); await flush();
-    expect(f.cache.snapshot().status).toBe("saved"); expect(fs.existsSync(file)).toBe(true);
-    release("e".repeat(64)); await flush(); expect(f.cache.snapshot().status).toBe("saved");
-    expect(f.close).not.toHaveBeenCalled(); expect(f.sockets).toHaveLength(0); f.provider.dispose();
+    expect(f.provider.preparation.phase).toBe("suspended"); expect(fs.existsSync(file)).toBe(false);
+    release("e".repeat(64)); await flush(); expect(fs.existsSync(file)).toBe(false);
+    expect(f.cacheBuildIdentity).toHaveBeenCalledTimes(1);
+    expect(f.close).toHaveBeenCalledTimes(1); expect(f.sockets).toHaveLength(0); f.provider.dispose();
     expect(f.budgets[0].usedBytes).toBe(0);
   });
   test.each([{ observationGap: true as const }, { status: "error" as const }, { running: false }])(
@@ -155,7 +186,7 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     const f = await restoredCacheFixture();
     f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
     expect(f.cache.restoreInput()).toBeNull(); expect(f.provider.preparation.phase).not.toBe("ready");
-    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.close).not.toHaveBeenCalled();
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.close).toHaveBeenCalledTimes(1);
     await f.provider.preparePassively(); expect(f.provider.preparation.phase).not.toBe("ready");
     f.provider.observeSessionPayload(f.payload); await flush();
     expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
