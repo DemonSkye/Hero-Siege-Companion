@@ -13,7 +13,10 @@ export function satanicZoneSessionTerminated(scope: SatanicZoneSessionScope, pac
     || (outbound && (packet.flags & 2) !== 0 && (packet.flags & 16) === 0));
 }
 
-/** Missing topology is inconclusive. An explicit replacement or closed flow is not. */
+/** Tuple presence is a snapshot, not incarnation/identity proof after an observation gap.
+ * The context owner must separately enforce continuous observation or fresh initialization.
+ * Missing topology is inconclusive. An explicit replacement or closed flow is not.
+ */
 export function satanicZoneSessionScopeStatus(scope: SatanicZoneSessionScope,
   connections: readonly CaptureConnection[]): "current" | "changed" | "unknown" {
   const matching = connections.filter(connection => connection.localAddress === scope.localAddress

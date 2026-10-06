@@ -13,6 +13,7 @@ describe("SatanicZonePanel", () => {
     ["waiting_connection", "Cancel Satanic Zone refresh preparation", "You can keep playing"],
     ["collecting", "Cancel Satanic Zone refresh preparation", "No refresh request has been sent"],
     ["ready", "Refresh Satanic Zone", "Ready for manual refresh for this game session"],
+    ["suspended", "Prepare Satanic Zone refresh", "capture continuity was interrupted"],
     ["expired", "Prepare Satanic Zone refresh", "listening window ended"],
     ["unavailable", "Prepare Satanic Zone refresh", "listen for the next game API initialization"],
   ] as const)("%s preparation explains the next action", async (phase, label, detail) => {

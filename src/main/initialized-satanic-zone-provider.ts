@@ -6,6 +6,7 @@ import { runInitializedSatanicZoneProbe } from "./satanic-zone-initialized-trans
 import type { CapturedSessionPayload } from "./captured-session-context";
 import type { CaptureConnection } from "../shared/app-state";
 import type { CapturedTcpLifecycle } from "./packet-decoder";
+import { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
 import type { SatanicZoneRefreshAvailability, SatanicZoneRefreshDispatchResult, SatanicZoneRefreshProvider,
   SatanicZoneRefreshRequestOptions, SatanicZoneProviderWaitOutcome, SatanicZoneObservationWaitOptions,
   SatanicZoneProviderObservation } from "./satanic-zone-refresh-provider";
@@ -31,7 +32,9 @@ export interface InitializedSatanicZoneProviderOptions {
 /** Explicit preparation and clicks; no automatic login replay or SZ request. */
 export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefreshProvider {
   readonly experimental = true;
-  private readonly context: SatanicZoneInitializedProbeController;
+  private context: SatanicZoneInitializedProbeController;
+  private retainedContext: SatanicZoneInitializedProbeController | null = null;
+  private budget = new SatanicZoneDiagnosticBufferBudget();
   private pending: Pending | null = null;
   private nextId = 1;
   private nextAllowedAt = 0;
@@ -39,29 +42,43 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   private readonly now: () => number;
   constructor(private readonly options: InitializedSatanicZoneProviderOptions) {
     this.now = options.dependencies?.now ?? Date.now;
-    this.context = new SatanicZoneInitializedProbeController({
-      ...createDiagnosticCaptureDependencies(options.syntheticOnly, "fresh-api"),
-      attempt: (input, signal, budget, progress) => options.syntheticOnly ? Promise.resolve("failed")
-        : runInitializedSatanicZoneProbe(input, signal, budget, progress),
-      ...options.dependencies, retainContext: true,
-      canArm: () => !this.disposed && !this.pending && options.canPrepare(),
-      onChange: state => this.changed(state), onObservation: observation => this.observed(observation),
-    });
+    this.context = this.createContext();
   }
-  get preparation(): SatanicZonePreparation { return projectPreparation(this.context.snapshot()); }
-  get suppressRawLogging(): boolean { return this.context.active; }
-  prepare(): void { if (!this.disposed) this.context.arm(); }
+  private createContext(): SatanicZoneInitializedProbeController {
+    let context!: SatanicZoneInitializedProbeController;
+    context = new SatanicZoneInitializedProbeController({
+      ...createDiagnosticCaptureDependencies(this.options.syntheticOnly, "fresh-api"),
+      attempt: (input, signal, budget, progress) => this.options.syntheticOnly ? Promise.resolve("failed")
+        : runInitializedSatanicZoneProbe(input, signal, budget, progress),
+      ...this.options.dependencies, retainContext: true, bufferBudget: this.budget,
+      canArm: () => !this.disposed && !this.pending && this.options.canPrepare(),
+      onChange: state => this.changed(context, state),
+      onObservation: observation => { if (this.context === context && !context.continuitySuspended) this.observed(observation); },
+    });
+    return context;
+  }
+  get preparation(): SatanicZonePreparation { return projectPreparation(this.context.snapshot(), this.context.continuitySuspended); }
+  get suppressRawLogging(): boolean { return this.context.active || Boolean(this.retainedContext?.active); }
+  prepare(): void {
+    if (this.disposed) return;
+    if (this.pending?.completed) { this.pending.cleanup(); this.pending = null; }
+    if (this.context.continuitySuspended && !this.retainedContext) {
+      this.retainedContext = this.context; this.context = this.createContext();
+    }
+    this.context.arm();
+  }
   /** Enable/capture-start may open one bounded listener; never replay credentials. */
   preparePassively(): void {
-    if (["idle", "expired", "unavailable"].includes(this.preparation.phase)) this.prepare();
+    if (["idle", "expired", "unavailable", "suspended"].includes(this.preparation.phase)) this.prepare();
   }
-  cancelPreparation(): void { this.stop(); }
+  cancelPreparation(): void { this.context.cancelAttempt(); }
   cancelAttempt(): void { this.context.cancelAttempt(); }
-  invalidate(): void { this.context.invalidate(); }
-  observeProcessIds(ids: readonly number[]): void { this.context.observeProcessIds(ids); }
-  observeSessionPayload(payload: CapturedSessionPayload): void { this.context.observeSessionPayload(payload); }
-  observeConnections(connections: readonly CaptureConnection[]): void { this.context.observeConnections(connections); }
-  observeTcpLifecycle(packet: CapturedTcpLifecycle): void { this.context.observeTcpLifecycle(packet); }
+  suspend(): void { this.retainedContext?.suspend(); this.context.suspend(); }
+  invalidate(): void { this.retainedContext?.invalidate(); this.context.invalidate(); }
+  observeProcessIds(ids: readonly number[]): void { this.retainedContext?.observeProcessIds(ids); this.context.observeProcessIds(ids); }
+  observeSessionPayload(payload: CapturedSessionPayload): void { this.retainedContext?.observeSessionPayload(payload); this.context.observeSessionPayload(payload); }
+  observeConnections(connections: readonly CaptureConnection[]): void { this.retainedContext?.observeConnections(connections); this.context.observeConnections(connections); }
+  observeTcpLifecycle(packet: CapturedTcpLifecycle): void { this.retainedContext?.observeTcpLifecycle(packet); this.context.observeTcpLifecycle(packet); }
   async getAvailability(): Promise<SatanicZoneRefreshAvailability> {
     const available = !this.disposed && this.preparation.phase === "ready";
     return { available, experimental: true, errorCode: available ? null : "helper_not_ready" };
@@ -98,15 +115,30 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       if (this.pending === pending) this.pending = null;
     }
   }
-  stop(): void { this.context.cancel(); this.pending?.cleanup(); this.pending = null; }
-  dispose(): void { this.disposed = true; this.context.dispose(); this.pending?.cleanup(); this.pending = null; }
+  stop(): void {
+    const retained = this.retainedContext; this.retainedContext = null; retained?.dispose();
+    this.context.cancel(); this.pending?.cleanup(); this.pending = null;
+    this.budget.dispose(); this.budget = new SatanicZoneDiagnosticBufferBudget(); this.context = this.createContext();
+    this.options.onPreparation(this.preparation);
+  }
+  dispose(): void { this.disposed = true; this.stop(); this.context.dispose(); this.budget.dispose(); }
   private observed(observation: SatanicZoneProviderObservation): void {
     const pending = this.pending;
     if (!pending?.accepted || pending.completed) return;
     pending.completed = true;
     pending.settle({ kind: "observation", observation, availabilityConsumed: false, refreshAvailable: true });
   }
-  private changed(state: SatanicZoneDiagnosticState): void {
+  private changed(context: SatanicZoneInitializedProbeController, state: SatanicZoneDiagnosticState): void {
+    if (context !== this.context) {
+      if (context === this.retainedContext && !context.active) this.retainedContext = null;
+      return;
+    }
+    if (this.retainedContext && state.phase === "ready" && !context.continuitySuspended) {
+      const retained = this.retainedContext; this.retainedContext = null; retained.dispose();
+    } else if (this.retainedContext && !context.active) {
+      this.context = this.retainedContext; this.retainedContext = null; context.dispose();
+      context = this.context; state = context.snapshot();
+    }
     const pending = this.pending;
     if (pending && !pending.accepted && state.requestDispatched && state.phase === "requesting") {
       pending.accepted = true; pending.cleanup(); this.nextAllowedAt = this.now() + 30_000;
@@ -117,14 +149,14 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       pending.completed = true; pending.cleanup();
       const errorCode = state.phase === "timed-out" || state.directOutcome === "timeout" ? "response_timeout" : "helper_failed";
       pending.dispatch(rejected(errorCode));
-      pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: retainedFailure });
+      pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: retainedFailure && !context.continuitySuspended });
     }
-    this.options.onPreparation(projectPreparation(state));
+    this.options.onPreparation(projectPreparation(state, context.continuitySuspended));
   }
 }
 
-function projectPreparation(state: SatanicZoneDiagnosticState): SatanicZonePreparation {
-  const phase: SatanicZonePreparation["phase"] = state.phase === "arming" ? "opening"
+function projectPreparation(state: SatanicZoneDiagnosticState, suspended: boolean): SatanicZonePreparation {
+  const phase: SatanicZonePreparation["phase"] = suspended ? "suspended" : state.phase === "arming" ? "opening"
     : state.phase === "waiting-initialization" ? "waiting_connection" : state.phase === "collecting" ? "collecting"
     : state.phase === "ready" ? "ready" : state.phase === "requesting" ? "requesting"
     : state.phase === "idle" || state.phase === "cancelled" ? "idle" : state.phase === "timed-out" ? "expired" : "unavailable";

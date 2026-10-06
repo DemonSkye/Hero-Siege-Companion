@@ -7,6 +7,7 @@ export function satanicZonePreparationDetail(state: SatanicZonePreparation | und
     case "waiting_connection": return "Listening for a fresh game API connection and complete login. You can keep playing. Already completed login cannot be recovered; this listening window ends after two minutes. Click again to cancel.";
     case "collecting": return "Observing the game connection and login. No refresh request has been sent. Click again to cancel preparation.";
     case "ready": return "Ready for manual refresh for this game session. Click Refresh to request the zone. Login context stays only in memory until the game session changes or the feature closes.";
+    case "suspended": return "Login context is retained in memory, but refresh is suspended because capture continuity was interrupted. Matching process IDs or connections cannot verify it. Prepare refresh listens for complete fresh game API initialization; no restart is requested.";
     case "requesting": return "Requesting the zone on a separate Companion connection. Game updates do not complete this request.";
     case "expired": return "The listening window ended without a complete login. Click Prepare refresh to listen again. Ready context has no two-minute expiry.";
     case "unavailable": return "Refresh context is unavailable. Keep capture running and click Prepare refresh to listen for the next game API initialization.";

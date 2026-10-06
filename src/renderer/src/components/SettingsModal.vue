@@ -377,6 +377,7 @@ function saveStatusLabel(): string {
           <li>The listener is bounded to two minutes. Already completed login cannot be recovered; Prepare refresh starts another listening window. A menu or character change is not known to provide full initialization.</li>
           <li>Once ready, click Refresh for a fresh result. Preparation alone sends no request.</li>
           <li>Login context stays only in memory for the current game session. Ready has no time expiry. Game process, connection or account changes, disable and shutdown clear it; raw traffic logs pause while it is held.</li>
+          <li>Capture stop, recovery or evidence loss suspends refresh while preserving RAM context. A matching process ID and connection cannot restore it; complete fresh game initialization is needed.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
       </SettingsActionDialog>
@@ -392,6 +393,7 @@ function saveStatusLabel(): string {
         <ul>
           <li>Capture listens for the next fresh game API connection and complete login. Already completed login cannot be recovered; Prepare refresh starts another bounded listening window.</li>
           <li>When ready, click Refresh. Login context stays only in memory for the current game session. Ready has no time expiry; raw traffic logs pause while it is held.</li>
+          <li>Capture interruptions suspend refresh. RAM context is retained, but a matching process ID and connection cannot authorize replay after a blind interval.</li>
           <li>Requests remain limited to once every 30 seconds.</li>
           <li>Backup restoration never enables this feature.</li>
         </ul>

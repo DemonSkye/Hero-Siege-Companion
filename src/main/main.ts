@@ -234,10 +234,11 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.running !== undefined) state.captureRunning = update.running;
   if (update.status) state.captureStatus = update.status;
   if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
-  if (update.running === false) satanicZoneRefreshProvider?.cancelAttempt();
+  if (update.observationGap || update.running === false || (update.status && update.status !== "running")) satanicZoneRefreshProvider?.suspend();
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) { state.connections = update.connections; satanicZoneRefreshProvider?.observeConnections(update.connections); }
-  if (!previousCaptureRunning && state.captureRunning && state.satanicZone.refreshEnabled) satanicZoneRefreshProvider?.preparePassively();
+  if (state.captureRunning && state.satanicZone.refreshEnabled && (!previousCaptureRunning
+    || (update.running === true && satanicZoneRefreshProvider?.preparation.phase === "suspended"))) satanicZoneRefreshProvider?.preparePassively();
   if (update.health) state.health = { ...state.health, ...update.health };
   if (update.running !== undefined || update.status || update.connections || update.health) {
     updateCrashReportCaptureContext();
@@ -414,7 +415,7 @@ ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
 ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
 ipcMain.handle(IPC_CHANNELS.captureStop, () => {
   satanicZoneDiagnostic?.cancel();
-  satanicZoneRefreshProvider?.cancelAttempt();
+  satanicZoneRefreshProvider?.suspend();
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   applyPendingCaptureEvents();
   pauseRun("captureStopped");
@@ -459,7 +460,7 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
     addLog("warning", "Start capture before requesting a Satanic Zone refresh.");
     return state;
   }
-  if (preparation && ["idle", "expired", "unavailable"].includes(preparation)) {
+  if (preparation && ["idle", "expired", "unavailable", "suspended"].includes(preparation)) {
     satanicZoneRefreshProvider?.prepare(); publishStateNow(); return state;
   }
   const result = await satanicZoneController?.refreshNow();

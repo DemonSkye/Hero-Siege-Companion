@@ -60,6 +60,10 @@ export function satanicZoneRefreshControl(
     };
   }
 
+  const preparation = state.refreshPreparation;
+  if (preparation?.phase === "suspended") return {
+    visible: true, disabled: false, title: "Prepare refresh", ariaLabel: "Prepare Satanic Zone refresh",
+  };
   const nextAllowedRefreshAt = state.nextAllowedRefreshAt;
   if (
     nextAllowedRefreshAt !== null
@@ -75,7 +79,6 @@ export function satanicZoneRefreshControl(
     };
   }
 
-  const preparation = state.refreshPreparation;
   if (preparation) {
     if (preparation.phase === "requesting") return {
       visible: true, disabled: true, title: "Requesting Satanic Zone.", ariaLabel: "Refresh Satanic Zone: requesting",

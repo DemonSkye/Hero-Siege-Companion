@@ -44,7 +44,7 @@ defineEmits<{
     </div>
 
     <div class="settings-notice" role="note">
-      <p><strong>Npcap required.</strong> Enabling capture listens for the next fresh API connection and complete game login. Already completed login cannot be recovered. Click Prepare refresh to listen again if needed; once ready, click Refresh. Login context stays only in memory for the current game session, with no Ready time expiry. No proxy or certificate installation is required.</p>
+      <p><strong>Npcap required.</strong> Enabling capture listens for the next fresh API connection and complete game login. Already completed login cannot be recovered. Click Prepare refresh to listen again if needed; once ready, click Refresh. Login context stays only in memory with no Ready time expiry. Capture interruptions suspend refresh until complete fresh initialization is observed. No proxy or certificate installation is required.</p>
       <button class="icon-button ghost" type="button" @click="$emit('learnMore')">Learn More</button>
     </div>
   </section>

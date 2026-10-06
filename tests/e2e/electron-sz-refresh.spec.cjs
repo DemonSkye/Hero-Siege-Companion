@@ -56,9 +56,15 @@ test("normal Refresh prepares privately, keeps passive updates separate, returns
       refreshPreparation: { phase: "ready", expiresAt: ready.expiresAt } });
     await expect(card.locator(".zone-status")).toContainText("Received through manual refresh.");
     await page.evaluate(() => window.heroSiegeCompanion.stopCapture());
-    expect((await getRendererState(page)).satanicZone.refreshPreparation).toEqual({ phase: "ready", expiresAt: null });
+    expect((await getRendererState(page)).satanicZone.refreshPreparation).toEqual({ phase: "suspended", expiresAt: null });
+    expect((await getRendererState(page)).satanicZone.refreshAvailable).toBe(false);
+    await expect(card.locator(".zone-preparation")).toContainText("capture continuity was interrupted");
     await page.evaluate(() => window.heroSiegeCompanion.startCapture());
-    expect((await getRendererState(page)).satanicZone.refreshPreparation).toEqual({ phase: "ready", expiresAt: null });
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("waiting_connection");
+    expect((await getRendererState(page)).satanicZone.refreshAvailable).toBe(false);
+    // The same injected PID and tuple are insufficient. Only complete new native initialization restores Ready.
+    await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
     await page.evaluate(() => window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(false));
     expect((await getRendererState(page)).satanicZone).toMatchObject({ refreshEnabled: false, refreshPreparation: { phase: "idle", expiresAt: null } });
     expect((await getRendererState(page)).capturePreferences.captureWideLogging).toBe(true);

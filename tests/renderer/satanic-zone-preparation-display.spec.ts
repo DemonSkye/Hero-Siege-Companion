@@ -23,4 +23,9 @@ describe("preparation guidance in the compact overlay", () => {
     expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: 0 }, 1_000)).toContain("for this game session");
     expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: null }, 1_000)).not.toMatch(/\d+s|restart|reconnect/i);
   });
+  test("suspended guidance distinguishes retained RAM from permission to replay and requests no restart", () => {
+    const detail = satanicZonePreparationDetail({ phase: "suspended", expiresAt: null }, 1_000);
+    expect(detail).toContain("retained in memory"); expect(detail).toContain("Matching process IDs or connections cannot verify it");
+    expect(detail).toContain("complete fresh game API initialization"); expect(detail).not.toContain("restart is required");
+  });
 });

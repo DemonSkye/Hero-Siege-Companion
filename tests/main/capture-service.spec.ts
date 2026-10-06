@@ -222,6 +222,7 @@ describe("CaptureService lifecycle", () => {
     expect(emittedConnections.every((item) => item.owningProcess === 123)).toBe(true);
     service.stop();
     expect(observeGameProcessIds).toHaveBeenLastCalledWith([], "capture-stopped");
+    expect(updates).toContainEqual({ observationGap: true });
   });
 
   afterEach(() => {
@@ -556,6 +557,15 @@ describe("CaptureService lifecycle", () => {
     for (const logPath of [debugPath, widePath]) {
       expect(fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "").not.toContain("CANARY_TERMINATING_PACKET");
     }
+  });
+  test("truncated admitted API evidence signals a continuity gap without reassembling it", () => {
+    const updates: CaptureUpdate[] = []; const service = new CaptureService(update => updates.push(update));
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const capturedPacket = rawTcpPacket('CANARY_PARTIAL_LOGIN'); capturedPacket.writeUInt16BE(6669, 22);
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
+    internals.refreshCaptureFlows([connection({ remotePort: 6669 })], Date.now()); const push = vi.spyOn(internals.packetBuffers, "push");
+    internals.processPacket(capturedPacket.length, true);
+    expect(push).not.toHaveBeenCalled(); expect(updates).toContainEqual(expect.objectContaining({ observationGap: true }));
   });
   test("discards Npcap-truncated payloads before TCP reassembly", () => {
     const updates: CaptureUpdate[] = [];

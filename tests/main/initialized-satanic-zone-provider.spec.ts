@@ -6,6 +6,7 @@ import { runInitializedSatanicZoneProbe, type InitializedProbeInput } from "../.
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import type { HeroSiegeNetworkState } from "../../src/main/capture-network";
 import type { SatanicZonePreparation } from "../../src/shared/satanic-zone-preparation";
+import type { SatanicZoneDiagnosticBufferBudget } from "../../src/main/satanic-zone-diagnostic-budget";
 import { frameDiagnosticBody } from "../fixtures/satanic-zone-diagnostic-frames";
 import { inventedProbeScope as scope, inventedConnect, inventedPostLogin, genericProbeFrame as generic,
   opcodeOnlyReadyBody, inventedLoginSuccess, inventedZoneBody } from "../fixtures/satanic-zone-initialized";
@@ -25,9 +26,10 @@ function fixture() {
   let receive!: (packet: ParsedPayload, truncated: boolean) => void;
   const snapshots: SatanicZonePreparation[] = [], sockets: Socket[] = [], inputs: InitializedProbeInput[] = [];
   const close = vi.fn(); let canPrepare = true;
+  const budgets: SatanicZoneDiagnosticBufferBudget[] = [];
   const network: HeroSiegeNetworkState = { gameProcessIds: [42], antiCheatProcessIds: [],
     connections: [{ ...scope, localPort: 4999, owningProcess: 42, state: "established" }] };
-  const prepare = vi.fn(async () => scope), open = vi.fn(async (_scope, callback) => { receive = callback; return { close }; });
+  const prepare = vi.fn(async () => scope), open = vi.fn(async (_scope, callback, _failed, budget) => { receive = callback; budgets.push(budget); return { close }; });
   const networkState = vi.fn(async () => network);
   const provider = new InitializedSatanicZoneRefreshProvider({ canPrepare: () => canPrepare,
     onPreparation: state => snapshots.push(state), dependencies: { prepare, open, networkState,
@@ -40,13 +42,13 @@ function fixture() {
       srcPort: outbound ? 5000 : scope.remotePort, dstPort: outbound ? scope.remotePort : 5000,
       seq, ack: outbound ? 201 : 101, flags, payload, payloadLength: payload.length, text: "" };
   }
-  async function collect() {
+  async function collect(connectBody = inventedConnect(), postLoginBody = inventedPostLogin()) {
     provider.prepare(); await flush();
     network.connections[0].localPort = 5000;
     receive(packet(true, 100, undefined, 2), false); receive(packet(false, 200, undefined, 18), false);
-    const connect = frameDiagnosticBody(inventedConnect(), 7), ack = generic(opcodeOnlyReadyBody);
+    const connect = frameDiagnosticBody(connectBody, 7), ack = generic(opcodeOnlyReadyBody);
     receive(packet(true, 101, connect), false); receive(packet(false, 201, ack), false);
-    receive(packet(true, 101 + connect.length, frameDiagnosticBody(inventedPostLogin(), 8)), false);
+    receive(packet(true, 101 + connect.length, frameDiagnosticBody(postLoginBody, 8)), false);
     receive(packet(false, 201 + ack.length, generic(inventedLoginSuccess())), false);
     await vi.advanceTimersByTimeAsync(1_000); await flush();
   }
@@ -55,7 +57,7 @@ function fixture() {
     sockets.at(-1)!.receive(opcodeOnlyReadyBody); sockets.at(-1)!.receive(inventedLoginSuccess());
     return request;
   }
-  return { provider, collect, dispatch, sockets, inputs, snapshots, network, networkState, close, prepare, open,
+  return { provider, collect, dispatch, sockets, inputs, snapshots, network, networkState, close, prepare, open, budgets,
     denyPreparation: () => { canPrepare = false; } };
 }
 afterEach(() => vi.useRealTimers());
@@ -198,17 +200,92 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     const request = await f.dispatch(); const wait = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
     f.sockets[0].receive(inventedZoneBody); expect((await wait)?.kind).toBe("observation"); f.provider.dispose();
   });
-  test.each(["abort", "capture-stop", "socket-error"])("%s cancels one owned attempt without destroying valid context or accepting late results", async failure => {
+  test.each(["abort", "socket-error"])("%s cancels one owned attempt without destroying valid context or accepting late results", async failure => {
     const f = fixture(); await f.collect(); const request = await f.dispatch(); const abort = new AbortController();
     const wait = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000, signal: abort.signal });
     if (failure === "abort") abort.abort();
-    if (failure === "capture-stop") f.provider.cancelAttempt();
     if (failure === "socket-error") f.sockets[0].emit("error", new Error("invented transient"));
     expect(await wait).toMatchObject({ kind: "terminal", refreshAvailable: true });
     f.sockets[0].receive(inventedZoneBody); await flush();
     expect(f.provider.preparation).toEqual({ phase: "ready", expiresAt: null });
     expect(f.inputs[0].connectBody).toEqual(inventedConnect()); expect(f.sockets[0].destroy).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(30_000); expect(f.sockets).toHaveLength(1); f.provider.dispose();
+  });
+  test.each(["missed-account-change", "reused-pid-tuple", "unchanged-verified-native-prefix"])("%s across a blind interval cannot authorize replay from PID/tuple or partial identity evidence", async scenario => {
+    const f = fixture(); await f.collect(); const first = await f.dispatch();
+    const wait = f.provider.waitForObservation(first.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[0].receive(inventedZoneBody); expect((await wait)?.kind).toBe("observation"); await flush();
+    f.provider.suspend();
+    expect(f.provider.preparation).toEqual({ phase: "suspended", expiresAt: null });
+    f.provider.observeProcessIds([42]); f.provider.observeConnections(f.network.connections);
+    f.provider.observeSessionPayload({ direction: "outbound", ...scope, text: "unique_account_id=12345678901234567890&beta=0" });
+    await vi.advanceTimersByTimeAsync(8 * 60 * 60_000);
+    expect(await f.provider.getAvailability()).toMatchObject({ available: false });
+    expect(await f.provider.requestRefresh()).toMatchObject({ accepted: false, errorCode: "helper_not_ready" });
+    expect(f.sockets).toHaveLength(1); expect(f.inputs[0].connectBody).toEqual(inventedConnect());
+    expect(f.provider.suppressRawLogging).toBe(true);
+    f.provider.preparePassively(); await flush();
+    expect(f.provider.preparation.phase).toBe("waiting_connection"); expect(f.inputs[0].connectBody).toEqual(inventedConnect());
+    const uid = scenario === "missed-account-change" ? "77777777777777777777" : "12345678901234567890";
+    const connect = Buffer.from(inventedConnect().toString("utf8").replace("12345678901234567890", uid));
+    await f.collect(connect, inventedPostLogin(uid));
+    expect(f.provider.preparation).toEqual({ phase: "ready", expiresAt: null });
+    expect(f.inputs[0].connectBody.every(byte => byte === 0)).toBe(true);
+    expect(f.budgets[1]).toBe(f.budgets[0]); expect(f.budgets[0].usedBytes).toBe(connect.length + inventedPostLogin(uid).length);
+    expect(f.sockets).toHaveLength(1); // Fresh evidence acquisition never authenticated.
+    const next = await f.dispatch(); expect(f.inputs[1].identity.uniqueAccountId).toBe(uid);
+    const nextWait = f.provider.waitForObservation(next.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[1].receive(inventedZoneBody); expect((await nextWait)?.kind).toBe("observation"); f.provider.dispose();
+  });
+  test.each(["timeout", "cancel", "second-gap"])("%s during passive reacquisition returns suspended RAM context without replay or a renewed Ready lifetime", async action => {
+    const f = fixture(); await f.collect(); const first = await f.dispatch();
+    const wait = f.provider.waitForObservation(first.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[0].receive(inventedZoneBody); await wait; await flush(); f.provider.suspend();
+    f.provider.preparePassively(); await flush(); expect(f.inputs[0].connectBody).toEqual(inventedConnect());
+    if (action === "timeout") await vi.advanceTimersByTimeAsync(120_000);
+    if (action === "cancel") f.provider.cancelPreparation();
+    if (action === "second-gap") f.provider.suspend();
+    expect(f.provider.preparation).toEqual({ phase: "suspended", expiresAt: null });
+    expect(f.inputs[0].connectBody).toEqual(inventedConnect()); expect(f.provider.suppressRawLogging).toBe(true);
+    expect(f.budgets[0].usedBytes).toBe(inventedConnect().length + inventedPostLogin().length);
+    await vi.advanceTimersByTimeAsync(120_000); expect(f.open).toHaveBeenCalledTimes(2); expect(f.sockets).toHaveLength(1);
+    f.provider.stop(); expect(f.inputs[0].connectBody.every(byte => byte === 0)).toBe(true); expect(f.budgets[0].usedBytes).toBe(0);
+  });
+  test.each(["preflight", "initializing", "awaiting-response", "postflight"])("observation interruption during %s cancels ownership and never resumes after old evidence arrives", async stage => {
+    const f = fixture(); await f.collect(); let resolve!: (network: HeroSiegeNetworkState) => void;
+    if (stage === "preflight") f.networkState.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const request = f.provider.requestRefresh(); await flush();
+    let wait: ReturnType<typeof f.provider.waitForObservation> | undefined;
+    if (["awaiting-response", "postflight"].includes(stage)) {
+      f.sockets[0].receive(opcodeOnlyReadyBody); f.sockets[0].receive(inventedLoginSuccess());
+      const dispatch = await request; wait = f.provider.waitForObservation(dispatch.correlationId!, { timeoutMs: 30_000 });
+      if (stage === "postflight") {
+        f.networkState.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        f.sockets[0].receive(inventedZoneBody); await flush();
+      }
+    }
+    f.provider.suspend(); await flush();
+    if (wait) expect(await wait).toMatchObject({ kind: "terminal", refreshAvailable: false });
+    else expect(await request).toMatchObject({ accepted: false });
+    if (resolve) resolve(f.network);
+    f.sockets[0]?.receive(opcodeOnlyReadyBody); f.sockets[0]?.receive(inventedLoginSuccess()); f.sockets[0]?.receive(inventedZoneBody); await flush();
+    expect(f.provider.preparation).toEqual({ phase: "suspended", expiresAt: null });
+    if (stage === "preflight") expect(f.sockets).toHaveLength(0);
+    if (stage === "initializing") expect(f.sockets[0].writes).toHaveLength(2);
+    if (f.inputs[0]) expect(f.inputs[0].connectBody).toEqual(inventedConnect());
+    f.provider.dispose();
+  });
+  test("an incoherent fresh prefix frees only candidate buffers; disable clears retained and candidate RAM", async () => {
+    const f = fixture(); await f.collect(); const first = await f.dispatch();
+    const wait = f.provider.waitForObservation(first.correlationId!, { timeoutMs: 30_000 });
+    f.sockets[0].receive(inventedZoneBody); await wait; await flush(); f.provider.suspend();
+    await f.collect(inventedConnect(), inventedPostLogin("77777777777777777777"));
+    expect(f.provider.preparation.phase).toBe("suspended"); expect(f.inputs[0].connectBody).toEqual(inventedConnect());
+    expect(f.budgets[0].usedBytes).toBe(inventedConnect().length + inventedPostLogin().length);
+    f.provider.preparePassively(); await flush(); expect(f.provider.preparation.phase).toBe("waiting_connection");
+    f.provider.stop(); expect(f.provider.preparation.phase).toBe("idle");
+    expect(f.inputs[0].connectBody.every(byte => byte === 0)).toBe(true); expect(f.budgets[0].usedBytes).toBe(0);
+    expect(f.provider.suppressRawLogging).toBe(false);
   });
   test("a timed-out preflight cannot resume authentication after its query resolves, or affect the next attempt", async () => {
     const f = fixture(); await f.collect(); let resolve!: (network: HeroSiegeNetworkState) => void;

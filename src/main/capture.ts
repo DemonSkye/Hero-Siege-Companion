@@ -53,6 +53,8 @@ const SUPPORTED_LINK_TYPES = new Set(["ETHERNET", "RAW", "NULL", "LINKTYPE_LINUX
 const SATANIC_ZONE_REQUEST_ROUTE = "satanic_zone_get";
 
 export interface CaptureUpdate {
+  /** Main-only signal: the native observer stopped or lost relevant packet evidence. */
+  observationGap?: true;
   connections?: CaptureConnection[];
   health?: Partial<CaptureHealth>;
   events?: ParsedEvent[];
@@ -583,6 +585,7 @@ export class CaptureService {
     this.writeWidePacketLog(parsedPacket, nbytes, truncated);
     if (truncated) {
       this.emit({
+        observationGap: [6668, 6669].includes(parsedPacket.srcPort) || [6668, 6669].includes(parsedPacket.dstPort) ? true : undefined,
         health: { packetsSeen: this.packetsSeen },
         log: { level: "warning", message: "Npcap truncated a game packet; its incomplete payload was discarded." },
       });
@@ -821,6 +824,7 @@ export class CaptureService {
 
   private closeCapture(reason = "close"): void {
     if (!this.cap) return;
+    this.emit({ observationGap: true });
     const generation = this.activeCaptureGeneration;
     const targetCount = this.activeCaptureTargetCount;
     const connectionCount = this.activeCaptureConnectionCount;
