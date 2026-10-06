@@ -22,11 +22,12 @@ import {
   stableCaptureFilter,
   summarizeConnections,
   uniqueCaptureTargets,
+  type CapturePacketEndpoints,
   type CaptureTarget,
   type HeroSiegeNetworkState,
   type RetainedCaptureTarget,
 } from "./capture-network";
-import { getTcpSegment, isLikelyParseablePayload, PacketBuffers, type ParsedPayload, type CapturedTcpLifecycle } from "./packet-decoder";
+import { getTcpPacketEndpoints, getTcpSegment, isLikelyParseablePayload, PacketBuffers, type ParsedPayload, type CapturedTcpLifecycle } from "./packet-decoder";
 import type { CaptureConnection, CaptureHealth, CapturePreferences, PlayerChatLogContext } from "../shared/app-state";
 import { EVENT_NAMES } from "../shared/constants";
 import type { MessageValue } from "../shared/fields";
@@ -573,7 +574,12 @@ export class CaptureService {
 
   private processPacket(nbytes: number, truncated: boolean): void {
     const parsedPacket = getTcpSegment(this.buffer, nbytes, this.activeLinkType);
-    if (!parsedPacket || !this.isCaptureFlowPacket(parsedPacket)) return;
+    const endpoints = parsedPacket ?? getTcpPacketEndpoints(this.buffer, nbytes, this.activeLinkType);
+    if (!endpoints || !this.isCaptureFlowPacket(endpoints)) return;
+    if ((!parsedPacket || truncated) && ([6668, 6669].includes(endpoints.srcPort) || [6668, 6669].includes(endpoints.dstPort))) {
+      this.emit({ observationGap: true });
+    }
+    if (!parsedPacket) return;
     if (parsedPacket.payloadLength === 0) {
       if (!truncated) this.observeTcpLifecycleSafely(parsedPacket);
       return;
@@ -585,7 +591,6 @@ export class CaptureService {
     this.writeWidePacketLog(parsedPacket, nbytes, truncated);
     if (truncated) {
       this.emit({
-        observationGap: [6668, 6669].includes(parsedPacket.srcPort) || [6668, 6669].includes(parsedPacket.dstPort) ? true : undefined,
         health: { packetsSeen: this.packetsSeen },
         log: { level: "warning", message: "Npcap truncated a game packet; its incomplete payload was discarded." },
       });
@@ -915,7 +920,7 @@ export class CaptureService {
     }
   }
 
-  private isCaptureFlowPacket(packet: ParsedPayload, now = Date.now()): boolean {
+  private isCaptureFlowPacket(packet: CapturePacketEndpoints, now = Date.now()): boolean {
     const key = capturePacketFlowKey(packet, this.activeLocalAddress);
     if (!key) return false;
     const expiresAt = this.captureFlowExpirations.get(key) ?? 0;

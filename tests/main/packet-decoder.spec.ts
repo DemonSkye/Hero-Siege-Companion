@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getPayload, getTcpSegment, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "../../src/main/packet-decoder";
+import { getPayload, getTcpPacketEndpoints, getTcpSegment, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "../../src/main/packet-decoder";
 import { captureMessages, messageToEvents } from "../../src/shared/parser";
 import { StatsEngine } from "../../src/shared/stats";
 
@@ -106,6 +106,38 @@ function lengthPrefixedFrame(bodyValue: string | Buffer, token: string): Buffer 
 }
 
 describe("packet decoder", () => {
+  test.each(["RAW", "ETHERNET", "NULL", "LINKTYPE_LINUX_SLL"])("attributes shortened %s packets from captured headers only", (linkType) => {
+    const packet = tcpPacket("CANARY_INCOMPLETE_PAYLOAD", linkType);
+    const capturedLength = packet.length - 1;
+    const expected = { src: "10.0.0.1", dst: "10.0.0.2", srcPort: 1234, dstPort: 26921 };
+    expect(getTcpSegment(packet, capturedLength, linkType)).toBeNull();
+    expect(getTcpPacketEndpoints(packet, capturedLength, linkType)).toEqual(expected);
+    expect(getTcpPacketEndpoints(packet.subarray(0, capturedLength), packet.length, linkType)).toEqual(expected);
+    const portsEnd = linkPrefix(linkType).length + 24;
+    for (let length = 0; length < portsEnd; length += 1) {
+      expect(getTcpPacketEndpoints(packet, length, linkType)).toBeNull();
+      expect(getTcpPacketEndpoints(packet.subarray(0, length), packet.length, linkType)).toBeNull();
+    }
+    expect(getTcpPacketEndpoints(packet, portsEnd, linkType)).toEqual(expected);
+  });
+
+  test("header-only attribution rejects unsupported or incoherent IP headers", () => {
+    const packet = tcpPacket("CANARY", "RAW");
+    expect(getTcpPacketEndpoints(packet, NaN, "RAW")).toBeNull();
+    expect(getTcpPacketEndpoints(packet, Infinity, "RAW")).toBeNull();
+    expect(getTcpPacketEndpoints(packet, packet.length, "UNSUPPORTED")).toBeNull();
+    for (const [offset, value] of [[0, 0x65], [0, 0x44], [0, 0x4f], [9, 17]]) {
+      const invalid = Buffer.from(packet); invalid[offset] = value;
+      expect(getTcpPacketEndpoints(invalid, invalid.length, "RAW")).toBeNull();
+    }
+    for (const fragment of [0x2000, 1]) {
+      const invalid = Buffer.from(packet); invalid.writeUInt16BE(fragment, 6);
+      expect(getTcpPacketEndpoints(invalid, invalid.length, "RAW")).toBeNull();
+    }
+    packet.writeUInt16BE(39, 2);
+    expect(getTcpPacketEndpoints(packet, packet.length, "RAW")).toBeNull();
+  });
+
   test("decodes bounded TCP payloads and transport metadata for supported link types", () => {
     for (const linkType of ["RAW", "ETHERNET", "NULL", "LINKTYPE_LINUX_SLL"] as const) {
       const packet = tcpPacket('{"gold":100}', linkType, { seq: 41, ack: 99, trailingBytes: Buffer.from("ignored") });

@@ -558,14 +558,43 @@ describe("CaptureService lifecycle", () => {
       expect(fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "").not.toContain("CANARY_TERMINATING_PACKET");
     }
   });
-  test("truncated admitted API evidence signals a continuity gap without reassembling it", () => {
-    const updates: CaptureUpdate[] = []; const service = new CaptureService(update => updates.push(update));
+  test.each([
+    { missingBytes: 0, shortenedBuffer: false, truncated: true },
+    { missingBytes: 1, shortenedBuffer: false, truncated: true },
+    { missingBytes: 1, shortenedBuffer: true, truncated: true },
+    { missingBytes: 1, shortenedBuffer: false, truncated: false },
+  ])("incomplete admitted API evidence signals a gap: %j", ({ missingBytes, shortenedBuffer, truncated }) => {
+    const updates: CaptureUpdate[] = []; const observeSessionPayload = vi.fn(); const observeTcpLifecycle = vi.fn();
+    const service = new CaptureService(update => updates.push(update), undefined, undefined, false,
+      observeSessionPayload, undefined, observeTcpLifecycle);
     const internals = service as unknown as PacketProcessingCaptureService;
     const capturedPacket = rawTcpPacket('CANARY_PARTIAL_LOGIN'); capturedPacket.writeUInt16BE(6669, 22);
+    const capturedLength = capturedPacket.length - missingBytes;
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW";
+    internals.buffer = shortenedBuffer ? capturedPacket.subarray(0, capturedLength) : capturedPacket;
+    internals.refreshCaptureFlows([connection({ remotePort: 6669 })], Date.now()); const push = vi.spyOn(internals.packetBuffers, "push");
+    internals.processPacket(capturedLength, truncated);
+    expect(push).not.toHaveBeenCalled(); expect(updates).toContainEqual(expect.objectContaining({ observationGap: true }));
+    expect(observeSessionPayload).not.toHaveBeenCalled(); expect(observeTcpLifecycle).not.toHaveBeenCalled();
+    expect(JSON.stringify(updates)).not.toContain("CANARY_PARTIAL_LOGIN");
+  });
+  test.each([
+    { capturedLength: 23, localPort: 50000, remotePort: 6669, gap: false },
+    { capturedLength: 24, localPort: 50000, remotePort: 6669, gap: true },
+    { capturedLength: 24, localPort: 50001, remotePort: 6669, gap: false },
+    { capturedLength: 24, localPort: 50000, remotePort: 26921, gap: false },
+    { capturedLength: 40, localPort: 50000, remotePort: 6669, gap: true },
+  ])("truncated header attribution stays within captured ports and the owned API flow: %j", ({ capturedLength, localPort, remotePort, gap }) => {
+    const updates: CaptureUpdate[] = []; const observeTcpLifecycle = vi.fn();
+    const service = new CaptureService(update => updates.push(update), undefined, undefined, false,
+      undefined, undefined, observeTcpLifecycle);
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const capturedPacket = rawTcpPacket(""); capturedPacket.writeUInt16BE(localPort, 20); capturedPacket.writeUInt16BE(remotePort, 22);
     internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
     internals.refreshCaptureFlows([connection({ remotePort: 6669 })], Date.now()); const push = vi.spyOn(internals.packetBuffers, "push");
-    internals.processPacket(capturedPacket.length, true);
-    expect(push).not.toHaveBeenCalled(); expect(updates).toContainEqual(expect.objectContaining({ observationGap: true }));
+    expect(() => internals.processPacket(capturedLength, true)).not.toThrow();
+    expect(updates.some(update => update.observationGap)).toBe(gap);
+    expect(push).not.toHaveBeenCalled(); expect(observeTcpLifecycle).not.toHaveBeenCalled();
   });
   test("discards Npcap-truncated payloads before TCP reassembly", () => {
     const updates: CaptureUpdate[] = [];

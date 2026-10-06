@@ -669,6 +669,27 @@ export function getPayload(buffer: Buffer, nbytes: number, linkType: string): Pa
 /** Main-only TCP lifecycle metadata; deliberately excludes payload bytes/text. */
 export type CapturedTcpLifecycle = Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort" | "flags">;
 
+/** Header-only attribution for potentially lost TCP evidence; never admits payloads or lifecycle flags. */
+export function getTcpPacketEndpoints(
+  buffer: Buffer, nbytes: number, linkType: string,
+): Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort"> | null {
+  if (!Number.isFinite(nbytes) || nbytes <= 0) return null;
+  const capturedLength = Math.min(Math.trunc(nbytes), buffer.length);
+  const ipOffset = ipv4OffsetForLinkType(buffer, capturedLength, linkType);
+  if (ipOffset === null || ipOffset + 20 > capturedLength || buffer[ipOffset] >> 4 !== 4) return null;
+  const ipHeaderLength = (buffer[ipOffset] & 0x0f) * 4;
+  if (ipHeaderLength < 20 || ipOffset + ipHeaderLength > capturedLength) return null;
+  if (buffer[ipOffset + 9] !== IPV4_PROTOCOL_TCP || (buffer.readUInt16BE(ipOffset + 6) & 0x3fff) !== 0) return null;
+  if (buffer.readUInt16BE(ipOffset + 2) < ipHeaderLength + 20) return null;
+  const tcpOffset = ipOffset + ipHeaderLength;
+  // Only the captured addresses and both port fields are needed to signal a gap.
+  if (tcpOffset + 4 > capturedLength) return null;
+  return {
+    src: ipv4Address(buffer, ipOffset + 12), dst: ipv4Address(buffer, ipOffset + 16),
+    srcPort: buffer.readUInt16BE(tcpOffset), dstPort: buffer.readUInt16BE(tcpOffset + 2),
+  };
+}
+
 // SYN/ACK attribution and passive lifecycle observation need empty TCP segments.
 // Gameplay parsing still admits payload-bearing packets only.
 export function getTcpSegment(buffer: Buffer, nbytes: number, linkType: string, borrowPayload = false): ParsedPayload | null {
