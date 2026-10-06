@@ -179,6 +179,10 @@ describe("market search runtime", () => {
       "The market rejected the current request or returned an unreadable response. Keep capture running and refresh your in-game account/market context, then retry. Direct-search details are in the support logs.",
     ],
     [
+      "checksum_rejected",
+      "The market rejected this request's checksum. Check whether the in-game Auction House works. Keep capture running for fresh account details before retrying; report persistent failures with the support logs.",
+    ],
+    [
       "search_pending",
       "A market search is already pending. Wait briefly and try again.",
     ],

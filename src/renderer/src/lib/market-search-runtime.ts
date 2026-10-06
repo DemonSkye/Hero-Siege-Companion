@@ -71,6 +71,7 @@ const MARKET_SEARCH_FAILURE_MESSAGES: Record<MarketSearchErrorCode, string> = {
   helper_unavailable: "Companion could not prepare the direct market request. Restart Companion and try again.",
   market_unreachable: "The market request could not reach the server. Check your connection and try again.",
   cached_request_rejected: "The market rejected the current request or returned an unreadable response. Keep capture running and refresh your in-game account/market context, then retry. Direct-search details are in the support logs.",
+  checksum_rejected: "The market rejected this request's checksum. Check whether the in-game Auction House works. Keep capture running for fresh account details before retrying; report persistent failures with the support logs.",
   search_pending: "A market search is already pending. Wait briefly and try again.",
   request_rejected: "The market rejected these filters. Adjust them and try again.",
   timed_out: "The market did not respond before the search timed out. Try again.",

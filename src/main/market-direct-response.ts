@@ -21,6 +21,7 @@ export interface DirectMarketWorkerResult {
 
 export function directMarketFailure(reason: DirectMarketFailure, diagnostics: DirectMarketDiagnostics = {}): DirectMarketWorkerResult {
   const errorCode = reason === "context-unavailable" ? "template_unavailable"
+    : reason === "server-rejected" && diagnostics.serverReason === "checksum" ? "checksum_rejected"
     : reason === "worker" || reason === "cancelled" ? "helper_unavailable"
     : reason === "timeout" ? "timed_out"
     : ["server-rejected", "missing-items", "invalid-json", "invalid-items"].includes(reason) ? "cached_request_rejected"

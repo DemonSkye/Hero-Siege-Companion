@@ -1,0 +1,41 @@
+{
+  "marketSearch": {
+    "source": "redacted observer summary, September 4, 2026",
+    "provenance": "market-research/cached-template-safe-summary-current.jsonl",
+    "pairedResponseAvailable": false,
+    "publicFields": {
+      "item_sort": "0",
+      "scroll_page": "0",
+      "page_id": "99999999",
+      "get_highest_id": "1",
+      "filter_masks": "[1073746020]"
+    }
+  },
+  "passiveZone": {
+    "source": "retained owner packet metadata; payload values are not copied",
+    "observedAt": "2026-09-16T03:46:02.932Z",
+    "linkType": "ETHERNET",
+    "tcpFlags": 24,
+    "payloadLength": 188,
+    "packetLength": 242,
+    "truncated": false,
+    "originalBytesAvailable": false
+  },
+  "marketRejection": {
+    "source": "owner diagnostic log classification, October 6, 2026",
+    "attempts": 3,
+    "httpStatus": 200,
+    "applicationStatus": -3,
+    "serverReason": "checksum",
+    "responseBytes": 40,
+    "originalResponseAvailable": false
+  },
+  "initialization": {
+    "source": "owner success report and source-supported framing; complete wire capture unavailable",
+    "originalBytesAvailable": false,
+    "ackOpcode": 4096,
+    "postLoginMode": 83,
+    "szMode": 82,
+    "region": 1
+  }
+}

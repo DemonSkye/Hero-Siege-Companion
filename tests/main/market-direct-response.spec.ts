@@ -8,7 +8,7 @@ describe("safe direct-market response diagnostics", () => {
   test("keeps rejection category/status but never server messages or echoed credentials", () => {
     const result = inspect({ status: 0, message: "Invalid checksum for account_id=private-account", request: { multipass: "private-token" } });
     expect(result).toMatchObject({
-      response: { ok: false, errorCode: "cached_request_rejected" },
+      response: { ok: false, errorCode: "checksum_rejected" },
       diagnostics: { httpStatus: 200, applicationStatus: 0, reason: "server-rejected", serverReason: "checksum" },
     });
     expect(JSON.stringify(result)).not.toMatch(/private|message|multipass/);

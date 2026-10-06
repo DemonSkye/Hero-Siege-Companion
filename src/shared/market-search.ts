@@ -48,6 +48,7 @@ export type MarketSearchErrorCode =
   | "helper_unavailable"
   | "market_unreachable"
   | "cached_request_rejected"
+  | "checksum_rejected"
   | "search_pending"
   | "request_rejected"
   | "timed_out";

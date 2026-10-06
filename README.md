@@ -191,6 +191,17 @@ Run tests:
 npm test
 ```
 
+For changes to capture, sign-in context, readiness or authenticated requests, add a
+representative mocked traffic journey through the real framing, TCP reassembly,
+context, readiness and response code. Inventory retained sanitized evidence first;
+use observed structure where available and label substituted bytes, added
+fragmentation and missing captures explicitly. Mock platform I/O rather than Ready.
+Verify that passive collection sends nothing, only the explicit action dispatches,
+and lost observation or identity changes fail closed. Keep actual authentication
+values, raw captures and private endpoints out of fixtures, logs and app Git.
+[Replay evidence and coverage](tests/fixtures/NETWORK_REPLAY.md) distinguish offline
+acceptance from Windows/game/server acceptance.
+
 Run strict main and renderer typechecks:
 
 ```powershell
