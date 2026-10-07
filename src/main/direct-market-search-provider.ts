@@ -30,6 +30,7 @@ export type DirectMarketWorkerRunner = (
   context: CompleteCapturedSessionContext,
   request: MarketSearchRequest,
   signal?: AbortSignal,
+  privateTracePath?: string,
 ) => Promise<DirectMarketWorkerResult>;
 
 export class DirectMarketSearchProvider implements MarketSearchProvider {
@@ -47,6 +48,7 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
     private readonly cache = new MarketResultCache(),
     private readonly now: () => number = Date.now,
     private readonly workerRunner?: DirectMarketWorkerRunner,
+    private readonly privateDiagnostic?: { take: () => string | undefined; finish: (completeResponse: boolean, writeSucceeded?: boolean) => void },
   ) {
     this.unsubscribe = contextSource.subscribe(() => this.invalidateContext());
   }
@@ -117,9 +119,12 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
     const attempt = ++this.attempt;
     const startedAt = this.now();
     this.log("market-direct-start", { attempt, contextGeneration: context.generation, contextRevision: context.revision });
-    const result = await (this.workerRunner
-      ? this.workerRunner(context, request, signal)
-      : this.runWorker(context, request, signal));
+    const privateTracePath = this.privateDiagnostic?.take();
+    let result: DirectMarketWorkerResult;
+    try { result = await (this.workerRunner
+      ? privateTracePath ? this.workerRunner(context, request, signal, privateTracePath) : this.workerRunner(context, request, signal)
+      : this.runWorker(context, request, signal, privateTracePath)); }
+    finally { if (privateTracePath) this.privateDiagnostic?.finish(false); }
     const diagnostics: DirectMarketDiagnostics = { dispatchStatus: "unconfirmed", ...result.diagnostics };
     const current = this.contextSource.marketContext();
     if (generation !== this.generation || !current || current.revision !== context.revision
@@ -157,12 +162,13 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
     context: CompleteCapturedSessionContext,
     request: MarketSearchRequest,
     signal?: AbortSignal,
+    privateTracePath?: string,
   ): Promise<DirectMarketWorkerResult> {
     return new Promise((resolve) => {
       let worker: Worker;
       try {
         worker = new Worker(path.join(__dirname, "market-direct-search-worker.js"), {
-          workerData: { context, request },
+          workerData: { context, request, ...(privateTracePath ? { privateTracePath } : {}) },
         });
       } catch {
         resolve(directMarketFailure("worker", { dispatchStatus: "unconfirmed" }));
@@ -184,6 +190,8 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
         if (settled) return;
         if ("type" in message) {
           if (message.type === "request-context") progress = { ...message.diagnostics };
+          else if (message.type === "private-diagnostic" && privateTracePath)
+            this.privateDiagnostic?.finish(message.completeResponse, message.writeSucceeded);
           return;
         }
         finish(message);

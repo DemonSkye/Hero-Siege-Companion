@@ -328,6 +328,7 @@ function saveStatusLabel(): string {
             :support-log-files="supportLogFiles"
             :support-logs-path="supportLogsPath"
             :support-bundle-busy="supportBundleBusy"
+            :market-search-enabled="marketSearchEnabled"
             :backup-busy="backupBusy"
             :factory-reset-busy="factoryResetBusy"
             :whats-new="whatsNew"

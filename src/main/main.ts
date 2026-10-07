@@ -2,6 +2,7 @@ import { app, clipboard, crashReporter, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { createAppDiagnostics, type AppDiagnostics } from "./app-diagnostics";
+import { MarketPrivateDiagnostic } from "./market-private-diagnostic";
 import { captureEventsForRunStatus } from "./capture-events";
 import {
   createCaptureRuntime,
@@ -101,6 +102,7 @@ let statePublishTimer: NodeJS.Timeout | null = null;
 let pastRunsPendingPublish = false;
 let lastPendingCaptureEventsLogAt = 0;
 let appDiagnostics: AppDiagnostics | null = null;
+let marketPrivateDiagnostic: MarketPrivateDiagnostic | null = null;
 let satanicZoneController: SatanicZoneController | null = null;
 let satanicZoneRefreshProvider: InitializedSatanicZoneRefreshProvider | null = null;
 let satanicZoneLoginCache: SatanicZoneLoginCache | null = null;
@@ -724,6 +726,12 @@ ipcMain.handle(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
   clipboard.writeText(String(value));
 });
 ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData"), app.getVersion()));
+ipcMain.handle(IPC_CHANNELS.marketPrivateDiagnosticGet, () => marketPrivateDiagnostic?.snapshot() ?? { phase: "off" });
+ipcMain.handle(IPC_CHANNELS.marketPrivateDiagnosticSet, (_event, enabled: boolean) => marketPrivateDiagnostic?.setEnabled(enabled === true) ?? { phase: "off" });
+ipcMain.handle(IPC_CHANNELS.marketPrivateDiagnosticOpen, async () => {
+  if (!marketPrivateDiagnostic || !fs.existsSync(marketPrivateDiagnostic.directory)) return false;
+  try { return !(await shell.openPath(marketPrivateDiagnostic.directory)); } catch { return false; }
+});
 ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticArm, () => satanicZoneDiagnostic?.arm() ?? state.satanicZoneDiagnostic);
 ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticStart, () => satanicZoneDiagnostic?.startAttempt() ?? state.satanicZoneDiagnostic);
 ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticCancel, () => satanicZoneDiagnostic?.cancel() ?? state.satanicZoneDiagnostic);
@@ -842,6 +850,10 @@ app.whenReady().then(async () => {
   state.stats.satanicZone = state.satanicZone.current;
   lastPersistedSatanicZoneCacheKey = satanicZoneCachePersistenceKey(state.satanicZone, Date.now());
   capturedSessionContext = new CapturedSessionContextStore(writeAppLog);
+  marketPrivateDiagnostic = new MarketPrivateDiagnostic(userDataPath, next => {
+    const window = currentWindow();
+    if (window && !window.isDestroyed()) window.webContents.send(IPC_CHANNELS.marketPrivateDiagnosticUpdated, next);
+  });
   marketReadinessController = new MarketReadinessController(capturedSessionContext, (readiness) => {
     state.marketReadiness = readiness;
     publishState();
@@ -855,6 +867,7 @@ app.whenReady().then(async () => {
         capturedSessionContext?.applyRegionDirectory(await regionDirectoryCache.get(signal));
       }),
       undefined, undefined, marketTestRuntime?.run,
+      { take: () => marketPrivateDiagnostic?.take(), finish: (complete, written) => marketPrivateDiagnostic?.finish(complete, written) },
     );
   }
   satanicZoneLoginCache = new SatanicZoneLoginCache({

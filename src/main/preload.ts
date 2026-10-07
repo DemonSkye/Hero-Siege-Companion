@@ -14,6 +14,14 @@ const api: HeroSiegeCompanionApi = {
   startSatanicZoneDiagnostic: () => ipcRenderer.invoke(IpcChannel.satanicZoneDiagnosticStart),
   cancelSatanicZoneDiagnostic: () => ipcRenderer.invoke(IpcChannel.satanicZoneDiagnosticCancel),
   searchMarket: (request) => ipcRenderer.invoke(IpcChannel.marketSearch, request),
+  getMarketPrivateDiagnosticState: () => ipcRenderer.invoke(IpcChannel.marketPrivateDiagnosticGet),
+  setMarketPrivateDiagnosticEnabled: enabled => ipcRenderer.invoke(IpcChannel.marketPrivateDiagnosticSet, enabled),
+  openMarketPrivateDiagnosticDirectory: () => ipcRenderer.invoke(IpcChannel.marketPrivateDiagnosticOpen),
+  onMarketPrivateDiagnosticUpdated: callback => {
+    const listener = (_event: Electron.IpcRendererEvent, state: import("../shared/market-private-diagnostic").MarketPrivateDiagnosticState) => callback(state);
+    ipcRenderer.on(IpcChannel.marketPrivateDiagnosticUpdated, listener);
+    return () => ipcRenderer.removeListener(IpcChannel.marketPrivateDiagnosticUpdated, listener);
+  },
   pauseRun: () => ipcRenderer.invoke(IpcChannel.runPause),
   resumeRun: () => ipcRenderer.invoke(IpcChannel.runResume),
   setPastRunTags: (runId: string, tags: string[]): Promise<CompanionState> =>

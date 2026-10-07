@@ -7,6 +7,7 @@ import type {
 } from "./app-state";
 import type { SupportDiagnosticsInfo, SupportDiagnosticsSaveResult } from "./support-diagnostics";
 import type { MarketSearchRequest, MarketSearchResponse } from "./market-search";
+import type { MarketPrivateDiagnosticState } from "./market-private-diagnostic";
 
 export const enum IpcChannel {
   stateGet = "state:get",
@@ -23,6 +24,10 @@ export const enum IpcChannel {
   satanicZoneLoginCacheAutomatic = "satanic-zone-login-cache:automatic",
   satanicZoneLoginCacheLock = "satanic-zone-login-cache:lock",
   marketSearch = "market:search",
+  marketPrivateDiagnosticGet = "market-private-diagnostic:get",
+  marketPrivateDiagnosticSet = "market-private-diagnostic:set",
+  marketPrivateDiagnosticOpen = "market-private-diagnostic:open",
+  marketPrivateDiagnosticUpdated = "market-private-diagnostic:updated",
   runPause = "run:pause",
   runResume = "run:resume",
   pastRunsSetTags = "past-runs:set-tags",
@@ -72,6 +77,10 @@ export const IPC_CHANNELS = {
   satanicZoneLoginCacheAutomatic: IpcChannel.satanicZoneLoginCacheAutomatic,
   satanicZoneLoginCacheLock: IpcChannel.satanicZoneLoginCacheLock,
   marketSearch: IpcChannel.marketSearch,
+  marketPrivateDiagnosticGet: IpcChannel.marketPrivateDiagnosticGet,
+  marketPrivateDiagnosticSet: IpcChannel.marketPrivateDiagnosticSet,
+  marketPrivateDiagnosticOpen: IpcChannel.marketPrivateDiagnosticOpen,
+  marketPrivateDiagnosticUpdated: IpcChannel.marketPrivateDiagnosticUpdated,
   runPause: IpcChannel.runPause,
   runResume: IpcChannel.runResume,
   pastRunsSetTags: IpcChannel.pastRunsSetTags,
@@ -152,6 +161,10 @@ export interface HeroSiegeCompanionApi {
   startSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   cancelSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   searchMarket: (request: MarketSearchRequest) => Promise<MarketSearchResponse>;
+  getMarketPrivateDiagnosticState: () => Promise<MarketPrivateDiagnosticState>;
+  setMarketPrivateDiagnosticEnabled: (enabled: boolean) => Promise<MarketPrivateDiagnosticState>;
+  openMarketPrivateDiagnosticDirectory: () => Promise<boolean>;
+  onMarketPrivateDiagnosticUpdated: (callback: (state: MarketPrivateDiagnosticState) => void) => () => void;
   pauseRun: () => Promise<CompanionState>;
   resumeRun: () => Promise<CompanionState>;
   setPastRunTags: (runId: string, tags: string[]) => Promise<CompanionState>;

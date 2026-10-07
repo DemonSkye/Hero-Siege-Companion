@@ -67,6 +67,7 @@ function setup(options: {
   now?: () => number;
   context?: CompleteCapturedSessionContext | null;
   records?: () => CompleteCapturedSessionContext["diagnosticRecords"];
+  privateDiagnostic?: { take: () => string | undefined; finish: (completeResponse: boolean, writeSucceeded?: boolean) => void };
 } = {}) {
   let context = options.context === undefined ? completeContext : options.context;
   let listener = () => undefined;
@@ -77,7 +78,7 @@ function setup(options: {
   };
   const log = vi.fn();
   const now = options.now ?? (() => Date.now());
-  const provider = new DirectMarketSearchProvider(source, log, options.prepare, new MarketResultCache(now), now);
+  const provider = new DirectMarketSearchProvider(source, log, options.prepare, new MarketResultCache(now), now, undefined, options.privateDiagnostic);
   return {
     provider,
     log,
@@ -86,6 +87,20 @@ function setup(options: {
 }
 
 describe("direct-market provider worker boundary", () => {
+  test("private opt-in is consumed only for a new worker dispatch and its path never enters safe logs", async () => {
+    const take = vi.fn(() => "PRIVATE_PATH_CANARY"), finish = vi.fn();
+    const blocked = setup({ context: null, privateDiagnostic: { take, finish } });
+    expect((await blocked.provider.search(request)).ok).toBe(false); expect(take).not.toHaveBeenCalled(); blocked.provider.dispose();
+    const f = setup({ now: () => 10_000, privateDiagnostic: { take, finish } });
+    const pending = f.provider.search(request); await Promise.resolve();
+    expect(take).toHaveBeenCalledOnce(); expect(mock.workers[0].options.workerData).toHaveProperty("privateTracePath", "PRIVATE_PATH_CANARY");
+    const duplicate = f.provider.search(request); await Promise.resolve(); expect(take).toHaveBeenCalledOnce();
+    mock.workers[0].emit("message", { type: "private-diagnostic", completeResponse: true, writeSucceeded: true });
+    mock.workers[0].emit("message", { response: { ok: true, result: { listings: [], totalMatches: 0 } }, diagnostics: {} });
+    await pending; await duplicate; await f.provider.search(request); expect(take).toHaveBeenCalledOnce();
+    expect(finish).toHaveBeenCalledWith(true, true); expect(JSON.stringify(f.log.mock.calls)).not.toContain("PRIVATE_PATH_CANARY");
+    f.provider.dispose();
+  });
   function evidence() {
     const records = new MarketRecordEvidenceStore();
     records.observe({ text: "", direction: "outbound", remoteAddress: completeContext.endpoint.address,

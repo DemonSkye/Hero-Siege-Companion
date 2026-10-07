@@ -9,6 +9,7 @@ import type {
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 import type { WhatsNewRelease } from "../lib/whats-new";
 import SatanicZoneDiagnosticCard from "./SatanicZoneDiagnosticCard.vue";
+import MarketPrivateDiagnosticSettings from "./MarketPrivateDiagnosticSettings.vue";
 import { createInitialSatanicZoneDiagnosticState, type SatanicZoneDiagnosticState } from "../../../shared/satanic-zone-diagnostic";
 
 const props = withDefaults(defineProps<{
@@ -23,6 +24,7 @@ const props = withDefaults(defineProps<{
   supportLogFiles: SupportDiagnosticLogFileInfo[];
   supportLogsPath: string;
   supportBundleBusy: boolean;
+  marketSearchEnabled?: boolean;
   backupBusy?: boolean;
   factoryResetBusy?: boolean;
   whatsNew: WhatsNewRelease;
@@ -185,6 +187,7 @@ function nextMode(state: CaptureDiagnosticsModeState, requested: Exclude<Capture
       </div>
     </details>
 
+    <MarketPrivateDiagnosticSettings v-if="marketSearchEnabled" />
     <details class="settings-disclosure settings-diagnostics-files">
       <summary>
         <span><strong>Support bundle contents</strong><small>{{ availableSupportLogFiles.length }} local log file{{ availableSupportLogFiles.length === 1 ? "" : "s" }} currently available.</small></span>

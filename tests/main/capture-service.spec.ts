@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import https from "node:https";
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CaptureService, type CaptureUpdate } from "../../src/main/capture";
 import { SatanicZoneInitializedProbeController } from "../../src/main/satanic-zone-initialized-controller";
@@ -10,7 +12,7 @@ import { CapturedSessionContextStore, type CompleteCapturedSessionContext } from
 import { DirectMarketSearchProvider } from "../../src/main/direct-market-search-provider";
 import { MarketRegionDirectory } from "../../src/main/market-region-directory";
 import { MarketResultCache } from "../../src/main/market-result-cache";
-import { buildDirectMarketRequestBody } from "../../src/main/market-direct-search-worker";
+import { buildDirectMarketRequestBody, runDirectMarketWorker } from "../../src/main/market-direct-search-worker";
 import marketNativeEvidence from "../fixtures/market-native-evidence.json";
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import type { CaptureConnection } from "../../src/shared/app-state";
@@ -804,6 +806,42 @@ describe("CaptureService lifecycle", () => {
     expect(new URLSearchParams(buildDirectMarketRequestBody(snapshot, { itemMask: 1_073_746_020, statFilters: [] })).get("checksum")).toBe(vector.expectedChecksumHex);
     expect(snapshot.provenance).toMatchObject({ sameEndpoint: true, sameFlow: true, accountQualification: "region-directory" });
     provider.dispose();
+  });
+
+  test("actual captured player-sales frame reaches frozen context and the actual HTTPS worker diagnostic without exposing its digest", async () => {
+    const store = new CapturedSessionContextStore(); store.observeGameProcessIds([123]);
+    store.applyRegionDirectory(new MarketRegionDirectory([{ address: "203.0.113.10", port: 26921, beta: "0", region: "7" }]));
+    const service = new CaptureService(() => {}, undefined, undefined, false, payload => store.observe(payload));
+    const internals = service as unknown as PacketProcessingCaptureService;
+    const nativeChecksum = "a".repeat(64);
+    const query = new URLSearchParams({ account_id: "424242", unique_account_id: "CAPTURE_CANARY_UID", crossregion_identifier: "CAPTURE_CANARY_CROSS",
+      season: "11", hardcore: "0", beta: "0", checksum: nativeChecksum });
+    const body = Buffer.concat([Buffer.from([3, 0, 1, 0]), Buffer.from(`market/market_player_get_items_on_sale\0!\0${query}\0`)]);
+    const header = Buffer.alloc(16); header.write("0123456789ab"); header.writeUInt32LE(body.length, 12);
+    const captured = rawTcpPacket(Buffer.concat([header, body]));
+    internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = captured;
+    internals.refreshCaptureFlows([connection()], Date.now()); internals.processPacket(captured.length, false);
+    expect(store.marketRecordSnapshot().api[0]).toHaveProperty("nativeMarket.checksum", nativeChecksum);
+    const request = Object.assign(new EventEmitter(), { end: vi.fn(), destroy: vi.fn() });
+    let receive!: (response: EventEmitter) => void;
+    const transport = vi.spyOn(https, "request").mockImplementation(((_options: unknown, callback: typeof receive) => {
+      receive = callback; return request;
+    }) as typeof https.request);
+    const progress: unknown[] = [], logs = vi.fn();
+    const provider = new DirectMarketSearchProvider(store, logs, undefined, undefined, Date.now,
+      (context, search) => runDirectMarketWorker({ context, request: search }, value => progress.push(value)));
+    try {
+      const pending = provider.search({ itemMask: 1, statFilters: [] });
+      await vi.waitFor(() => expect(request.end).toHaveBeenCalledOnce());
+      store.clearMarketRecordEvidenceForGap();
+      const response = Object.assign(new EventEmitter(), { statusCode: 200 }); receive(response);
+      response.emit("data", Buffer.from('{"status":-3,"message":"checksum"}')); response.emit("end");
+      await expect(pending).resolves.toMatchObject({ ok: false, errorCode: "checksum_rejected" });
+      expect(progress.at(-1)).toMatchObject({ requestContext: { recordComparison: { nativeMarketDigestObserved: true,
+        api: [{ nativeDigest: { route: "market/market_player_get_items_on_sale", nativeDigestAvailable: true } }] } } });
+      expect(JSON.stringify(logs.mock.calls)).not.toMatch(/CAPTURE_CANARY|424242|aaaaaaa|203\.0\.113/);
+      expect(transport).toHaveBeenCalledOnce();
+    } finally { transport.mockRestore(); provider.dispose(); service.stop(); store.dispose(); }
   });
 
   test("reassembles a current multi-segment save frame through the capture pipeline", () => {

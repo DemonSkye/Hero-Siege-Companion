@@ -32,7 +32,12 @@ export interface DirectMarketWorkerProgress {
     dispatchStatus: "unconfirmed" | "submitted";
   };
 }
-export type DirectMarketWorkerMessage = DirectMarketWorkerProgress | DirectMarketWorkerResult;
+export interface DirectMarketPrivateProgress {
+  type: "private-diagnostic";
+  writeSucceeded: boolean;
+  completeResponse: boolean;
+}
+export type DirectMarketWorkerMessage = DirectMarketWorkerProgress | DirectMarketPrivateProgress | DirectMarketWorkerResult;
 
 export function directMarketFailure(reason: DirectMarketFailure, diagnostics: DirectMarketDiagnostics = {}): DirectMarketWorkerResult {
   const errorCode = reason === "context-unavailable" ? "template_unavailable"

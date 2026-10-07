@@ -115,6 +115,10 @@ describe("support diagnostics metadata", () => {
       "utf8",
     );
     fs.writeFileSync(path.join(userDataPath, "preferences.json"), "{\"private\":true}\n", "utf8");
+    const privateDirectory = path.join(userDataPath, "private-market-diagnostics");
+    fs.mkdirSync(privateDirectory);
+    const privateFile = path.join(privateDirectory, "owner-request.jsonl");
+    fs.writeFileSync(privateFile, "PRIVATE_MARKET_FILES_CANARY", "utf8");
     fs.writeFileSync(
       path.join(logsPath, "capture-wide-debug.log"),
       `${JSON.stringify({ type: "packet", payloadBase64: "raw-packet", textSnippet: `account_id=123 ${fingerprint}` })}\n`,
@@ -131,6 +135,8 @@ describe("support diagnostics metadata", () => {
     });
 
     const entries = readZipEntries(fs.readFileSync(bundlePath));
+    expect(JSON.stringify(entries)).not.toContain("PRIVATE_MARKET_FILES_CANARY");
+    expect(fs.readFileSync(privateFile, "utf8")).toBe("PRIVATE_MARKET_FILES_CANARY");
     expect(result).toMatchObject({
       saved: true,
       canceled: false,

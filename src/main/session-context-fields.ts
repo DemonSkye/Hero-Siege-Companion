@@ -4,12 +4,19 @@ export const SESSION_CONTEXT_FIELDS = MARKET_CONTEXT_FIELDS;
 
 export type SessionContextField = typeof SESSION_CONTEXT_FIELDS[number];
 export type SessionContextFields = Partial<Record<SessionContextField, string>>;
+export const NATIVE_PLAYER_SALES_METHOD = "market/market_player_get_items_on_sale";
+/** Private diagnostic inputs; never renderer state or ordinary logs. */
+export interface NativeMarketDigestEvidence {
+  method: typeof NATIVE_PLAYER_SALES_METHOD;
+  checksum?: string;
+}
 
 export interface SessionContextMessage {
   fields: SessionContextFields;
   source: "mailbox" | "market" | "game-api" | "json" | "character-save" | "region-directory";
   /** Directly observed top-level slot only; no selected-slot authority is implied. */
   slot?: string;
+  nativeMarket?: NativeMarketDigestEvidence;
 }
 
 // Identity is top-level. Only the selected-character save may supply mode from
@@ -28,7 +35,8 @@ export function extractSessionContextMessages(text: string): SessionContextMessa
       return [];
     }
   }
-  return splitForms(normalized).flatMap((fragment): SessionContextMessage[] => {
+  return splitForms(text).flatMap((originalFragment): SessionContextMessage[] => {
+    const fragment = originalFragment.replace(/\0/g, "");
     const identityStart = fragment.search(/unique_account_id=|crossregion_identifier=|(?<![a-z_])account_id=/i);
     if (identityStart < 0) return [];
     const firstKey = fragment.match(/(?:^|[?&\s])([a-z][a-z0-9_]*=)/i);
@@ -48,7 +56,14 @@ export function extractSessionContextMessages(text: string): SessionContextMessa
       if (mode) return [{ fields: { ...fields, ...mode }, source: "character-save", ...(slot ? { slot } : {}) }];
     }
     const source = prefix.includes("mailbox/") ? "mailbox" : prefix.includes("market/") ? "market" : "game-api";
-    return [{ fields, source, ...(slot ? { slot } : {}) }];
+    const nativePrefix = prefix.trim().replace(/^\x03\s+\x01\s+/, "");
+    const structuredNativePrefix = `${NATIVE_PLAYER_SALES_METHOD}\0!\0`;
+    const nativeMethod = nativePrefix === NATIVE_PLAYER_SALES_METHOD || nativePrefix === `${NATIVE_PLAYER_SALES_METHOD} !`
+      || originalFragment.startsWith(structuredNativePrefix) || originalFragment.startsWith(`\x03\0\x01\0${structuredNativePrefix}`);
+    const checksum = params.getAll("checksum");
+    const nativeMarket: NativeMarketDigestEvidence | undefined = nativeMethod ? { method: NATIVE_PLAYER_SALES_METHOD,
+      ...(checksum.length === 1 && /^[a-f0-9]{64}$/i.test(checksum[0]) ? { checksum: checksum[0] } : {}) } : undefined;
+    return [{ fields, source, ...(slot ? { slot } : {}), ...(nativeMarket ? { nativeMarket } : {}) }];
   });
 }
 function validSlot(value: unknown): string | undefined {

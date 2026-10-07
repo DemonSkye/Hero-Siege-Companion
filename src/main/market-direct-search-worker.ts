@@ -1,7 +1,7 @@
 import https from "node:https";
 import { parentPort, workerData } from "node:worker_threads";
 import { classifyDirectMarketNetworkError, directMarketFailure, inspectDirectMarketResponse,
-  type DirectMarketWorkerProgress, type DirectMarketWorkerResult } from "./market-direct-response";
+  type DirectMarketPrivateProgress, type DirectMarketWorkerProgress, type DirectMarketWorkerResult } from "./market-direct-response";
 export { reduceDirectMarketResponse } from "./market-direct-response";
 import type { MarketSearchRequest } from "../shared/market-search";
 import { buildMarketFetchItemsChecksum } from "./market-checksum";
@@ -9,6 +9,7 @@ import { buildMarketFetchItemsMultipass, MARKET_FETCH_ITEMS_API_SCRIPT } from ".
 import type { CompleteCapturedSessionContext } from "./captured-session-context";
 import type { SessionContextFields } from "./session-context-fields";
 import { buildMarketRequestDiagnostics } from "./market-request-diagnostics";
+import { MarketPrivateTraceWriter } from "./market-private-trace-writer";
 
 const MARKET_HOST = "hsmarket.panicartstudios.com";
 const MARKET_PATH = "/market/herosiege_api_bootstrap.php";
@@ -17,6 +18,7 @@ const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 export interface DirectMarketWorkerData {
   context: CompleteCapturedSessionContext;
   request: MarketSearchRequest;
+  privateTracePath?: string;
 }
 
 export function buildDirectMarketRequestBody(context: CompleteCapturedSessionContext, request: MarketSearchRequest): string {
@@ -45,8 +47,9 @@ export function buildDirectMarketRequestBody(context: CompleteCapturedSessionCon
   return form.toString();
 }
 
-async function run(data: DirectMarketWorkerData,
-  onProgress: (diagnostics: DirectMarketWorkerProgress["diagnostics"]) => void): Promise<DirectMarketWorkerResult> {
+export async function runDirectMarketWorker(data: DirectMarketWorkerData,
+  onProgress: (diagnostics: DirectMarketWorkerProgress["diagnostics"]) => void,
+  onPrivateProgress: (message: DirectMarketPrivateProgress) => void = () => {}): Promise<DirectMarketWorkerResult> {
   const context = data.context;
   const body = buildDirectMarketRequestBody(context, data.request);
   const requestContext = buildMarketRequestDiagnostics(context, body);
@@ -60,10 +63,14 @@ async function run(data: DirectMarketWorkerData,
   if (requestContext.season === null || requestContext.hardcore === null || requestContext.beta === null)
     return directMarketFailure("context-unavailable", snapshot);
   return await new Promise((resolve) => {
+    const trace = data.privateTracePath ? new MarketPrivateTraceWriter(data.privateTracePath, MAX_RESPONSE_BYTES) : undefined;
+    trace?.prepared(body, `https://${MARKET_HOST}${MARKET_PATH}`);
     let settled = false;
+    let completeResponse = false;
     const finish = (result: DirectMarketWorkerResult) => {
       if (settled) return;
       settled = true;
+      if (trace) onPrivateProgress({ type: "private-diagnostic", writeSucceeded: trace.finish(result.diagnostics.reason, completeResponse), completeResponse });
       resolve({ ...result, diagnostics: { ...result.diagnostics, ...snapshot } });
     };
     let request: ReturnType<typeof https.request>;
@@ -79,6 +86,7 @@ async function run(data: DirectMarketWorkerData,
       },
       timeout: 15_000,
     }, (response) => {
+      trace?.response(response);
       const chunks: Buffer[] = [];
       let size = 0;
       const responseFailure = (reason: "response-too-large" | "response-aborted") => {
@@ -87,6 +95,7 @@ async function run(data: DirectMarketWorkerData,
       };
       response.on("data", (chunk: Buffer) => {
         if (settled) return;
+        trace?.chunk(chunk);
         size += chunk.length;
         if (size > MAX_RESPONSE_BYTES) responseFailure("response-too-large");
         else chunks.push(chunk);
@@ -94,7 +103,7 @@ async function run(data: DirectMarketWorkerData,
       response.on("aborted", () => responseFailure("response-aborted"));
       response.on("error", () => responseFailure("response-aborted"));
       response.on("end", () => {
-        if (!settled) finish(inspectDirectMarketResponse(Buffer.concat(chunks), response.statusCode));
+        if (!settled) { completeResponse = true; const received = Buffer.concat(chunks); trace?.completeBody(received); finish(inspectDirectMarketResponse(received, response.statusCode)); }
       });
     }); } catch { finish(directMarketFailure("worker")); return; }
     request.on("timeout", () => {
@@ -104,6 +113,7 @@ async function run(data: DirectMarketWorkerData,
     request.on("error", (error: NodeJS.ErrnoException) => finish(directMarketFailure(classifyDirectMarketNetworkError(error.code))));
     try {
       request.end(body);
+      trace?.request(request, body, `https://${MARKET_HOST}${MARKET_PATH}`);
       snapshot.dispatchStatus = "submitted";
       onProgress({ ...snapshot });
     } catch { finish(directMarketFailure("worker")); request.destroy(); }
@@ -112,8 +122,9 @@ async function run(data: DirectMarketWorkerData,
 
 const workerPort = parentPort;
 if (workerPort) {
-  void run(workerData as DirectMarketWorkerData,
-    diagnostics => workerPort.postMessage({ type: "request-context", diagnostics } satisfies DirectMarketWorkerProgress))
+  void runDirectMarketWorker(workerData as DirectMarketWorkerData,
+    diagnostics => workerPort.postMessage({ type: "request-context", diagnostics } satisfies DirectMarketWorkerProgress),
+    message => workerPort.postMessage(message))
     .then((result) => workerPort.postMessage(result))
     .catch(() => workerPort.postMessage(directMarketFailure("worker")));
 }

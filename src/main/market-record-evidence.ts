@@ -1,6 +1,6 @@
 import type { CapturedSessionPayload, CompleteCapturedSessionContext } from "./captured-session-context";
 import { isRegionQualifiedAccount, rawAccountId, SESSION_CONTEXT_FIELDS, validSessionContextField,
-  type SessionContextFields, type SessionContextMessage } from "./session-context-fields";
+  NATIVE_PLAYER_SALES_METHOD, type NativeMarketDigestEvidence, type SessionContextFields, type SessionContextMessage } from "./session-context-fields";
 
 const MAX_RECORDS = 8;
 type Agreement = boolean | null;
@@ -13,6 +13,7 @@ interface RecordEvidence {
   observedAt: number;
   ordinal: number;
   flow: Pick<CapturedSessionPayload, "remoteAddress" | "remotePort" | "localAddress" | "localPort">;
+  nativeMarket?: NativeMarketDigestEvidence;
 }
 /** Main-process RAM only, including the worker thread. Never renderer IPC or logs. */
 export interface FrozenMarketRecordEvidence {
@@ -32,6 +33,7 @@ interface ComparedRecord {
   sameGeneration: boolean;
   sameEndpoint: boolean;
   observedBeforeDispatch: boolean;
+  nativeDigest: { route: typeof NATIVE_PLAYER_SALES_METHOD | null; nativeDigestAvailable: boolean };
 }
 export interface MarketRecordComparison {
   evidenceAvailable: boolean;
@@ -48,7 +50,8 @@ export interface MarketRecordComparison {
     apiObservedFirst: boolean }[][];
   /** Observed slots and generic API records do not establish native selected-slot authority. */
   selectedNativeSlotEstablished: false;
-  nativeMarketDigestObserved: false;
+  nativeMarketDigestObserved: boolean;
+  nativeFetchDigestObserved: false;
   authoritativeLoginBoundaryObserved: false;
 }
 
@@ -66,14 +69,17 @@ export class MarketRecordEvidenceStore {
       validSessionContextField(field, message.fields[field]) ? [[field, message.fields[field]]] : []));
     records.push({ fields, source: message.source, ...(message.slot ? { slot: message.slot } : {}),
       generation, observedAt, ordinal: ++this.ordinal, flow: { remoteAddress: payload.remoteAddress, remotePort: payload.remotePort,
-        localAddress: payload.localAddress, localPort: payload.localPort } });
+        localAddress: payload.localAddress, localPort: payload.localPort },
+      ...(message.nativeMarket?.method === NATIVE_PLAYER_SALES_METHOD ? { nativeMarket: { method: NATIVE_PLAYER_SALES_METHOD,
+        ...(message.nativeMarket.checksum && /^[a-f0-9]{64}$/i.test(message.nativeMarket.checksum) ? { checksum: message.nativeMarket.checksum } : {}) } } : {}) });
     if (records.length > MAX_RECORDS) { records.shift(); this.evicted = true; }
   }
   clear(observationGap = false): void {
     this.api = []; this.saves = []; this.ordinal = 0; this.evicted = false; this.clearedForObservationGap = observationGap;
   }
   freeze(generation: number, frozenAt: number): FrozenMarketRecordEvidence {
-    const copy = (records: RecordEvidence[]) => records.map(record => ({ ...record, fields: { ...record.fields }, flow: { ...record.flow } }));
+    const copy = (records: RecordEvidence[]) => records.map(record => ({ ...record, fields: { ...record.fields }, flow: { ...record.flow },
+      ...(record.nativeMarket ? { nativeMarket: { ...record.nativeMarket } } : {}) }));
     return { generation, frozenAt, api: copy(this.api), saves: copy(this.saves), evicted: this.evicted,
       clearedForObservationGap: this.clearedForObservationGap };
   }
@@ -111,6 +117,8 @@ export function compareMarketRecords(context: CompleteCapturedSessionContext, bo
     sameGeneration: record.generation === context.generation,
     sameEndpoint: record.flow.remoteAddress === context.endpoint.address && record.flow.remotePort === context.endpoint.port,
     observedBeforeDispatch: record.observedAt <= snapshot.frozenAt,
+    nativeDigest: { route: record.nativeMarket?.method === NATIVE_PLAYER_SALES_METHOD ? NATIVE_PLAYER_SALES_METHOD : null,
+      nativeDigestAvailable: record.nativeMarket?.method === NATIVE_PLAYER_SALES_METHOD && /^[a-f0-9]{64}$/i.test(record.nativeMarket.checksum ?? "") },
   });
   return { evidenceAvailable: api.length + saves.length > 0, recordsEvicted: snapshot.evicted === true,
     clearedForObservationGap: snapshot.clearedForObservationGap === true, formUnambiguous, formValid,
@@ -120,5 +128,6 @@ export function compareMarketRecords(context: CompleteCapturedSessionContext, bo
       rawAccountEqual: rawEqual(record.fields.account_id, saved.fields.account_id), observedSlotEqual: equal(record.slot, saved.slot),
       modeEqual: { season: equal(record.fields.season, saved.fields.season), hardcore: equal(record.fields.hardcore, saved.fields.hardcore), beta: equal(record.fields.beta, saved.fields.beta) },
       sameFlow: sameFlow(record.flow, saved.flow), sameEndpoint: sameEndpoint(record.flow, saved.flow), apiObservedFirst: record.ordinal < saved.ordinal }))),
-    selectedNativeSlotEstablished: false, nativeMarketDigestObserved: false, authoritativeLoginBoundaryObserved: false };
+    selectedNativeSlotEstablished: false, nativeMarketDigestObserved: api.some(record => record.nativeMarket?.method === NATIVE_PLAYER_SALES_METHOD && /^[a-f0-9]{64}$/i.test(record.nativeMarket.checksum ?? "")),
+    nativeFetchDigestObserved: false, authoritativeLoginBoundaryObserved: false };
 }
