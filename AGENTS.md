@@ -8,15 +8,22 @@ passive Npcap capture and focused, explicit product actions.
 
 - Define the user journey and observable acceptance before implementation — this
   keeps a successful probe from being mistaken for a completed product.
+- Check original authorized captures/logs and the producer's actual configured
+  artifact paths before declaring evidence absent. Distinguish not yet found from
+  verified missing, and record the locations checked and access limits - a path
+  mistake must not become a protocol conclusion.
 - Keep a short evidence ledger: observed facts, assumptions, named blocker, next
   discriminating check and result — decisions should be traceable without a transcript.
 - Reuse working code and retained fixtures/captures; choose the cheapest safe
   experiment that distinguishes plausible causes — avoid reconstructing solved work.
-- Reverse-engineer only a named blocker; retain coherent useful exports and label
-  assumptions separately from observed protocol requirements — arbitrary past caps
-  and speculative wire rules must not become global policy.
-- Report failures on the first attempt with safe stage, reason and relevant counts;
-  exclude sensitive values — useful evidence reduces repeated low-information runs.
+- Separate verified protocol necessities, inferences and discretionary policies.
+  Give each policy a scope, reason and effect on the user journey - convenience
+  guards and historical limits must not become undocumented wire requirements.
+- Reverse-engineer only a named blocker and retain coherent useful exports -
+  established findings should remain reusable rather than being rediscovered.
+- Report first-attempt failures with available safe stage, reason and counts.
+  Before adding diagnostics, name the unresolved question existing evidence cannot
+  answer; collect only what distinguishes its plausible causes, without sensitive values.
 - Review proportionally to risk and reassess after repeated low-information
   iterations — optimize elapsed time to a trustworthy outcome.
 
@@ -63,19 +70,32 @@ passive Npcap capture and focused, explicit product actions.
 
 ## Verify and hand off
 
-- Add/update representative regressions at the riskiest changed boundary. Use
-  packet/message/persisted/preload/UI-shaped fixtures and meaningful negative cases;
-  counts alone do not demonstrate correctness.
+- Reproduce a reported failure before patching, using retained authorized evidence
+  and the production path; keep a failing regression tied to the report. If
+  reproduction is blocked, mark the cause and fix unproved - a substitute failure
+  or another green suite does not establish closure.
+- Exercise the actual production user journey at touched boundaries with realistic
+  ordering, including main/preload/UI and persistence across a process restart when
+  relevant. Mock external services while retaining production glue - isolated
+  module success cannot prove the composed behavior.
+- Use independently justified expected values and meaningful negative controls,
+  anchored in protocol evidence or product contracts. Explain what assertions prove
+  and what mocks omit - test counts summarize runs, not acceptance.
 - Run focused specs first. For non-trivial code changes run `npm test`,
   `npm run typecheck` and `npm run build`. Add deterministic mocked Electron
   checks for shell/preload/IPC/window/cross-process changes that unit tests cannot
-  prove — distinguish mocked/offline proof from real Windows/game acceptance.
+  prove.
 - Native ABI work uses `npm run rebuild` (the cap lifecycle patch precedes rebuild)
   — direct electron-rebuild bypasses a required safety fix.
 - Refresh the relevant branch map after source changes; update affected ownership,
   commands and current handoff docs — stale state increases the next task's cost.
-- Report outcome, exact commit/source paths, checks, limits and grouped unresolved
-  decisions before scratch notes — another agent must be able to continue safely.
+- Complete available discriminating authorized offline checks before requesting
+  another owner run, and explain what only that run can prove. Do not present an
+  unproved fix as release-ready - source and mocked proof have native/runtime limits.
+- Keep handoffs concise and current: report outcome, exact commit/source paths,
+  checks, limits and grouped unresolved decisions before scratch notes. Use plain
+  language and explain necessary abbreviations - another agent must not decode
+  cryptic handoff shorthand.
 
 ## Security and consequential actions
 
