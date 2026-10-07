@@ -7,7 +7,7 @@ import { SatanicZoneLoginCacheStore } from "../../src/main/satanic-zone-login-ca
 import { SatanicZoneLoginCache } from "../../src/main/satanic-zone-login-cache";
 import { SatanicZoneDiagnosticBufferBudget } from "../../src/main/satanic-zone-diagnostic-budget";
 import { inventedConnect, inventedPostLogin, inventedProbeScope as scope, inventedProbeIdentity as identity } from "../fixtures/satanic-zone-initialized";
-import { loadSatanicZoneLoginCacheEnabled, saveSatanicZoneLoginCacheEnabled } from "../../src/main/persistence";
+import { loadSatanicZoneLoginCacheEnabled, loadSatanicZoneLoginCacheAutomatic, saveSatanicZoneLoginCacheEnabled } from "../../src/main/persistence";
 
 // Synthetic material only. Production encryption and filesystem are exercised.
 const passphrase = "SYNTHETIC portable cache passphrase";
@@ -59,14 +59,29 @@ function malformedAuthenticatedFile(connect = inventedConnect(), post = invented
 }
 
 describe("portable login cache with production encryption and synthetic secrets", () => {
+  test("identity received while Locked binds after unlock without requiring another packet", async () => {
+    const original = await savedFixture(); original.cache.dispose();
+    const reopened = fixture(); reopened.cache.configure(true);
+    await reopened.cache.observe(reopened.payload);
+    expect(reopened.cache.restoreInput()).toBeNull();
+    expect(await reopened.cache.unlock(passphrase)).toBe(true);
+    expect(reopened.cache.snapshot().status).toBe("validated");
+    expect(reopened.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+  });
+  test("eight characters can set a new portable passphrase", async () => {
+    const f = fixture(); f.cache.configure(true);
+    expect(await f.cache.unlock("SYNTHET8")).toBe(true);
+    await f.cache.remember(f.input, 42);
+    expect(f.cache.snapshot().status).toBe("saved");
+  });
   test("opt-in stays locked; passive identity and remember cannot create a file until explicit unlock", async () => {
     const f = fixture(); f.cache.configure(true);
     expect(f.cache.snapshot()).toEqual({ enabled: true, unlocked: false, status: "locked" });
     await f.cache.remember(f.input, 42); await f.cache.observe(f.payload);
-    expect(fs.existsSync(f.file)).toBe(false); expect(f.cache.restoreInput()).toBeNull(); expect(f.budget.usedBytes).toBe(0);
+    expect(fs.existsSync(f.file)).toBe(false); expect(f.cache.restoreInput()).toBeNull(); expect(f.budget.usedBytes).toBeLessThan(2048);
     expect(await f.cache.unlock(passphrase)).toBe(true);
     expect(f.cache.snapshot()).toEqual({ enabled: true, unlocked: true, status: "empty" });
-    expect(fs.existsSync(f.file)).toBe(false); expect(f.networkState).not.toHaveBeenCalled();
+    expect(fs.existsSync(f.file)).toBe(false); expect(f.store.isUnlocked()).toBe(true);
   });
   test("atomic save, dispose, reopen and unlock preserve the byte-exact pair and require fresh identity", async () => {
     const f = await savedFixture(), encrypted = fs.readFileSync(f.file);
@@ -259,10 +274,143 @@ describe("portable login cache with production encryption and synthetic secrets"
     const file = path.join(directory, "preferences.json"); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
     fs.writeFileSync(file, '{"satanicZoneLoginCache":{"enabled":true}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
     expect(saveSatanicZoneLoginCacheEnabled(file, true)).toBe(true); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(true);
-    expect(JSON.parse(fs.readFileSync(file, "utf8")).satanicZonePortableCache).toEqual({ version: 1, enabled: true });
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).satanicZonePortableCache).toEqual({ version: 2, enabled: true, automatic: false });
+    expect(loadSatanicZoneLoginCacheAutomatic(file)).toBe(false);
     saveSatanicZoneLoginCacheEnabled(file, false); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
     fs.writeFileSync(file, '{"satanicZonePortableCache":{"version":1,"enabled":"true"}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
-    fs.writeFileSync(file, '{"satanicZonePortableCache":{"version":2,"enabled":true}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
+    fs.writeFileSync(file, '{"satanicZonePortableCache":{"version":3,"enabled":true}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
     fs.writeFileSync(file, "garbage"); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
+  });
+  test("legacy portable consent never implies automatic consent; explicit v2 choice survives reopening", () => {
+    const file = path.join(directory, "preferences.json");
+    fs.writeFileSync(file, '{"unrelated":42,"satanicZonePortableCache":{"version":1,"enabled":true,"automatic":true}}');
+    expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(true); expect(loadSatanicZoneLoginCacheAutomatic(file)).toBe(false);
+    saveSatanicZoneLoginCacheEnabled(file, true, true);
+    expect(loadSatanicZoneLoginCacheAutomatic(file)).toBe(true); expect(JSON.parse(fs.readFileSync(file, "utf8")).unrelated).toBe(42);
+    saveSatanicZoneLoginCacheEnabled(file, false, true); expect(loadSatanicZoneLoginCacheAutomatic(file)).toBe(false);
+  });
+  test("explicit automatic migration preserves existing ciphertext and reopens without the passphrase", async () => {
+    const old = await savedFixture(), encrypted = fs.readFileSync(old.file); old.cache.dispose();
+    const migrated = fixture(); migrated.cache.configure(true);
+    expect(fs.existsSync(`${old.file}.key`)).toBe(false);
+    await migrated.cache.observe(migrated.payload);
+    expect(await migrated.cache.enableAutomatic(passphrase)).toBe(true);
+    expect(migrated.cache.snapshot()).toMatchObject({ automatic: true, status: "validated" });
+    expect(fs.readFileSync(old.file)).toEqual(encrypted);
+    const retained = fs.readFileSync(`${old.file}.key`);
+    expect(retained.length).toBe(56); expect(retained.subarray(0, 8).toString()).toBe("HSCSZK01");
+    expect(retained.toString()).not.toContain(passphrase);
+    migrated.cache.dispose(); expect(migrated.budget.usedBytes).toBe(0);
+    const reopened = fixture(); reopened.cache.configure(true, true);
+    expect(reopened.cache.snapshot()).toEqual({ enabled: true, automatic: true, unlocked: true, status: "unverified" });
+    expect(reopened.cache.restoreInput()).toBeNull();
+    await reopened.cache.observe(reopened.payload);
+    expect(reopened.cache.restoreInput()?.postLoginBody).toEqual(inventedPostLogin());
+    expect(fs.readFileSync(old.file)).toEqual(encrypted);
+  });
+  test("eight-character automatic setup saves the next native pair and startup alone cannot authorize it", async () => {
+    const f = fixture(); f.cache.configure(true);
+    expect(await f.cache.enableAutomatic("SYNTHET8")).toBe(true);
+    expect(fs.existsSync(f.file)).toBe(false); expect(fs.existsSync(`${f.file}.key`)).toBe(true);
+    await f.cache.remember(f.input, 42); f.cache.dispose();
+    const reopened = fixture(); reopened.cache.configure(true, true);
+    expect(reopened.cache.snapshot().status).toBe("unverified"); expect(reopened.cache.restoreInput()).toBeNull();
+    await reopened.cache.observe(reopened.payload); expect(reopened.cache.snapshot().status).toBe("validated");
+  });
+  test.each(["missing", "bad magic", "truncated", "oversized", "wrong key", "wrong salt"])("%s automatic key preserves ciphertext for manual recovery", async kind => {
+    const f = await savedFixture(); expect(await f.cache.enableAutomatic(passphrase)).toBe(true);
+    f.cache.dispose(); const cipher = fs.readFileSync(f.file), keyFile = `${f.file}.key`;
+    let bytes = fs.readFileSync(keyFile);
+    if (kind === "missing") fs.unlinkSync(keyFile);
+    else {
+      if (kind === "bad magic") bytes[0] ^= 1;
+      if (kind === "truncated") bytes = bytes.subarray(0, 55);
+      if (kind === "oversized") bytes = Buffer.alloc(57);
+      if (kind === "wrong key") bytes[24] ^= 1;
+      if (kind === "wrong salt") bytes[8] ^= 1;
+      fs.writeFileSync(keyFile, bytes);
+    }
+    const reopened = fixture(); reopened.cache.configure(true, true);
+    expect(reopened.cache.snapshot().status).toBe("unlock_failed"); expect(reopened.budget.usedBytes).toBe(0);
+    expect(fs.readFileSync(f.file)).toEqual(cipher);
+    expect(await reopened.cache.unlock(passphrase)).toBe(true); await reopened.cache.observe(reopened.payload);
+    expect(reopened.cache.snapshot().status).toBe("validated");
+  });
+  test("Lock keeps automatic reopening consent; disable removes the retained key but preserves ciphertext", async () => {
+    const f = await savedFixture(); await f.cache.enableAutomatic(passphrase); const cipher = fs.readFileSync(f.file);
+    f.cache.lock(); expect(f.cache.snapshot()).toMatchObject({ automatic: true, unlocked: false, status: "locked" });
+    expect(fs.existsSync(`${f.file}.key`)).toBe(true); expect(f.budget.usedBytes).toBe(0);
+    f.cache.configure(false); expect(fs.existsSync(`${f.file}.key`)).toBe(false); expect(fs.readFileSync(f.file)).toEqual(cipher);
+    f.cache.configure(true); expect(f.cache.snapshot().status).toBe("locked");
+    f.cache.clear(); expect(fs.existsSync(f.file)).toBe(false);
+  });
+  test("automatic key write failure preserves the encrypted file and unowned temporary artifact", async () => {
+    const f = await savedFixture(), cipher = fs.readFileSync(f.file), temp = `${f.file}.key.tmp`;
+    fs.writeFileSync(temp, "UNRELATED");
+    expect(await f.cache.enableAutomatic(passphrase)).toBe(false);
+    expect(f.cache.snapshot().status).toBe("storage_error"); expect(fs.readFileSync(f.file)).toEqual(cipher);
+    expect(fs.readFileSync(temp, "utf8")).toBe("UNRELATED"); expect(fs.existsSync(`${f.file}.key`)).toBe(false);
+  });
+  test("wrong migration passphrase cannot opt in or replace the existing encrypted data", async () => {
+    const f = await savedFixture(), cipher = fs.readFileSync(f.file); f.cache.lock();
+    expect(await f.cache.enableAutomatic("WRONG888")).toBe(false);
+    expect(f.cache.snapshot()).toEqual({ enabled: true, unlocked: false, status: "unlock_failed" });
+    expect(fs.existsSync(`${f.file}.key`)).toBe(false); expect(fs.readFileSync(f.file)).toEqual(cipher);
+  });
+  test("a failed retained-key removal disables reuse and publishes the actual deletion failure", async () => {
+    const f = await savedFixture(); await f.cache.enableAutomatic(passphrase);
+    const unlink = fs.unlinkSync; vi.spyOn(fs, "unlinkSync").mockImplementation(file => {
+      if (String(file) === `${f.file}.key`) throw Object.assign(new Error("PRIVATE_PATH"), { code: "EACCES" });
+      return unlink(file);
+    });
+    f.cache.configure(false);
+    expect(f.cache.snapshot()).toEqual({ enabled: false, unlocked: false, status: "clear_failed" });
+    expect(f.snapshots.at(-1)).toEqual(f.cache.snapshot()); expect(f.cache.restoreInput()).toBeNull();
+    expect(f.budget.usedBytes).toBe(0); expect(fs.existsSync(f.file)).toBe(true); expect(fs.existsSync(`${f.file}.key`)).toBe(true);
+    expect(JSON.stringify(f.diagnostics)).not.toContain("PRIVATE_PATH");
+  });
+  test("Lock during retained-key finalization cancels automatic opt-in without replacing ciphertext", async () => {
+    const f = await savedFixture(), cipher = fs.readFileSync(f.file), fsync = fs.fsyncSync;
+    vi.spyOn(fs, "fsyncSync").mockImplementationOnce(fd => { fsync(fd); f.cache.lock(); });
+    expect(await f.cache.enableAutomatic(passphrase)).toBe(false);
+    expect(fs.existsSync(`${f.file}.key`)).toBe(false); expect(fs.existsSync(`${f.file}.key.tmp`)).toBe(false);
+    expect(fs.readFileSync(f.file)).toEqual(cipher); expect(f.budget.usedBytes).toBe(0);
+  });
+  test("pre-unlock identity metadata stays bounded and is cleared on disposal", async () => {
+    const f = fixture(); f.cache.configure(true);
+    for (let index = 0; index < 40; index++) await f.cache.observe({ ...f.payload, text: `unique_account_id=${"x".repeat(1024)}&beta=0&account_id=12345678901234567890` });
+    expect(f.budget.usedBytes).toBeLessThan(2048); expect(f.cache.restoreInput()).toBeNull();
+    expect(fs.existsSync(f.file)).toBe(false); expect(fs.existsSync(`${f.file}.key`)).toBe(false);
+    f.cache.dispose(); expect(f.budget.usedBytes).toBe(0);
+  });
+  test("a burst while ownership is pending uses one query and one latest-evidence follow-up", async () => {
+    const f = await savedFixture(); let release!: (network: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const first = f.cache.observe(f.payload);
+    const burst = Array.from({ length: 40 }, () => f.cache.observe(f.payload));
+    expect(f.networkState).toHaveBeenCalledTimes(1);
+    release(f.network); await Promise.all([first, ...burst]);
+    expect(f.networkState).toHaveBeenCalledTimes(2); expect(f.cache.snapshot().status).toBe("validated");
+    expect(f.budget.usedBytes).toBeLessThan(2048);
+  });
+  test.each(["gap", "generation", "account", "uid", "partial beta"])("%s during deferred unlock cannot resurrect pre-load identity", async kind => {
+    const old = await savedFixture(); old.cache.dispose(); const f = fixture(); f.cache.configure(true);
+    f.cache.observeProcesses([42]); await f.cache.observe(f.payload);
+    const pending = f.cache.unlock(passphrase);
+    if (kind === "gap") f.cache.suspend();
+    if (kind === "generation") f.cache.observeProcesses([43]);
+    if (kind === "account") await f.cache.observe({ ...f.payload, text: "account_id=other-123" });
+    if (kind === "uid") await f.cache.observe({ ...f.payload, text: "unique_account_id=888888&beta=0" });
+    if (kind === "partial beta") await f.cache.observe({ ...f.payload, text: `unique_account_id=${identity.uniqueAccountId}&beta=1` });
+    await pending; expect(f.cache.restoreInput()).toBeNull();
+    expect(f.cache.snapshot().status).not.toBe("validated");
+  });
+  test("expired pre-load identity is rejected without introducing a Ready expiration", async () => {
+    const old = await savedFixture(); old.cache.dispose(); const f = fixture(); f.cache.configure(true);
+    await f.cache.observe({ ...f.payload, observedAt: Date.now() - 600_001 });
+    await f.cache.unlock(passphrase); expect(f.cache.restoreInput()).toBeNull();
+    await f.cache.observe(f.payload); expect(f.cache.restoreInput()).not.toBeNull();
+    const now = Date.now(); vi.spyOn(Date, "now").mockReturnValue(now + 600_001);
+    expect(f.cache.restoreInput()).not.toBeNull(); expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(true);
   });
 });

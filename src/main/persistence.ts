@@ -229,14 +229,20 @@ export function normalizeSatanicZoneRefreshPreferences(preferences: unknown): Sa
 export function loadSatanicZoneLoginCacheEnabled(filePath: string): boolean {
   try {
     const choice = (loadPreferencesFile(filePath) as { satanicZonePortableCache?: { version?: unknown; enabled?: unknown } }).satanicZonePortableCache;
-    return choice?.version === 1 && choice.enabled === true;
+    return (choice?.version === 1 || choice?.version === 2) && choice.enabled === true;
   }
   catch { return false; }
 }
-export function saveSatanicZoneLoginCacheEnabled(filePath: string, enabled: boolean): boolean {
+export function loadSatanicZoneLoginCacheAutomatic(filePath: string): boolean {
+  try {
+    const choice = loadPreferencesFile(filePath).satanicZonePortableCache as { version?: unknown; enabled?: unknown; automatic?: unknown } | undefined;
+    return choice?.version === 2 && choice.enabled === true && choice.automatic === true;
+  } catch { return false; }
+}
+export function saveSatanicZoneLoginCacheEnabled(filePath: string, enabled: boolean, automatic = false): boolean {
   try {
     savePreferencesFile(filePath, { ...withoutRetiredMainPreferenceSections(loadPreferencesFile(filePath)),
-      satanicZonePortableCache: { version: 1, enabled: enabled === true } });
+      satanicZonePortableCache: { version: 2, enabled: enabled === true, automatic: enabled === true && automatic === true } });
     return true;
   } catch { return false; }
 }

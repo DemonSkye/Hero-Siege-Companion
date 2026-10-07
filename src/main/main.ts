@@ -34,6 +34,7 @@ import {
   loadSatanicZoneCache,
   loadSatanicZoneRefreshPreferences,
   loadSatanicZoneLoginCacheEnabled,
+  loadSatanicZoneLoginCacheAutomatic,
   saveSatanicZoneLoginCacheEnabled,
   loadWindowBounds,
   normalizeSatanicZoneRefreshPreferences,
@@ -357,6 +358,14 @@ function markPastRunsForPublish(): void {
 }
 
 function applySatanicZoneState(nextState: SatanicZoneState): void {
+  const previous = state.satanicZone;
+  if (previous.phase === "refreshing" && nextState.phase !== "refreshing") {
+    writeAppLog("satanic-zone-refresh-completed", { phase: nextState.phase, source: nextState.source,
+      errorCode: nextState.errorCode, observationPresent: nextState.current !== null,
+      ownedObservationDelivered: nextState.source === "manual" && nextState.errorCode === null
+        && nextState.current !== null && ["current", "stale"].includes(nextState.phase),
+      successAt: nextState.lastSuccessAt });
+  }
   state.satanicZone = nextState;
   state.stats.satanicZone = nextState.current;
   const cacheNow = Date.now();
@@ -563,6 +572,7 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, ena
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown) => {
   const requested = enabled === true && state.satanicZone.refreshEnabled;
+  if (requested && satanicZoneLoginCache?.snapshot().enabled) return state;
   const saved = saveSatanicZoneLoginCacheEnabled(preferencesPath, requested);
   satanicZoneLoginCache?.configure(saved && requested);
   if (!saved) state.satanicZoneLoginCache = { enabled: false, unlocked: false, status: "storage_error" };
@@ -570,6 +580,22 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown)
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheUnlock, async (_event, passphrase: unknown) => {
   if (typeof passphrase === "string" && await satanicZoneLoginCache?.unlock(passphrase)) satanicZoneRefreshProvider?.rememberCurrent();
+  publishStateNow(); return state;
+});
+ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheAutomatic, async (_event, passphrase: unknown) => {
+  if (state.satanicZone.refreshEnabled && satanicZoneLoginCache && typeof passphrase === "string") {
+    if (!satanicZoneLoginCache.snapshot().enabled) {
+      if (!saveSatanicZoneLoginCacheEnabled(preferencesPath, true)) {
+        state.satanicZoneLoginCache = { enabled: false, unlocked: false, status: "storage_error" };
+        publishStateNow(); return state;
+      }
+      satanicZoneLoginCache.configure(true);
+    }
+    if (await satanicZoneLoginCache.enableAutomatic(passphrase)) {
+      if (saveSatanicZoneLoginCacheEnabled(preferencesPath, true, true)) satanicZoneRefreshProvider?.rememberCurrent();
+      else satanicZoneLoginCache.disableAutomatic();
+    }
+  }
   publishStateNow(); return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheLock, () => {
@@ -867,7 +893,8 @@ app.whenReady().then(async () => {
     initialState: state.satanicZone,
     onStateChange: applySatanicZoneState,
   });
-  satanicZoneLoginCache.configure(state.satanicZone.refreshEnabled && loadSatanicZoneLoginCacheEnabled(preferencesPath));
+  satanicZoneLoginCache.configure(state.satanicZone.refreshEnabled && loadSatanicZoneLoginCacheEnabled(preferencesPath),
+    loadSatanicZoneLoginCacheAutomatic(preferencesPath));
   satanicZoneDiagnostic = createSatanicZoneInitializedProbeRuntime({
     syntheticOnly: isElectronE2eTestMode(),
     canArm: () => state.satanicZone.phase !== "refreshing"

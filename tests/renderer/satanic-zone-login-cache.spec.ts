@@ -8,6 +8,7 @@ afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()); vi.u
 function api() {
   const methods = {
     setSatanicZoneLoginCacheEnabled: vi.fn(async (_enabled: boolean) => ({})),
+    enableSatanicZoneLoginCacheAutomatic: vi.fn(async (_passphrase: string) => ({})),
     unlockSatanicZoneLoginCache: vi.fn(async (_passphrase: string) => ({})),
     lockSatanicZoneLoginCache: vi.fn(async () => ({})),
     clearSatanicZoneLoginCache: vi.fn(async () => ({})),
@@ -17,8 +18,7 @@ function api() {
 }
 function mountCache(state: SatanicZoneLoginCacheState = { enabled: false, unlocked: false, status: "disabled" }, refreshEnabled = true) {
   const wrapper = mount(SatanicZoneLoginCacheSettings, { props: { refreshEnabled, state } });
-  wrappers.push(wrapper);
-  return wrapper;
+  wrappers.push(wrapper); return wrapper;
 }
 function button(wrapper: VueWrapper, label: string) {
   const match = wrapper.findAll("button").find(candidate => candidate.text() === label);
@@ -26,162 +26,196 @@ function button(wrapper: VueWrapper, label: string) {
   return match;
 }
 const locked = (): SatanicZoneLoginCacheState => ({ enabled: true, unlocked: false, status: "locked" });
+const consent = (wrapper: VueWrapper) => wrapper.get("#settings-sz-cache-consent");
+const password = (wrapper: VueWrapper) => wrapper.get('input[type="password"]');
+const checked = (wrapper: VueWrapper) => (consent(wrapper).element as HTMLInputElement).checked;
+const passValue = (wrapper: VueWrapper) => (password(wrapper).element as HTMLInputElement).value;
 
-test("default-off explicit opt-in does not unlock, save or dispatch; exposes the portable storage tradeoffs", async () => {
-  const methods = api();
-  const wrapper = mountCache();
+test("automatic setup starts off and requires explicit unchecked consent after displaying the local-key risk", async () => {
+  const methods = api(), wrapper = mountCache();
   expect(wrapper.text()).toContain("experimental");
-  expect(wrapper.text()).toContain("encrypted with your passphrase");
-  expect(wrapper.text()).toContain("lost passphrase cannot be recovered");
-  expect(wrapper.text()).toContain("Anyone with the file and passphrase");
-  expect(wrapper.text()).toContain("may not be accepted across game sessions");
+  expect(wrapper.text()).toContain("local unlocking key alongside the encrypted sign-in");
+  expect(wrapper.text()).toContain("Anyone who can read both files can use the saved sign-in");
+  expect(wrapper.text()).toContain("Refresh still sends only when you click it");
+  expect(wrapper.text()).toContain("Reuse may not be accepted across game sessions");
   expect(wrapper.text()).toContain("Older Windows-encrypted files are left untouched");
-  expect(wrapper.text()).not.toContain("Windows encryption");
-  expect((wrapper.get('input[type="checkbox"]').element as HTMLInputElement).checked).toBe(false);
-  expect(wrapper.find('input[type="password"]').exists()).toBe(false);
-  await wrapper.get('input[type="checkbox"]').setValue(true);
-  await flushPromises();
-  expect(methods.setSatanicZoneLoginCacheEnabled).toHaveBeenCalledWith(true);
+  expect((wrapper.get('.settings-switch input').element as HTMLInputElement).checked).toBe(false);
+  expect(checked(wrapper)).toBe(false);
+  await password(wrapper).setValue("12345678");
+  expect(button(wrapper, "Enable automatic save/load").attributes("disabled")).toBeDefined();
+  await wrapper.get("form").trigger("submit");
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
   expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
-  expect(methods.clearSatanicZoneLoginCache).not.toHaveBeenCalled();
-  await wrapper.setProps({ state: locked() });
-  expect(wrapper.find('input[type="password"]').exists()).toBe(true);
-  expect(button(wrapper, "Unlock").attributes("disabled")).toBeDefined();
+  await wrapper.get('.settings-switch input').setValue(true); await flushPromises();
+  expect(methods.setSatanicZoneLoginCacheEnabled).toHaveBeenCalledWith(true);
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
 });
 
-test("unlock sends the exact explicit passphrase once, clears it before IPC settles and disables pending controls", async () => {
-  const methods = api();
-  let resolve!: (value: object) => void;
-  methods.unlockSatanicZoneLoginCache.mockImplementation(() => new Promise(done => { resolve = done; }));
-  const wrapper = mountCache(locked());
-  const input = wrapper.get('input[type="password"]');
-  expect(input.attributes("autocomplete")).toBe("off");
-  expect(input.attributes("aria-describedby")).toBe("settings-sz-cache-passphrase-help");
-  await input.setValue("short");
+test("eight-character automatic setup sends once only after consent and clears the entry before IPC settles", async () => {
+  const methods = api(); let resolve!: (value: object) => void;
+  methods.enableSatanicZoneLoginCacheAutomatic.mockImplementation(() => new Promise(done => { resolve = done; }));
+  const wrapper = mountCache();
+  await consent(wrapper).setValue(true);
+  await password(wrapper).setValue("1234567");
   await wrapper.get("form").trigger("submit");
-  expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
-  const secret = "  invented passphrase  ";
-  await input.setValue(secret);
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
+  await password(wrapper).setValue("12345678");
+  expect(button(wrapper, "Enable automatic save/load").attributes("disabled")).toBeUndefined();
   await wrapper.get("form").trigger("submit");
-  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledWith(secret);
-  expect((input.element as HTMLInputElement).value).toBe("");
-  expect(wrapper.html()).not.toContain(secret);
-  expect(input.attributes("disabled")).toBeDefined();
-  expect(wrapper.get('input[type="checkbox"]').attributes("disabled")).toBeDefined();
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).toHaveBeenCalledWith("12345678");
+  expect(passValue(wrapper)).toBe(""); expect(checked(wrapper)).toBe(false);
+  expect(password(wrapper).attributes("disabled")).toBeDefined();
+  expect(consent(wrapper).attributes("disabled")).toBeDefined();
+  expect(wrapper.get('.settings-switch input').attributes("disabled")).toBeDefined();
   expect(button(wrapper, "Forget saved sign-in").attributes("disabled")).toBeDefined();
   await wrapper.get("form").trigger("submit");
-  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledTimes(1);
-  resolve({}); await flushPromises();
-  expect(input.attributes("disabled")).toBeUndefined();
-});
-
-test("unlock mirrors Unicode character and UTF-8 byte limits before sending", async () => {
-  const methods = api();
-  const wrapper = mountCache(locked());
-  const input = wrapper.get('input[type="password"]');
-  // Six emoji contain 12 UTF-16 units, but only six Unicode code points.
-  await input.setValue("\u{1F600}".repeat(6));
-  expect(button(wrapper, "Unlock").attributes("disabled")).toBeDefined();
-  await wrapper.get("form").trigger("submit");
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).toHaveBeenCalledTimes(1);
   expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
-
-  const twelveCharacters = "\u732B".repeat(12);
-  await input.setValue(twelveCharacters);
-  expect(button(wrapper, "Unlock").attributes("disabled")).toBeUndefined();
-  await wrapper.get("form").trigger("submit"); await flushPromises();
-  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledWith(twelveCharacters);
-
-  // Each character occupies three UTF-8 bytes: 342 characters exceed 1,024 bytes.
-  await input.setValue("\u732B".repeat(342));
-  expect(button(wrapper, "Unlock").attributes("disabled")).toBeDefined();
-  await wrapper.get("form").trigger("submit");
-  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledTimes(1);
-
-  const exactByteLimit = "\u{1F600}".repeat(256);
-  await input.setValue(exactByteLimit);
-  expect(button(wrapper, "Unlock").attributes("disabled")).toBeUndefined();
-  await wrapper.get("form").trigger("submit"); await flushPromises();
-  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenLastCalledWith(exactByteLimit);
-  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledTimes(2);
+  resolve({}); await flushPromises();
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "unverified" } });
+  expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+  expect(wrapper.find("#settings-sz-cache-consent").exists()).toBe(false);
+  expect(wrapper.text()).toContain("future launches do not require the passphrase");
+  expect(wrapper.get('[role="status"]').text()).toContain("loaded automatically");
 });
 
-test("cancel, disable, successful unlock and unmount clear transient input without dispatching it", async () => {
-  const methods = api();
-  const wrapper = mountCache(locked());
-  let input = wrapper.get('input[type="password"]');
-  await input.setValue("invented cancel secret");
+test("existing manually enabled settings do not become automatic consent; manual unlock remains separate", async () => {
+  const methods = api(), wrapper = mountCache(locked());
+  expect(checked(wrapper)).toBe(false);
+  expect(wrapper.text()).toContain("enter its old passphrase once");
+  expect(wrapper.text()).toContain("keeps its encrypted contents unchanged");
+  expect(wrapper.get('[role="status"]').text()).toContain("Automatic save/load is off");
+  const originalPassphrase = "old portable passphrase";
+  await password(wrapper).setValue(originalPassphrase);
+  await button(wrapper, "Unlock for this session").trigger("click"); await flushPromises();
+  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledWith(originalPassphrase);
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
+  expect(passValue(wrapper)).toBe(""); expect(checked(wrapper)).toBe(false);
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, status: "unverified" } });
+  expect(wrapper.get('[role="status"]').text()).toContain("unlocked for this session");
+  expect(button(wrapper, "Enable automatic save/load").attributes("disabled")).toBeDefined();
+  await password(wrapper).setValue(originalPassphrase); await consent(wrapper).setValue(true);
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).toHaveBeenCalledWith(originalPassphrase);
+  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledTimes(1);
+});
+
+test("automatic and manual actions use eight Unicode code points and the UTF-8 byte bound", async () => {
+  const methods = api(), wrapper = mountCache(locked());
+  await consent(wrapper).setValue(true);
+  // Six emoji have 12 UTF-16 units, but only six Unicode code points.
+  await password(wrapper).setValue("😀".repeat(6));
+  expect(button(wrapper, "Enable automatic save/load").attributes("disabled")).toBeDefined();
+  expect(button(wrapper, "Unlock for this session").attributes("disabled")).toBeDefined();
+  await wrapper.get("form").trigger("submit"); await button(wrapper, "Unlock for this session").trigger("click");
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
+  expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
+  const eightCharacters = "猫".repeat(8);
+  await password(wrapper).setValue(eightCharacters);
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).toHaveBeenCalledWith(eightCharacters);
+  // Each character occupies three bytes: 342 characters exceed 1,024 UTF-8 bytes.
+  await password(wrapper).setValue("猫".repeat(342)); await consent(wrapper).setValue(true);
+  expect(button(wrapper, "Enable automatic save/load").attributes("disabled")).toBeDefined();
+  expect(button(wrapper, "Unlock for this session").attributes("disabled")).toBeDefined();
+  await wrapper.get("form").trigger("submit"); await button(wrapper, "Unlock for this session").trigger("click");
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).toHaveBeenCalledTimes(1);
+  expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
+  const exactByteLimit = "😀".repeat(256);
+  await password(wrapper).setValue(exactByteLimit);
+  await button(wrapper, "Unlock for this session").trigger("click"); await flushPromises();
+  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledWith(exactByteLimit);
+  expect(password(wrapper).attributes("minlength")).toBe("8");
+  expect(password(wrapper).attributes("autocomplete")).toBe("off");
+});
+
+test("cancel, disable, automatic transition and unmount clear transient passphrase and consent", async () => {
+  const methods = api(), wrapper = mountCache(locked());
+  let input = password(wrapper);
+  await input.setValue("invented cancel secret"); await consent(wrapper).setValue(true);
   await button(wrapper, "Cancel").trigger("click");
-  expect((input.element as HTMLInputElement).value).toBe("");
-  await input.setValue("invented retained secret");
-  // Main publishes unrelated state often; unchanged lock state must not erase an unfinished entry.
-  await wrapper.setProps({ state: { ...locked() } });
-  expect((input.element as HTMLInputElement).value).toBe("invented retained secret");
+  expect(passValue(wrapper)).toBe(""); expect(checked(wrapper)).toBe(false);
+  await input.setValue("invented retained secret"); await consent(wrapper).setValue(true);
+  await wrapper.setProps({ state: { ...locked(), automatic: false } });
+  expect(passValue(wrapper)).toBe("invented retained secret"); expect(checked(wrapper)).toBe(true);
   await wrapper.setProps({ refreshEnabled: false });
   expect((input.element as HTMLInputElement).value).toBe("");
   expect(wrapper.find('input[type="password"]').exists()).toBe(false);
-  await wrapper.setProps({ refreshEnabled: true });
-  input = wrapper.get('input[type="password"]');
-  await input.setValue("invented unlock secret");
-  await wrapper.setProps({ state: { enabled: true, unlocked: true, status: "unverified" } });
+  await wrapper.setProps({ refreshEnabled: true }); input = password(wrapper);
+  expect(checked(wrapper)).toBe(false);
+  await input.setValue("invented automatic secret"); await consent(wrapper).setValue(true);
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "unverified" } });
   expect((input.element as HTMLInputElement).value).toBe("");
   expect(wrapper.find('input[type="password"]').exists()).toBe(false);
-  await wrapper.setProps({ state: locked() });
-  input = wrapper.get('input[type="password"]');
-  await input.setValue("invented unmount secret");
+  await wrapper.setProps({ state: locked() }); input = password(wrapper);
+  await input.setValue("invented unmount secret"); await consent(wrapper).setValue(true);
   wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
   expect((input.element as HTMLInputElement).value).toBe("");
   expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
 });
 
-test("Lock, disable and Forget use distinct controls and never send a passphrase", async () => {
-  const methods = api();
-  const wrapper = mountCache({ enabled: true, unlocked: true, status: "validated" });
-  expect(wrapper.text()).toContain("current account and mode");
-  expect(wrapper.text()).not.toContain("game build");
+test("automatic current-session Lock exposes manual recovery while next-launch reopening remains enabled", async () => {
+  const methods = api(), wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "saved" });
+  expect(wrapper.text()).toContain("automatically on future launches");
+  expect(wrapper.find('input[type="password"]').exists()).toBe(false);
   await button(wrapper, "Lock").trigger("click"); await flushPromises();
   expect(methods.lockSatanicZoneLoginCache).toHaveBeenCalledWith();
-  await wrapper.setProps({ state: locked() });
-  expect(wrapper.findAll("button").map(entry => entry.text())).not.toContain("Lock");
-  await wrapper.get('input[type="checkbox"]').setValue(false); await flushPromises();
+  await wrapper.setProps({ state: { ...locked(), automatic: true } });
+  expect(wrapper.get('[role="status"]').text()).toContain("Automatic save/load remains on for the next Companion launch");
+  expect(wrapper.find("#settings-sz-cache-consent").exists()).toBe(false);
+  await password(wrapper).setValue("old portable passphrase");
+  await wrapper.get("form").trigger("submit"); await flushPromises();
+  expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledWith("old portable passphrase");
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
+});
+
+test("disable and Forget describe different retained-file outcomes and use narrow control IPC", async () => {
+  const methods = api(), wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "validated" });
+  expect(wrapper.get('[role="status"]').text()).toContain("current account and mode");
+  expect(wrapper.text()).toContain("removes the local unlocking key and keeps the encrypted sign-in file");
+  expect(wrapper.text()).toContain("Forget deletes both files");
+  await wrapper.get('.settings-switch input').setValue(false); await flushPromises();
   expect(methods.setSatanicZoneLoginCacheEnabled).toHaveBeenCalledWith(false);
   await button(wrapper, "Forget saved sign-in").trigger("click"); await flushPromises();
   expect(methods.clearSatanicZoneLoginCache).toHaveBeenCalledWith();
+  expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
   expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
-  expect(wrapper.text()).toContain("keeps the encrypted file");
-  expect(wrapper.text()).toContain("Forget deletes the portable file");
 });
 
-test("safe failure categories do not expose an IPC error or entered secret; wrong-passphrase recovery stays available", async () => {
-  const methods = api();
-  methods.unlockSatanicZoneLoginCache.mockRejectedValue(new Error("invented secret details"));
-  const wrapper = mountCache(locked());
-  await wrapper.get('input[type="password"]').setValue("invented failure secret");
+test("safe failure statuses keep manual migration recoverable without exposing errors or silently consenting", async () => {
+  const methods = api(), wrapper = mountCache(locked());
+  methods.enableSatanicZoneLoginCacheAutomatic.mockRejectedValue(new Error("invented private key detail"));
+  await password(wrapper).setValue("invented failed passphrase"); await consent(wrapper).setValue(true);
   await wrapper.get("form").trigger("submit"); await flushPromises();
   expect(wrapper.get('[role="status"]').text()).toBe("Could not change saved sign-in. Try again.");
-  expect(wrapper.text()).not.toContain("invented secret");
-  await wrapper.setProps({ state: { enabled: true, unlocked: false, status: "unlock_failed" } });
-  // A normal resolved IPC failure is reported by the main-owned safe status.
-  const resolved = mountCache({ enabled: true, unlocked: false, status: "unlock_failed" });
-  expect(resolved.get('[role="status"]').text()).toContain("Check your passphrase");
-  expect(resolved.find('input[type="password"]').exists()).toBe(true);
-  expect(button(resolved, "Forget saved sign-in").attributes("disabled")).toBeUndefined();
+  expect(wrapper.text()).not.toContain("invented private key detail");
+  expect(passValue(wrapper)).toBe(""); expect(checked(wrapper)).toBe(false);
+  expect(button(wrapper, "Unlock for this session").exists()).toBe(true);
+  const recovery = mountCache({ ...locked(), status: "unlock_failed" });
+  expect(recovery.get('[role="status"]').text()).toContain("Check your passphrase");
+  expect(checked(recovery)).toBe(false);
+  expect(button(recovery, "Forget saved sign-in").attributes("disabled")).toBeUndefined();
 });
 
-test("external unlocking disables fields; SZ disabled cannot enable cache or enter a passphrase", () => {
+test("external unlock disables setup fields and SZ disabled cannot consent or send a passphrase", () => {
   api();
-  const pending = mountCache({ enabled: true, unlocked: false, status: "unlocking" });
-  expect(pending.get('input[type="password"]').attributes("disabled")).toBeDefined();
+  const pending = mountCache({ ...locked(), status: "unlocking" });
+  expect(password(pending).attributes("disabled")).toBeDefined();
+  expect(consent(pending).attributes("disabled")).toBeDefined();
   const disabled = mountCache(locked(), false);
-  expect(disabled.get('input[type="checkbox"]').attributes("disabled")).toBeDefined();
+  expect(disabled.get('.settings-switch input').attributes("disabled")).toBeDefined();
   expect(disabled.find('input[type="password"]').exists()).toBe(false);
+  expect(disabled.find("#settings-sz-cache-consent").exists()).toBe(false);
   expect(button(disabled, "Forget saved sign-in").attributes("disabled")).toBeUndefined();
 });
 
-test("unverified, mismatch and deletion failure explain the actual cache state", async () => {
-  const wrapper = mountCache({ enabled: true, unlocked: true, status: "unverified" });
+test("automatic pending evidence, mismatch and deletion failure explain the real cache state", async () => {
+  const wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "unverified" });
   expect(wrapper.get('[role="status"]').text()).toContain("fresh account and mode evidence");
-  await wrapper.setProps({ state: { enabled: true, unlocked: true, status: "identity_mismatch" } });
+  expect(wrapper.get('[role="status"]').text()).toContain("no request has been sent");
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "identity_mismatch" } });
   expect(wrapper.get('[role="status"]').text()).toContain("did not match");
-  await wrapper.setProps({ state: { enabled: false, unlocked: false, status: "clear_failed" } });
-  expect(wrapper.get('[role="status"]').text()).toContain("Could not delete");
+  await wrapper.setProps({ state: { enabled: false, unlocked: false, automatic: false, status: "clear_failed" } });
+  expect(wrapper.get('[role="status"]').text()).toContain("Could not remove all saved sign-in files");
 });

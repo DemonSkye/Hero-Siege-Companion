@@ -5,9 +5,11 @@ import { connectProbeIdentity, coherentProbePostLogin } from "./satanic-zone-ini
 import type { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
 
 export interface LoginCacheBodies { connectBody: Buffer; postLoginBody: Buffer }
-// Version fixes the KDF/cipher parameters. No algorithm negotiation or adjacent key.
+// Existing portable ciphertext format/KDF remain compatible. Automatic reopening
+// separately retains a local unlocking key only after explicit consent.
 const MAGIC = Buffer.from("HSCSZ001"), HEADER = 52, MAX_BODY = 16_384, MAX_FILE = HEADER + 8 + 2 * MAX_BODY;
-/** Passphrase-encrypted portable file. Key exists only in main RAM until Lock/close. */
+const KEY_MAGIC = Buffer.from("HSCSZK01"), KEY_SIZE = 56;
+/** Passphrase-encrypted portable file, with an optional explicitly retained key. */
 export class SatanicZoneLoginCacheStore {
   private key: Buffer | null = null;
   private salt: Buffer | null = null;
@@ -29,7 +31,7 @@ export class SatanicZoneLoginCacheStore {
     let releaseDerived: (() => void) | undefined;
     let bodies: LoginCacheBodies | null = null;
     try {
-      if (typeof passphrase !== "string" || Buffer.byteLength(passphrase, "utf8") > 1024 || Array.from(passphrase).length < 12) throw new Error("unlock_failed");
+      if (typeof passphrase !== "string" || Buffer.byteLength(passphrase, "utf8") > 1024 || Array.from(passphrase).length < 8) throw new Error("unlock_failed");
       packed = this.read(budget);
       if (packed && (packed.length < HEADER + 8 || !packed.subarray(0, 8).equals(MAGIC))) throw new Error("unlock_failed");
       const salt = packed ? Buffer.from(packed.subarray(8, 24)) : randomBytes(16);
@@ -48,6 +50,37 @@ export class SatanicZoneLoginCacheStore {
       throw new Error(error instanceof Error && ["storage_error", "cancelled"].includes(error.message) ? error.message : "unlock_failed");
     } finally { derived?.fill(0); releaseDerived?.(); if (password) budget.release(password); if (packed) budget.release(packed); this.unlocking = false; }
   }
+  /** Read only after the separate automatic-reopening preference has been opted in. */
+  unlockAutomatic(budget: SatanicZoneDiagnosticBufferBudget): LoginCacheBodies | null {
+    this.lock();
+    let retained: Buffer | undefined, packed: Buffer | undefined;
+    try {
+      const fd = fs.openSync(`${this.file}.key`, "r");
+      try {
+        if (fs.fstatSync(fd).size !== KEY_SIZE) throw new Error("unlock_failed");
+        retained = budget.allocate(KEY_SIZE);
+        if (fs.readSync(fd, retained, 0, KEY_SIZE, 0) !== KEY_SIZE || fs.fstatSync(fd).size !== KEY_SIZE
+          || !retained.subarray(0, 8).equals(KEY_MAGIC)) throw new Error("unlock_failed");
+      } finally { fs.closeSync(fd); }
+      packed = this.read(budget);
+      if (packed && (!packed.subarray(0, 8).equals(MAGIC) || !packed.subarray(8, 24).equals(retained.subarray(8, 24)))) throw new Error("unlock_failed");
+      this.releaseKey = budget.reserve(32); this.key = Buffer.from(retained.subarray(24)); this.salt = Buffer.from(retained.subarray(8, 24));
+      return packed ? this.decrypt(packed, this.key, budget) : null;
+    } catch (error) {
+      this.lock();
+      throw new Error(error instanceof Error && error.message === "storage_error" ? "storage_error" : "unlock_failed");
+    } finally { if (retained) budget.release(retained); if (packed) budget.release(packed); }
+  }
+  /** The key is locally readable, not protected by encoding or an OS credential store. */
+  retainUnlockingKey(budget: SatanicZoneDiagnosticBufferBudget): void {
+    if (!this.key || !this.salt) throw new Error("locked");
+    const retained = budget.allocate(KEY_SIZE), epoch = this.epoch, key = this.key;
+    try {
+      KEY_MAGIC.copy(retained); this.salt.copy(retained, 8); key.copy(retained, 24);
+      this.replace(`${this.file}.key`, retained, () => epoch === this.epoch && key === this.key);
+    } finally { budget.release(retained); }
+  }
+  forgetUnlockingKey(): boolean { return this.remove([`${this.file}.key`, `${this.file}.key.tmp`]); }
   private read(budget: SatanicZoneDiagnosticBufferBudget): Buffer | undefined {
     let packed: Buffer | undefined;
     try {
@@ -84,9 +117,9 @@ export class SatanicZoneLoginCacheStore {
   }
   save(bodies: LoginCacheBodies, budget: SatanicZoneDiagnosticBufferBudget): void {
     if (!this.key || !this.salt) throw new Error("locked");
-    const epoch = this.epoch, temporary = `${this.file}.tmp`, key = this.key;
+    const epoch = this.epoch, key = this.key;
     let plain: Buffer | undefined, encrypted: Buffer | undefined, tail: Buffer | undefined, packed: Buffer | undefined;
-    let release: (() => void) | undefined, ownsTemporary = false;
+    let release: (() => void) | undefined;
     try {
       const identity = connectProbeIdentity(bodies.connectBody);
       if (!identity || !coherentProbePostLogin(bodies.postLoginBody, identity)
@@ -99,19 +132,33 @@ export class SatanicZoneLoginCacheStore {
       encrypted = cipher.update(plain); tail = cipher.final();
       packed = Buffer.concat([MAGIC, this.salt, iv, cipher.getAuthTag(), encrypted, tail]);
       if (epoch !== this.epoch || key !== this.key || packed.length > MAX_FILE) throw new Error();
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      const fd = fs.openSync(temporary, "wx", 0o600); ownsTemporary = true;
-      try { fs.writeFileSync(fd, packed); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-      if (epoch !== this.epoch || key !== this.key) throw new Error();
-      fs.renameSync(temporary, this.file); ownsTemporary = false;
-    } catch { if (ownsTemporary) { try { fs.unlinkSync(temporary); } catch {} } throw new Error("storage_error"); }
+      this.replace(this.file, packed, () => epoch === this.epoch && key === this.key);
+    } catch { throw new Error("storage_error"); }
     finally { if (plain) budget.release(plain); encrypted?.fill(0); tail?.fill(0); packed?.fill(0); release?.(); }
   }
   forget(): boolean {
-    this.lock(); let cleared = true;
-    for (const file of [this.file, `${this.file}.tmp`]) {
+    this.lock();
+    return this.remove([this.file, `${this.file}.tmp`, `${this.file}.key`, `${this.file}.key.tmp`]);
+  }
+  private remove(files: readonly string[]): boolean {
+    let cleared = true;
+    for (const file of files) {
       try { fs.unlinkSync(file); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") cleared = false; }
     }
     return cleared;
+  }
+  private replace(file: string, bytes: Buffer, current: () => boolean): void {
+    const temporary = `${file}.tmp`; let ownsTemporary = false;
+    try {
+      if (!current()) throw new Error();
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const fd = fs.openSync(temporary, "wx", 0o600); ownsTemporary = true;
+      try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      if (!current()) throw new Error();
+      fs.renameSync(temporary, file); ownsTemporary = false;
+    } catch {
+      if (ownsTemporary) { try { fs.unlinkSync(temporary); } catch {} }
+      throw new Error("storage_error");
+    }
   }
 }

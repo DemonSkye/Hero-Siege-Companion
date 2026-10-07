@@ -16,6 +16,7 @@ const EXPECTED_PRELOAD_API = [
   "chooseGameExecutable",
   "clearSatanicZoneLoginCache",
   "unlockSatanicZoneLoginCache",
+  "enableSatanicZoneLoginCacheAutomatic",
   "lockSatanicZoneLoginCache",
   "closeWindow",
   "deleteAllPastRuns",

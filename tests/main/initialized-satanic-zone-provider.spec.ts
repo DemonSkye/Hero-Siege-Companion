@@ -7,7 +7,10 @@ import { SatanicZoneLoginCache } from "../../src/main/satanic-zone-login-cache";
 import { SatanicZoneLoginCacheStore } from "../../src/main/satanic-zone-login-cache-store";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { InitializedSatanicZoneRefreshProvider } from "../../src/main/initialized-satanic-zone-provider";
-import { runInitializedSatanicZoneProbe, type InitializedProbeInput } from "../../src/main/satanic-zone-initialized-transport";
+import { runInitializedSatanicZoneProbe, type InitializedProbeInput, type InitializedProbeProgress } from "../../src/main/satanic-zone-initialized-transport";
+import { SatanicZoneController } from "../../src/main/satanic-zone-controller";
+import type { SatanicZoneState } from "../../src/shared/satanic-zone";
+import { satanicZoneDisplay, satanicZoneRefreshControl } from "../../src/renderer/src/lib/satanic-zone-display";
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import type { HeroSiegeNetworkState } from "../../src/main/capture-network";
 import type { SatanicZonePreparation } from "../../src/shared/satanic-zone-preparation";
@@ -30,11 +33,11 @@ class Socket extends EventEmitter {
   destroy = vi.fn(() => this);
   receive(body: Buffer) { this.emit("data", generic(body)); }
 }
-function fixture(loginCache?: SatanicZoneLoginCache) {
+function fixture(loginCache?: SatanicZoneLoginCache, onPreparation?: (state: SatanicZonePreparation) => void) {
   vi.useFakeTimers(); vi.setSystemTime(1_000);
   let receive!: (packet: ParsedPayload, truncated: boolean) => void;
   const snapshots: SatanicZonePreparation[] = [], sockets: Socket[] = [], inputs: InitializedProbeInput[] = [];
-  const diagnostics: unknown[] = [];
+  const diagnostics: unknown[] = [], transportProgress: InitializedProbeProgress[] = [];
   const close = vi.fn(); let canPrepare = true;
   const budgets: SatanicZoneDiagnosticBufferBudget[] = [];
   const network: HeroSiegeNetworkState = { gameProcessIds: [42], antiCheatProcessIds: [],
@@ -43,10 +46,10 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
   const networkState = vi.fn(async () => network);
   const provider = new InitializedSatanicZoneRefreshProvider({ canPrepare: () => canPrepare, loginCache,
     onReadinessDiagnostic: diagnostic => diagnostics.push(diagnostic),
-    onPreparation: state => snapshots.push(state), dependencies: { prepare, open, networkState,
+    onPreparation: state => { snapshots.push(state); onPreparation?.(state); }, dependencies: { prepare, open, networkState,
       attempt: (input, signal, budget, progress) => {
         inputs.push(input); const socket = new Socket(); sockets.push(socket);
-        return runInitializedSatanicZoneProbe(input, signal, budget, progress, () => socket as unknown as net.Socket);
+        return runInitializedSatanicZoneProbe(input, signal, budget, value => { transportProgress.push(value); progress?.(value); }, () => socket as unknown as net.Socket);
       } } });
   function packet(outbound: boolean, seq: number, payload = Buffer.alloc(0), flags = 16): ParsedPayload {
     return { src: outbound ? scope.localAddress : scope.remoteAddress, dst: outbound ? scope.remoteAddress : scope.localAddress,
@@ -73,7 +76,7 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
     sockets.at(-1)!.receive(opcodeOnlyReadyBody); sockets.at(-1)!.receive(inventedLoginSuccess());
     return request;
   }
-  return { provider, collect, dispatch, sockets, inputs, snapshots, diagnostics, network, networkState, close, prepare, open, budgets, packet,
+  return { provider, collect, dispatch, sockets, inputs, snapshots, diagnostics, transportProgress, network, networkState, close, prepare, open, budgets, packet,
     receive: (value: ParsedPayload, truncated = false) => receive(value, truncated),
     denyPreparation: () => { canPrepare = false; } };
 }
@@ -105,6 +108,68 @@ async function restoredCacheFixture() {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
+  test("a validated owned SZ arriving before wait registration is delivered once after transport returns Ready", async () => {
+    const f = fixture(); await f.collect(); const request = await f.dispatch();
+    const responseAt = Date.now(); f.sockets[0].receive(inventedZoneBody); await flush();
+    expect(f.transportProgress.at(-1)).toMatchObject({ stage: "zone", zoneWritten: true,
+      observation: { zone: { rawZone: "Act_04_03", updatedAt: responseAt }, observedAt: responseAt } });
+    expect(f.provider.preparation).toEqual({ phase: "ready", expiresAt: null });
+    expect(await f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 }))
+      .toMatchObject({ kind: "observation", observation: { zone: { rawZone: "Act_04_03", updatedAt: responseAt }, observedAt: responseAt },
+        availabilityConsumed: false, refreshAvailable: true });
+    expect(await f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 })).toBeNull();
+    expect(f.sockets).toHaveLength(1); f.provider.dispose();
+  });
+  test.each(["wait first", "owned response before public wait"])("owned success reaches public controller and renderer with %s despite competing passive traffic", async ordering => {
+    let controller!: SatanicZoneController;
+    const states: SatanicZoneState[] = [], f = fixture(undefined, preparation => controller?.setPreparation(preparation));
+    controller = new SatanicZoneController({ provider: f.provider, now: Date.now, onStateChange: state => states.push(state) });
+    await f.collect(); controller.observePassiveTimeout(); expect(controller.getState().errorCode).toBe("response_timeout");
+    const wait = vi.spyOn(f.provider, "waitForObservation"), originalRequest = f.provider.requestRefresh.bind(f.provider);
+    let releaseDispatch!: () => void;
+    const handoff = new Promise<void>(resolve => { releaseDispatch = resolve; });
+    if (ordering === "owned response before public wait") vi.spyOn(f.provider, "requestRefresh").mockImplementation(async options => {
+      const dispatched = await originalRequest(options); await handoff; return dispatched;
+    });
+    const attemptedAt = Date.now(), request = controller.refreshNow(); await flush();
+    expect(f.sockets).toHaveLength(1); expect(controller.getState()).toMatchObject({ phase: "refreshing", lastAttemptAt: attemptedAt, errorCode: null });
+    const incomingSequence = 201 + generic(opcodeOnlyReadyBody).length + generic(inventedLoginSuccess()).length;
+    const firstPassive = generic(Buffer.from('{"satanicZoneName":"Act_01_01","buffs":"","debuffs":""}'));
+    f.receive(f.packet(false, incomingSequence, firstPassive));
+    expect(controller.getState()).toMatchObject({ phase: "refreshing", source: "captured", current: { rawZone: "Act_01_01" } });
+    controller.observePassiveRequest(); controller.observePassiveTimeout();
+    expect(controller.getState().phase).toBe("refreshing"); expect(wait).not.toHaveBeenCalled();
+    f.sockets[0].receive(opcodeOnlyReadyBody); f.sockets[0].receive(inventedLoginSuccess()); await flush();
+    if (ordering === "wait first") { expect(await request).toEqual({ accepted: true, errorCode: null }); expect(wait).toHaveBeenCalledTimes(1); }
+    else expect(wait).not.toHaveBeenCalled();
+    f.receive(f.packet(false, incomingSequence + firstPassive.length,
+      generic(Buffer.from('{"satanicZoneName":"Act_02_04","buffs":"","debuffs":""}'))));
+    controller.observePassiveTimeout();
+    expect(controller.getState()).toMatchObject({ phase: "refreshing", source: "captured", current: { rawZone: "Act_02_04" } });
+    await vi.advanceTimersByTimeAsync(100); const responseAt = Date.now();
+    f.sockets[0].receive(inventedZoneBody); await flush();
+    expect(f.transportProgress.at(-1)?.observation?.zone.rawZone).toBe("Act_04_03");
+    expect(f.provider.preparation.phase).toBe("ready");
+    if (ordering === "owned response before public wait") {
+      expect(wait).not.toHaveBeenCalled(); expect(controller.getState().phase).toBe("refreshing");
+      releaseDispatch(); expect(await request).toEqual({ accepted: true, errorCode: null }); await flush();
+    }
+    expect(wait).toHaveBeenCalledTimes(1);
+    const completed = controller.getState();
+    expect(completed).toMatchObject({ phase: "current", source: "manual", current: { rawZone: "Act_04_03", updatedAt: responseAt },
+      lastAttemptAt: attemptedAt, lastSuccessAt: responseAt, errorCode: null, refreshAvailable: true, refreshPreparation: { phase: "ready" } });
+    expect(completed.validUntil).toBeGreaterThan(responseAt); expect(completed.nextAllowedRefreshAt).toBeGreaterThan(responseAt);
+    expect(satanicZoneDisplay(completed, responseAt)).toMatchObject({ phase: "current", statusLabel: "Current",
+      statusDetail: "Received through manual refresh.", observedLabel: "Observed just now" });
+    expect(satanicZoneRefreshControl(completed, responseAt, false)).toMatchObject({ visible: true, disabled: true });
+    expect(states.filter(state => state.phase === "current" && state.source === "manual" && state.lastSuccessAt === responseAt)).toHaveLength(1);
+    controller.observePassiveTimeout(responseAt + 500, attemptedAt - 500);
+    expect(controller.getState()).toMatchObject({ phase: "current", errorCode: null, lastSuccessAt: responseAt });
+    await vi.advanceTimersByTimeAsync(30_000); await flush();
+    expect(controller.getState()).toMatchObject({ phase: "current", source: "manual", lastSuccessAt: responseAt, errorCode: null });
+    expect(satanicZoneRefreshControl(controller.getState(), Date.now(), false)).toMatchObject({ visible: true, disabled: false });
+    expect(f.sockets).toHaveLength(1); controller.dispose(); f.provider.dispose();
+  });
   test.each([["77777777777777777777", "0"], ["12345678901234567890", "1"]])(
     "native Ready and saved pair survive gameplay-only reconfiguration; private identity %s/%s still invalidates", async (uid, beta) => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);

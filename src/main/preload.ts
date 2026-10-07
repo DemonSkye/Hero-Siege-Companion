@@ -26,6 +26,7 @@ const api: HeroSiegeCompanionApi = {
   setSatanicZoneLoginCacheEnabled: enabled => ipcRenderer.invoke(IpcChannel.satanicZoneLoginCacheSet, enabled),
   clearSatanicZoneLoginCache: () => ipcRenderer.invoke(IpcChannel.satanicZoneLoginCacheClear),
   unlockSatanicZoneLoginCache: passphrase => ipcRenderer.invoke(IpcChannel.satanicZoneLoginCacheUnlock, passphrase),
+  enableSatanicZoneLoginCacheAutomatic: passphrase => ipcRenderer.invoke(IpcChannel.satanicZoneLoginCacheAutomatic, passphrase),
   lockSatanicZoneLoginCache: () => ipcRenderer.invoke(IpcChannel.satanicZoneLoginCacheLock),
   exportConfiguration: (json, options) => ipcRenderer.invoke(IpcChannel.configurationExport, json, options),
   importConfiguration: () => ipcRenderer.invoke(IpcChannel.configurationImport),
