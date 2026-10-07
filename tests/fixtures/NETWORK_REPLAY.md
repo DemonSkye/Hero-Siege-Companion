@@ -12,6 +12,7 @@ literal replay of a recorded authenticated session.
 | October 6 initialized-SZ success report and inspected transport | Connect acknowledgement opcode 0x1000, initialization order and represented operands | Complete startup/login capture is unavailable. Connect/PostLogin/login-success bytes are invented; split/reordered/duplicated TCP segments are added test conditions. |
 | October 6 Market diagnostics | Three HTTP 200/application -3 checksum rejections; 40-byte responses | Original rejection text is unavailable. The JSON fixture substitutes a safe `checksum` message; its byte length is not claimed to reproduce the original. |
 | Owner-reported vote reset and manual Refresh | One successful manual Refresh after the vote reset | Running build and Ready origin unknown; no wire trace establishes exactly what the game emitted. The test supplies a fresh coherent initialization as a conditional model, not a guarantee about that game action. |
+| October 7, 2026 17:03 UTC accepted Companion Market pair | Fetch route and ordered search fields; independently pinned synthetic checksum; 101 numeric prices in received order, with lowest 4,000/6,000 and itemCount 101 | Application-boundary recording, not independent TLS wire/native game capture. `market-accepted-transformed.json` substitutes credentials/address/scope, strips all other listing fields, projects the envelope and recompresses it. The literal body oracle omits the static route signature and checks its independent fingerprint separately. Chunk boundaries and the renderer's catalog drop are invented. |
 
 `sz-market-replay-acceptance.spec.ts` uses real Ethernet/TCP decoding, bounded
 reassembly, session-field extraction, Market readiness, SZ preparation/controller,
@@ -63,9 +64,23 @@ Reopen with no saved pair, no fresh identity, or UID without beta remains unavai
 and sends nothing. This covers local lifecycle validation, not server reuse of real
 credentials, OS encryption, or availability of suitable fresh traffic in owner play.
 
-Inventory found the redacted Market summary and packet metadata, but no pcap/pcapng/
+The accepted Companion pair now has a reusable transformed regression fixture.
+`market-private-diagnostic.spec.ts` uses the actual worker entry with mocked HTTPS
+to check ordered byte serialization, the independent synthetic checksum and route
+signature fingerprint, three test chunks and safe reduction of all 101 prices.
+`electron-market-mainline.spec.cjs` reuses the response through production
+main/preload/UI for both a fresh profile and a legacy-disabled reopened profile.
+Its mock transport calls the real form builder and response reducer; it does not
+run the worker thread. The separate worker-entry test covers that boundary. Opening
+the dialog sends nothing; one explicit Search displays 101 matches and 4,000/6,000.
+The transformed payload is 267 bytes, not the original accepted 8,305 bytes.
+Private original-byte replay and sanitization receipts stay outside app Git.
+No synthetic credentials or changed payload bytes are claimed to be server accepted.
+
+The earlier startup/SZ inventory found the redacted Market summary and packet metadata, but no pcap/pcapng/
 HAR or complete Connect/PostLogin exchange in the relevant retained research/debug
-folders. The old paired Market capture directory was absent. Sanitization emitted
+folders. The old paired native Market capture directory was absent. The later accepted
+Companion response is not assigned to that historical native request. Earlier sanitization emitted
 only the public search fields and packet metadata; originals were preserved. Future
 complete recordings can replace the marked substitutes without changing the real
 parser/readiness assertions. These tests prove the supplied traffic is handled;

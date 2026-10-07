@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { deflateSync } = require("node:zlib");
+const accepted = require("../fixtures/market-accepted-transformed.json");
 const {
   cleanupUserDataDir, closeCompanionApp, createUserDataDir, emitCapturePayloads,
   getRendererState, getStoredUiPreferences, launchCompanionApp,
@@ -56,13 +56,13 @@ async function assertMarketJourney({ electronApp, page }) {
     globalThis.heroSiegeCompanionE2e.emitSessionContext([42], [{
       direction: "outbound", remoteAddress: "203.0.113.42", remotePort: 6668,
       localAddress: "192.0.2.10", localPort: 5000,
-      text: "account_id=7-424242&unique_account_id=SYNTHETIC-uid&crossregion_identifier=SYNTHETIC-session&season=11&hardcore=0&beta=0",
+      text: "account_id=7-424242&unique_account_id=SYNTHETIC-accepted-uid&crossregion_identifier=SYNTHETIC-accepted-session&season=11&hardcore=0&beta=0",
     }]);
   });
   await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(true);
-  const body = JSON.stringify({ status: 1, itemCount: 101,
-    items: deflateSync(Buffer.from('[{"price":4000},{"price":6000}]')).toString("base64") });
-  await electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(body)]);
+  // Reuse the accepted response's 101-price projection with an invented catalog drop.
+  // Main's mock transport uses production construction/reduction; the worker entry is covered separately.
+  await electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(accepted.response.bodyBase64, "base64")]);
   await market.click();
   const dialog = page.getByRole("dialog", { name: "Aurelion Fury", exact: true });
   await expect(dialog).toBeVisible();

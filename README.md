@@ -2,7 +2,7 @@
 
 Local live-session tracking for Hero Siege on Windows.
 
-Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into three focused full-size tools: the Live Session dashboard, Filter Stack for loot alerts, and Report Desk for saved runs. A compact current-run overlay and an optional, default-off manual Satanic Zone refresh are also available.
+Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into three focused full-size tools: the Live Session dashboard, Filter Stack for loot alerts, and Report Desk for saved runs. A compact current-run overlay, on-demand Market checks and Satanic Zone Refresh are also available. SZ Refresh is enabled by default for new configurations; existing saved Off choices are preserved.
 
 > **Required before first launch:** install [Npcap](https://npcap.com/#download) so the companion can read local game traffic. The exact installer options are in [Required: Install Npcap](#required-install-npcap).
 
@@ -23,12 +23,12 @@ Current release target follows the `version` field in `package.json`.
 1. Install [Npcap](https://npcap.com/#download) using the options shown below.
 2. Launch `Hero Siege Companion.exe`.
 3. Start Hero Siege and leave capture running while you play.
-4. Enable manual Satanic Zone refresh in **Settings > Features** if desired.
+4. Use `Market` on a recognized drop or `Refresh` beside the Satanic Zone when ready. Optional **Remember sign-in** is in **Settings > Features**.
 5. Use `End Run` when a run is complete and should be saved to Past Runs.
 
 Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later passive/manual update.
 
-Market and manual Satanic Zone requests become ready after Npcap observes the current account, mode, and short-lived session identifiers in ordinary game traffic. The game may be launched normally and Companion may attach during play; when attaching late, leave capture running until later qualifying traffic arrives.
+Market checks become ready after capture observes the current account, mode and session fields in ordinary game traffic. SZ Refresh watches for a complete sign-in automatically, or uses a usable saved sign-in after it is loaded. Companion can attach during play; a missed sign-in cannot be recovered from packets that were never observed.
 
 ## Core Features
 
@@ -37,8 +37,8 @@ Market and manual Satanic Zone requests become ready after Npcap observes the cu
 - Run pause/resume controls, including automatic run pause when capture stops.
 - Compact overlay mode for keeping the current run visible while playing, with tile presets and custom item/filter counters configured from the compact gear.
 - Satanic Zone name, reset countdown, pros, cons, and freshness status in both full and compact views.
-- Optional recycle-style Satanic Zone refresh icon beside the full-view countdown and the configured compact SZ timer tile, hidden until enabled and gated for exactly 30 seconds from each accepted refresh handoff.
-- On-demand Market checks from eligible normal/unique Item Timeline drops, with optional socket/stat minimums and up to the two lowest comparable numeric-gold prices.
+- Satanic Zone Refresh beside the full-view countdown and the configured compact SZ timer tile, with automatic readiness and a 30-second cooldown after dispatch. It can be turned off in Settings.
+- Market checks available to everyone from eligible normal/unique Item Timeline drops, with optional socket/stat minimums and up to the two lowest comparable numeric-gold prices.
 - Filter Stack loot alerts with independently collapsible groups, concise rule/sound summaries, rarity/type rules, exact watched items, volume, cooldown, and prominent global mute.
 - Contextual Sound Library for built-in previews, imported local audio or zip soundpacks, usage-aware removal, and soundpack ZIP export; Filter Packs carry only the custom sounds their groups use.
 - Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes with canonical full-app and compact choices. Custom theme files are the advanced escape hatch; ordinary accent controls are not exposed.
@@ -60,11 +60,15 @@ Item Timeline and Live Log are collapsible dashboard fixtures. Ordinary card col
 
 Satanic Zone details use the same current-run source data in full and compact mode: zone name, remaining time, pros, and cons come from fresh parsed game packets or the optional sanitized manual-refresh result. The Companion does not restore a prior zone, effects, source, or observation time when it launches. `End Run` also clears the current Satanic Zone details for the next run; the next passive or manual response repopulates them.
 
-SZ Refresh is enabled for new/default configuration and can be turned off in **Settings > Features**. Existing saved Off choices are preserved, including older values whose original intent was not recorded. Open Companion before signing into the game, or launch the game here: capture automatically gets Refresh ready before launch and keeps watching for ordinary sign-ins and reconnects. The full dashboard and compact overlay show the current zone, its freshness, and Refresh or a short reason it is unavailable. There is no Prepare step or two-minute listening window. If Companion missed this sign-in, keep playing; it cannot recover packets that were already sent, and Refresh becomes available after a complete new sign-in is observed. Changing characters is not known to guarantee that.
+SZ Refresh is enabled for new/default configuration and can be turned off in **Settings > Features**. Existing saved Off choices are preserved, including older values whose original intent was not recorded. Open Companion before signing into the game, or launch the game here: Companion starts watching before launch and keeps watching for ordinary sign-ins and reconnects. The full dashboard and compact overlay show the current zone, its freshness, and Refresh or a short reason it is unavailable. There is no Prepare step or two-minute listening window. If Companion missed this sign-in and no usable saved sign-in is loaded, keep playing; it cannot recover packets that were already sent, and Refresh becomes available after a complete new sign-in is observed. Changing characters is not known to guarantee that.
 
-Only an explicit Refresh sends an authenticated request on a short-lived Companion-owned connection. Passive watching and recovery never send authentication, and failed requests are not retried automatically. Ready has no time expiry. By default, sign-in data stays in main-process memory, bounded separately from normal capture; detailed traffic logging is suppressed while watching or retaining context. Capture interruptions pause Refresh until complete fresh initialization is observed. Game session changes, disabling the feature, or closing Companion clear the private runtime context. Each request has a bounded wait; one may run at a time. The 30-second cooldown begins only after the zone request is dispatched, and a still-active cooldown can survive a Companion restart. Npcap never injects raw TCP frames into the game connection. No proxy or certificate installation is required.
+Only an explicit Refresh sends an authenticated request on a short-lived Companion-owned connection. Passive watching and recovery never send authentication, and failed requests are not retried automatically. Ready has no time expiry. By default, sign-in data stays in main-process memory, bounded separately from normal capture; detailed traffic logging is suppressed while watching or retaining context. Capture interruptions suspend native readiness until a complete new sign-in is observed; a usable loaded saved sign-in can still support Refresh with capture stopped. Game session changes, disabling the feature, or closing Companion clear the private native runtime context. Each request has a bounded wait; one may run at a time. The 30-second cooldown begins only after the zone request is dispatched, and a still-active cooldown can survive a Companion restart. Npcap never injects raw TCP frames into the game connection. No proxy or certificate installation is required.
 
-**Remember sign-in (experimental)** is off by default in **Settings > Features**. It saves the paired sign-in messages with Windows-backed encryption so you can test reuse after Companion reopens. Restored data is marked as experimental and cannot enable Refresh until fresh account/mode evidence from the current game flow and the game build match. Requests still require an explicit Refresh click. If matching evidence is unavailable, Companion explains the reason; it never guesses the account. **Clear saved sign-in**, turning the experiment off, or disabling SZ Refresh removes the encrypted record. Cross-session server acceptance is experimental and is not guaranteed. Encrypted sign-in data is excluded from configuration and support exports.
+**Remember sign-in** is off by default in **Settings > Features**. It saves a complete paired sign-in and its server destination in a passphrase-encrypted local file. Use at least eight characters. **Unlock for this session** permits manual reuse after Companion reopens. Optional **Enable automatic save/load** requires separate consent to keep a local unlocking key beside the encrypted file; anyone who can read both files can use that saved sign-in. This is not Windows-backed key protection.
+
+A usable loaded sign-in can make Refresh ready after Companion reopens without a new game login or fresh account/build matching. Compatible older records may need the server address from ordinary game connections. Loading sends nothing; requests still require an explicit Refresh click. The server may reject a saved sign-in that is no longer valid, so success across different game sessions is not guaranteed. Saving sign-in does not restore a prior zone or observation time.
+
+Turning off Remember or SZ Refresh stops reuse, clears saved inputs from memory and removes the automatic unlocking key, while preserving the encrypted sign-in file. **Forget saved sign-in** removes the encrypted record and retained key and turns Remember off. Saved sign-in and unlocking material are excluded from configuration backups and support exports.
 
 ## Dropped-Item Market Check
 
@@ -112,7 +116,7 @@ Settings is one autosaving ledger. Choices save as they change, and the saved/sa
 
 - **App:** choose Steam, the default launch method, or Standalone. The executable path appears only when Standalone is selected.
 - **Appearance:** choose the canonical Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, or Quicksilver theme for the full app and compact overlay. Pre-v2 overrides remain available as `Legacy Custom (Migrated)` when present, but ordinary accent, texture, and fill controls are retired.
-- **Features:** enable the default-off Satanic Zone Refresh feature or review its Npcap/direct-connection guidance.
+- **Features:** turn SZ Refresh on or off, optionally Remember sign-in, or review the capture/direct-connection guidance.
 - **Help & Support:** export or restore a full backup, manage automatic diagnostics plus manual or exact ten-minute Enhanced/Deep modes, open logs, create a support bundle, reset both saved window positions, factory-reset preferences, and read About/What's New.
 - **Developers:** import/export custom themes, export a theme template, access theme token/schema references, and export legacy Item Research once when migration-only entries remain.
 
@@ -144,9 +148,9 @@ If capture does not start, reinstall Npcap with the WinPcap-compatible option en
 
 ## Direct Network Features
 
-Market checks and manual SZ Refresh use Npcap only to passively observe current game-owned API context. Product capture continues to exclude ports 80 and 443 and never writes or injects raw packets. Each feature owns its separate outbound request: Market uses direct HTTPS, and manual SZ uses a short-lived direct TCP connection with the retained native API frame. Neither feature launches a helper process or modifies the game's connection.
+Market checks use Npcap to observe current game-owned API context. SZ Refresh uses an observed complete sign-in or usable loaded saved inputs. Product capture continues to exclude ports 80 and 443 and never writes or injects raw packets. Each feature owns its separate outbound request: Market uses direct HTTPS, and SZ uses a short-lived direct TCP connection. Neither feature launches a helper process or modifies the game's connection.
 
-No mitmproxy installation, local CA certificate, WinDivert redirector, interception UAC prompt, privileged service, proxy configuration, reconnect, or requirement to launch Hero Siege through Companion remains. Requests fail closed when current context is incomplete, stale, changes while work is in flight, or produces an invalid response. Attaching during play remains supported, but packets sent before Npcap began cannot be recovered.
+No mitmproxy installation, local CA certificate, WinDivert redirector, interception UAC prompt, privileged service, proxy configuration, reconnect, or requirement to launch Hero Siege through Companion remains. Requests are unavailable when their required inputs are incomplete, and invalid responses are reported safely. Native observation gaps suspend captured sign-in readiness; saved sign-in eligibility is handled separately. Attaching during play remains supported, but packets sent before capture began cannot be recovered.
 
 ## Development
 
@@ -183,7 +187,7 @@ Run the app:
 npm start
 ```
 
-For development of manual Satanic Zone refresh or dropped-item Market checks, keep Npcap installed and capture running long enough to observe qualifying current-session traffic. No separate proxy runtime is used.
+For development of dropped-item Market checks or native SZ readiness, keep Npcap installed and capture running long enough to observe qualifying traffic. Saved SZ inputs have a separate explicit load/Refresh workflow. No separate proxy runtime is used.
 
 Run tests:
 

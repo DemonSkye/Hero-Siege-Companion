@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "evidenceClass": "transformed-accepted-companion-market-pair",
+    "acceptedAtUtc": "2026-10-07T17:03:24Z",
+    "boundary": "Companion HTTPS application boundary; not independent TLS wire or native game capture",
+    "transformations": [
+      "Account, UID, crossregion, endpoint and local scope replaced with synthetic values.",
+      "Checksum independently recalculated with .NET and checked against the prior native-derived synthetic known answer.",
+      "Static route signature omitted from the literal body oracle; its independent fingerprint remains pinned.",
+      "All 101 numeric prices and their received order retained; all other listing fields removed.",
+      "Envelope projected to status/itemCount/items, then JSON serialized, zlib compressed and Base64 encoded again.",
+      "Tests add three synthetic chunk boundaries; transformed bytes and geometry are not original wire bytes."
+    ],
+    "originalAcceptedRequestBytes": 385,
+    "originalAcceptedResponseBytes": 8305,
+    "originalHasCompleteUntruncatedEnd": true,
+    "originalRetainedPrivately": true,
+    "transformedFixtureServerAcceptanceClaimed": false
+  },
+  "context": {
+    "generation": 1,
+    "revision": 1,
+    "updatedAt": 1000,
+    "scopeKey": "SYNTHETIC-accepted-scope",
+    "endpoint": {
+      "address": "203.0.113.42",
+      "port": 6668
+    },
+    "fields": {
+      "account_id": "7-424242",
+      "unique_account_id": "SYNTHETIC-accepted-uid",
+      "crossregion_identifier": "SYNTHETIC-accepted-session",
+      "season": "11",
+      "hardcore": "0",
+      "beta": "0"
+    }
+  },
+  "request": {
+    "itemMask": 1073758270,
+    "statFilters": []
+  },
+  "expectedRequest": {
+    "fieldOrder": [
+      "account_id",
+      "unique_account_id",
+      "crossregion_identifier",
+      "season",
+      "hardcore",
+      "beta",
+      "checksum",
+      "multipass",
+      "api_script",
+      "item_sort",
+      "scroll_page",
+      "page_id",
+      "get_highest_id",
+      "filter_masks"
+    ],
+    "checksumHex": "77a0a22c0cd9c5ccfa811b7e72a5cd28f433613f93d3dc17f9b1346e7fa5e054",
+    "routeSignatureSha256OfHex": "4bf9d17b8f92460f781fd3fc65dbd133c8f2e76953b67fc06f550551937b3f1b",
+    "serializedWithRouteSignatureRedacted": "account_id=7-424242&unique_account_id=SYNTHETIC-accepted-uid&crossregion_identifier=SYNTHETIC-accepted-session&season=11&hardcore=0&beta=0&checksum=77a0a22c0cd9c5ccfa811b7e72a5cd28f433613f93d3dc17f9b1346e7fa5e054&multipass=SYNTHETIC_ROUTE_SIGNATURE&api_script=market%2Fmarket_fetch_items&item_sort=2&scroll_page=0&page_id=99999999&get_highest_id=1&filter_masks=%5B1073758270%5D"
+  },
+  "response": {
+    "httpStatus": 200,
+    "bodyBase64": "eyJzdGF0dXMiOjEsIml0ZW1Db3VudCI6MTAxLCJpdGVtcyI6ImVKenQxRDBPd2pBTUJlQzdkR2F3VXp0MXVBcGlRZ3hzaUJWeGQ1UU9LSDZXR2lJa3BucjdYbjlTMVhGT3orbit1RjJ1MDFHSTZIWDRNSHN1bmt4Z0JpZndESWJWV0xlZDZFZWJtVFdlNFhwd3JRR0xxbXBqaGZjRjQvM2dUTEViVzE1NjFvNXJOVFo0dnV2aVhlRC9sRm9EWHZkWDJIQjc4TzlnTFJkZ28zRFN2Z2h3MkdJZy9ZQkZ4QVdDQVg1cENIQW85MkE0d0hPSU14N2tNU2lTSUtoOU9iOEJ0My9rQ3c9PSJ9",
+    "transformedBytes": 267,
+    "decodedListingCount": 101,
+    "syntheticChunkSplitOffsets": [
+      13,
+      37
+    ]
+  },
+  "expectedResponse": {
+    "ok": true,
+    "result": {
+      "listings": [
+        {
+          "price": 4000
+        },
+        {
+          "price": 6000
+        }
+      ],
+      "totalMatches": 101
+    }
+  }
+}

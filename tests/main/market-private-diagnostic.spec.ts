@@ -7,6 +7,8 @@ import { Duplex } from "node:stream";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { MarketPrivateDiagnostic } from "../../src/main/market-private-diagnostic";
 import { MarketPrivateTraceWriter } from "../../src/main/market-private-trace-writer";
+import { createHash } from "node:crypto";
+import accepted from "../fixtures/market-accepted-transformed.json";
 
 const bridge = vi.hoisted(() => ({ data: undefined as unknown, post: vi.fn(), request: vi.fn() }));
 vi.mock("node:worker_threads", () => ({ default: { get workerData() { return bridge.data; }, parentPort: { postMessage: bridge.post } },
@@ -28,11 +30,11 @@ class Request extends EventEmitter {
 class Response extends EventEmitter { statusCode = 200; statusMessage = "OK"; httpVersion = "1.1";
   rawHeaders = ["Set-Cookie", "RESPONSE_COOKIE_CANARY", "X-Exact", "ONE", "X-Exact", "TWO"];
   headers = { "set-cookie": ["RESPONSE_COOKIE_CANARY"], "x-exact": "ONE, TWO" }; }
-async function entry(filename?: string) {
+async function entry(filename?: string, data = { context, request: { itemMask: 1, statFilters: [] } }) {
   vi.resetModules(); bridge.post.mockClear(); bridge.request.mockReset();
   const outgoing = new Request(); let received!: (response: Response) => void;
   bridge.request.mockImplementation((_options, callback) => { received = callback; return outgoing; });
-  bridge.data = { context, request: { itemMask: 1, statFilters: [] }, ...(filename ? { privateTracePath: filename } : {}) };
+  bridge.data = { ...data, ...(filename ? { privateTracePath: filename } : {}) };
   await import("../../src/main/market-direct-search-worker");
   expect(bridge.request).toHaveBeenCalledTimes(1); expect(outgoing.end).toHaveBeenCalledTimes(1);
   const response = new Response(); received(response);
@@ -41,6 +43,28 @@ async function entry(filename?: string) {
 }
 const records = (filename: string) => fs.readFileSync(filename, "utf8").trim().split("\n").map(line => JSON.parse(line));
 describe("one explicitly enabled own Market request raw diagnostic", () => {
+  test("actual worker serializes the transformed accepted request and reduces all 101 listings to 4000/6000 without private output", async () => {
+    const run = await entry(undefined, { context: accepted.context, request: accepted.request });
+    const form = new URLSearchParams(run.outgoing.body);
+    expect([...form.keys()]).toEqual(accepted.expectedRequest.fieldOrder);
+    expect(form.get("checksum")).toBe(accepted.expectedRequest.checksumHex);
+    expect(createHash("sha256").update(form.get("multipass")!, "utf8").digest("hex"))
+      .toBe(accepted.expectedRequest.routeSignatureSha256OfHex);
+    expect(run.outgoing.body.replace(/(multipass=)[a-f0-9]{64}(?=&|$)/u, "$1SYNTHETIC_ROUTE_SIGNATURE"))
+      .toBe(accepted.expectedRequest.serializedWithRouteSignatureRedacted);
+    const body = Buffer.from(accepted.response.bodyBase64, "base64");
+    const [first, second] = accepted.response.syntheticChunkSplitOffsets;
+    for (const chunk of [body.subarray(0, first), body.subarray(first, second), body.subarray(second)]) run.response.emit("data", chunk);
+    run.response.emit("end");
+    await run.terminal();
+    const result = bridge.post.mock.calls.find(([value]) => !value.type)![0];
+    expect(result.response).toEqual(accepted.expectedResponse);
+    expect(result.diagnostics).toMatchObject({ httpStatus: 200, applicationStatus: 1, responseBytes: accepted.response.transformedBytes });
+    expect(JSON.stringify(bridge.post.mock.calls)).not.toMatch(/SYNTHETIC-accepted|HEADER_CANARY|RESPONSE_COOKIE_CANARY/);
+    expect(bridge.post.mock.calls.some(([value]) => value.type === "private-diagnostic")).toBe(false);
+    expect(bridge.request).toHaveBeenCalledTimes(1);
+  });
+
   test("short filesystem writes still retain a complete JSON record", () => {
     const filename = path.join(directory(), "short-writes.jsonl");
     const write = fs.writeSync.bind(fs);
