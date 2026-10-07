@@ -7,6 +7,7 @@ import { buildMarketFetchItemsChecksum } from "./market-checksum";
 import { buildMarketFetchItemsMultipass, MARKET_FETCH_ITEMS_API_SCRIPT } from "./market-multipass";
 import type { CompleteCapturedSessionContext } from "./captured-session-context";
 import type { SessionContextFields } from "./session-context-fields";
+import { buildMarketRequestDiagnostics } from "./market-request-diagnostics";
 
 const MARKET_HOST = "hsmarket.panicartstudios.com";
 const MARKET_PATH = "/market/herosiege_api_bootstrap.php";
@@ -45,11 +46,16 @@ export function buildDirectMarketRequestBody(context: CompleteCapturedSessionCon
 
 async function run(data: DirectMarketWorkerData): Promise<DirectMarketWorkerResult> {
   const context = data.context;
+  const body = buildDirectMarketRequestBody(context, data.request);
+  const requestContext = buildMarketRequestDiagnostics(context, body);
   const snapshot = {
     contextRevision: context.revision,
     contextAgeMs: Math.max(0, Date.now() - context.updatedAt),
+    requestContext,
   };
-  const body = buildDirectMarketRequestBody(context, data.request);
+  if (requestContext.season === null || requestContext.hardcore === null || requestContext.beta === null
+    || [requestContext.sameEndpoint, requestContext.sameFlow, requestContext.accountPrefixCoherent,
+      requestContext.hardcoreSourcesAgree].includes(false)) return directMarketFailure("context-unavailable", snapshot);
   return await new Promise((resolve) => {
     let settled = false;
     const finish = (result: DirectMarketWorkerResult) => {
@@ -57,7 +63,8 @@ async function run(data: DirectMarketWorkerData): Promise<DirectMarketWorkerResu
       settled = true;
       resolve({ ...result, diagnostics: { ...result.diagnostics, ...snapshot } });
     };
-    const request = https.request({
+    let request: ReturnType<typeof https.request>;
+    try { request = https.request({
       hostname: MARKET_HOST,
       port: 443,
       path: MARKET_PATH,
@@ -86,13 +93,13 @@ async function run(data: DirectMarketWorkerData): Promise<DirectMarketWorkerResu
       response.on("end", () => {
         if (!settled) finish(inspectDirectMarketResponse(Buffer.concat(chunks), response.statusCode));
       });
-    });
+    }); } catch { finish(directMarketFailure("worker")); return; }
     request.on("timeout", () => {
       finish(directMarketFailure("timeout"));
       request.destroy();
     });
     request.on("error", (error: NodeJS.ErrnoException) => finish(directMarketFailure(classifyDirectMarketNetworkError(error.code))));
-    request.end(body);
+    try { request.end(body); } catch { finish(directMarketFailure("worker")); request.destroy(); }
   });
 }
 

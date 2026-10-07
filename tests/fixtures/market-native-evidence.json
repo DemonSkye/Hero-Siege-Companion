@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "evidenceClass": "synthetic-known-answers-derived-from-retained-native-construction",
+    "syntheticIdentifiers": true,
+    "nativeGameExecuted": false,
+    "nativeServerAcceptanceClaimed": false,
+    "knownAnswerSource": "market-research/synthetic-native-market-known-answers-20261007.json",
+    "investigation": "market-research/NATIVE_CHECKSUM_EVIDENCE_20261007.md",
+    "pipelineChecks": "market-research/synthetic-native-market-pipeline-checks-20261007.json",
+    "generator": "Independently decoded retained native operand plus .NET SHA256.HashData; application checksum helper was not used for expectations.",
+    "nativeTargetManifest": "hero-siege-binary-research/build-24868792/runs/run-46-current-multipass-trace/exports-market-get-buy-list/manifest.json",
+    "currentInstalledBuildParityEstablished": false,
+    "retainedCompleteAcceptedNativePairs": 0,
+    "limits": [
+      "All account, UID, crossregion and endpoint inputs in these tests are invented.",
+      "HC=1 and beta=1 vectors are synthetic coverage, not observed native requests.",
+      "Native request projection is unpaired; accepted native responses survive only as aggregates.",
+      "Response bodies below are synthetic substitutes, not retained accepted/rejected response bytes.",
+      "General noncanonical numeric-string and large-number native formatting is not established.",
+      "Native listings are documented with string unit_price; the current reducer omits this optional value instead of guessing numeric normalization."
+    ]
+  },
+  "checksumVectors": [
+    {
+      "id": "season11-softcore-production-synthetic",
+      "accountRaw": "424242",
+      "postedAccount": "7-424242",
+      "alternateRegionPostedAccount": "9-424242",
+      "season": "11",
+      "hardcore": "0",
+      "beta": "0",
+      "expectedChecksumHex": "77a0a22c0cd9c5ccfa811b7e72a5cd28f433613f93d3dc17f9b1346e7fa5e054"
+    },
+    {
+      "id": "season11-hardcore-production-synthetic",
+      "accountRaw": "424242",
+      "postedAccount": "7-424242",
+      "alternateRegionPostedAccount": "9-424242",
+      "season": "11",
+      "hardcore": "1",
+      "beta": "0",
+      "expectedChecksumHex": "24ee28a675325745ab69ae49feb027cb8f14145476be5cab72c80dc841f5a2c7"
+    },
+    {
+      "id": "season11-softcore-beta-synthetic",
+      "accountRaw": "424242",
+      "postedAccount": "7-424242",
+      "alternateRegionPostedAccount": "9-424242",
+      "season": "11",
+      "hardcore": "0",
+      "beta": "1",
+      "expectedChecksumHex": "3760da8403e963e9ff67a69deb8edaac4eb8f244b677400cf00ae685f2d7ed7a"
+    },
+    {
+      "id": "season12-softcore-production-synthetic",
+      "accountRaw": "424242",
+      "postedAccount": "7-424242",
+      "alternateRegionPostedAccount": "9-424242",
+      "season": "12",
+      "hardcore": "0",
+      "beta": "0",
+      "expectedChecksumHex": "78eb00fd936575261a77a13657fd09b745f39ffa4d31dcf064388ea4dd4c1076"
+    },
+    {
+      "id": "nonseasonal-softcore-production-synthetic",
+      "accountRaw": "424242",
+      "postedAccount": "7-424242",
+      "alternateRegionPostedAccount": "9-424242",
+      "season": "0",
+      "hardcore": "0",
+      "beta": "0",
+      "expectedChecksumHex": "e617f398a1c1d4312eb015d972465e347d1333eb991a0db06251786d86539884"
+    }
+  ],
+  "routeSignature": {
+    "source": "market-research/cached-template-field-fingerprints-current.json:fields.multipass",
+    "expectedSha256OfHex": "4bf9d17b8f92460f781fd3fc65dbd133c8f2e76953b67fc06f550551937b3f1b",
+    "rawSignatureIncluded": false
+  },
+  "publicRequestProjection": {
+    "source": "market-research/cached-template-safe-summary-current.jsonl:2",
+    "observedAt": "2026-09-05T03:26:19.860416+00:00",
+    "completeUntruncatedBytes": 379,
+    "pairedResponseAvailable": false,
+    "fields": {
+      "api_script": "market/market_fetch_items",
+      "season": "11",
+      "hardcore": "0",
+      "beta": "0",
+      "item_sort": "0",
+      "filter_masks": "[1073746020]",
+      "scroll_page": "0",
+      "page_id": "99999999",
+      "get_highest_id": "1"
+    },
+    "productPriceSort": "2"
+  },
+  "publicFilterProjection": {
+    "source": "AUCTION_HOUSE_FINDINGS.md:81-121",
+    "evidenceClass": "documented-native-differential-aggregate-original-wire-unavailable",
+    "filter_masks": "[1073746020]",
+    "filter_sockets_min": "4",
+    "decodedStatFilter": [{ "statId": 64, "filter": 2, "statValue": 8 }]
+  },
+  "observedOutcomes": {
+    "source": "AUCTION_HOUSE_FINDINGS.md:81-121 and market-research/native-checksum-checks-20261007.json",
+    "evidenceClass": "aggregates-only-no-authenticated-request-or-response-body",
+    "acceptedNativePairs": [
+      { "httpStatus": 200, "applicationStatus": 1, "requestBytes": 353, "decodedRows": 101 },
+      { "httpStatus": 200, "applicationStatus": 1, "requestBytes": 353, "decodedRows": 101 },
+      { "httpStatus": 200, "applicationStatus": 1, "requestBytes": 379, "decodedRows": 101 },
+      { "httpStatus": 200, "applicationStatus": 1, "requestBytes": 473, "decodedRows": 42 }
+    ],
+    "companionAcceptedDiagnosticCount": 1,
+    "companionChecksumRejectedDiagnosticCount": 7,
+    "rejectedHttpStatus": 200,
+    "rejectedApplicationStatus": -3
+  },
+  "syntheticResponses": {
+    "evidenceClass": "invented-body-substitutes-using-observed-envelope-and-status-shape",
+    "success": {
+      "status": 1,
+      "itemCount": 42,
+      "decodedItems": [
+        { "id": "synthetic-a", "seller": "synthetic-seller", "price": 500000 },
+        { "id": "synthetic-b", "price": 200000, "unit_price": "100000" },
+        { "id": "synthetic-c", "price": 900000 }
+      ]
+    },
+    "expectedSuccess": { "listings": [{ "price": 200000 }, { "price": 500000 }], "totalMatches": 42 },
+    "rejection": { "status": -3, "message": "checksum" },
+    "expectedRejection": { "ok": false, "errorCode": "checksum_rejected" }
+  }
+}

@@ -17,6 +17,8 @@ export interface ElectronE2eWindowState {
 }
 
 export interface ElectronE2eMainHooks {
+  getMarketTestAttemptCount: () => number;
+  setMarketTestResponse: (status: number, body: number[]) => void;
   emitCaptureUpdate: (update: Pick<CaptureUpdate, "observationGap" | "observationGapSource" | "status" | "running">) => void;
   emitCaptureEvents: (events: ParsedEvent[]) => void;
   emitCapturePayloads: (payloads: string[]) => void;

@@ -1,5 +1,6 @@
 import { inflateSync } from "node:zlib";
 import type { MarketSearchResponse } from "../shared/market-search";
+import type { MarketRequestDiagnostics } from "./market-request-diagnostics";
 
 export type DirectMarketFailure =
   | "http-status" | "invalid-json" | "server-rejected" | "missing-items"
@@ -13,6 +14,7 @@ export interface DirectMarketDiagnostics {
   responseBytes?: number;
   contextRevision?: number;
   contextAgeMs?: number;
+  requestContext?: MarketRequestDiagnostics;
 }
 export interface DirectMarketWorkerResult {
   response: MarketSearchResponse;

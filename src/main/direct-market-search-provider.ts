@@ -16,6 +16,7 @@ const WORKER_TIMEOUT_MS = 20_000;
 export interface DirectMarketContextSource {
   marketContext(): CompleteCapturedSessionContext | null;
   subscribe(listener: () => void): () => void;
+  marketProvenance?(): CompleteCapturedSessionContext["provenance"];
 }
 
 interface ActiveSearch {
@@ -67,7 +68,7 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
 
     const context = this.contextSource.marketContext();
     if (!context) {
-      this.log("market-direct-blocked", { reason: "context-unavailable" });
+      this.log("market-direct-blocked", { reason: "context-unavailable", provenance: this.contextSource.marketProvenance?.() });
       return { ok: false, errorCode: "template_unavailable" };
     }
 
@@ -109,14 +110,14 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
     const generation = this.generation;
     const attempt = ++this.attempt;
     const startedAt = this.now();
-    this.log("market-direct-start", { attempt, contextRevision: context.revision });
+    this.log("market-direct-start", { attempt, contextGeneration: context.generation, contextRevision: context.revision });
     const result = await (this.workerRunner
       ? this.workerRunner(context, request, signal)
       : this.runWorker(context, request, signal));
     const current = this.contextSource.marketContext();
     if (generation !== this.generation || !current || current.revision !== context.revision
       || current.generation !== context.generation || current.scopeKey !== context.scopeKey) {
-      this.log("market-direct-result", { attempt, durationMs: this.now() - startedAt, ok: false, reason: "stale-context" });
+      this.log("market-direct-result", { attempt, ...result.diagnostics, durationMs: this.now() - startedAt, ok: false, reason: "stale-context" });
       return { ok: false, errorCode: "template_unavailable", nextAllowedSearchAt: this.nextAllowedSearchAt };
     }
     this.log("market-direct-result", {

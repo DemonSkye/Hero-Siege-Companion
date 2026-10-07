@@ -24,6 +24,9 @@ export function marketReadinessDisplay(readiness: MarketReadiness): { label: str
         ? { label: "Market waiting for capture", detail: "Start capture and keep it running during normal character and world activity." }
         : { label: "Market waiting for Hero Siege", detail: "Connect to a character with capture running so Companion can observe the current session." };
     case "collecting":
+      if (readiness.reason === "source_mismatch") {
+        return { label: "Market context sources disagree", detail: "Waiting for matching account, mode and connection evidence. Keep capture running during normal game activity." };
+      }
       if (readiness.reason === "endpoint_mismatch") {
         return { label: "Market session changed", detail: "Waiting for matching current-session evidence. Keep capture running during normal game activity." };
       }

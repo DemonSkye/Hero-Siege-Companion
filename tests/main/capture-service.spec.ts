@@ -6,10 +6,12 @@ import { CaptureService, type CaptureUpdate } from "../../src/main/capture";
 import { SatanicZoneInitializedProbeController } from "../../src/main/satanic-zone-initialized-controller";
 import { diagnosticCapturePreferences } from "../../src/main/satanic-zone-diagnostic-runtime";
 import { isSatanicZoneDiagnosticActive } from "../../src/shared/satanic-zone-diagnostic";
-import { CapturedSessionContextStore } from "../../src/main/captured-session-context";
+import { CapturedSessionContextStore, type CompleteCapturedSessionContext } from "../../src/main/captured-session-context";
 import { DirectMarketSearchProvider } from "../../src/main/direct-market-search-provider";
 import { MarketRegionDirectory } from "../../src/main/market-region-directory";
 import { MarketResultCache } from "../../src/main/market-result-cache";
+import { buildDirectMarketRequestBody } from "../../src/main/market-direct-search-worker";
+import marketNativeEvidence from "../fixtures/market-native-evidence.json";
 import type { ParsedPayload } from "../../src/main/packet-decoder";
 import type { CaptureConnection } from "../../src/shared/app-state";
 import { EVENT_NAMES } from "../../src/shared/constants";
@@ -745,12 +747,13 @@ describe("CaptureService lifecycle", () => {
   });
 
   test("carries a structurally captured save frame through session context into the direct Market provider", async () => {
+    const vector = marketNativeEvidence.checksumVectors[0];
     const store = new CapturedSessionContextStore();
     store.observeGameProcessIds([123]);
     store.applyRegionDirectory(new MarketRegionDirectory([
-      { address: "203.0.113.10", port: 26921, beta: "0", region: "10" },
+      { address: "203.0.113.10", port: 26921, beta: "0", region: "7" },
     ]));
-    const workerRunner = vi.fn(async () => ({
+    const workerRunner = vi.fn(async (_context: CompleteCapturedSessionContext) => ({
       response: { ok: true as const, result: { listings: [{ price: 123 }] } },
       diagnostics: {},
     }));
@@ -765,7 +768,7 @@ describe("CaptureService lifecycle", () => {
     const service = new CaptureService(() => undefined, undefined, undefined, false, (payload) => store.observe(payload));
     const internals = service as unknown as PacketProcessingCaptureService;
     const query = new URLSearchParams({
-      account_id: "42",
+      account_id: vector.accountRaw,
       unique_account_id: "hero-7",
       crossregion_identifier: "xrid-one",
       beta: "0",
@@ -789,7 +792,7 @@ describe("CaptureService lifecycle", () => {
     });
     expect(workerRunner).toHaveBeenCalledWith(expect.objectContaining({
       fields: expect.objectContaining({
-        account_id: "10-42",
+        account_id: vector.postedAccount,
         unique_account_id: "hero-7",
         crossregion_identifier: "xrid-one",
         season: "11",
@@ -797,6 +800,9 @@ describe("CaptureService lifecycle", () => {
         beta: "0",
       }),
     }), { itemMask: 1_073_746_020, statFilters: [] }, undefined);
+    const snapshot = workerRunner.mock.calls[0][0] as CompleteCapturedSessionContext;
+    expect(new URLSearchParams(buildDirectMarketRequestBody(snapshot, { itemMask: 1_073_746_020, statFilters: [] })).get("checksum")).toBe(vector.expectedChecksumHex);
+    expect(snapshot.provenance).toMatchObject({ sameEndpoint: true, sameFlow: true, accountQualification: "region-directory" });
     provider.dispose();
   });
 

@@ -24,6 +24,7 @@ import { SatanicZoneLoginCache } from "./satanic-zone-login-cache";
 import { SatanicZoneLoginCacheStore } from "./satanic-zone-login-cache-store";
 import { getHeroSiegeNetworkState } from "./capture-network";
 import { ElectronSatanicZoneTestRuntime } from "./electron-satanic-zone-test-runtime";
+import { ElectronMarketTestRuntime } from "./electron-market-test-runtime";
 import { MarketRegionDirectoryCache } from "./market-region-directory";
 import { MarketReadinessController } from "./market-readiness-controller";
 import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
@@ -104,6 +105,7 @@ let satanicZoneRefreshProvider: InitializedSatanicZoneRefreshProvider | null = n
 let satanicZoneLoginCache: SatanicZoneLoginCache | null = null;
 let satanicZoneDiagnostic: SatanicZoneInitializedProbeController | null = null;
 const satanicZoneTestRuntime = isElectronE2eTestMode() ? new ElectronSatanicZoneTestRuntime() : null;
+const marketTestRuntime = ElectronMarketTestRuntime.enabled() ? new ElectronMarketTestRuntime() : null;
 let directMarketSearchProvider: DirectMarketSearchProvider | null = null;
 let capturedSessionContext: CapturedSessionContextStore | null = null;
 let marketReadinessController: MarketReadinessController | null = null;
@@ -483,7 +485,7 @@ ipcMain.handle(
     const normalized = normalizeMarketSearchRequest(request);
     if (!normalized.ok) return { ok: false, errorCode: "request_rejected" };
     const provider = directMarketSearchProvider;
-    if (isElectronE2eTestMode() || !provider) {
+    if (!provider) {
       return { ok: false, errorCode: "helper_unavailable" };
     }
     try {
@@ -822,14 +824,15 @@ app.whenReady().then(async () => {
     state.marketReadiness = readiness;
     publishState();
   });
-  if (!isElectronE2eTestMode()) {
+  if (!isElectronE2eTestMode() || marketTestRuntime) {
     const regionDirectoryCache = new MarketRegionDirectoryCache();
     directMarketSearchProvider = new DirectMarketSearchProvider(
       capturedSessionContext,
       writeAppLog,
-      async (signal) => marketReadinessController?.prepareRegion(async () => {
+      marketTestRuntime ? undefined : async (signal) => marketReadinessController?.prepareRegion(async () => {
         capturedSessionContext?.applyRegionDirectory(await regionDirectoryCache.get(signal));
       }),
+      undefined, undefined, marketTestRuntime?.run,
     );
   }
   satanicZoneLoginCache = new SatanicZoneLoginCache({
@@ -919,6 +922,8 @@ app.whenReady().then(async () => {
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   updateCrashReportCaptureContext();
   installElectronE2eMainHooks({
+    getMarketTestAttemptCount: () => marketTestRuntime?.attemptCount ?? 0,
+    setMarketTestResponse: (status, body) => marketTestRuntime?.setResponse(status, body),
     getSatanicZoneTestAttemptCount: () => satanicZoneTestRuntime?.attemptCount ?? 0,
     setSatanicZoneTestNetwork: network => satanicZoneTestRuntime?.setNetwork(network),
     emitSatanicZoneTestPackets: packets => satanicZoneTestRuntime?.emitPackets(packets),

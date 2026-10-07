@@ -77,6 +77,7 @@ async function launchCompanionApp(options = {}) {
     env: {
       ...process.env,
       HERO_SIEGE_COMPANION_E2E: "1",
+      HERO_SIEGE_COMPANION_E2E_MARKET: options.marketTransport ? "1" : "0",
       HERO_SIEGE_COMPANION_E2E_GAME_RUNNING: options.gameRunning === false ? "0" : "1",
       HERO_SIEGE_COMPANION_E2E_USER_DATA: userDataDir,
     },
