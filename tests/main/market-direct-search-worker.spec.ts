@@ -133,19 +133,19 @@ describe("direct market search worker", () => {
     expect(form.get("season")).toBe("0011");
     // No expected native checksum is available for this representation.
   });
-  test("reduces a substituted compressed response to two safe lowest-price listings", () => {
+  test("reduces a substituted compressed response to safe sorted price listings", () => {
     const response = evidence.syntheticResponses.success;
     const items = deflateSync(Buffer.from(JSON.stringify(response.decodedItems))).toString("base64");
     expect(reduceDirectMarketResponse(Buffer.from(JSON.stringify({ status: response.status, itemCount: response.itemCount, items })), 200))
       .toEqual({ ok: true, result: evidence.syntheticResponses.expectedSuccess });
   });
-  test("documented string unit_price is omitted under the current reducer contract", () => {
+  test("documented decimal string unit_price is safely projected without seller data", () => {
     const response = evidence.syntheticResponses.success;
     expect(response.decodedItems.find(item => item.unit_price !== undefined)?.unit_price).toBe("100000");
     const items = deflateSync(Buffer.from(JSON.stringify(response.decodedItems))).toString("base64");
     const reduced = reduceDirectMarketResponse(Buffer.from(JSON.stringify({ status: response.status, itemCount: response.itemCount, items })), 200);
-    expect(reduced).toMatchObject({ ok: true, result: { listings: [{ price: 200_000 }, { price: 500_000 }] } });
-    expect(JSON.stringify(reduced)).not.toMatch(/unitPrice|unit_price|synthetic-seller|synthetic-a/);
+    expect(reduced).toMatchObject({ ok: true, result: { listings: [{ price: 200_000, unitPrice: 100_000 }, { price: 500_000 }, { price: 900_000 }], returnedCount: 3 } });
+    expect(JSON.stringify(reduced)).not.toMatch(/unit_price|synthetic-seller|synthetic-a/);
   });
   test("HTTP 200 with the observed application rejection status fails instead of manufacturing empty success", () => {
     expect(reduceDirectMarketResponse(Buffer.from(JSON.stringify(evidence.syntheticResponses.rejection)), evidence.observedOutcomes.rejectedHttpStatus))

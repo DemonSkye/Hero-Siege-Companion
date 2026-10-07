@@ -9,7 +9,6 @@ import { canSearchMarketForTimelineItem } from "../lib/market-search-runtime";
 import LiveDashboardCard from "./LiveDashboardCard.vue";
 import type { MarketReadiness } from "../../../shared/market-readiness";
 import { marketReadinessDisplay } from "../lib/market-readiness-display";
-import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 
 const props = defineProps<{
   visibleItemTimeline: ItemTimelineEntry[];
@@ -100,7 +99,6 @@ function itemFilterGroupExists(groupId: string): boolean {
         </div>
       </details>
     </template>
-    <MarketReadinessStatus v-if="marketSearchAvailable" :readiness="marketReadiness" />
     <div v-if="visibleItemTimeline.length" class="timeline">
       <div v-for="item in visibleItemTimeline" :key="`${item.createdAt}-${item.id}-${item.fingerprint}`" class="timeline-row">
         <img v-if="itemIconUrl(item.label)" class="timeline-icon" :src="itemIconUrl(item.label)" :alt="item.label" />

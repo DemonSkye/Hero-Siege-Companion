@@ -233,7 +233,7 @@ async function assertDurableSettings({ electronApp, page }, { reopened }) {
 
   const storedPreferences = await getStoredUiPreferences(page);
   expect(storedPreferences).toMatchObject({
-    schemaVersion: 2,
+    schemaVersion: 3,
     gameExecutablePath: STANDALONE_EXECUTABLE,
     launchThroughSteam: false,
     compactThemeId: "cyberpunk",

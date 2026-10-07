@@ -9,6 +9,8 @@ export type MarketReadinessReason = "capture_inactive" | "game_unavailable" | "m
 
 /** Display-safe evidence only. Never add account/session values or endpoints. */
 export interface MarketReadiness {
+  /** Local invalidation counter. Contains no session identity or mode values. */
+  contextVersion?: number;
   phase: MarketReadinessPhase;
   reason: MarketReadinessReason;
   missingFields: MarketContextField[];

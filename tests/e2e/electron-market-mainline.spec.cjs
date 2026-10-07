@@ -64,13 +64,15 @@ async function assertMarketJourney({ electronApp, page }) {
   // Main's mock transport uses production construction/reduction; the worker entry is covered separately.
   await electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(accepted.response.bodyBase64, "base64")]);
   await market.click();
-  const dialog = page.getByRole("dialog", { name: "Aurelion Fury", exact: true });
-  await expect(dialog).toBeVisible();
+  const workspace = page.locator(".market-workspace");
+  await expect(workspace).toBeVisible();
+  await expect(workspace.locator(".market-chosen-item")).toContainText("Aurelion Fury");
   expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
-  await dialog.getByRole("button", { name: "Search market", exact: true }).click();
-  await expect(dialog.getByText("4,000 gold", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("6,000 gold", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("101 matching listings", { exact: true })).toBeVisible();
+  await workspace.getByRole("button", { name: "Search market", exact: true }).click();
+  await expect(workspace.getByText("4,000 gold", { exact: true })).toBeVisible();
+  await expect(workspace.getByText("6,000 gold", { exact: true })).toBeVisible();
+  await expect(workspace.getByText("Server returned count: 101. This may describe a bounded page.", { exact: true })).toBeVisible();
+  await expect(workspace.locator("tbody tr")).toHaveCount(20);
   expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
-  await dialog.getByRole("button", { name: "Close market search", exact: true }).click();
+  await page.getByRole("tab", { name: "Live Session", exact: true }).click();
 }

@@ -31,6 +31,8 @@ export function useAppPreferences() {
   const hideMaterials = ref(initial.hideMaterials);
   const hideUnfilteredTimelineItems = ref(initial.hideUnfilteredTimelineItems);
   const timelineType = ref(initial.timelineType);
+  const savedMarketItems = ref(initial.savedMarketItems);
+  let legacyShoppingListItems = initial.shoppingListItems;
   const gameExecutablePath = ref(initial.gameExecutablePath);
   const launchThroughSteam = ref(initial.launchThroughSteam);
   const themeId = ref(initial.themeId);
@@ -62,6 +64,7 @@ export function useAppPreferences() {
     hideMaterials,
     hideUnfilteredTimelineItems,
     timelineType,
+    savedMarketItems,
     gameExecutablePath,
     launchThroughSteam,
     themeId,
@@ -86,7 +89,7 @@ export function useAppPreferences() {
     itemResearchEntries,
   ];
 
-  function currentPreferences(shoppingListItems: string[]): UiPreferences {
+  function currentPreferences(shoppingListItems = legacyShoppingListItems): UiPreferences {
     return normalizePreferences({
       ...defaultPreferences,
       hideSocketables: hideSocketables.value,
@@ -95,6 +98,7 @@ export function useAppPreferences() {
       hideUnfilteredTimelineItems: hideUnfilteredTimelineItems.value,
       timelineType: timelineType.value,
       shoppingListItems,
+      savedMarketItems: savedMarketItems.value,
       gameExecutablePath: gameExecutablePath.value,
       launchThroughSteam: launchThroughSteam.value,
       themeId: themeId.value,
@@ -129,6 +133,8 @@ export function useAppPreferences() {
     hideMaterials.value = next.hideMaterials;
     hideUnfilteredTimelineItems.value = next.hideUnfilteredTimelineItems;
     timelineType.value = next.timelineType;
+    savedMarketItems.value = next.savedMarketItems;
+    legacyShoppingListItems = [...next.shoppingListItems];
     gameExecutablePath.value = next.gameExecutablePath;
     launchThroughSteam.value = next.launchThroughSteam;
     themeId.value = next.themeId;
@@ -165,6 +171,7 @@ export function useAppPreferences() {
     hideMaterials,
     hideUnfilteredTimelineItems,
     timelineType,
+    savedMarketItems,
     gameExecutablePath,
     launchThroughSteam,
     themeId,

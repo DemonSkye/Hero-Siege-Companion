@@ -10,7 +10,7 @@ export const MARKET_REGION_UNCONFIRMED_DETAIL = "Session captured, but region in
 export function marketReadinessDisplay(readiness: MarketReadiness): { label: string; detail: string } {
   switch (readiness.phase) {
     case "ready":
-      return { label: "Market ready", detail: "Current session captured. Search directly from a drop; no in-game Market search is needed." };
+      return { label: "Market ready", detail: "Local prerequisites are present. Press Search to ask the server; accepted authentication is confirmed only by a successful response." };
     case "region-required":
       return { label: "Market session captured", detail: "Your first search will prepare region information. No in-game Market search is needed." };
     case "preparing":

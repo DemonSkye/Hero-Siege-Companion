@@ -10,6 +10,8 @@ import {
   type ItemFilterGroup,
 } from "./item-filters";
 import { DEFAULT_SHOPPING_LIST } from "./item-options";
+import { migrateShoppingList, type SavedMarketItem } from "./market-items";
+import { normalizeSavedMarketItems } from "./saved-market-items";
 import { normalizeItemResearchEntries, type ItemResearchEntry } from "./item-research";
 import {
   DEFAULT_LIVE_RUN_STANDARD_METRICS,
@@ -47,6 +49,7 @@ export interface UiPreferences {
   hideUnfilteredTimelineItems: boolean;
   timelineType: string;
   shoppingListItems: string[];
+  savedMarketItems: SavedMarketItem[];
   gameExecutablePath: string;
   launchThroughSteam: boolean;
   themeId: ThemeId;
@@ -109,7 +112,7 @@ type ConfigurationPayloadIdentity = {
 };
 
 export const LOG_LIMIT_OPTIONS = [10, 20, 50, 100, 250, 500];
-export const UI_PREFERENCES_SCHEMA_VERSION = 2;
+export const UI_PREFERENCES_SCHEMA_VERSION = 3;
 const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
 
 export const defaultPreferences: UiPreferences = {
@@ -125,6 +128,7 @@ export const defaultPreferences: UiPreferences = {
   hideUnfilteredTimelineItems: false,
   timelineType: "all",
   shoppingListItems: DEFAULT_SHOPPING_LIST,
+  savedMarketItems: migrateShoppingList(DEFAULT_SHOPPING_LIST),
   gameExecutablePath: "",
   launchThroughSteam: true,
   themeId: DEFAULT_THEME_ID,
@@ -186,6 +190,7 @@ export function serializeDurablePreferences(value: Partial<UiPreferences>): stri
     hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
     timelineType: preferences.timelineType,
     shoppingListItems: preferences.shoppingListItems,
+    savedMarketItems: preferences.savedMarketItems,
     gameExecutablePath: preferences.gameExecutablePath,
     launchThroughSteam: preferences.launchThroughSteam,
     themeId: preferences.themeId,
@@ -226,6 +231,7 @@ export function createConfigurationExportPayload(
     hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
     timelineType: preferences.timelineType,
     shoppingListItems: preferences.shoppingListItems,
+    savedMarketItems: preferences.savedMarketItems,
     gameExecutablePath: preferences.gameExecutablePath,
     launchThroughSteam: preferences.launchThroughSteam,
     themeId: preferences.themeId,
@@ -278,6 +284,10 @@ export function importConfigurationPayload(
     }
   }
   nextUiPreferences.schemaVersion = identity.sourceVersion;
+  if (Object.prototype.hasOwnProperty.call(rawUiPreferences, "shoppingListItems")
+    && !Object.prototype.hasOwnProperty.call(rawUiPreferences, "savedMarketItems")) {
+    nextUiPreferences.savedMarketItems = undefined;
+  }
   nextUiPreferences.customItemFilterSounds = identity.format === "backup-v2"
     ? normalizeCustomItemFilterSounds(rawUiPreferences.customItemFilterSounds)
     : Object.prototype.hasOwnProperty.call(rawUiPreferences, "customItemFilterSounds")
@@ -337,6 +347,7 @@ const RESTORABLE_PREFERENCE_KEYS: Array<keyof UiPreferences> = [
   "hideUnfilteredTimelineItems",
   "timelineType",
   "shoppingListItems",
+  "savedMarketItems",
   "gameExecutablePath",
   "launchThroughSteam",
   "themeId",
@@ -380,7 +391,11 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
   const themeForegroundFills = normalizeThemeForegroundFillMap(value.themeForegroundFills);
   const compactThemeForegroundFills = normalizeThemeForegroundFillMap(value.compactThemeForegroundFills);
   const themeTokenMaps = normalizeThemeTokenMaps(value.themeTokenMaps);
-  const legacyPreferences = Number.isFinite(sourceSchemaVersion) && sourceSchemaVersion < UI_PREFERENCES_SCHEMA_VERSION;
+  const legacyPreferences = Number.isFinite(sourceSchemaVersion) && sourceSchemaVersion < 2;
+  // Read-only rollback archive; migration never truncates or canonicalizes names.
+  const shoppingListItems = Array.isArray(value.shoppingListItems)
+    ? value.shoppingListItems.filter((item): item is string => typeof item === "string")
+    : [...DEFAULT_SHOPPING_LIST];
   const appHasCustomTheme = themeHasCustomization(
     themeId,
     themeAccents,
@@ -408,7 +423,9 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     hideMaterials: Boolean(value.hideMaterials),
     hideUnfilteredTimelineItems: Boolean(value.hideUnfilteredTimelineItems),
     timelineType: validTimelineType,
-    shoppingListItems: normalizeShoppingList(value.shoppingListItems),
+    shoppingListItems,
+    savedMarketItems: value.savedMarketItems === undefined
+      ? migrateShoppingList(shoppingListItems) : normalizeSavedMarketItems(value.savedMarketItems),
     gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
     themeId,

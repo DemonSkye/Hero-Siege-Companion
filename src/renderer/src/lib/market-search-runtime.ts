@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from "vue";
+import { computed, ref, watch, type Ref } from "vue";
 import {
   MARKET_SEARCH_MAX_STAT_FILTERS,
   MARKET_STAT_OPTIONS,
@@ -43,13 +43,14 @@ const MARKET_SEARCH_FAILURE_MESSAGES: Record<MarketSearchErrorCode, string> = {
 };
 
 export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
-  const selectedItem = ref<ItemTimelineEntry | null>(null);
+  const selectedItem = ref<Pick<ItemTimelineEntry, "label" | "rarity"> | null>(null);
   const selectedItemMask = ref<number | null>(null);
   const minSockets = ref<number | null>(null);
   const statFilters = ref<MarketStatFilterDraft[]>([]);
   const phase = ref<MarketSearchPhase>("idle");
   const listings = ref<MarketListing[]>([]);
   const totalMatches = ref<number | null>(null);
+  const returnedCount = ref<number | null>(null);
   const errorMessage = ref("");
   const resultObservedAt = ref<number | null>(null);
   const resultCached = ref(false);
@@ -58,26 +59,16 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   let nextStatFilterKey = 1;
   let requestGeneration = 0;
 
-  const draftValid = computed(() => {
-    if (!selectedItem.value || selectedItemMask.value === null) return false;
-    if (
-      minSockets.value !== null
-      && (!Number.isInteger(minSockets.value) || minSockets.value < 1 || minSockets.value > 6)
-    ) return false;
-
-    const selectedStatIds = new Set<number>();
-    for (const filter of statFilters.value) {
-      if (
-        filter.statId === null
-        || filter.minimum === null
-        || !Number.isFinite(filter.minimum)
-        || !marketStatOption(filter.statId)
-        || selectedStatIds.has(filter.statId)
-      ) return false;
-      selectedStatIds.add(filter.statId);
-    }
-    return true;
+  const draftRequest = computed<MarketSearchRequest | null>(() => {
+    if (!selectedItem.value || selectedItemMask.value === null) return null;
+    const normalized = normalizeMarketSearchRequest({
+      itemMask: selectedItemMask.value,
+      ...(minSockets.value === null ? {} : { minSockets: minSockets.value }),
+      statFilters: statFilters.value.map(({ statId, minimum }) => ({ statId, minimum })),
+    });
+    return normalized.ok ? normalized.request : null;
   });
+  const draftValid = computed(() => draftRequest.value !== null);
 
   const cooldownRemainingSeconds = computed(() => Math.max(
     0,
@@ -93,12 +84,19 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   function openMarketSearch(item: ItemTimelineEntry): boolean {
     const resolution = marketItemMaskForTimelineItem(item);
     if (!resolution.ok) return false;
+    return openMarketDraft(item, { itemMask: resolution.itemMask, statFilters: [] });
+  }
 
+  function openMarketDraft(item: Pick<ItemTimelineEntry, "label" | "rarity">, request: MarketSearchRequest): boolean {
+    const normalized = normalizeMarketSearchRequest(request);
+    if (!normalized.ok) return false;
     requestGeneration += 1;
     selectedItem.value = item;
-    selectedItemMask.value = resolution.itemMask;
-    minSockets.value = null;
-    statFilters.value = [];
+    selectedItemMask.value = normalized.request.itemMask;
+    minSockets.value = normalized.request.minSockets ?? null;
+    statFilters.value = normalized.request.statFilters.map((filter) => ({
+      key: `market-stat-${nextStatFilterKey++}`, ...filter,
+    }));
     resetResult();
     return true;
   }
@@ -159,6 +157,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     phase.value = "searching";
     listings.value = [];
     totalMatches.value = null;
+    returnedCount.value = null;
     errorMessage.value = "";
 
     try {
@@ -174,6 +173,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
       const result = sanitizeMarketSearchResult(response.result);
       listings.value = result.listings;
       totalMatches.value = result.totalMatches ?? null;
+      returnedCount.value = result.returnedCount ?? null;
       resultObservedAt.value = response.observedAt ?? options.now.value;
       resultCached.value = response.cached === true;
       phase.value = "success";
@@ -188,6 +188,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   function showSearchFailure(errorCode: MarketSearchErrorCode): void {
     listings.value = [];
     totalMatches.value = null;
+    returnedCount.value = null;
     resultObservedAt.value = null;
     resultCached.value = false;
     const readiness = options.readiness.value;
@@ -204,6 +205,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     phase.value = "idle";
     listings.value = [];
     totalMatches.value = null;
+    returnedCount.value = null;
     resultObservedAt.value = null;
     resultCached.value = false;
     errorMessage.value = "";
@@ -214,13 +216,24 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     resetResult();
   }
 
+  // The version is a local counter only; no account, mode or endpoint crosses IPC.
+  // Invalidate displayed/pending results even for a ready-to-ready identity change.
+  watch([() => options.readiness.value.contextVersion, () => options.readiness.value.sessionCurrent,
+    () => options.readiness.value.reason === "capture_inactive"], () => {
+    requestGeneration += 1;
+    resetResult();
+  }, { flush: "sync" });
+
   return {
     selectedItem,
+    draftRequest,
+    draftValid,
     minSockets,
     statFilters,
     phase,
     listings,
     totalMatches,
+    returnedCount,
     errorMessage,
     resultObservedAt,
     resultCached,
@@ -228,6 +241,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     cooldownRemainingSeconds,
     canSearch,
     openMarketSearch,
+    openMarketDraft,
     closeMarketSearch,
     updateMinSockets,
     addStatFilter,

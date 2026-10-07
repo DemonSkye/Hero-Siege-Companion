@@ -111,6 +111,7 @@ describe("renderer preferences persistence", () => {
       hideMaterials: preferences.hideMaterials,
       hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
       timelineType: preferences.timelineType,
+      savedMarketItems: preferences.savedMarketItems,
       gameExecutablePath: preferences.gameExecutablePath,
       launchThroughSteam: preferences.launchThroughSteam,
       themeId: preferences.themeId,
@@ -228,7 +229,8 @@ describe("renderer preferences persistence", () => {
     expect(preferences.timelineLimit).toBe(defaultPreferences.timelineLimit);
     expect(preferences.timelineType).toBe(defaultPreferences.timelineType);
     expect(preferences).not.toHaveProperty("marketSearchEnabled");
-    expect(preferences.shoppingListItems).toEqual(["Copper Ore", "Ruby"]);
+    expect(preferences.shoppingListItems).toEqual(["Copper Ore", "Copper Ore", "", "Ruby"]);
+    expect(preferences.savedMarketItems.map((entry) => entry.name)).toEqual(["Copper Ore", "Copper Ore", "", "Ruby"]);
     expect(preferences.gameExecutablePath).toBe("");
     expect(preferences.launchThroughSteam).toBe(false);
     expect(preferences.themeId).toBe(defaultPreferences.themeId);

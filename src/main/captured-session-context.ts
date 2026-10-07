@@ -78,6 +78,7 @@ export class CapturedSessionContextStore {
   private processSignature = "";
   private generation = 0;
   private revision = 0;
+  private readinessContextVersion = 0;
   private directory: MarketRegionDirectory | null = null;
   private apiHardcore?: HardcoreEvidence;
   private saveHardcore?: HardcoreEvidence;
@@ -124,6 +125,7 @@ export class CapturedSessionContextStore {
     const expiresAt = unique && crossregion
       ? Math.min(unique.observedAt, crossregion.observedAt) + TRANSIENT_IDENTITY_TTL_MS : null;
     const snapshot: MarketReadiness = {
+      contextVersion: this.readinessContextVersion,
       phase: "collecting", reason: "missing_fields",
       missingFields: SESSION_CONTEXT_FIELDS.filter((field) => this.fields[field] === undefined),
       sessionCurrent: Boolean(this.processSignature && this.transientEndpoint(this.now())),
@@ -312,6 +314,9 @@ export class CapturedSessionContextStore {
       return;
     }
     this.revision += 1;
+    // Qualifying the same raw account during the first explicit search is public
+    // metadata preparation, not an account/session change for displayed results.
+    if (message.source !== "region-directory") this.readinessContextVersion += 1;
     this.log("session-context-changed", {
       generation: this.generation,
       revision: this.revision,
@@ -331,6 +336,7 @@ export class CapturedSessionContextStore {
     this.accountSources = [];
     this.apiHardcore = this.saveHardcore = undefined;
     this.revision += 1;
+    this.readinessContextVersion += 1;
     this.log("session-context-reset", { generation: this.generation, revision: this.revision, reason });
     if (notify) for (const listener of this.listeners) listener();
     this.notifyReadiness();

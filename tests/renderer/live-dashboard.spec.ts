@@ -38,15 +38,18 @@ describe("Run Command live dashboard", () => {
   });
 
 
-  test("shows Market readiness only when access is enabled and forwards state changes into the Timeline", async () => {
+  test("keeps Timeline compact and forwards readiness into the action that opens Market", async () => {
     const wrapper = mountLiveView();
     expect(wrapper.find(".market-readiness").exists()).toBe(false);
     await wrapper.setProps({ marketSearchAvailable: true });
-    expect(wrapper.get(".market-readiness [role='status']").text()).toBe("Market ready");
+    const action = wrapper.get('button[aria-label="Check Sash of the Magi on the market"]');
+    expect(action.attributes("title")).toBe("Market ready");
+    expect(wrapper.find(".market-readiness").exists()).toBe(false);
     const waiting = { ...companionState().marketReadiness, phase: "collecting" as const, reason: "missing_fields" as const, missingFields: ["season" as const], canSearch: false };
     await wrapper.setProps({ state: companionState({ marketReadiness: waiting }) });
-    expect(wrapper.get(".market-readiness").text()).toContain("Waiting for Season");
-    expect(wrapper.get(".market-readiness").text()).toContain("5/6 fields received");
+    expect(action.attributes("title")).toBe("Market collecting context");
+    await action.trigger("click");
+    expect(wrapper.emitted("searchMarket")?.[0]?.[0]).toMatchObject({ label: "Sash of the Magi" });
     await wrapper.setProps({ marketSearchAvailable: false });
     expect(wrapper.find(".market-readiness").exists()).toBe(false);
     wrapper.unmount();

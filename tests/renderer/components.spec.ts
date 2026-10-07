@@ -1034,7 +1034,6 @@ describe("Vue component contracts", () => {
     expect(dashboardColumns[0].findAll(".live-dashboard-card-title h2").map((heading) => heading.attributes("id"))).toEqual([
       "satanic-zone-card-title",
       "item-timeline-card-title",
-      "shopping-list-card-title",
     ]);
     expect(dashboardColumns[1].findAll(".live-dashboard-card-title h2").map((heading) => heading.attributes("id"))).toEqual([
       "tracked-drops-card-title",
@@ -1053,7 +1052,7 @@ describe("Vue component contracts", () => {
 
     await buttonByText(wrapper, "Details").trigger("click");
     await buttonByText(wrapper, "Satanic").trigger("click");
-    await wrapper.get(".shopping-form").trigger("submit");
+    expect(wrapper.find(".shopping-form").exists()).toBe(false);
     await checkboxByLabel(wrapper, "Hide unfiltered items").setValue(true);
     await buttonByText(wrapper, "Loot Alerts").trigger("click");
     await wrapper.get('button[aria-label="Refresh Satanic Zone"]').trigger("click");
@@ -1063,7 +1062,7 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("update:showCaptureDetails")).toEqual([[true]]);
     expect(wrapper.emitted("update:expandedDropRarity")).toEqual([["Satanic"]]);
     expect(wrapper.emitted("update:hideUnfilteredItems")).toEqual([[true]]);
-    expect(wrapper.emitted("addShoppingItem")).toHaveLength(1);
+    expect(wrapper.emitted("addShoppingItem")).toBeUndefined();
     expect(wrapper.emitted("openItemFilterGroup")).toEqual([["loot-alerts"]]);
     expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
     expect(wrapper.emitted("toggleLog")?.[0]).toEqual([state.logs[0]]);

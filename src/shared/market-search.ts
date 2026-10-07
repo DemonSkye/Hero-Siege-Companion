@@ -2,7 +2,7 @@ import { MARKET_STAT_CATALOG_BUILD_24868792_DATA } from "./data/market-stat-cata
 import { resolveItemDefinition } from "./item-catalog";
 
 export const MARKET_PRICE_ASCENDING_SORT = 2 as const;
-export const MARKET_SEARCH_LISTING_LIMIT = 2 as const;
+export const MARKET_SEARCH_LISTING_LIMIT = 20 as const;
 export const MARKET_SEARCH_COOLDOWN_MS = 15_000 as const;
 export const MARKET_SEARCH_MAX_SOCKETS = 6 as const;
 export const MARKET_SEARCH_MAX_STAT_FILTERS = 16 as const;
@@ -41,6 +41,8 @@ export interface MarketListing {
 export interface MarketSearchResult {
   listings: MarketListing[];
   totalMatches?: number;
+  /** Decoded rows in this one page, before invalid-price filtering/display cap. */
+  returnedCount?: number;
 }
 
 export type MarketSearchErrorCode =
@@ -201,14 +203,13 @@ export function sanitizeMarketSearchResult(value: unknown): MarketSearchResult {
     .slice(0, MARKET_SEARCH_LISTING_LIMIT)
     .map(({ sourceIndex: _sourceIndex, ...listing }) => listing);
 
-  if (
-    typeof value.totalMatches === "number"
-    && Number.isSafeInteger(value.totalMatches)
-    && value.totalMatches >= 0
-  ) {
-    return { listings, totalMatches: value.totalMatches };
+  const result: MarketSearchResult = { listings };
+  for (const field of ["totalMatches", "returnedCount"] as const) {
+    if (typeof value[field] === "number" && Number.isSafeInteger(value[field]) && value[field] >= 0) {
+      result[field] = value[field];
+    }
   }
-  return { listings };
+  return result;
 }
 
 interface SanitizedListing extends MarketListing {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CaptureDiagnosticsLevel, CaptureDiagnosticsMode, CompanionState, LogEntry } from "../../shared/app-state";
 import { mergeCompanionStateUpdate } from "../../shared/app-state";
 import { createInitialCompanionState } from "../../shared/initial-state";
@@ -18,6 +18,9 @@ import { useItemFilterRuntime } from "./lib/item-filter-runtime";
 import { createItemResearchExportPayload } from "./lib/item-research";
 import { useLiveRunHistory } from "./lib/live-run-history";
 import { useMarketSearchRuntime } from "./lib/market-search-runtime";
+import { useSavedMarketItems } from "./lib/saved-market-items";
+import { MARKET_ITEM_OPTIONS } from "./lib/market-items";
+import type { ItemTimelineEntry } from "../../shared/stats";
 import { useAppPreferences } from "./lib/app-preferences";
 import {
   LOG_LIMIT_OPTIONS,
@@ -42,7 +45,6 @@ import {
 import { useThemeApplication } from "./lib/theme-application";
 import { useSessionDisplay } from "./lib/session-display";
 import type { PastRunsExportPayload } from "./lib/past-runs";
-import { useShoppingListRuntime } from "./lib/shopping-list-runtime";
 import { useSupportDiagnosticsRuntime } from "./lib/support-diagnostics-runtime";
 import { useUpdateNotice } from "./lib/update-notice";
 import { useWhatsNewPrompt } from "./lib/whats-new-prompt";
@@ -55,7 +57,7 @@ type SettingsTarget = SettingsSection | "whatsNew";
 const CompactCustomizeModal = defineAsyncComponent(() => import("./components/CompactCustomizeModal.vue"));
 const ItemFilterView = defineAsyncComponent(() => import("./components/ItemFilterView.vue"));
 const LiveView = defineAsyncComponent(() => import("./components/LiveView.vue"));
-const MarketSearchDialog = defineAsyncComponent(() => import("./components/MarketSearchDialog.vue"));
+const MarketView = defineAsyncComponent(() => import("./components/MarketView.vue"));
 const PastRunsView = defineAsyncComponent(() => import("./components/PastRunsView.vue"));
 const SettingsModal = defineAsyncComponent(() => import("./components/SettingsModal.vue"));
 
@@ -67,7 +69,21 @@ const showCompactCustomization = ref(false);
 const settingsInitialTab = ref<SettingsTarget>("app");
 const showCompactZone = ref(false);
 const satanicZoneRefreshSubmitting = ref(false);
-const activeTab = ref<"live" | "past" | "filter">("live");
+const activeTab = ref<"live" | "past" | "filter" | "market">("live");
+const viewTabs = [
+  { id: "live", label: "Live Session" }, { id: "filter", label: "Item Filter" },
+  { id: "market", label: "Market" }, { id: "past", label: "Past Runs" },
+] as const;
+function handleViewTabKey(event: KeyboardEvent): void {
+  const index = viewTabs.findIndex((tab) => tab.id === activeTab.value);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? viewTabs.length - 1
+    : event.key === "ArrowRight" ? (index + 1) % viewTabs.length
+    : event.key === "ArrowLeft" ? (index + viewTabs.length - 1) % viewTabs.length : null;
+  if (next === null) return;
+  event.preventDefault();
+  activeTab.value = viewTabs[next].id;
+  void nextTick(() => document.getElementById(`view-tab-${activeTab.value}`)?.focus());
+}
 const expandedLogIds = ref<Set<string>>(new Set());
 const expandedDropRarity = ref<string | null>(null);
 const diagnosticsBusyLevel = ref<CaptureDiagnosticsLevel | null>(null);
@@ -88,6 +104,7 @@ const {
   hideMaterials,
   hideUnfilteredTimelineItems,
   timelineType,
+  savedMarketItems,
   gameExecutablePath,
   launchThroughSteam,
   themeId,
@@ -126,16 +143,21 @@ const {
   openSupportLogsDirectory,
   openNpcapGuide,
 } = useSupportDiagnosticsRuntime({ state, showToast });
-const {
-  shoppingListItems,
-  shoppingDraftItem,
-  activeShoppingItem,
-  shoppingSuggestions,
-  copyShoppingItem,
-  addShoppingItem,
-  removeShoppingItem,
-  clampActiveShoppingIndex,
-} = useShoppingListRuntime({ showToast });
+const marketSearch = useMarketSearchRuntime({
+  searchMarket: requestMarketSearch, now, readiness: computed(() => state.value.marketReadiness),
+});
+const savedMarket = useSavedMarketItems(savedMarketItems, marketSearch);
+const { editingId: marketEditingId, itemKey: marketItemKey, savedName: marketSavedName,
+  message: marketSavedMessage, deleted: marketDeleted } = savedMarket;
+function openMarketFromDrop(item: ItemTimelineEntry): void {
+  savedMarket.newSearch();
+  if (!marketSearch.openMarketSearch(item)) return;
+  const option = MARKET_ITEM_OPTIONS.find((candidate) => candidate.itemMask === marketSearch.draftRequest.value?.itemMask);
+  marketItemKey.value = option?.key ?? null;
+  marketSavedName.value = item.label;
+  activeTab.value = "market";
+  void nextTick(() => document.getElementById("market-sockets")?.focus());
+}
 const {
   compactMode,
   fullWindowPinned,
@@ -184,21 +206,18 @@ const {
   phase: marketSearchPhase,
   listings: marketSearchListings,
   totalMatches: marketSearchTotalMatches,
+  returnedCount: marketSearchReturnedCount,
   errorMessage: marketSearchErrorMessage,
   resultObservedAt: marketSearchResultObservedAt,
   resultCached: marketSearchResultCached,
   cooldownRemainingSeconds: marketSearchCooldownRemainingSeconds,
   canSearch: canSubmitMarketSearch,
-  openMarketSearch,
-  closeMarketSearch,
   updateMinSockets: updateMarketSearchMinSockets,
   addStatFilter: addMarketSearchStatFilter,
   updateStatFilter: updateMarketSearchStatFilter,
   removeStatFilter: removeMarketSearchStatFilter,
   searchMarket: submitMarketSearch,
-} = useMarketSearchRuntime({
-  searchMarket: requestMarketSearch, now, readiness: computed(() => state.value.marketReadiness),
-});
+} = marketSearch;
 const {
   captureStatusLabel,
   runScoreDisplays,
@@ -303,7 +322,7 @@ const legacyCompactThemeAvailable = computed(() => themeHasCustomization(
   compactThemeForegroundFills.value,
 ));
 const recoverableCompactFilterGroups = computed(() => compactFilterGroupRecoveryOptions(compactRunTiles.value, itemFilterGroups.value));
-const activeViewTitle = computed(() => activeTab.value === "filter" ? "Item Filter" : activeTab.value === "past" ? "Past Runs" : "Live Session");
+const activeViewTitle = computed(() => viewTabs.find((tab) => tab.id === activeTab.value)?.label ?? "Live Session");
 const satanicZoneRefreshEnabled = computed({
   get: () => state.value.satanicZone.refreshEnabled,
   set: (enabled: boolean) => { void setSatanicZoneRefreshEnabled(enabled); },
@@ -331,10 +350,9 @@ onMounted(async () => {
   }, 1000);
 });
 
-watch([...preferenceWatchSources, shoppingListItems], () => {
+watch(preferenceWatchSources, () => {
   if (!preferencesLoaded) return;
   persistUiPreferences();
-  clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
 }, { deep: true });
 
@@ -349,13 +367,13 @@ onUnmounted(() => {
 });
 
 function currentUiPreferences(): UiPreferences {
-  return currentPreferences(shoppingListItems.value);
+  return currentPreferences();
 }
 
 function applyUiPreferences(preferences: UiPreferences): void {
+  savedMarket.newSearch();
+  marketDeleted.value = null;
   applyPreferences(preferences);
-  shoppingListItems.value = preferences.shoppingListItems;
-  clampActiveShoppingIndex();
   clampActiveItemFilterGroup();
 }
 
@@ -662,14 +680,11 @@ function toggleLog(log: LogEntry) {
     />
 
     <div v-if="!compactMode" class="app-scroll">
-      <nav class="view-tabs" role="tablist" aria-label="Companion views">
-        <button type="button" role="tab" :aria-selected="activeTab === 'live'" :class="{ active: activeTab === 'live' }" @click="activeTab = 'live'">Live Session</button>
-        <button type="button" role="tab" :aria-selected="activeTab === 'filter'" :class="{ active: activeTab === 'filter' }" @click="activeTab = 'filter'">
-          Item Filter <span class="info-bubble" data-tip="Sounds are triggered from captured network traffic, so alerts can arrive a couple seconds after the item appears in game.">i</span>
-        </button>
-        <button type="button" role="tab" :aria-selected="activeTab === 'past'" :class="{ active: activeTab === 'past' }" @click="activeTab = 'past'">Past Runs</button>
+      <nav class="view-tabs" role="tablist" aria-label="Companion views" @keydown="handleViewTabKey">
+        <button v-for="tab in viewTabs" :id="`view-tab-${tab.id}`" :key="tab.id" type="button" role="tab" :aria-selected="activeTab === tab.id" :aria-controls="`view-panel-${tab.id}`" :tabindex="activeTab === tab.id ? 0 : -1" :class="{ active: activeTab === tab.id }" @click="activeTab = tab.id">{{ tab.label }}</button>
       </nav>
 
+      <div :id="`view-panel-${activeTab}`" role="tabpanel" :aria-labelledby="`view-tab-${activeTab}`">
       <LiveView
         v-if="activeTab === 'live'"
         v-model:show-capture-details="showCaptureDetails"
@@ -680,7 +695,6 @@ function toggleLog(log: LogEntry) {
         v-model:hide-materials="hideMaterials"
         v-model:hide-unfiltered-items="hideUnfilteredTimelineItems"
         v-model:hidden-fixtures="hiddenDashboardPanels"
-        v-model:shopping-draft-item="shoppingDraftItem"
         v-model:log-limit="logLimit"
         :state="state"
         :now="now"
@@ -705,18 +719,12 @@ function toggleLog(log: LogEntry) {
         :item-type-options="itemTypeOptions"
         :item-filter-groups="itemFilterGroups"
         :market-search-available="true"
-        :shopping-list-items="shoppingListItems"
-        :shopping-suggestions="shoppingSuggestions"
-        :active-shopping-item="activeShoppingItem"
         :recent-logs="recentLogs"
         :recent-player-chat="recentPlayerChat"
         :expanded-log-ids="expandedLogIds"
-        @copy-shopping-item="copyShoppingItem($event, false)"
-        @add-shopping-item="addShoppingItem"
-        @remove-shopping-item="removeShoppingItem"
         @open-npcap-guide="openNpcapGuide"
         @open-item-filter-group="openItemFilterGroup"
-        @search-market="openMarketSearch"
+        @search-market="openMarketFromDrop"
         @add-live-run-graph-item="addLiveRunGraphItem"
         @remove-live-run-graph-item="removeLiveRunGraphItem"
         @set-live-run-graph-standard-metric="setLiveRunGraphStandardMetric"
@@ -756,6 +764,43 @@ function toggleLog(log: LogEntry) {
         @cancel-filter-pack-import="discardPendingItemFilterPackImport"
       />
 
+      <MarketView
+        v-else-if="activeTab === 'market'"
+        v-model:saved-name="marketSavedName"
+        :item="marketSearchItem"
+        :readiness="state.marketReadiness"
+        :min-sockets="marketSearchMinSockets"
+        :stat-filters="marketSearchStatFilters"
+        :phase="marketSearchPhase"
+        :listings="marketSearchListings"
+        :total-matches="marketSearchTotalMatches"
+        :returned-count="marketSearchReturnedCount"
+        :error-message="marketSearchErrorMessage"
+        :result-observed-at="marketSearchResultObservedAt"
+        :result-cached="marketSearchResultCached"
+        :cooldown="marketSearchCooldownRemainingSeconds"
+        :in-flight="marketSearch.searchInFlight.value"
+        :can-search="canSubmitMarketSearch"
+        :can-save="marketSearch.draftValid.value && marketItemKey !== null"
+        :saved-items="savedMarketItems"
+        :editing-id="marketEditingId"
+        :message="marketSavedMessage"
+        :can-undo="marketDeleted !== null"
+        :save-status="saveStatus"
+        @select-item="savedMarket.selectItem"
+        @new-search="savedMarket.newSearch"
+        @load-saved="savedMarket.loadSaved"
+        @save="savedMarket.saveDraft"
+        @delete-saved="savedMarket.deleteSaved"
+        @undo="savedMarket.undoDelete"
+        @retry-save="persistUiPreferences"
+        @update-min-sockets="updateMarketSearchMinSockets"
+        @add-stat-filter="addMarketSearchStatFilter"
+        @update-stat-filter="updateMarketSearchStatFilter"
+        @remove-stat-filter="removeMarketSearchStatFilter"
+        @search="submitMarketSearch"
+      />
+
       <PastRunsView
         v-else
         :report-config="postRunReport"
@@ -771,29 +816,8 @@ function toggleLog(log: LogEntry) {
         @delete-run="deletePastRun"
         @delete-all-runs="deleteAllPastRuns"
       />
+      </div>
     </div>
-
-    <MarketSearchDialog
-      v-if="marketSearchItem"
-      :item="marketSearchItem"
-      :readiness="state.marketReadiness"
-      :min-sockets="marketSearchMinSockets"
-      :stat-filters="marketSearchStatFilters"
-      :phase="marketSearchPhase"
-      :listings="marketSearchListings"
-      :total-matches="marketSearchTotalMatches"
-      :error-message="marketSearchErrorMessage"
-      :result-observed-at="marketSearchResultObservedAt"
-      :result-cached="marketSearchResultCached"
-      :cooldown-remaining-seconds="marketSearchCooldownRemainingSeconds"
-      :can-search="canSubmitMarketSearch"
-      @close="closeMarketSearch"
-      @update-min-sockets="updateMarketSearchMinSockets"
-      @add-stat-filter="addMarketSearchStatFilter"
-      @update-stat-filter="updateMarketSearchStatFilter"
-      @remove-stat-filter="removeMarketSearchStatFilter"
-      @search="submitMarketSearch"
-    />
 
     <SettingsModal
       v-if="showSettings"

@@ -128,7 +128,7 @@
         { "id": "synthetic-c", "price": 900000 }
       ]
     },
-    "expectedSuccess": { "listings": [{ "price": 200000 }, { "price": 500000 }], "totalMatches": 42 },
+    "expectedSuccess": { "listings": [{ "price": 200000, "unitPrice": 100000 }, { "price": 500000 }, { "price": 900000 }], "totalMatches": 42, "returnedCount": 3 },
     "rejection": { "status": -3, "message": "checksum" },
     "expectedRejection": { "ok": false, "errorCode": "checksum_rejected" }
   }

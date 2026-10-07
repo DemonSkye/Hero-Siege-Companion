@@ -1,5 +1,5 @@
 import { inflateSync } from "node:zlib";
-import type { MarketSearchResponse } from "../shared/market-search";
+import { sanitizeMarketSearchResult, type MarketSearchResponse } from "../shared/market-search";
 import type { MarketRequestDiagnostics } from "./market-request-diagnostics";
 
 export type DirectMarketFailure =
@@ -79,13 +79,21 @@ export function inspectDirectMarketResponse(body: Buffer, statusCode: number | u
     if (!Array.isArray(decoded)) return directMarketFailure("invalid-items", diagnostics);
     const listings = decoded.flatMap((item): { price: number; unitPrice?: number }[] => {
       if (!item || typeof item !== "object" || typeof item.price !== "number" || !Number.isFinite(item.price) || item.price < 0) return [];
-      const unitPrice = item.unit_price ?? item.unitPrice;
+      // The retained gold listings have price_items=[]. Do not label item-priced
+      // or malformed payment records as gold; this v1 has no barter projection.
+      if (item.price_items !== undefined && (!Array.isArray(item.price_items) || item.price_items.length > 0)) return [];
+      const rawUnitPrice = item.unit_price ?? item.unitPrice;
+      // Retained market_fetch_items responses encode unit_price as decimal text.
+      // Only bounded ordinary decimal numbers are projected; no blob coercion.
+      const unitPrice = typeof rawUnitPrice === "string" && rawUnitPrice.length <= 40
+        && /^\d+(?:\.\d+)?$/.test(rawUnitPrice) ? Number(rawUnitPrice) : rawUnitPrice;
       return typeof unitPrice === "number" && Number.isFinite(unitPrice) && unitPrice >= 0
         ? [{ price: item.price, unitPrice }] : [{ price: item.price }];
-    }).sort((left, right) => left.price - right.price).slice(0, 2);
+    });
     const totalMatches = typeof envelope.itemCount === "number" && Number.isSafeInteger(envelope.itemCount) && envelope.itemCount >= 0
       ? envelope.itemCount : undefined;
-    return { response: { ok: true, result: totalMatches === undefined ? { listings } : { listings, totalMatches } }, diagnostics };
+    const result = sanitizeMarketSearchResult({ listings, totalMatches, returnedCount: decoded.length });
+    return { response: { ok: true, result }, diagnostics };
   } catch {
     return directMarketFailure("invalid-items", diagnostics);
   }

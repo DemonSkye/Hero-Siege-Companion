@@ -217,7 +217,7 @@ describe("full configuration backups", () => {
       themeAccents: { ...DEFAULT_THEME_ACCENTS, voidglass: "#123456", demonsteel: "#654321" },
     });
 
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     expect(migrated.themeCustomMode).toBe(true);
     expect(migrated.compactThemeCustomMode).toBe(true);
     expect(migrated.compactThemeMatchesApp).toBe(false);
@@ -258,7 +258,7 @@ describe("full configuration backups", () => {
     savePreferences(migrated);
     const saved = JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}") as Record<string, unknown>;
 
-    expect(saved).toMatchObject({ schemaVersion: 2, launchThroughSteam: false });
+    expect(saved).toMatchObject({ schemaVersion: 3, launchThroughSteam: false });
     expect(saved.itemResearchEntries).toHaveLength(1);
     for (const retiredKey of [
       "logLimit",

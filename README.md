@@ -2,7 +2,7 @@
 
 Local live-session tracking for Hero Siege on Windows.
 
-Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into three focused full-size tools: the Live Session dashboard, Filter Stack for loot alerts, and Report Desk for saved runs. A compact current-run overlay, on-demand Market checks and Satanic Zone Refresh are also available. SZ Refresh is enabled by default for new configurations; existing saved Off choices are preserved.
+Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into the Live Session dashboard, Filter Stack for loot alerts, Market for saved item searches, and Report Desk for saved runs. A compact current-run overlay and Satanic Zone Refresh are also available. SZ Refresh is enabled by default for new configurations; existing saved Off choices are preserved.
 
 > **Required before first launch:** install [Npcap](https://npcap.com/#download) so the companion can read local game traffic. The exact installer options are in [Required: Install Npcap](#required-install-npcap).
 
@@ -38,11 +38,11 @@ Market checks become ready after capture observes the current account, mode and 
 - Compact overlay mode for keeping the current run visible while playing, with tile presets and custom item/filter counters configured from the compact gear.
 - Satanic Zone name, reset countdown, pros, cons, and freshness status in both full and compact views.
 - Satanic Zone Refresh beside the full-view countdown and the configured compact SZ timer tile, with automatic readiness and a 30-second cooldown after dispatch. It can be turned off in Settings.
-- Market checks available to everyone from eligible normal/unique Item Timeline drops, with optional socket/stat minimums and up to the two lowest comparable numeric-gold prices.
+- Market tab with catalog item selection, optional socket/stat minimums, saved filters and up to 20 gold-price listings from one returned page. Eligible Timeline drops open the same editor.
 - Filter Stack loot alerts with independently collapsible groups, concise rule/sound summaries, rarity/type rules, exact watched items, volume, cooldown, and prominent global mute.
 - Contextual Sound Library for built-in previews, imported local audio or zip soundpacks, usage-aware removal, and soundpack ZIP export; Filter Packs carry only the custom sounds their groups use.
 - Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, and Quicksilver themes with canonical full-app and compact choices. Custom theme files are the advanced escape hatch; ordinary accent controls are not exposed.
-- Shopping list for quickly saving and copying marketplace searches.
+- Existing shopping-list names migrate reversibly into saved Market items; unresolved names remain available to repair.
 - Report Desk for Past Runs, with aggregate-first reporting, desktop master/detail navigation, responsive Back navigation, contextual run actions, search and tags, JSON/CSV export, Discord-friendly summary copy, report presets, linked Filter Stack groups, and resource/drop detail.
 - One autosaving Settings ledger organized into App, Appearance, Features, Help & Support, and Developers; there is no Apply or Done step.
 - Full backup and restore with a read-only preview and explicit confirmation for supported settings, item filters, imported sounds, custom themes, reports/layouts, and dashboard fixture visibility.
@@ -70,11 +70,11 @@ A usable loaded sign-in can make Refresh ready after Companion reopens without a
 
 Turning off Remember or SZ Refresh stops reuse, clears saved inputs from memory and removes the automatic unlocking key, while preserving the encrypted sign-in file. **Forget saved sign-in** removes the encrypted record and retained key and turns Remember off. Saved sign-in and unlocking material are excluded from configuration backups and support exports.
 
-## Dropped-Item Market Check
+## Market and Saved Filters
 
-Choose `Market` on an eligible normal or unique Item Timeline drop to open the comparable-listing dialog. The base item is filled from the build-pinned catalog. Minimum sockets and known-stat minimums are optional and editable; rolled values are not guessed from a drop packet that does not expose them reliably.
+Open the `Market` tab to choose a normal or unique catalog item, or choose `Market` on an eligible Timeline drop to fill the same editor. Minimum sockets and known-stat minimums are optional and editable; rolled values are not guessed from a drop packet that does not expose them reliably. Save the item and filters locally, then load, edit, duplicate or delete the saved entry. Loading a saved item never searches automatically. Existing shopping-list names migrate without losing their original strings. See [Market behavior and migration](docs/market.md).
 
-The MVP performs one user-requested, first-page search sorted by price ascending. It shows at most the two lowest numeric-gold prices, never an average, and does not automatically retry, poll, or request another page. Only one search may be in flight, with a 15-second minimum between submitted searches; the disabled Search button shows the remaining cooldown. Errors are reduced to safe states such as helper unavailable, template unavailable, pending, rejected, or timed out. Stackable results currently show the total listing price; displaying the optional unit price separately remains a follow-up.
+Each explicit Search fetches one page sorted by price ascending and shows up to 20 readable gold-price listings, with optional price per unit. Displayed, decoded page and server-returned counts remain distinct; results do not represent the entire market. Searches never automatically retry, poll, buy or request another page. Only one search may be in flight, with a 15-second minimum between submitted searches; the disabled Search button shows the remaining cooldown. Errors are reduced to safe states such as helper unavailable, template unavailable, pending, rejected, or timed out. Six captured fields establish local prerequisites; acceptance still depends on the server response. Editing filters or changing account/mode clears stale prices while preserving the draft.
 
 Npcap structurally observes complete native API frames before gameplay parsing and collects only the six fields required for the current account/session/mode. This observation path is deliberately separate from loot, chat, and stats parsing. The main process qualifies the raw account ID with validated public region metadata, builds the checksum and fixed-route multipass locally, and sends one direct HTTPS request from a bounded Worker. It never decrypts or intercepts the game's HTTPS traffic.
 

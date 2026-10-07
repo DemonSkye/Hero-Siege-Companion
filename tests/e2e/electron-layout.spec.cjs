@@ -112,9 +112,8 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
     expect(diagnostics.runPacePlotsMeasured).toBe(true);
     expect(diagnostics.runPaceOrderedBetweenScoreAndDashboard).toBe(true);
     expect(diagnostics.mainToRailRatio).toBeGreaterThan(1.5);
-    // The default Market status adds a compact row; the existing empty content stays small.
-    expect(diagnostics.marketStatusHeight).toBeGreaterThan(0);
-    expect(diagnostics.marketStatusHeight).toBeLessThanOrEqual(60);
+    // Readiness lives in the dedicated Market tab; the idle Timeline stays compact.
+    expect(diagnostics.marketStatusHeight).toBe(0);
     if (diagnostics.idleTimelineContentHeight !== null) expect(diagnostics.idleTimelineContentHeight).toBeLessThan(180);
     expect(diagnostics.tinyCards).toEqual([]);
     expect(diagnostics.horizontallyOffscreenCards).toEqual([]);
@@ -152,32 +151,23 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
     const filterLayering = await page.evaluate(() => {
       const timelineCard = document.querySelector("#item-timeline-card");
       const popover = timelineCard?.querySelector(".timeline-filter-popover");
-      const shoppingCard = document.querySelector(".shopping-panel");
       if (!(timelineCard instanceof HTMLElement)
-        || !(popover instanceof HTMLElement)
-        || !(shoppingCard instanceof HTMLElement)) {
+        || !(popover instanceof HTMLElement)) {
         throw new Error("Timeline filter layering fixtures are missing");
       }
 
       const popoverRect = popover.getBoundingClientRect();
-      const shoppingRect = shoppingCard.getBoundingClientRect();
-      const overlapLeft = Math.max(popoverRect.left, shoppingRect.left);
-      const overlapRight = Math.min(popoverRect.right, shoppingRect.right);
-      const overlapTop = Math.max(popoverRect.top, shoppingRect.top);
-      const overlapBottom = Math.min(popoverRect.bottom, shoppingRect.bottom);
-      const overlapWidth = Math.max(0, overlapRight - overlapLeft);
-      const overlapHeight = Math.max(0, overlapBottom - overlapTop);
-      const sampleX = overlapLeft + Math.min(8, overlapWidth / 2);
-      const sampleY = overlapTop + Math.min(8, overlapHeight / 2);
-      const topElement = overlapWidth > 0 && overlapHeight > 0 ? document.elementFromPoint(sampleX, sampleY) : null;
+      const sampleX = popoverRect.left + 10;
+      const sampleY = popoverRect.top + 10;
+      const topElement = document.elementFromPoint(sampleX, sampleY);
       const backgroundColor = getComputedStyle(popover).backgroundColor;
       const alphaMatch = backgroundColor.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/);
 
       return {
         backgroundAlpha: alphaMatch ? Number(alphaMatch[1]) : 1,
         backgroundColor,
-        overlapHeight,
-        overlapWidth,
+        popoverWidth: popoverRect.width,
+        popoverHeight: popoverRect.height,
         sampleX,
         sampleY,
         timelineCardZIndex: getComputedStyle(timelineCard).zIndex,
@@ -187,8 +177,8 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
     });
 
     expect(filterLayering.timelineCardZIndex).toBe("60");
-    expect(filterLayering.overlapWidth).toBeGreaterThan(20);
-    expect(filterLayering.overlapHeight).toBeGreaterThan(20);
+    expect(filterLayering.popoverWidth).toBeGreaterThan(20);
+    expect(filterLayering.popoverHeight).toBeGreaterThan(20);
     expect(filterLayering.topElementInsidePopover, JSON.stringify(filterLayering)).toBe(true);
     expect(filterLayering.backgroundAlpha, JSON.stringify(filterLayering)).toBe(1);
   });

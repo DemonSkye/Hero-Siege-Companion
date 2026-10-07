@@ -43,7 +43,7 @@ async function entry(filename?: string, data = { context, request: { itemMask: 1
 }
 const records = (filename: string) => fs.readFileSync(filename, "utf8").trim().split("\n").map(line => JSON.parse(line));
 describe("one explicitly enabled own Market request raw diagnostic", () => {
-  test("actual worker serializes the transformed accepted request and reduces all 101 listings to 4000/6000 without private output", async () => {
+  test("actual worker serializes the transformed accepted request and projects 20 of its 101 prices without private output", async () => {
     const run = await entry(undefined, { context: accepted.context, request: accepted.request });
     const form = new URLSearchParams(run.outgoing.body);
     expect([...form.keys()]).toEqual(accepted.expectedRequest.fieldOrder);

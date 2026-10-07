@@ -201,8 +201,8 @@ describe("market search shared boundary", () => {
     })).toMatchObject({ ok: true });
   });
 
-  test("sanitizes, sorts, and caps market listings at the lowest two prices", () => {
-    expect(MARKET_SEARCH_LISTING_LIMIT).toBe(2);
+  test("sanitizes, sorts, and caps market listings at 20 returned prices", () => {
+    expect(MARKET_SEARCH_LISTING_LIMIT).toBe(20);
     const raw = {
       listings: [
         { price: 90, unitPrice: 30, ignored: true },
@@ -219,11 +219,15 @@ describe("market search shared boundary", () => {
       listings: [
         { price: 10 },
         { price: 10, unitPrice: 2 },
+        { price: 90, unitPrice: 30 },
       ],
       totalMatches: 12,
     });
     expect(raw.listings).toHaveLength(6);
     expect(sanitizeMarketSearchResult(null)).toEqual({ listings: [] });
     expect(sanitizeMarketSearchResult({ listings: [], totalMatches: -1 })).toEqual({ listings: [] });
+    expect(sanitizeMarketSearchResult({ listings: Array.from({ length: 25 }, (_, index) => ({ price: 25 - index })), returnedCount: 101 })).toEqual({
+      listings: Array.from({ length: 20 }, (_, index) => ({ price: index + 1 })), returnedCount: 101,
+    });
   });
 });

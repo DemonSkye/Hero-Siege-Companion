@@ -20,7 +20,7 @@ function useMarketSearchRuntime(options: Omit<MarketSearchRuntimeOptions, "readi
 
 
 describe("market search runtime", () => {
-  test("builds a comparable-item request and keeps only the lowest two prices", async () => {
+  test("builds a comparable-item request and keeps returned prices sorted", async () => {
     const item = itemTimelineEntry();
     const mask = resolveMarketItemMask({
       repository: item.repository,
@@ -53,7 +53,7 @@ describe("market search runtime", () => {
       statFilters: [{ statId: 64, minimum: 8 }],
     });
     expect(runtime.phase.value).toBe("success");
-    expect(runtime.listings.value.map((listing) => listing.price)).toEqual([100_000, 200_000]);
+    expect(runtime.listings.value.map((listing) => listing.price)).toEqual([100_000, 200_000, 300_000]);
     expect(runtime.totalMatches.value).toBe(3);
   });
 

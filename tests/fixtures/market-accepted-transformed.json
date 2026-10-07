@@ -75,14 +75,15 @@
     "ok": true,
     "result": {
       "listings": [
-        {
-          "price": 4000
-        },
-        {
-          "price": 6000
-        }
+        { "price": 4000 }, { "price": 6000 }, { "price": 7000 }, { "price": 10000 },
+        { "price": 11000 }, { "price": 12000 }, { "price": 13000 }, { "price": 14000 },
+        { "price": 15000 }, { "price": 15000 },
+        { "price": 20000 }, { "price": 20000 }, { "price": 20000 }, { "price": 20000 },
+        { "price": 28888 }, { "price": 30000 }, { "price": 30000 },
+        { "price": 33333 }, { "price": 33333 }, { "price": 33333 }
       ],
-      "totalMatches": 101
+      "totalMatches": 101,
+      "returnedCount": 101
     }
   }
 }

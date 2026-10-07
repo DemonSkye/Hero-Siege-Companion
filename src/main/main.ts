@@ -18,6 +18,7 @@ import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
 import { CapturedSessionContextStore } from "./captured-session-context";
 import { DirectMarketSearchProvider } from "./direct-market-search-provider";
+import { handleMarketSearchRequest } from "./market-search-handler";
 import { InitializedSatanicZoneRefreshProvider } from "./initialized-satanic-zone-provider";
 import { SatanicZoneLoginCache } from "./satanic-zone-login-cache";
 import { SatanicZoneLoginCacheStore } from "./satanic-zone-login-cache-store";
@@ -68,7 +69,6 @@ import { EVENT_NAMES } from "../shared/constants";
 import { IPC_CHANNELS, type ConfigurationExportOptions } from "../shared/ipc";
 import { createInitialCompanionState } from "../shared/initial-state";
 import {
-  normalizeMarketSearchRequest,
   type MarketSearchResponse,
 } from "../shared/market-search";
 import type { SatanicZoneInfo } from "../shared/parser";
@@ -481,17 +481,7 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
 ipcMain.handle(
   IPC_CHANNELS.marketSearch,
   async (_event, request: unknown): Promise<MarketSearchResponse> => {
-    const normalized = normalizeMarketSearchRequest(request);
-    if (!normalized.ok) return { ok: false, errorCode: "request_rejected" };
-    const provider = directMarketSearchProvider;
-    if (!provider) {
-      return { ok: false, errorCode: "helper_unavailable" };
-    }
-    try {
-      return await provider.search(normalized.request);
-    } catch {
-      return { ok: false, errorCode: "helper_unavailable" };
-    }
+    return await handleMarketSearchRequest(request, directMarketSearchProvider);
   },
 );
 ipcMain.handle(IPC_CHANNELS.runPause, () => {

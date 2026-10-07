@@ -18,7 +18,7 @@ import type { MarketReadiness } from "../../../shared/market-readiness";
 import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 
 const props = defineProps<{
-  item: ItemTimelineEntry;
+  item: Pick<ItemTimelineEntry, "label" | "rarity">;
   readiness: MarketReadiness;
   minSockets: number | null;
   statFilters: MarketStatFilterDraft[];
@@ -204,7 +204,7 @@ function selectedStatName(statId: number | null): string {
             {{ resultCached ? "Cached result" : "Updated result" }} · observed {{ new Date(resultObservedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }}
           </p>
           <div v-if="listings.length" class="market-search-price-grid">
-            <article v-for="(listing, index) in listings" :key="`${listing.price}-${index}`">
+            <article v-for="(listing, index) in listings.slice(0, 2)" :key="`${listing.price}-${index}`">
               <span>{{ index === 0 ? "Lowest" : "Second-lowest" }}</span>
               <strong>{{ formatNumber(listing.price) }} gold</strong>
             </article>

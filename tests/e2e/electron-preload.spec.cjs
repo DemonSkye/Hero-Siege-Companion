@@ -42,12 +42,15 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     expect((await getRendererState(page)).marketReadiness).toMatchObject({
       phase: "waiting", reason: "capture_inactive", canSearch: false, missingFields: fields,
     });
-    const timeline = page.locator("#item-timeline-card .market-readiness");
-    await expect(timeline.getByRole("status")).toHaveText("Market waiting for capture");
+    await page.getByRole("tab", { name: "Market", exact: true }).click();
+    const workspace = page.locator(".market-workspace");
+    await expect(workspace).toBeVisible();
+    await expect(workspace.locator(".market-readiness").getByRole("status")).toHaveText("Market waiting for capture");
 
     await page.evaluate(() => window.heroSiegeCompanion.startCapture());
     await expect.poll(async () => (await getRendererState(page)).marketReadiness.reason).toBe("game_unavailable");
     await observe([123], [payload("api account_id=10-42&beta=0")]);
+    const timeline = workspace.locator(".market-readiness");
     await expect(timeline.getByRole("status")).toHaveText("Market collecting context");
     await timeline.locator("summary").click();
     await expect(timeline).toContainText("2/6 fields received");
@@ -55,8 +58,9 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     expect(await timeline.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
 
     await emitCapturePayloads(electronApp, e2eTrafficPayloads());
+    await page.getByRole("tab", { name: "Live Session", exact: true }).click();
     await page.getByRole("button", { name: "Check Aurelion Fury on the market" }).click();
-    const dialog = page.getByRole("dialog", { name: "Aurelion Fury" });
+    const dialog = workspace;
     const status = dialog.locator(".market-readiness");
     await expect(status.getByRole("status")).toHaveText("Market collecting context");
     await expect(dialog.locator('button[type="submit"]')).toBeDisabled();
@@ -69,13 +73,7 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     await expect(status).toContainText("Current session: Confirmed");
     await expect(status).toContainText("Account region: Confirmed");
     expect(await status.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
-    expect(await dialog.evaluate((node) => {
-      const bounds = node.getBoundingClientRect();
-      return bounds.top >= 0 && bounds.bottom <= window.innerHeight && bounds.left >= 0 && bounds.right <= window.innerWidth;
-    })).toBe(true);
-    if (process.env.HSC_MARKET_READINESS_SCREENSHOT) {
-      await page.screenshot({ path: process.env.HSC_MARKET_READINESS_SCREENSHOT });
-    }
+    expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
 
     await page.evaluate(() => window.heroSiegeCompanion.stopCapture());
     await expect(status.getByRole("status")).toHaveText("Market waiting for capture");
@@ -94,7 +92,7 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     const updates = await page.evaluate(() => window.__marketReadinessUpdates);
     for (const readiness of updates) {
       expect(Object.keys(readiness).sort()).toEqual([
-        "canSearch", "expiresAt", "missingFields", "phase", "reason", "regionQualified", "sessionCurrent",
+        "canSearch", "contextVersion", "expiresAt", "missingFields", "phase", "reason", "regionQualified", "sessionCurrent",
       ]);
     }
     expect(JSON.stringify(updates)).not.toMatch(/e2e-identity|e2e-session|203\.0\.113|10-42/);

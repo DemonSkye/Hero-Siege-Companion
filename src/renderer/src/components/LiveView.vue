@@ -16,7 +16,6 @@ import LiveRunGraphPanel from "./LiveRunGraphPanel.vue";
 import LiveStatusPanel from "./LiveStatusPanel.vue";
 import PlayerChatPanel from "./PlayerChatPanel.vue";
 import SatanicZonePanel from "./SatanicZonePanel.vue";
-import ShoppingListPanel from "./ShoppingListPanel.vue";
 import TrackedDropsPanel from "./TrackedDropsPanel.vue";
 
 withDefaults(defineProps<{
@@ -43,9 +42,6 @@ withDefaults(defineProps<{
   itemTypeOptions: LiveItemTypeOption[];
   itemFilterGroups: ItemFilterGroup[];
   marketSearchAvailable?: boolean;
-  shoppingListItems: string[];
-  shoppingSuggestions: string[];
-  activeShoppingItem: string;
   recentLogs: LogEntry[];
   recentPlayerChat?: readonly PlayerChatDisplayEntry[];
   expandedLogIds: Set<string>;
@@ -54,9 +50,6 @@ withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  copyShoppingItem: [item: string];
-  addShoppingItem: [];
-  removeShoppingItem: [item: string];
   openNpcapGuide: [];
   openItemFilterGroup: [groupId: string];
   searchMarket: [item: ItemTimelineEntry];
@@ -74,7 +67,6 @@ const hideSocketables = defineModel<boolean>("hideSocketables", { required: true
 const hideKeys = defineModel<boolean>("hideKeys", { required: true });
 const hideMaterials = defineModel<boolean>("hideMaterials", { required: true });
 const hideUnfilteredItems = defineModel<boolean>("hideUnfilteredItems", { required: true });
-const shoppingDraftItem = defineModel<string>("shoppingDraftItem", { required: true });
 const logLimit = defineModel<number>("logLimit", { required: true });
 const hiddenFixtures = defineModel<HideableLiveDashboardFixture[]>("hiddenFixtures", { required: true });
 
@@ -189,15 +181,6 @@ function setLiveRunGraphStandardMetric(metric: LiveRunStandardMetric, enabled: b
           @search-market="$emit('searchMarket', $event)"
         />
 
-        <ShoppingListPanel
-          v-model:shopping-draft-item="shoppingDraftItem"
-          :shopping-list-items="shoppingListItems"
-          :shopping-suggestions="shoppingSuggestions"
-          :active-shopping-item="activeShoppingItem"
-          @copy-shopping-item="$emit('copyShoppingItem', $event)"
-          @add-shopping-item="$emit('addShoppingItem')"
-          @remove-shopping-item="$emit('removeShoppingItem', $event)"
-        />
       </div>
 
       <div class="dashboard-column dashboard-column-side">
