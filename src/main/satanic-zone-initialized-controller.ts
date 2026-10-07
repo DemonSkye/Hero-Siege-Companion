@@ -27,6 +27,8 @@ export interface InitializedProbeDependencies extends Pick<SatanicZoneDiagnostic
   bufferBudget?: SatanicZoneDiagnosticBufferBudget;
   onObservation?: (observation: SatanicZoneProviderObservation) => void;
   onPassiveObservation?: (observation: SatanicZoneProviderObservation) => void;
+  onSessionPayload?: (payload: CapturedSessionPayload) => void;
+  onInvalidation?: () => void;
   onPrepared?: (input: InitializedProbeInput, pid: number) => void;
   validateCached?: (scope: import("./satanic-zone-session-scope").SatanicZoneSessionScope) => Promise<boolean>;
 }
@@ -70,6 +72,11 @@ export class SatanicZoneInitializedProbeController {
   get active(): boolean { return isSatanicZoneDiagnosticActive(this.state); }
   get continuitySuspended(): boolean { return this.session?.suspended ?? false; }
   get cachedContext(): boolean { return this.session?.cached ?? false; }
+  get observesContinuity(): boolean {
+    const session = this.session;
+    return Boolean(this.dependencies.autoWatch && session?.prepared && !session.cached && !session.suspended && session.handle
+      && session.stream?.observesBothDirections && session.stream.complete);
+  }
   rememberCurrent(): void {
     const session = this.session;
     if (session?.prepared && !session.cached && !session.suspended) this.dependencies.onPrepared?.(this.preparedInput(session), session.pid!);
@@ -148,7 +155,7 @@ export class SatanicZoneInitializedProbeController {
     const session = this.session;
     if (!session) return;
     if (this.dependencies.autoWatch && session.prepared && session.handle && !session.suspended) this.resetInitialization(session);
-    else this.finish(session, "incomplete", "scope-changed");
+    else { if (!session.cached) this.dependencies.onInvalidation?.(); this.finish(session, "incomplete", "scope-changed"); }
   }
   observeProcessIds(ids: readonly number[]): void {
     if (this.session?.pid !== null && this.session?.pid !== undefined && !ids.includes(this.session.pid)) this.invalidate();
@@ -209,7 +216,7 @@ export class SatanicZoneInitializedProbeController {
       // game readiness; game scope changes are still checked before/after sending.
       if (!this.dependencies.autoWatch) return;
       if (!terminated && !freshSyn) {
-        if (!outbound && session.stream?.matches(packet) && packet.dstPort === session.nativePort) {
+        if (session.stream?.matches(packet) && (outbound ? packet.srcPort : packet.dstPort) === session.nativePort) {
           try { session.stream.push(packet); }
           catch (error) { this.collectionFailure(session, error, "invalid-frame"); }
         }
@@ -278,6 +285,15 @@ export class SatanicZoneInitializedProbeController {
   }
   private frame(session: Session, frame: DiagnosticFrame): void {
     if (!this.current(session)) return;
+    if (frame.outbound && session.prepared && this.dependencies.autoWatch && session.scope) {
+      const payload: CapturedSessionPayload = { text: frame.body.toString("utf8"), direction: "outbound", observedAt: this.now(),
+        ...session.scope, localPort: session.nativePort! };
+      this.dependencies.onSessionPayload?.(payload);
+      if (!this.current(session) || !session.prepared) return;
+      this.observeSessionPayload(payload);
+      // Invalidation may synchronously dispose this stream and zero its body.
+      if (!this.current(session) || !session.prepared) return;
+    }
     // Only the attributed game stream reaches this callback. Passive native SZ
     // updates are separate from the owned socket's manual completion channel.
     if (!frame.outbound && this.dependencies.autoWatch) {
@@ -331,7 +347,7 @@ export class SatanicZoneInitializedProbeController {
         if (session.deadline) clearTimeout(session.deadline); session.deadline = null; this.state.deadlineAt = null;
         if (this.dependencies.autoWatch) {
           if (session.poll) clearTimeout(session.poll); session.poll = null;
-          session.stream?.continueIncoming();
+          session.stream?.continueBothDirections();
         } else if (!this.closeCapture(session)) this.finish(session, "incomplete", "capture-failed");
         if (this.current(session)) this.dependencies.onPrepared?.(this.preparedInput(session), session.pid!);
       }
@@ -357,6 +373,8 @@ export class SatanicZoneInitializedProbeController {
     const scope = session.scope;
     if (session.prepared) {
       if (session.suspended) { this.restoreReady(session, "failed"); return false; }
+      // A missing/partial framed identity update cannot establish current continuity.
+      if (!session.cached && session.stream && !session.stream.complete) { this.restoreReady(session, "failed"); return false; }
       if (session.cached && !await this.dependencies.validateCached?.({ ...scope, pid: session.pid!, localPort: session.nativePort! })) {
         if (this.current(session)) this.finish(session, "incomplete", "scope-changed"); return false;
       }
@@ -460,6 +478,7 @@ export class SatanicZoneInitializedProbeController {
   /** Reuse the already-open listener so a reconnect SYN cannot race an async reopen. */
   private resetInitialization(session: Session): void {
     if (!this.current(session)) return;
+    if (!session.cached) this.dependencies.onInvalidation?.();
     session.attemptAbort?.abort(); session.attemptAbort = null;
     if (session.deadline) clearTimeout(session.deadline); session.deadline = null;
     session.stream?.dispose(); session.stream = null;

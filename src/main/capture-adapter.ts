@@ -19,6 +19,7 @@ export interface PacketCaptureHandle {
 interface NativePacketCapture extends PacketCaptureHandle {
   open(device: string, filter: string, bufferSize: number, buffer: Buffer): string;
   on(event: "packet", handler: (nbytes: number, truncated: boolean) => void): void;
+  setMinBytes?(bytes: number): void;
 }
 
 interface CapConstructor {
@@ -42,12 +43,16 @@ export function openPacketCapture(
   filter: string,
   buffer: Buffer,
   onPacket: (nbytes: number, truncated: boolean) => void,
-  options: { nativeBufferBytes?: number } = {},
+  options: { nativeBufferBytes?: number; immediate?: boolean } = {},
 ): { cap: PacketCaptureHandle; linkType: string } {
   const cap = new Cap();
   const nativeBufferBytes = options.nativeBufferBytes ?? CAPTURE_BUFFER_BYTES;
   if (!Number.isSafeInteger(nativeBufferBytes) || nativeBufferBytes < 65_536 || nativeBufferBytes > CAPTURE_BUFFER_BYTES) throw new Error("invalid capture capacity");
   const linkType = cap.open(device, filter, nativeBufferBytes, buffer);
+  // Windows/Npcap otherwise batches short API exchanges until more traffic arrives.
+  // This is a per-handle delivery setting, not a driver or security setting.
+  try { if (options.immediate) cap.setMinBytes?.(0); }
+  catch (error) { cap.close(); throw error; }
   cap.on("packet", onPacket);
   return { cap, linkType };
 }

@@ -38,7 +38,7 @@ describe("diagnostic adapter wiring with mocked native module", () => {
     expect(mocks.findDevice).toHaveBeenCalledWith("192.0.2.10");
     expect(mocks.open.mock.calls[0][1]).toBe("ip and tcp and host 192.0.2.10 and (port 6668 or port 6669)");
     expect(mocks.open.mock.calls[0][1]).not.toContain("198.51.100.20");
-    expect(mocks.open.mock.calls[0][4]).toEqual({ nativeBufferBytes: 65_536 });
+    expect(mocks.open.mock.calls[0][4]).toEqual({ nativeBufferBytes: 65_536, immediate: true });
     expect(budget.peakBytes).toBe(131_071); handle.close(); budget.dispose(); legacy.dispose();
   });
   test("multiple pre-restart API endpoints may share one adapter; the legacy fixed scope still rejects them", async () => {
@@ -59,7 +59,7 @@ describe("diagnostic adapter wiring with mocked native module", () => {
   });
   test("requests a separately accounted 64 KiB native capacity and zeroes the read buffer on cancel", async () => {
     const controller = fixture(); controller.arm(); await flush();
-    expect(mocks.open).toHaveBeenCalledTimes(1); expect(mocks.open.mock.calls[0][4]).toEqual({ nativeBufferBytes: 65_536 });
+    expect(mocks.open).toHaveBeenCalledTimes(1); expect(mocks.open.mock.calls[0][4]).toEqual({ nativeBufferBytes: 65_536, immediate: true });
     expect(mocks.open.mock.calls[0][1]).toBe("ip and tcp and host 192.0.2.10 and host 198.51.100.20 and port 6669");
     const buffer: Buffer = mocks.open.mock.calls[0][2]; expect(buffer.length).toBe(65_535);
     expect(controller.snapshot().peakOwnedBufferBytes).toBe(131_071); buffer.fill(9); controller.cancel();

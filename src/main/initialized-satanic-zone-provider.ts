@@ -81,6 +81,10 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
         for (const listener of this.passiveListeners) listener(observation);
       },
       onPrepared: (input, pid) => { void this.options.loginCache?.remember(input, pid); },
+      onSessionPayload: payload => {
+        if (this.context === context && !context.continuitySuspended && !this.disposed) void this.options.loginCache?.observe(payload);
+      },
+      onInvalidation: () => { if (this.context === context) this.options.loginCache?.suspend(); },
       validateCached: scope => this.options.loginCache?.preflight(scope) ?? Promise.resolve(false),
     });
     return context;
@@ -127,9 +131,10 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   observeCaptureUpdate(update: CaptureUpdate, previousRunning: boolean): void {
     if (update.status === "error" || (previousRunning && update.running === false)
       || (update.observationGap && update.observationGapSource !== "gameplay-reconfigure")) this.suspend();
-    // Partial collection has its own complete API observer. After Ready, ordinary
-    // UID/beta changes rely on gameplay capture; an open private handle alone is insufficient.
+    // Only an attributed, continuously framed observer of both API directions
+    // covers this gameplay-only gap. Restored contexts and unknown gaps do not.
     else if (update.observationGap) {
+      if (this.context.observesContinuity) return;
       if (["ready", "requesting"].includes(this.context.snapshot().phase)) this.suspend();
       else this.options.loginCache?.suspend();
     }
@@ -150,6 +155,9 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     if (this.pending) return rejected("refresh_in_progress");
     if (this.now() < this.nextAllowedAt) return rejected("refresh_cooldown");
     if (this.preparation.phase !== "ready") return rejected("helper_not_ready");
+    // A transient build lookup failure must not strand the usable native pair.
+    // Retrying its local save uses current RAM only; it sends no authentication.
+    if (["empty", "build_unavailable", "storage_error"].includes(this.options.loginCache?.snapshot().status ?? "")) this.context.rememberCurrent();
     let dispatch!: Pending["dispatch"], settle!: Pending["settle"];
     const dispatched = new Promise<SatanicZoneRefreshDispatchResult>(resolve => { dispatch = resolve; });
     const outcome = new Promise<SatanicZoneProviderWaitOutcome>(resolve => { settle = resolve; });

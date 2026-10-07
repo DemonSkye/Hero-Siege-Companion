@@ -124,15 +124,46 @@ export async function getDefaultCaptureLocalAddress(): Promise<string | null> {
 }
 
 /** Experimental cache binds to the currently running executable; no path is retained or logged. */
-export async function getHeroSiegeBuildIdentity(pid: number): Promise<string | null> {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+export type HeroSiegeBuildStage = "ready" | "process_unavailable" | "path_unavailable" | "hash_unavailable" | "query_failed";
+export async function getHeroSiegeBuildIdentity(pid: number, onStage?: (stage: HeroSiegeBuildStage) => void): Promise<string | null> {
+  if (!Number.isSafeInteger(pid) || pid <= 0) { onStage?.("process_unavailable"); return null; }
   try {
-    const hash = await runPowerShell(`$game = Get-Process -Id ${pid} -ErrorAction Stop;
-      $name = ($game.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant();
-      if (-not $name.StartsWith('herosiege') -or $name.Contains('companion') -or -not $game.Path) { exit 1 };
-      (Get-FileHash -LiteralPath $game.Path -Algorithm SHA256 -ErrorAction Stop).Hash`);
-    return /^[a-f0-9]{64}$/i.test(hash.trim()) ? hash.trim().toLowerCase() : null;
-  } catch { return null; }
+    const output = await runPowerShell(`
+      $buildResult = @{ stage = 'process_unavailable' };
+      try {
+        $buildProcess = Get-Process -Id ${pid} -ErrorAction Stop;
+        $buildName = ($buildProcess.ProcessName -replace '[^a-zA-Z0-9]', '').ToLowerInvariant();
+        if ($buildName.StartsWith('herosiege') -and -not $buildName.Contains('companion')) {
+          $buildPath = $null;
+          try { $buildPath = $buildProcess.Path } catch {};
+          if (-not $buildPath) {
+            try {
+              $buildCim = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction Stop;
+              $buildCimName = ($buildCim.Name -replace '\\.exe$', '' -replace '[^a-zA-Z0-9]', '').ToLowerInvariant();
+              if ($buildCimName -eq $buildName) { $buildPath = $buildCim.ExecutablePath };
+            } catch {};
+          };
+          $buildResult.stage = 'path_unavailable';
+          if ($buildPath) {
+            $buildResult.stage = 'hash_unavailable';
+            try {
+              $buildHash = (Get-FileHash -LiteralPath $buildPath -Algorithm SHA256 -ErrorAction Stop).Hash;
+              $buildCurrent = Get-Process -Id ${pid} -ErrorAction Stop;
+              if ($buildCurrent.StartTime -eq $buildProcess.StartTime -and $buildHash -match '^[a-fA-F0-9]{64}$') {
+                $buildResult = @{ stage = 'ready'; hash = $buildHash };
+              };
+            } catch {};
+          };
+        };
+      } catch {};
+      $buildResult | ConvertTo-Json -Compress`);
+    const result = JSON.parse(output);
+    if (result?.stage === "ready" && typeof result.hash === "string" && /^[a-f0-9]{64}$/i.test(result.hash)) {
+      onStage?.("ready"); return result.hash.toLowerCase();
+    }
+    onStage?.(["process_unavailable", "path_unavailable", "hash_unavailable"].includes(result?.stage) ? result.stage : "query_failed");
+    return null;
+  } catch { onStage?.("query_failed"); return null; }
 }
 
 export function selectDefaultCaptureLocalAddress(value: unknown): string | null {

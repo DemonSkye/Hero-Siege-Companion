@@ -68,7 +68,7 @@ export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpo
             else if (truncated) failed();
           } catch { failed(); }
           finally { packet?.payload.fill(0); buffer.fill(0); }
-        }, { nativeBufferBytes: 65_536 });
+        }, { nativeBufferBytes: 65_536, immediate: true });
         linkType = handle.linkType;
         if (!LINK_TYPES.has(linkType)) { handle.cap.close(); buffer.fill(0); throw new Error("unavailable"); }
         let closed = false;

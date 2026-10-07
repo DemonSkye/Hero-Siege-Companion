@@ -16,6 +16,29 @@ function fixture(onFrame: (frame: DiagnosticFrame) => void = () => {}, budget?: 
   stream.push(packet(true, 100, 2)); stream.push(packet(false, 200, 18)); stream.attribute(); return stream;
 }
 describe("diagnostic stream attribution and framing", () => {
+  test("both directions compact more than a MiB, preserve outbound counters and reject conflicting pending identity bytes", () => {
+    const budget = new SatanicZoneDiagnosticBufferBudget(4096); let count = 0;
+    const stream = fixture(() => count++, budget); stream.continueBothDirections();
+    let out = 101, incoming = 201;
+    const requestBody = requestDiagnosticBody(2, "mailbox/inventory", 93,
+      `account_id=${"X".repeat(800)}&unique_account_id=12345678901234567890&beta=0`);
+    for (let i = 0; i < 1200; i++) {
+      const request = frameDiagnosticBody(requestBody, i & 255), response = genericProbeFrame(inventedZoneBody);
+      stream.push(packet(true, out, 24, request)); stream.push(packet(false, incoming, 24, response));
+      out += request.length; incoming += response.length; expect(budget.usedBytes).toBe(0);
+    }
+    expect(count).toBe(2400); expect(out + incoming).toBeGreaterThan(1024 * 1024);
+    const next = frameDiagnosticBody(requestBody, 1200 & 255);
+    stream.push(packet(true, out, 24, next.subarray(0, 17)));
+    const conflict = Buffer.from(next.subarray(0, 17)); conflict[16] ^= 1;
+    expect(() => stream.push(packet(true, out, 24, conflict))).toThrow("ambiguous-flow");
+    stream.dispose(); expect(budget.usedBytes).toBe(0);
+    const counters = fixture(() => {}, budget); counters.continueBothDirections();
+    const first = frameDiagnosticBody(requestBody, 5);
+    counters.push(packet(true, 101, 24, first));
+    expect(() => counters.push(packet(true, 101 + first.length, 24, frameDiagnosticBody(requestBody, 7))))
+      .toThrow("invalid-frame"); counters.dispose(); expect(budget.usedBytes).toBe(0);
+  });
   test("passive inbound compaction erases initialization and handles more than a MiB across TCP wrap under a small shared budget", () => {
     const budget = new SatanicZoneDiagnosticBufferBudget(1024); let count = 0;
     const stream = new SatanicZoneDiagnosticStream(scope, () => { count++; }, budget);

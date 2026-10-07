@@ -168,7 +168,7 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     const frame = genericProbeFrame(Buffer.from('{"satanicZoneName":"Act_01_01","buffs":"","debuffs":""}'));
     f.feed({ outbound: false, sequence: previous.sequence + previous.payload.length, payload: frame, flags: 24 }, 6000);
     expect(f.zone.getState()).toEqual(before);
-    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    f.provider.observeCaptureUpdate({ observationGap: true }, true);
     await f.provider.preparePassively(); await flush();
     f.feed({ outbound: false, sequence: previous.sequence + previous.payload.length, payload: frame, flags: 24 });
     expect(f.zone.getState().current).toEqual(before.current); expect(f.zone.getState().lastSuccessAt).toBe(before.lastSuccessAt);

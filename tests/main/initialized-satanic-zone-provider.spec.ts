@@ -103,6 +103,50 @@ async function restoredCacheFixture() {
 }
 afterEach(() => { vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
+  test.each([["77777777777777777777", "0"], ["12345678901234567890", "1"]])(
+    "native Ready and pending save survive gameplay-only reconfiguration; private identity %s/%s still invalidates", async (uid, beta) => {
+    const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
+    let build!: (value: string) => void;
+    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { build = resolve; }));
+    await f.collect();
+    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    expect(f.provider.preparation.phase).toBe("ready"); expect(f.close).not.toHaveBeenCalled();
+    build("e".repeat(64)); await flush(); expect(f.cache.snapshot().status).toBe("saved");
+    const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
+    const changed = frameDiagnosticBody(inventedPostLogin(uid, beta), 9);
+    // Only private packets provide this contrary identity, through real framing.
+    f.receive(f.packet(true, sequence + 12, changed.subarray(12)));
+    f.receive(f.packet(true, sequence, changed.subarray(0, 12))); await flush();
+    expect(f.provider.preparation.phase).not.toBe("ready"); expect(fs.existsSync(file)).toBe(false);
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0); f.provider.dispose();
+  });
+  test("contrary private identity cancels the native pair save before deferred build discovery completes", async () => {
+    const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
+    let build!: (value: string) => void;
+    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { build = resolve; })); await f.collect();
+    const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
+    f.receive(f.packet(true, sequence, frameDiagnosticBody(inventedPostLogin("77777777777777777777"), 9)));
+    build("e".repeat(64)); await flush(); expect(fs.existsSync(file)).toBe(false);
+    expect(f.provider.preparation.phase).not.toBe("ready"); expect(f.sockets).toHaveLength(0); f.provider.dispose();
+    expect(f.budgets[0].usedBytes).toBe(0);
+  });
+  test("missing private outbound identity bytes block dispatch until the complete unchanged frame is observed", async () => {
+    const f = fixture(); await f.collect();
+    const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
+    const identity = frameDiagnosticBody(inventedPostLogin(), 9);
+    f.receive(f.packet(true, sequence + 17, identity.subarray(17)));
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0);
+    f.receive(f.packet(true, sequence, identity.subarray(0, 17)));
+    expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1); f.provider.dispose();
+  });
+  test("explicit Refresh retries a transient local build/save failure while the coherent native pair remains usable", async () => {
+    const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
+    f.cacheBuildIdentity.mockResolvedValueOnce(null as unknown as string); await f.collect();
+    expect(f.cache.snapshot().status).toBe("build_unavailable"); expect(fs.existsSync(file)).toBe(false);
+    const result = await f.dispatch(); await flush(); expect(result.accepted).toBe(true);
+    expect(f.cache.snapshot().status).toBe("saved"); expect(fs.existsSync(file)).toBe(true);
+    expect(f.cacheBuildIdentity).toHaveBeenCalledTimes(2); f.provider.dispose();
+  });
   test("readiness diagnostics report safe stage/counts, throttle unchanged stages and never include identity or bodies", async () => {
     const f = fixture(); await f.provider.preparePassively(); await flush();
     const count = f.diagnostics.length;
@@ -130,10 +174,10 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
   test.each([
     ["changed UID", "77777777777777777777", "0"], ["changed beta", "12345678901234567890", "1"],
     ["unchanged identity", "12345678901234567890", "0"],
-  ])("Ready then gameplay gap with %s via private listener only cannot send on the same PID/tuple", async (_label, uid, beta) => {
+  ])("Ready then unknown gap with %s via private listener only cannot send on the same PID/tuple", async (_label, uid, beta) => {
     const f = fixture(); await f.collect();
     const topology = JSON.stringify(f.network);
-    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    f.provider.observeCaptureUpdate({ observationGap: true }, true);
     await f.provider.preparePassively(); await flush();
     // Ordinary identity frame, no SYN/coherent initialization; never offered to gameplay observer.
     f.receive(f.packet(true, 1000, frameDiagnosticBody(inventedPostLogin(uid, beta), 9)));
@@ -151,11 +195,11 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
   test.each([
     ["changed UID", "77777777777777777777", "0"], ["changed beta", "12345678901234567890", "1"],
     ["unchanged identity", "12345678901234567890", "0"],
-  ])("gameplay gap with %s via private listener rejects the pending response and sends no retry", async (_label, uid, beta) => {
+  ])("unknown gap with %s via private listener rejects the pending response and sends no retry", async (_label, uid, beta) => {
     const f = fixture(); await f.collect(); const request = await f.dispatch();
     const waiting = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
     const topology = JSON.stringify(f.network), writes = f.sockets[0].writes.length;
-    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    f.provider.observeCaptureUpdate({ observationGap: true }, true);
     await f.provider.preparePassively(); await flush();
     f.receive(f.packet(true, 1000, frameDiagnosticBody(inventedPostLogin(uid, beta), 9)));
     f.sockets[0].receive(inventedZoneBody); await flush();
@@ -165,11 +209,11 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(1);
     f.provider.dispose();
   });
-  test("gameplay reconfiguration cancels an async save of a prepared pair without resaving old identity", async () => {
+  test("an unknown gap cancels an async save of a prepared pair without resaving old identity", async () => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true); let release!: (build: string) => void;
     f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     await f.collect(); expect(f.provider.preparation.phase).toBe("ready"); expect(fs.existsSync(file)).toBe(false);
-    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true); await flush();
+    f.provider.observeCaptureUpdate({ observationGap: true }, true); await flush();
     expect(f.provider.preparation.phase).toBe("suspended"); expect(fs.existsSync(file)).toBe(false);
     release("e".repeat(64)); await flush(); expect(fs.existsSync(file)).toBe(false);
     expect(f.cacheBuildIdentity).toHaveBeenCalledTimes(1);

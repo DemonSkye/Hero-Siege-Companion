@@ -160,6 +160,7 @@ export class SatanicZoneDiagnosticStream {
 
   get port(): number | null { return this.localPort; }
   get freshSyn(): boolean { return this.clientSyn !== null; }
+  get observesBothDirections(): boolean { return !this.disposed && !this.incomingOnly && Boolean(this.outgoing && this.incoming); }
   get complete(): boolean {
     return this.attributed && this.queued.length === 0 && this.clientSyn !== null && this.serverSyn !== null
       && Boolean((this.incomingOnly || this.outgoing?.complete) && this.incoming?.complete);
@@ -170,6 +171,10 @@ export class SatanicZoneDiagnosticStream {
     this.incomingOnly = true;
     this.outgoing?.dispose(); this.outgoing = null;
     this.incoming?.continueWithoutHistory();
+  }
+  /** Product Ready still observes identity-bearing outbound frames and erases history. */
+  continueBothDirections(): void {
+    this.outgoing?.continueWithoutHistory(); this.incoming?.continueWithoutHistory();
   }
 
   matches(packet: ParsedPayload): boolean {

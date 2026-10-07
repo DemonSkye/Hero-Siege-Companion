@@ -15,6 +15,7 @@ interface CacheOptions {
   networkState: () => Promise<HeroSiegeNetworkState>;
   buildIdentity: (pid: number) => Promise<string | null>;
   onChange: (state: SatanicZoneLoginCacheState) => void;
+  onDiagnostic?: (stage: "load" | "save_admission" | "save_build" | "save_write" | "save_cancelled", result: SatanicZoneLoginCacheState["status"] | "accepted" | "rejected" | "invalidated") => void;
 }
 /** Restored credentials require fresh account/mode evidence, not old socket identity. */
 export class SatanicZoneLoginCache {
@@ -39,6 +40,7 @@ export class SatanicZoneLoginCache {
       this.bodies = this.options.store.load(this.budget);
       this.status = this.bodies ? "unverified" : "empty";
     } catch (error) { this.status = fixedError(error); }
+    this.options.onDiagnostic?.("load", this.status);
     this.publish();
   }
   clear(): void {
@@ -59,18 +61,23 @@ export class SatanicZoneLoginCache {
     this.pendingSave = save; this.validated = null;
     const epoch = save.epoch;
     let copy: LoginCacheBodies | null = null;
+    let stage: "save_admission" | "save_build" | "save_write" = "save_admission";
     try {
       const identity = connectProbeIdentity(input.connectBody);
-      if (!identity || !coherentProbePostLogin(input.postLoginBody, identity)) return;
+      if (!identity || !coherentProbePostLogin(input.postLoginBody, identity)) { this.options.onDiagnostic?.("save_admission", "rejected"); return; }
       const connectBody = budget.copy(input.connectBody);
       try { copy = { connectBody, postLoginBody: budget.copy(input.postLoginBody), build: "" }; }
       catch { budget.release(connectBody); throw new Error(); }
+      this.options.onDiagnostic?.("save_admission", "accepted");
+      stage = "save_build";
       const build = await this.options.buildIdentity(pid);
-      if (epoch !== this.epoch || this.disposed || !this.enabled) return;
-      if (!build) { this.status = "build_unavailable"; return; }
-      copy.build = build; this.options.store.save(copy, budget);
+      if (epoch !== this.epoch || this.disposed || !this.enabled) { this.options.onDiagnostic?.("save_cancelled", "invalidated"); return; }
+      if (!build) { this.status = "build_unavailable"; this.options.onDiagnostic?.("save_build", this.status); return; }
+      this.options.onDiagnostic?.("save_build", "accepted");
+      stage = "save_write"; copy.build = build; this.options.store.save(copy, budget);
       this.dropRam(); this.bodies = copy; copy = null; this.status = "saved";
-    } catch (error) { if (epoch === this.epoch) this.status = fixedError(error); }
+      this.options.onDiagnostic?.("save_write", "saved");
+    } catch (error) { if (epoch === this.epoch) { this.status = fixedError(error); this.options.onDiagnostic?.(stage, this.status); } }
     finally {
       if (copy) { budget.release(copy.connectBody); budget.release(copy.postLoginBody); }
       if (this.pendingSave === save) this.pendingSave = null;

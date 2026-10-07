@@ -14,17 +14,32 @@ afterEach(() => { vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, 
 function fixture() {
   const file = path.join(directory, "login.encrypted"), budget = new SatanicZoneDiagnosticBufferBudget();
   const crypto = new ElectronSatanicZoneTestRuntime().cacheEncryption;
-  const store = new SatanicZoneLoginCacheStore(file, crypto), snapshots: unknown[] = [];
+  const store = new SatanicZoneLoginCacheStore(file, crypto), snapshots: unknown[] = [], diagnostics: { stage: string; result: string }[] = [];
   const network = { gameProcessIds: [42], antiCheatProcessIds: [], connections: [{ ...scope, localPort: 5000, owningProcess: 42, state: "established" }] };
   const buildIdentity = vi.fn(async () => "e".repeat(64)), networkState = vi.fn(async () => network);
-  const cache = new SatanicZoneLoginCache({ store, buildIdentity, networkState, onChange: state => snapshots.push(state) });
+  const cache = new SatanicZoneLoginCache({ store, buildIdentity, networkState, onChange: state => snapshots.push(state),
+    onDiagnostic: (stage, result) => diagnostics.push({ stage, result }) });
   cache.attachBudget(budget);
   const input = { connectBody: inventedConnect(), postLoginBody: inventedPostLogin(), identity, scope, nativePort: 5000 };
   const payload = { text: `unique_account_id=${identity.uniqueAccountId}&beta=0`, direction: "outbound" as const,
     ...scope, localPort: 5000 };
-  return { file, budget, crypto, store, cache, snapshots, network, buildIdentity, networkState, input, payload };
+  return { file, budget, crypto, store, cache, snapshots, diagnostics, network, buildIdentity, networkState, input, payload };
 }
 describe("experimental encrypted login cache, invented material and mocked encryption/build only", () => {
+  test("safe stages distinguish absent load, build failure, cancelled save and failed disk write", async () => {
+    const f = fixture(); f.cache.configure(true);
+    expect(f.diagnostics).toContainEqual({ stage: "load", result: "empty" });
+    f.buildIdentity.mockResolvedValueOnce(null as unknown as string); await f.cache.remember(f.input, 42);
+    expect(f.diagnostics).toContainEqual({ stage: "save_build", result: "build_unavailable" });
+    let release!: (build: string) => void;
+    f.buildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const save = f.cache.remember(f.input, 42); f.cache.suspend(); release("e".repeat(64)); await save;
+    expect(f.diagnostics).toContainEqual({ stage: "save_cancelled", result: "invalidated" });
+    vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("CANARY_PRIVATE_PATH"); });
+    await f.cache.remember(f.input, 42);
+    expect(f.diagnostics).toContainEqual({ stage: "save_write", result: "storage_error" });
+    expect(JSON.stringify(f.diagnostics)).not.toMatch(/CANARY|eeeeeeee|account|checksum/); f.cache.dispose();
+  });
   test("off by default; plaintext identity/bodies never appear on disk or status; exact pair restores unverified", async () => {
     const f = fixture(); expect(f.cache.snapshot()).toEqual({ enabled: false, status: "disabled" });
     await f.cache.remember(f.input, 42); expect(fs.existsSync(f.file)).toBe(false);

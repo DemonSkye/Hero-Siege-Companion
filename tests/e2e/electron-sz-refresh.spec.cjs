@@ -65,7 +65,7 @@ test("early private listener forwards initial and subsequent native SZ without c
     await electronApp.evaluate((_electron, packet) => {
       const hooks = globalThis.heroSiegeCompanionE2e;
       hooks.emitCaptureUpdate({ running: true, status: "running" });
-      hooks.emitCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" });
+      hooks.emitCaptureUpdate({ observationGap: true });
       hooks.emitSatanicZoneTestPackets([packet]);
     }, invented.packets[4]);
     await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).not.toBe("ready");
@@ -110,7 +110,7 @@ test("gameplay capture reconfiguration during sign-in reaches native Ready and s
   });
 });
 
-test("gameplay identity gap suspends a pending native Refresh and private identity alone cannot resume it", async () => {
+test("unknown identity gap suspends a pending native Refresh and private identity alone cannot resume it", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
     const invented = initialization();
     await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
@@ -121,7 +121,7 @@ test("gameplay identity gap suspends a pending native Refresh and private identi
     await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("refreshing");
     await electronApp.evaluate((_electron, packet) => {
       const hooks = globalThis.heroSiegeCompanionE2e;
-      hooks.emitCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" });
+      hooks.emitCaptureUpdate({ observationGap: true });
       hooks.emitSatanicZoneTestPackets([packet]);
       hooks.completeSatanicZoneTestResponse([...Buffer.from('{"satanicZoneName":"Act_04_03","buffs":"","debuffs":""}')]);
     }, invented.packets[4]);
@@ -214,6 +214,70 @@ test("saved Off survives startup and no watcher can silently enable it", async (
       await page.evaluate(() => window.heroSiegeCompanion.startCapture());
       expect((await getRendererState(page)).satanicZone).toMatchObject({ refreshEnabled: false, refreshPreparation: { phase: "idle" } });
       await expect(page.locator("#satanic-zone-card .zone-refresh-button")).toHaveCount(0);
+    });
+  } finally { cleanupUserDataDir(userDataDir); }
+});
+
+test("startup zone, native Ready, gameplay reconfigure, explicit Refresh and saved reopen use production main/preload wiring", async () => {
+  const userDataDir = createUserDataDir(), invented = initialization(), file = path.join(userDataDir, "sz-login-cache.encrypted");
+  const post = invented.packets[4], login = invented.packets[5];
+  const ordinary = (counter, uid) => {
+    const body = Buffer.from(Buffer.from(post.payload).subarray(16).toString().replace("12345678901234567890", uid));
+    const token = createHash("md5").update(body).update(Buffer.from([counter])).digest("hex").slice(0, 12);
+    const header = Buffer.alloc(16); header.write(token); header.writeUInt32LE(body.length, 12);
+    return Buffer.concat([header, body]);
+  };
+  try {
+    fs.writeFileSync(path.join(userDataDir, "preferences.json"), JSON.stringify({ satanicZoneLoginCache: { enabled: true } }));
+    await withCompanionApp({ userDataDir, gameRunning: false }, async ({ electronApp, page }) => {
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("waiting_connection");
+      await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+      const body = Buffer.from('{"satanicZoneName":"Act_02_03","buffs":"","debuffs":""}');
+      const frame = Buffer.alloc(8 + body.length); frame.writeUInt32LE(body.length, 4); body.copy(frame, 8);
+      await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets),
+        [...invented.packets, { ...login, seq: login.seq + login.payload.length, payload: [...frame], payloadLength: frame.length }]);
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+      await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("saved");
+      expect((await getRendererState(page)).satanicZone.current.rawZone).toBe("Act_02_03");
+      await electronApp.evaluate(() => {
+        const hooks = globalThis.heroSiegeCompanionE2e;
+        hooks.emitCaptureUpdate({ running: true, status: "running" });
+        hooks.emitCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" });
+      });
+      expect((await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+      expect(fs.existsSync(file)).toBe(true);
+      expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(0);
+      await page.locator("#satanic-zone-card").getByRole("button", { name: "Refresh Satanic Zone", exact: true }).click();
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("refreshing");
+      await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.completeSatanicZoneTestResponse(
+        [...Buffer.from('{"satanicZoneName":"Act_04_03","buffs":"","debuffs":""}')]));
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.source).toBe("manual");
+      // Same PID/tuple; contrary UID arrives solely through the continuously observed private stream.
+      const changed = ordinary(9, "77777777777777777777"), seq = post.seq + post.payload.length;
+      await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), [
+        { ...post, seq: seq + 17, payload: [...changed.subarray(17)], payloadLength: changed.length - 17 },
+        { ...post, seq, payload: [...changed.subarray(0, 17)], payloadLength: 17 }]);
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).not.toBe("ready");
+      expect(fs.existsSync(file)).toBe(false);
+      await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
+      await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("saved");
+      const log = fs.readFileSync(path.join(userDataDir, "logs", "app-debug.log"), "utf8");
+      const cacheStages = log.trim().split("\n").map(line => JSON.parse(line)).filter(row => row.type === "sz-login-cache");
+      expect(cacheStages).toEqual(expect.arrayContaining([expect.objectContaining({ stage: "save_admission", result: "accepted" }),
+        expect.objectContaining({ stage: "save_write", result: "saved" })]));
+      expect(log).not.toMatch(/CANARY|1234567890|777777777|checksum|account_uid/);
+    });
+    expect(fs.existsSync(file)).toBe(true);
+    await withCompanionApp({ userDataDir }, async ({ electronApp, page }) => {
+      expect((await getRendererState(page)).satanicZoneLoginCache.status).toBe("unverified");
+      await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+      await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.emitSessionContext([42], [{
+        text: "unique_account_id=12345678901234567890&beta=0", direction: "outbound", localAddress: "192.0.2.10",
+        localPort: 5000, remoteAddress: "198.51.100.20", remotePort: 6669 }]));
+      await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.origin).toBe("cached");
+      expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(0);
+      const records = fs.readFileSync(path.join(userDataDir, "logs", "app-debug.log"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+      expect(records).toContainEqual(expect.objectContaining({ type: "sz-login-cache", stage: "load", result: "unverified" }));
     });
   } finally { cleanupUserDataDir(userDataDir); }
 });

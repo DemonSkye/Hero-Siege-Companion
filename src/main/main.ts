@@ -825,7 +825,9 @@ app.whenReady().then(async () => {
     store: new SatanicZoneLoginCacheStore(path.join(userDataPath, "sz-login-cache.encrypted"),
       satanicZoneTestRuntime?.cacheEncryption ?? safeStorage),
     networkState: satanicZoneTestRuntime?.dependencies.networkState ?? getHeroSiegeNetworkState,
-    buildIdentity: satanicZoneTestRuntime?.buildIdentity ?? getHeroSiegeBuildIdentity,
+    buildIdentity: satanicZoneTestRuntime?.buildIdentity ?? (pid => getHeroSiegeBuildIdentity(pid,
+      stage => writeAppLog("sz-login-cache-build", { stage }))),
+    onDiagnostic: (stage, result) => writeAppLog("sz-login-cache", { stage, result }),
     onChange: cacheState => {
       state.satanicZoneLoginCache = cacheState; satanicZoneRefreshProvider?.cacheChanged();
       applyCaptureDiagnosticPreferences(); publishState();

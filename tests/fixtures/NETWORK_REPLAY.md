@@ -33,11 +33,25 @@ has separate mocked Electron regressions; this composed test is not a live captu
 
 The startup display regression is an ordinary passing assertion: only the private
 listener is open, and it forwards a strictly parsed SZ from the attributed game
-stream before gameplay capture starts. After Ready the same stream observes only
-incoming bytes and erases complete frames. Stream tests send over a MiB across
+stream before gameplay capture starts. After Ready the same stream observes both
+directions and erases complete frames; framed contrary UID/beta invalidates Ready.
+Gameplay-only reconfiguration preserves native Ready only while that independent
+observer is complete and continuous. Unknown gaps and restored-cache contexts
+still suspend. Stream tests send over a MiB across
 TCP wrap with a 1 KiB test budget, covering out-of-order/coalesced/overlapping
 segments, consumed retransmissions, conflicts and cancellation. Original diagnostic
 initialization still keeps its strict coherence/history behavior.
+
+The startup delivery regression composes the production launch coordinator,
+Windows capture wrapper, decoder, initialization and cache owners with a buffering
+fake adapter and mocked process-query output. Short first-SYN traffic is delivered
+before gameplay capture starts. Build lookup uses a current-process path fallback;
+safe load/admission/build/cancellation/write stages identify failures without
+paths, hashes or authentication fields. Actual main/preload/UI tests also preserve
+Ready through gameplay reconfiguration, reject private-only contrary identity,
+save and reopen an invented encrypted pair. Synthetic PowerShell checks in the
+private workspace shadow every process/file-hash operation; they do not inspect
+the installed game or establish actual process-path permissions.
 
 The cache replay saves a coherent invented pair with a mocked build and fake
 encryption, disposes Companion with the game flow logically still present, reloads
