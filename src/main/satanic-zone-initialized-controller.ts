@@ -7,7 +7,7 @@ import { SatanicZoneDiagnosticStream, DiagnosticFrameError, type DiagnosticFrame
 import { connectProbeIdentity, coherentProbePostLogin, isProbePostLogin, isProbeConnectAcknowledgment, summarizeProbeConnectAcknowledgment, successfulProbeIdentifier,
   type InitializedProbeIdentity } from "./satanic-zone-initialized-protocol";
 import { runInitializedSatanicZoneProbe, INITIALIZED_PROBE_ATTEMPT_MS, type InitializedProbeInput } from "./satanic-zone-initialized-transport";
-import { createDiagnosticCaptureDependencies } from "./satanic-zone-diagnostic-runtime";
+import { createDiagnosticCaptureDependencies, type SatanicZoneWatchDiagnosticListener } from "./satanic-zone-diagnostic-runtime";
 import type { ParsedPayload, CapturedTcpLifecycle } from "./packet-decoder";
 import type { SatanicZoneProviderObservation } from "./satanic-zone-refresh-provider";
 import type { CapturedSessionPayload } from "./captured-session-context";
@@ -29,6 +29,7 @@ export interface InitializedProbeDependencies extends Pick<SatanicZoneDiagnostic
   onPassiveObservation?: (observation: SatanicZoneProviderObservation) => void;
   onSessionPayload?: (payload: CapturedSessionPayload) => void;
   onInvalidation?: () => void;
+  onWatchDiagnostic?: SatanicZoneWatchDiagnosticListener;
   onPrepared?: (input: InitializedProbeInput, pid: number) => void;
   validateCached?: (scope: import("./satanic-zone-session-scope").SatanicZoneSessionScope) => Promise<boolean>;
 }
@@ -194,6 +195,7 @@ export class SatanicZoneInitializedProbeController {
         () => this.finish(session, "incomplete", "capture-failed"), session.budget);
       if (!this.current(session)) { handle.close(); return false; }
       session.handle = handle;
+      this.dependencies.onWatchDiagnostic?.({ stage: "listener_ready", freshSyn: this.state.freshSyn, attributed: this.state.attributed });
       this.state.phase = session.stream?.freshSyn ? "collecting" : "waiting-initialization";
       this.state.selectionStatus = session.stream ? "waiting-owner" : "waiting-syn";
       this.publish(); void this.poll(session); return true;
@@ -258,7 +260,9 @@ export class SatanicZoneInitializedProbeController {
     }
     this.state.bytesObserved += packet.payload.length;
     try {
+      const selectedSyn = !this.state.freshSyn;
       session.stream.push(packet); this.state.freshSyn = session.stream.freshSyn;
+      if (selectedSyn && this.state.freshSyn) this.dependencies.onWatchDiagnostic?.({ stage: "syn_selected", freshSyn: true, attributed: this.state.attributed });
       if (this.state.freshSyn && this.state.phase === "waiting-initialization") this.state.phase = "collecting";
       this.checkReady(session); this.publish();
     } catch (error) { this.collectionFailure(session, error, "invalid-frame"); }
@@ -405,6 +409,7 @@ export class SatanicZoneInitializedProbeController {
       || !network.gameProcessIds.includes(session.pid))) { this.finish(session, "incomplete", "scope-changed"); return false; }
     if (session.pid === null && candidates.length === 1 && session.stream?.freshSyn) {
       session.pid = candidates[0].owningProcess; this.state.attributed = true; this.state.selectionStatus = "attributed";
+      this.dependencies.onWatchDiagnostic?.({ stage: "owner_selected", freshSyn: this.state.freshSyn, attributed: true });
       session.stream.attribute(); this.checkReady(session); this.publish();
     } else if (session.pid === null) {
       this.state.selectionStatus = "waiting-owner"; this.publish();
@@ -489,6 +494,7 @@ export class SatanicZoneInitializedProbeController {
   /** Reuse the already-open listener so a reconnect SYN cannot race an async reopen. */
   private resetInitialization(session: Session): void {
     if (!this.current(session)) return;
+    this.dependencies.onWatchDiagnostic?.({ stage: "initialization_reset", freshSyn: this.state.freshSyn, attributed: this.state.attributed });
     if (!session.cached) this.dependencies.onInvalidation?.();
     session.attemptAbort?.abort(); session.attemptAbort = null;
     if (session.deadline) clearTimeout(session.deadline); session.deadline = null;
@@ -511,6 +517,7 @@ export class SatanicZoneInitializedProbeController {
   private closeCapture(session: Session): boolean {
     if (session.poll) clearTimeout(session.poll); session.poll = null;
     let closed = true;
+    if (session.handle) this.dependencies.onWatchDiagnostic?.({ stage: "listener_closed", freshSyn: this.state.freshSyn, attributed: this.state.attributed });
     try { session.handle?.close(); } catch { closed = false; } session.handle = null;
     session.stream?.dispose(); session.stream = null;
     return closed;

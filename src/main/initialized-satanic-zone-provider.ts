@@ -1,7 +1,7 @@
 import type { SatanicZonePreparation } from "../shared/satanic-zone-preparation";
 import type { SatanicZoneDiagnosticState } from "../shared/satanic-zone-diagnostic";
 import { SatanicZoneInitializedProbeController, type InitializedProbeDependencies } from "./satanic-zone-initialized-controller";
-import { createDiagnosticCaptureDependencies } from "./satanic-zone-diagnostic-runtime";
+import { createDiagnosticCaptureDependencies, type SatanicZoneWatchDiagnosticListener } from "./satanic-zone-diagnostic-runtime";
 import { runInitializedSatanicZoneProbe } from "./satanic-zone-initialized-transport";
 import type { CapturedSessionPayload } from "./captured-session-context";
 import type { CaptureConnection } from "../shared/app-state";
@@ -39,6 +39,7 @@ export interface InitializedSatanicZoneProviderOptions {
   canPrepare: () => boolean;
   onPreparation: (state: SatanicZonePreparation) => void;
   onReadinessDiagnostic?: (state: SatanicZoneReadinessDiagnostic) => void;
+  onWatchDiagnostic?: SatanicZoneWatchDiagnosticListener;
   syntheticOnly?: boolean;
   loginCache?: SatanicZoneLoginCache;
   /** Offline tests inject every native/network/socket boundary. */
@@ -69,7 +70,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   private createContext(): SatanicZoneInitializedProbeController {
     let context!: SatanicZoneInitializedProbeController;
     context = new SatanicZoneInitializedProbeController({
-      ...createDiagnosticCaptureDependencies(this.options.syntheticOnly ?? false, "startup-api"),
+      ...createDiagnosticCaptureDependencies(this.options.syntheticOnly ?? false, "startup-api", this.options.onWatchDiagnostic),
       attempt: (input, signal, budget, progress) => this.options.syntheticOnly ? Promise.resolve("failed")
         : runInitializedSatanicZoneProbe(input, signal, budget, progress),
       ...this.options.dependencies, retainContext: true, autoWatch: true, bufferBudget: this.budget,
@@ -85,6 +86,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
         if (this.context === context && !context.continuitySuspended && !this.disposed) void this.options.loginCache?.observe(payload);
       },
       onInvalidation: () => { if (this.context === context) this.options.loginCache?.suspend(); },
+      onWatchDiagnostic: this.options.onWatchDiagnostic,
       validateCached: scope => this.options.loginCache?.preflight(scope) ?? Promise.resolve(false),
     });
     return context;

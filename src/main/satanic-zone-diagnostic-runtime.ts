@@ -23,9 +23,14 @@ export function createSatanicZoneDiagnosticRuntime(options: Pick<SatanicZoneDiag
 }
 
 type CaptureDependencies<Scope> = Pick<SatanicZoneDiagnosticDependencies<Scope>, "prepare" | "open" | "networkState">;
-export function createDiagnosticCaptureDependencies(syntheticOnly: boolean, endpointPolicy: "startup-api"): CaptureDependencies<SatanicZoneListenScope>;
-export function createDiagnosticCaptureDependencies(syntheticOnly?: boolean, endpointPolicy?: "fixed" | "fresh-api"): Pick<SatanicZoneDiagnosticDependencies, "prepare" | "open" | "networkState">;
-export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpointPolicy: "fixed" | "fresh-api" | "startup-api" = "fixed"):
+/** Fixed startup stages only; never include an address, process ID, path or body. */
+export type SatanicZoneWatchDiagnostic =
+  | { stage: "interface_selected"; source: "default_route" | "game_api"; gamePresent: boolean; apiFlows: number }
+  | { stage: "listener_ready" | "syn_selected" | "owner_selected" | "initialization_reset" | "listener_closed"; freshSyn: boolean; attributed: boolean };
+export type SatanicZoneWatchDiagnosticListener = (diagnostic: SatanicZoneWatchDiagnostic) => void;
+export function createDiagnosticCaptureDependencies(syntheticOnly: boolean, endpointPolicy: "startup-api", diagnostic?: SatanicZoneWatchDiagnosticListener): CaptureDependencies<SatanicZoneListenScope>;
+export function createDiagnosticCaptureDependencies(syntheticOnly?: boolean, endpointPolicy?: "fixed" | "fresh-api", diagnostic?: SatanicZoneWatchDiagnosticListener): Pick<SatanicZoneDiagnosticDependencies, "prepare" | "open" | "networkState">;
+export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpointPolicy: "fixed" | "fresh-api" | "startup-api" = "fixed", diagnostic?: SatanicZoneWatchDiagnosticListener):
   CaptureDependencies<SatanicZoneListenScope> {
   return {
     async prepare() {
@@ -38,11 +43,13 @@ export function createDiagnosticCaptureDependencies(syntheticOnly = false, endpo
       if (endpointPolicy === "startup-api" && connections.length === 0) {
         const localAddress = await getDefaultCaptureLocalAddress();
         if (!localAddress) throw new Error("unavailable");
+        diagnostic?.({ stage: "interface_selected", source: "default_route", gamePresent: state.gameProcessIds.length > 0, apiFlows: 0 });
         return { localAddress };
       }
       if (connections.length === 0 || (endpointPolicy === "fixed" && connections.length !== 1)
         || new Set(connections.map(connection => connection.localAddress)).size !== 1) throw new Error("unavailable");
       const connection = connections[0];
+      diagnostic?.({ stage: "interface_selected", source: "game_api", gamePresent: true, apiFlows: Math.min(32, connections.length) });
       return { localAddress: connection.localAddress, remoteAddress: connection.remoteAddress, remotePort: connection.remotePort };
     },
     async open(scope, onPacket, failed, budget) {

@@ -838,6 +838,7 @@ app.whenReady().then(async () => {
     syntheticOnly: isElectronE2eTestMode(),
     dependencies: satanicZoneTestRuntime?.dependencies,
     onReadinessDiagnostic: diagnostic => writeAppLog("sz-refresh-readiness", diagnostic),
+    onWatchDiagnostic: diagnostic => writeAppLog("sz-watch-stage", diagnostic),
     canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
       && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh,
     onPreparation: preparation => {

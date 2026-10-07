@@ -61,6 +61,10 @@ test("early private listener forwards initial and subsequent native SZ without c
     expect((await getRendererState(page)).capturePreferences.capturePayloadLogging).toBe(false);
     const log = fs.readFileSync(path.join(userDataDir, "logs", "app-debug.log"), "utf8");
     expect(log).not.toMatch(/CANARY|1234567890|9876543210|account_uid|checksum/);
+    const watchStages = log.split("\n").flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } })
+      .filter(row => row.type === "sz-watch-stage").map(row => row.stage);
+    expect(watchStages).toEqual(expect.arrayContaining(["listener_ready", "syn_selected", "owner_selected"]));
+    expect(watchStages.indexOf("listener_ready")).toBeLessThan(watchStages.indexOf("syn_selected"));
     // Exercise main's production applyCaptureUpdate forwarding, not a direct provider call.
     await electronApp.evaluate((_electron, packet) => {
       const hooks = globalThis.heroSiegeCompanionE2e;

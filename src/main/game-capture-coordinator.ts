@@ -27,9 +27,11 @@ export class GameCaptureCoordinator {
   constructor(private readonly options: GameCaptureCoordinatorOptions) {}
 
   async launchOrCapture(launchOptions: LaunchGameOptions): Promise<CompanionState> {
+    this.options.writeAppLog("game-launch-stage", { stage: "requested", throughSteam: launchOptions?.launchThroughSteam === true });
     this.captureEnabled = true;
     const service = this.options.getCaptureService();
     if (service && (await service.hasHeroSiegeProcess())) {
+      this.options.writeAppLog("game-launch-stage", { stage: "game_present" });
       this.clearLaunchCaptureTimer();
       await this.options.beforeCapture?.();
       if (this.captureEnabled) await service.start();
@@ -71,6 +73,7 @@ export class GameCaptureCoordinator {
   private async launchThroughSteam(): Promise<void> {
     try {
       if (!await this.prepareForLaunch()) return;
+      this.options.writeAppLog("game-launch-stage", { stage: "shell_invoked", throughSteam: true });
       await shell.openExternal(STEAM_HERO_SIEGE_URL);
       this.options.addLog("info", "Launched Hero Siege through Steam. Capture is watching for the game.");
       this.scheduleLaunchCaptureAttempt();
@@ -93,6 +96,7 @@ export class GameCaptureCoordinator {
     }
 
     if (!await this.prepareForLaunch()) return;
+    this.options.writeAppLog("game-launch-stage", { stage: "shell_invoked", throughSteam: false });
     const launchError = await shell.openPath(executablePath);
     if (launchError) {
       this.options.addLog("error", `Failed to launch Hero Siege: ${launchError}`);
@@ -106,6 +110,8 @@ export class GameCaptureCoordinator {
   private async prepareForLaunch(): Promise<boolean> {
     let opened = false;
     try { opened = await this.options.beforeCapture?.() ?? true; } catch {}
+    this.options.writeAppLog("game-launch-stage", { stage: "listener_checked", refreshEnabled: this.options.state.satanicZone.refreshEnabled,
+      opened, captureEnabled: this.captureEnabled });
     if (!this.captureEnabled) {
       this.options.addLog("info", "Game launch cancelled."); return false;
     }
