@@ -105,6 +105,45 @@ describe("settings ledger", () => {
     expect(wrapper.find('a[href*="mitmproxy"]').exists()).toBe(false);
   });
 
+  test("explains loaded saved Refresh after restart or stopped capture separately from live sign-in continuity", async () => {
+    const wrapper = mount(SettingsModal, {
+      props: settingsProps({
+        satanicZoneRefreshEnabled: true,
+        satanicZoneLoginCache: { enabled: true, unlocked: true, automatic: true, status: "loaded" },
+      }),
+    });
+    await button(wrapper, "Features").trigger("click");
+    const notice = wrapper.get(".settings-notice").text();
+    expect(notice).toContain("With a loaded saved sign-in and known server, you can try Refresh after restarting Companion or stopping capture");
+    expect(notice).toContain("The server may reject the saved sign-in");
+    expect(notice).toContain("Capture interruptions pause Refresh using live sign-in data");
+    expect(notice).not.toContain("without a validated saved sign-in");
+    expect(notice).not.toContain("Capture interruptions pause Refresh until");
+
+    await button(wrapper, "Learn More").trigger("click");
+    const explanation = wrapper.get(".settings-action-dialog").text();
+    expect(explanation).toContain("With a loaded saved sign-in and known server, you can try Refresh after restarting Companion or stopping capture");
+    expect(explanation).toContain("The server may reject the saved sign-in");
+    expect(explanation).toContain("Capture interruptions pause Refresh using live sign-in data");
+    expect(explanation).toContain("Requests are sent only when you click Refresh");
+    expect(explanation).not.toMatch(/Current account and mode must still match|validated saved sign-in/);
+    wrapper.unmount();
+  });
+
+  test("explains that older saved sign-ins can obtain their server without a new login", async () => {
+    const wrapper = mount(SettingsModal, {
+      props: settingsProps({
+        satanicZoneRefreshEnabled: true,
+        satanicZoneLoginCache: { enabled: true, unlocked: true, status: "route_required" },
+      }),
+    });
+    await button(wrapper, "Features").trigger("click");
+    expect(wrapper.get(".settings-notice").text()).toContain("Older saved sign-ins wait for the game's server connection to be observed; a new sign-in is not required");
+    await button(wrapper, "Learn More").trigger("click");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("Older saved sign-ins without a known server wait for the game's server connection to be observed; a new sign-in is not required");
+    wrapper.unmount();
+  });
+
   test("emits enhanced diagnostics directly but confirmation-gates every deep activation", async () => {
     const wrapper = mount(SettingsModal, { props: settingsProps() });
     await button(wrapper, "Help & Support").trigger("click");

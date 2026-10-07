@@ -363,15 +363,17 @@ function saveStatusLabel(): string {
         dismiss-only
         @close="closeNestedDialog"
       >
-        <p>Keep capture enabled and play normally. Click Refresh when you want to check the current Satanic Zone.</p>
+        <p>Capture collects new sign-in data while you play. Click Refresh when you want to check the current Satanic Zone.</p>
         <ul>
           <li>No certificate installation, administrator service, proxy, or special game launch is required.</li>
           <li>Refresh requests remain limited to once every 30 seconds.</li>
           <li>Open Companion before signing into the game, or launch the game here. Refresh gets ready automatically while capture is enabled.</li>
-          <li>If Companion missed this sign-in, keep playing. Without a validated saved sign-in, Refresh will be available after the game next signs in; changing characters may not do that.</li>
-          <li>Requests are sent only when you click Refresh. A ready game session has no time limit.</li>
-          <li>Capture interruptions pause Refresh until fresh matching evidence is observed. With Remember sign-in off, new sign-in data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
-          <li>Remember sign-in is optional. Automatic save/load requires one-time consent to keep a local unlocking key beside the encrypted file. Anyone who can read both can use the saved sign-in. Current account and mode must still match; Refresh sends only when clicked. Reuse may not be accepted across game sessions.</li>
+          <li>If Companion missed this sign-in, keep playing. Without a saved sign-in, Refresh will be available after the game next signs in; changing characters may not do that.</li>
+          <li>Requests are sent only when you click Refresh. Ready sign-in data has no time limit.</li>
+          <li>Capture interruptions pause Refresh using live sign-in data until fresh matching sign-in data is observed. With Remember sign-in off, new sign-in data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
+          <li>With a loaded saved sign-in and known server, you can try Refresh after restarting Companion or stopping capture. The server may reject the saved sign-in.</li>
+          <li>Older saved sign-ins without a known server wait for the game's server connection to be observed; a new sign-in is not required.</li>
+          <li>Remember sign-in is optional. Automatic save/load requires one-time consent to keep a local unlocking key beside the encrypted file. Anyone who can read both can use the saved sign-in.</li>
           <li>A lost passphrase cannot be recovered. Lock clears memory for this session; automatic reopening stays enabled for the next launch. Disable removes the local unlocking key and keeps the encrypted file. Forget saved sign-in deletes both files and disables the cache. Older Windows-encrypted files stay untouched.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
