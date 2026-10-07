@@ -5,7 +5,7 @@ export const MARKET_CONTEXT_FIELDS = [
 export type MarketContextField = typeof MARKET_CONTEXT_FIELDS[number];
 export type MarketReadinessPhase = "waiting" | "collecting" | "expired" | "region-required" | "preparing" | "region-error" | "ready";
 export type MarketReadinessReason = "capture_inactive" | "game_unavailable" | "missing_fields"
-  | "identity_expired" | "endpoint_mismatch" | "source_mismatch" | "region_unprepared" | "region_unavailable" | "region_unresolved" | null;
+  | "identity_expired" | "endpoint_mismatch" | "region_unprepared" | "region_unavailable" | "region_unresolved" | null;
 
 /** Display-safe evidence only. Never add account/session values or endpoints. */
 export interface MarketReadiness {

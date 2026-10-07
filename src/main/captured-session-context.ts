@@ -34,7 +34,7 @@ interface FieldEvidence {
   qualification?: MarketContextProvenance["accountQualification"];
 }
 
-/** Safe categories only; frozen with each main/worker snapshot, never session values. */
+/** Diagnostic comparisons only; different connections do not prove invalid values. */
 export interface MarketContextProvenance {
   fieldSources: Partial<Record<SessionContextField, SessionContextMessage["source"]>>;
   accountQualification: "observed-prefix" | "region-directory" | "unqualified" | "unknown";
@@ -126,7 +126,6 @@ export class CapturedSessionContextStore {
     }
     if (snapshot.missingFields.length) return snapshot;
     if (!snapshot.sessionCurrent) return { ...snapshot, reason: "endpoint_mismatch" };
-    if (this.marketSourceMismatch()) return { ...snapshot, reason: "source_mismatch", canSearch: false };
     if (!snapshot.regionQualified) {
       return { ...snapshot, phase: "region-required", reason: "region_unprepared", canSearch: true };
     }
@@ -148,7 +147,7 @@ export class CapturedSessionContextStore {
     const currentTime = this.now();
     if (!this.processSignature || !isComplete(this.fields) || !isRegionQualifiedAccount(this.fields.account_id)) return null;
     const endpoint = this.transientEndpoint(currentTime);
-    if (!endpoint || this.marketSourceMismatch()) return null;
+    if (!endpoint) return null;
     return {
       generation: this.generation,
       revision: this.revision,
@@ -220,8 +219,6 @@ export class CapturedSessionContextStore {
     const account = this.fields.account_id;
     if (!account || isRegionQualifiedAccount(account) || !this.directory) return;
     for (const source of this.accountSources) {
-      const current = this.evidence.account_id;
-      if (!current || !sameEndpoint(source, current) || sameFlow(source, current) === false) continue;
       const region = this.directory.lookup(source.remoteAddress, source.remotePort, this.fields.beta);
       if (!region) continue;
       this.observeMessage(source, { source: "region-directory", fields: { account_id: `${region}-${account}` } });
@@ -230,7 +227,6 @@ export class CapturedSessionContextStore {
   }
 
   private observeMessage(payload: CapturedSessionPayload, message: SessionContextMessage): void {
-    const beforeMismatch = this.marketSourceMismatch();
     const candidates = { ...message.fields };
     if (!candidates.account_id && !candidates.unique_account_id) return;
     const current = this.fields;
@@ -254,9 +250,7 @@ export class CapturedSessionContextStore {
     }
     let retainedQualification = false;
     if (!reset && candidates.account_id && current.account_id
-      && !isRegionQualifiedAccount(candidates.account_id) && isRegionQualifiedAccount(current.account_id)
-      && this.evidence.account_id && sameEndpoint(payload, this.evidence.account_id)
-      && sameFlow(payload, this.evidence.account_id) !== false) {
+      && !isRegionQualifiedAccount(candidates.account_id) && isRegionQualifiedAccount(current.account_id)) {
       candidates.account_id = current.account_id;
       retainedQualification = true;
     }
@@ -283,7 +277,8 @@ export class CapturedSessionContextStore {
       if (this.fields[field] !== value) changedFields.push(field);
       else refreshed = true;
       const previousEvidence = this.evidence[field];
-      if (previousEvidence && (!sameEndpoint(previousEvidence, payload) || sameFlow(previousEvidence, payload) === false)) {
+      if ((field === "unique_account_id" || field === "crossregion_identifier") && previousEvidence
+        && !sameEndpoint(previousEvidence, payload)) {
         endpointChanged = true;
       }
       this.fields[field] = value;
@@ -301,8 +296,7 @@ export class CapturedSessionContextStore {
       };
     }
     this.observeHardcore(payload, message, observedAt);
-    const sourceMismatchChanged = beforeMismatch !== this.marketSourceMismatch();
-    if (!changedFields.length && !reset && !modeChanged && !endpointChanged && !sourceMismatchChanged) {
+    if (!changedFields.length && !reset && !modeChanged && !endpointChanged) {
       if (refreshed) this.log("session-context-refreshed", { generation: this.generation });
       return;
     }
@@ -314,7 +308,6 @@ export class CapturedSessionContextStore {
       changedFields,
       reset: reset ? "identity" : modeChanged ? "mode" : "none",
       endpointChanged,
-      sourceMismatch: this.marketSourceMismatch(),
       marketReady: this.marketContext() !== null,
       satanicZoneReady: this.satanicZoneContext() !== null,
     });
@@ -355,10 +348,6 @@ export class CapturedSessionContextStore {
       hardcoreApiObserved: Boolean(api), hardcoreSaveObserved: Boolean(save),
       hardcoreSourcesAgree: comparable ? api.value === save.value : null,
     };
-  }
-  private marketSourceMismatch(): boolean {
-    const proof = this.marketProvenance();
-    return [proof.sameEndpoint, proof.sameFlow, proof.accountPrefixCoherent, proof.hardcoreSourcesAgree].includes(false);
   }
   private observeHardcore(payload: CapturedSessionPayload, message: SessionContextMessage, observedAt: number): void {
     if (message.source === "region-directory") return;

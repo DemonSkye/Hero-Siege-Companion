@@ -8,12 +8,12 @@ import { useMarketSearchRuntime } from "../../src/renderer/src/lib/market-search
 import { companionState, itemTimelineEntry } from "./fixtures";
 
 describe("Market readiness UI", () => {
-  test("explains source disagreement even with all six fields instead of an empty missing-fields prompt", () => {
+  test("explains established transient endpoint mismatch even with all six fields", () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
-      ...companionState().marketReadiness, phase: "collecting", reason: "source_mismatch", canSearch: false, missingFields: [],
+      ...companionState().marketReadiness, phase: "collecting", reason: "endpoint_mismatch", canSearch: false, missingFields: [],
     } } });
-    expect(wrapper.get('[role="status"]').text()).toBe("Market context sources disagree");
-    expect(wrapper.text()).toContain("matching account, mode and connection evidence");
+    expect(wrapper.get('[role="status"]').text()).toBe("Market session changed");
+    expect(wrapper.text()).toContain("matching current-session evidence");
   });
   test("shows the real missing categories and distinguishes six captured fields from a confirmed region", async () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: createInitialMarketReadiness() } });

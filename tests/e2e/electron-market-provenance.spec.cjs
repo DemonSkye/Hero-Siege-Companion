@@ -19,7 +19,7 @@ async function ready(electronApp, page, text = contextText, payloadFlow = flow) 
 async function response(electronApp, text) {
   await electronApp.evaluate((_electron, body) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, body), [...Buffer.from(text)]);
 }
-test("production main/preload Market search preserves final safe metadata, reuses cache and blocks mixed connections", async () => {
+test("production main/preload Market search preserves safe metadata and cache across stable fields on different connections", async () => {
   await withCompanionApp({ marketTransport: true }, async ({ electronApp, page, userDataDir }) => {
     await ready(electronApp, page); await response(electronApp, success);
     const first = await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request);
@@ -27,13 +27,20 @@ test("production main/preload Market search preserves final safe metadata, reuse
     expect(await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request)).toMatchObject({ ok: true, cached: true });
     expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
     await electronApp.evaluate((_electron, payload) => globalThis.heroSiegeCompanionE2e.emitSessionContext([42], [payload]), {
-      ...flow, remoteAddress: "203.0.113.99", localPort: 6000,
-      text: "unique_account_id=CANARY-uid&crossregion_identifier=CANARY-next&beta=0",
+      ...flow, localPort: 6000,
+      text: "account_id=7-424242&unique_account_id=CANARY-uid&season=11&hardcore=0&beta=0",
     });
-    await expect.poll(async () => (await getRendererState(page)).marketReadiness.reason).toBe("source_mismatch");
+    await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(true);
+    expect(await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request)).toMatchObject({ ok: true, cached: true });
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
+    // An actual identity value change still invalidates all old fields/cache.
+    await electronApp.evaluate((_electron, payload) => globalThis.heroSiegeCompanionE2e.emitSessionContext([42], [payload]), {
+      ...flow, remoteAddress: "203.0.113.99", localPort: 6000, text: "unique_account_id=CANARY-new-uid&beta=0",
+    });
+    await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(false);
     expect(await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request)).toMatchObject({ ok: false, errorCode: "template_unavailable" });
     expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
-    await ready(electronApp, page, contextText.replace("7-424242", "9-424242"), { ...flow, remoteAddress: "203.0.113.99", localPort: 6000 });
+    await ready(electronApp, page, contextText.replace("7-424242", "9-424242").replace("CANARY-uid", "CANARY-new-uid"), { ...flow, remoteAddress: "203.0.113.99", localPort: 6000 });
     const records = results(userDataDir), event = records.at(-1), data = event.data ?? event;
     expect(data.requestContext).toMatchObject({ season: "11", hardcore: "0", beta: "0", sameEndpoint: true, sameFlow: true, accountQualification: "observed-prefix" });
     expect(JSON.stringify(records)).not.toMatch(/CANARY|424242|203\.0\.113|192\.0\.2|checksum.*[a-f0-9]{64}/);
@@ -47,6 +54,22 @@ test("checksum rejection carries the same final mode/source metadata without ech
     const records = results(userDataDir), event = records.at(-1), data = event.data ?? event;
     expect(data).toMatchObject({ serverReason: "checksum", httpStatus: 200, applicationStatus: -3,
       requestContext: { season: "11", hardcore: "0", beta: "0", sameEndpoint: true, sameFlow: true, accountQualification: "observed-prefix" } });
+    expect(JSON.stringify(records)).not.toMatch(/CANARY|424242|203\.0\.113|192\.0\.2/);
+  });
+});
+
+test("stable account/mode and transient session on separate endpoints remain searchable with diagnostic disagreement", async () => {
+  await withCompanionApp({ marketTransport: true }, async ({ electronApp, page, userDataDir }) => {
+    await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+    await electronApp.evaluate((_electron, payloads) => globalThis.heroSiegeCompanionE2e.emitSessionContext([42], payloads), [
+      { ...flow, text: "account_id=7-424242&season=11&hardcore=0&beta=0" },
+      { ...flow, remoteAddress: "203.0.113.99", localPort: 6000, text: "unique_account_id=CANARY-uid&crossregion_identifier=CANARY-session&beta=0" },
+    ]);
+    await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(true);
+    await response(electronApp, success);
+    expect(await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request)).toMatchObject({ ok: true, cached: false });
+    const records = results(userDataDir), event = records.at(-1), data = event.data ?? event;
+    expect(data.requestContext).toMatchObject({ season: "11", hardcore: "0", beta: "0", sameEndpoint: false, sameFlow: false });
     expect(JSON.stringify(records)).not.toMatch(/CANARY|424242|203\.0\.113|192\.0\.2/);
   });
 });

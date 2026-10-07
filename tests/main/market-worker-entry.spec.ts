@@ -70,6 +70,11 @@ class FakeRequest extends EventEmitter {
 }
 class FakeResponse extends EventEmitter { statusCode = 200; }
 
+const terminalResults = () => bridge.post.mock.calls.map(([message]) => message)
+  .filter(message => !("type" in message)) as DirectMarketWorkerResult[];
+const progressMessages = () => bridge.post.mock.calls.map(([message]) => message)
+  .filter(message => message.type === "request-context");
+
 /** Executes the actual module entry/run/build/reducer; only worker IPC and HTTPS I/O are replaced. */
 async function entry(snapshot: CompleteCapturedSessionContext = context(), request = droppedItemRequest) {
   vi.resetModules(); bridge.post.mockClear(); bridge.request.mockReset();
@@ -83,12 +88,14 @@ async function entry(snapshot: CompleteCapturedSessionContext = context(), reque
   await import("../../src/main/market-direct-search-worker");
   expect(bridge.request).toHaveBeenCalledTimes(1);
   expect(outgoing.end).toHaveBeenCalledTimes(1);
+  expect(progressMessages().map(message => message.diagnostics.dispatchStatus)).toEqual(["unconfirmed", "submitted"]);
+  expect(terminalResults()).toHaveLength(0);
   const response = new FakeResponse(); acceptResponse(response);
   return {
     outgoing, response, options, form: new URLSearchParams(outgoing.body),
     async result() {
-      await vi.waitFor(() => expect(bridge.post).toHaveBeenCalledTimes(1));
-      return bridge.post.mock.calls[0][0] as DirectMarketWorkerResult;
+      await vi.waitFor(() => expect(terminalResults()).toHaveLength(1));
+      return terminalResults()[0];
     },
   };
 }
@@ -112,9 +119,10 @@ async function blockedEntry(snapshot: CompleteCapturedSessionContext) {
   vi.resetModules(); bridge.post.mockClear(); bridge.request.mockReset();
   bridge.data = { context: snapshot, request: droppedItemRequest };
   await import("../../src/main/market-direct-search-worker");
-  await vi.waitFor(() => expect(bridge.post).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(terminalResults()).toHaveLength(1));
   expect(bridge.request).not.toHaveBeenCalled();
-  return bridge.post.mock.calls[0][0] as DirectMarketWorkerResult;
+  expect(progressMessages().map(message => message.diagnostics.dispatchStatus)).toEqual(["unconfirmed"]);
+  return terminalResults()[0];
 }
 
 describe("actual Market worker entry with retained native structure and independent synthetic expectations", () => {
@@ -152,7 +160,8 @@ describe("actual Market worker entry with retained native structure and independ
     const result = await run.result();
     expect(result.response).toEqual({ ok: true, result: evidence.syntheticResponses.expectedSuccess });
     expect(result.diagnostics).toEqual({ httpStatus: 200, applicationStatus: 1, responseBytes: successBody().length,
-      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(vector) });
+      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(vector), dispatchStatus: "submitted" });
+    for (const message of progressMessages()) expectNoSecrets(message, run.form);
     expectNoSecrets(result, run.form);
   });
 
@@ -166,7 +175,7 @@ describe("actual Market worker entry with retained native structure and independ
     expect(result.response).toEqual(evidence.syntheticResponses.expectedRejection);
     expect(result.diagnostics).toEqual({ httpStatus: 200, applicationStatus: -3, responseBytes: body.length,
       reason: "server-rejected", serverReason: "checksum", contextRevision: 17, contextAgeMs: 3_500,
-      requestContext: expectedRequestContext(vector) });
+      requestContext: expectedRequestContext(vector), dispatchStatus: "submitted" });
     expectNoSecrets(result, run.form);
   });
 
@@ -187,17 +196,19 @@ describe("actual Market worker entry with retained native structure and independ
     const run = await entry(snapshot);
     const body = Buffer.from(JSON.stringify(evidence.syntheticResponses.rejection)); receive(run.response, body);
     expect((await run.result()).diagnostics).toEqual({ httpStatus: 200, applicationStatus: -3, responseBytes: body.length,
-      reason: "server-rejected", serverReason: "checksum", contextRevision: 17, contextAgeMs: 3_500,
+      reason: "server-rejected", serverReason: "checksum", contextRevision: 17, contextAgeMs: 3_500, dispatchStatus: "submitted",
       requestContext: { generation: 4, season: "0", hardcore: "0", beta: "0", fieldSources: {},
         accountQualification: "unknown", accountPrefixCoherent: null, sameEndpoint: null,
         sameFlow: null, hardcoreSourcesAgree: null, hardcoreApiObserved: false, hardcoreSaveObserved: false } });
   });
 
   test.each(["sameEndpoint", "sameFlow", "accountPrefixCoherent", "hardcoreSourcesAgree"] as const)(
-    "known %s contradiction blocks the actual worker before HTTPS", async field => {
+    "%s disagreement remains diagnostic and does not invent a protocol dispatch requirement", async field => {
       const snapshot = context(); snapshot.provenance = { ...provenance, [field]: false };
-      expect(await blockedEntry(snapshot)).toEqual({ response: { ok: false, errorCode: "template_unavailable" },
-        diagnostics: { reason: "context-unavailable", contextRevision: 17, contextAgeMs: 3_500,
+      const run = await entry(snapshot); receive(run.response, successBody());
+      expect(await run.result()).toEqual({ response: { ok: true, result: evidence.syntheticResponses.expectedSuccess },
+        diagnostics: { httpStatus: 200, applicationStatus: 1, responseBytes: successBody().length,
+          contextRevision: 17, contextAgeMs: 3_500, dispatchStatus: "submitted",
           requestContext: { ...expectedRequestContext(evidence.checksumVectors[0]), [field]: false } } });
     },
   );
@@ -206,7 +217,7 @@ describe("actual Market worker entry with retained native structure and independ
     const snapshot = context(); snapshot.fields.season = "SYNTHETIC-WORKER-UID";
     const result = await blockedEntry(snapshot);
     expect(result).toEqual({ response: { ok: false, errorCode: "template_unavailable" },
-      diagnostics: { reason: "context-unavailable", contextRevision: 17, contextAgeMs: 3_500,
+      diagnostics: { reason: "context-unavailable", contextRevision: 17, contextAgeMs: 3_500, dispatchStatus: "unconfirmed",
         requestContext: { ...expectedRequestContext(evidence.checksumVectors[0]), season: null } } });
     expect(JSON.stringify(result)).not.toContain("SYNTHETIC-WORKER-UID");
   });
@@ -218,10 +229,10 @@ describe("actual Market worker entry with retained native structure and independ
     const result = await run.result();
     expect(result.response).toEqual({ ok: false, errorCode: "market_unreachable" });
     expect(result.diagnostics).toEqual({ httpStatus: 200, responseBytes: bytes, reason: "response-too-large",
-      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(evidence.checksumVectors[0]) });
+      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(evidence.checksumVectors[0]), dispatchStatus: "submitted" });
     expect(run.outgoing.destroy).toHaveBeenCalledTimes(1);
     run.response.emit("end"); run.outgoing.emit("error", Object.assign(new Error("synthetic private detail"), { code: "ECONNRESET" }));
-    await Promise.resolve(); expect(bridge.post).toHaveBeenCalledTimes(1);
+    await Promise.resolve(); expect(terminalResults()).toHaveLength(1);
     expectNoSecrets(result, run.form);
   });
 
@@ -231,7 +242,7 @@ describe("actual Market worker entry with retained native structure and independ
     const body = Buffer.from(JSON.stringify({ status: 1, items })); receive(run.response, body);
     expect((await run.result()).diagnostics).toEqual({ httpStatus: 200, applicationStatus: 1,
       responseBytes: body.length, reason: "invalid-items", contextRevision: 17, contextAgeMs: 3_500,
-      requestContext: expectedRequestContext(evidence.checksumVectors[0]) });
+      requestContext: expectedRequestContext(evidence.checksumVectors[0]), dispatchStatus: "submitted" });
   });
 
   test("timeout retains the dispatched mode/provenance and never returns arbitrary network text", async () => {
@@ -239,7 +250,7 @@ describe("actual Market worker entry with retained native structure and independ
     run.outgoing.emit("timeout");
     const result = await run.result();
     expect(result).toEqual({ response: { ok: false, errorCode: "timed_out" }, diagnostics: { reason: "timeout",
-      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(evidence.checksumVectors[2]) } });
+      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(evidence.checksumVectors[2]), dispatchStatus: "submitted" } });
     expect(run.outgoing.destroy).toHaveBeenCalledTimes(1); expectNoSecrets(result, run.form);
   });
 
@@ -252,7 +263,7 @@ describe("actual Market worker entry with retained native structure and independ
     run.outgoing.emit("error", Object.assign(new Error("SYNTHETIC-WORKER-UID private connection details"), { code }));
     const result = await run.result();
     expect(result).toEqual({ response: { ok: false, errorCode: "market_unreachable" }, diagnostics: { reason,
-      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(evidence.checksumVectors[0]) } });
+      contextRevision: 17, contextAgeMs: 3_500, requestContext: expectedRequestContext(evidence.checksumVectors[0]), dispatchStatus: "submitted" } });
     expectNoSecrets(result, run.form);
   });
 
@@ -261,9 +272,25 @@ describe("actual Market worker entry with retained native structure and independ
     bridge.data = { context: context(), request: droppedItemRequest };
     bridge.request.mockImplementation(() => { throw new Error("SYNTHETIC-WORKER-UID private setup detail"); });
     await import("../../src/main/market-direct-search-worker");
-    await vi.waitFor(() => expect(bridge.post).toHaveBeenCalledTimes(1));
-    expect(bridge.post.mock.calls[0][0]).toEqual({ response: { ok: false, errorCode: "helper_unavailable" },
+    await vi.waitFor(() => expect(terminalResults()).toHaveLength(1));
+    expect(progressMessages().map(message => message.diagnostics.dispatchStatus)).toEqual(["unconfirmed"]);
+    expect(terminalResults()[0]).toEqual({ response: { ok: false, errorCode: "helper_unavailable" },
       diagnostics: { reason: "worker", contextRevision: 17, contextAgeMs: 3_500,
-        requestContext: expectedRequestContext(evidence.checksumVectors[0]) } });
+        requestContext: expectedRequestContext(evidence.checksumVectors[0]), dispatchStatus: "unconfirmed" } });
+  });
+
+  test("request.end failure retains built-form evidence but never claims local submission", async () => {
+    vi.resetModules(); bridge.post.mockClear(); bridge.request.mockReset();
+    bridge.data = { context: context(), request: droppedItemRequest };
+    const request = new FakeRequest();
+    request.end.mockImplementation(() => { throw new Error("SYNTHETIC-WORKER-UID private end detail"); });
+    bridge.request.mockReturnValue(request);
+    await import("../../src/main/market-direct-search-worker");
+    await vi.waitFor(() => expect(terminalResults()).toHaveLength(1));
+    expect(progressMessages().map(message => message.diagnostics.dispatchStatus)).toEqual(["unconfirmed"]);
+    expect(terminalResults()[0]).toEqual({ response: { ok: false, errorCode: "helper_unavailable" },
+      diagnostics: { reason: "worker", contextRevision: 17, contextAgeMs: 3_500,
+        requestContext: expectedRequestContext(evidence.checksumVectors[0]), dispatchStatus: "unconfirmed" } });
+    expect(request.destroy).toHaveBeenCalledTimes(1);
   });
 });

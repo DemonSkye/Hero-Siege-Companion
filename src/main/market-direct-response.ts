@@ -15,11 +15,24 @@ export interface DirectMarketDiagnostics {
   contextRevision?: number;
   contextAgeMs?: number;
   requestContext?: MarketRequestDiagnostics;
+  /** Submitted means request.end(body) returned locally, never server delivery. */
+  dispatchStatus?: "unconfirmed" | "submitted";
 }
 export interface DirectMarketWorkerResult {
   response: MarketSearchResponse;
   diagnostics: DirectMarketDiagnostics;
 }
+
+export interface DirectMarketWorkerProgress {
+  type: "request-context";
+  diagnostics: {
+    contextRevision: number;
+    contextAgeMs: number;
+    requestContext: MarketRequestDiagnostics;
+    dispatchStatus: "unconfirmed" | "submitted";
+  };
+}
+export type DirectMarketWorkerMessage = DirectMarketWorkerProgress | DirectMarketWorkerResult;
 
 export function directMarketFailure(reason: DirectMarketFailure, diagnostics: DirectMarketDiagnostics = {}): DirectMarketWorkerResult {
   const errorCode = reason === "context-unavailable" ? "template_unavailable"

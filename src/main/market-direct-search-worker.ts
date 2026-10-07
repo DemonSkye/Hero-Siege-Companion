@@ -1,6 +1,7 @@
 import https from "node:https";
 import { parentPort, workerData } from "node:worker_threads";
-import { classifyDirectMarketNetworkError, directMarketFailure, inspectDirectMarketResponse, type DirectMarketWorkerResult } from "./market-direct-response";
+import { classifyDirectMarketNetworkError, directMarketFailure, inspectDirectMarketResponse,
+  type DirectMarketWorkerProgress, type DirectMarketWorkerResult } from "./market-direct-response";
 export { reduceDirectMarketResponse } from "./market-direct-response";
 import type { MarketSearchRequest } from "../shared/market-search";
 import { buildMarketFetchItemsChecksum } from "./market-checksum";
@@ -44,18 +45,20 @@ export function buildDirectMarketRequestBody(context: CompleteCapturedSessionCon
   return form.toString();
 }
 
-async function run(data: DirectMarketWorkerData): Promise<DirectMarketWorkerResult> {
+async function run(data: DirectMarketWorkerData,
+  onProgress: (diagnostics: DirectMarketWorkerProgress["diagnostics"]) => void): Promise<DirectMarketWorkerResult> {
   const context = data.context;
   const body = buildDirectMarketRequestBody(context, data.request);
   const requestContext = buildMarketRequestDiagnostics(context, body);
-  const snapshot = {
+  const snapshot: DirectMarketWorkerProgress["diagnostics"] = {
     contextRevision: context.revision,
     contextAgeMs: Math.max(0, Date.now() - context.updatedAt),
     requestContext,
+    dispatchStatus: "unconfirmed",
   };
-  if (requestContext.season === null || requestContext.hardcore === null || requestContext.beta === null
-    || [requestContext.sameEndpoint, requestContext.sameFlow, requestContext.accountPrefixCoherent,
-      requestContext.hardcoreSourcesAgree].includes(false)) return directMarketFailure("context-unavailable", snapshot);
+  onProgress({ ...snapshot });
+  if (requestContext.season === null || requestContext.hardcore === null || requestContext.beta === null)
+    return directMarketFailure("context-unavailable", snapshot);
   return await new Promise((resolve) => {
     let settled = false;
     const finish = (result: DirectMarketWorkerResult) => {
@@ -99,13 +102,18 @@ async function run(data: DirectMarketWorkerData): Promise<DirectMarketWorkerResu
       request.destroy();
     });
     request.on("error", (error: NodeJS.ErrnoException) => finish(directMarketFailure(classifyDirectMarketNetworkError(error.code))));
-    try { request.end(body); } catch { finish(directMarketFailure("worker")); request.destroy(); }
+    try {
+      request.end(body);
+      snapshot.dispatchStatus = "submitted";
+      onProgress({ ...snapshot });
+    } catch { finish(directMarketFailure("worker")); request.destroy(); }
   });
 }
 
 const workerPort = parentPort;
 if (workerPort) {
-  void run(workerData as DirectMarketWorkerData)
+  void run(workerData as DirectMarketWorkerData,
+    diagnostics => workerPort.postMessage({ type: "request-context", diagnostics } satisfies DirectMarketWorkerProgress))
     .then((result) => workerPort.postMessage(result))
     .catch(() => workerPort.postMessage(directMarketFailure("worker")));
 }

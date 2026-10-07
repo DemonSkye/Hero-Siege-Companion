@@ -7,7 +7,8 @@ import {
   type MarketSearchResponse,
 } from "../shared/market-search";
 import type { CompleteCapturedSessionContext } from "./captured-session-context";
-import { directMarketFailure, type DirectMarketWorkerResult } from "./market-direct-response";
+import { directMarketFailure, type DirectMarketDiagnostics, type DirectMarketWorkerMessage,
+  type DirectMarketWorkerResult } from "./market-direct-response";
 import { MarketResultCache } from "./market-result-cache";
 import type { MarketSearchOptions, MarketSearchProvider } from "./market-search-provider";
 
@@ -32,7 +33,7 @@ export type DirectMarketWorkerRunner = (
 
 export class DirectMarketSearchProvider implements MarketSearchProvider {
   private nextAllowedSearchAt = 0;
-  private activeWorker: Worker | null = null;
+  private activeWorker: { worker: Worker; cancel: () => void } | null = null;
   private activeSearch: ActiveSearch | null = null;
   private attempt = 0;
   private generation = 0;
@@ -114,16 +115,17 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
     const result = await (this.workerRunner
       ? this.workerRunner(context, request, signal)
       : this.runWorker(context, request, signal));
+    const diagnostics: DirectMarketDiagnostics = { dispatchStatus: "unconfirmed", ...result.diagnostics };
     const current = this.contextSource.marketContext();
     if (generation !== this.generation || !current || current.revision !== context.revision
       || current.generation !== context.generation || current.scopeKey !== context.scopeKey) {
-      this.log("market-direct-result", { attempt, ...result.diagnostics, durationMs: this.now() - startedAt, ok: false, reason: "stale-context" });
+      this.log("market-direct-result", { attempt, ...diagnostics, durationMs: this.now() - startedAt, ok: false, reason: "stale-context" });
       return { ok: false, errorCode: "template_unavailable", nextAllowedSearchAt: this.nextAllowedSearchAt };
     }
     this.log("market-direct-result", {
       attempt,
       durationMs: this.now() - startedAt,
-      ...result.diagnostics,
+      ...diagnostics,
       ok: result.response.ok,
       errorCode: result.response.ok ? undefined : result.response.errorCode,
       listingCount: result.response.ok ? result.response.result.listings.length : undefined,
@@ -143,8 +145,7 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
   private invalidateContext(): void {
     this.generation += 1;
     this.cache.clear();
-    void this.activeWorker?.terminate();
-    this.activeWorker = null;
+    this.activeWorker?.cancel();
   }
 
   private runWorker(
@@ -159,24 +160,34 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
           workerData: { context, request },
         });
       } catch {
-        resolve(directMarketFailure("worker"));
+        resolve(directMarketFailure("worker", { dispatchStatus: "unconfirmed" }));
         return;
       }
-      this.activeWorker = worker;
       let settled = false;
+      let progress: DirectMarketDiagnostics = { dispatchStatus: "unconfirmed" };
       const finish = (result: DirectMarketWorkerResult) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
         signal?.removeEventListener("abort", onAbort);
-        if (this.activeWorker === worker) this.activeWorker = null;
+        worker.removeListener("message", onMessage);
+        if (this.activeWorker?.worker === worker) this.activeWorker = null;
         void worker.terminate();
-        resolve(result);
+        resolve({ ...result, diagnostics: { ...progress, ...result.diagnostics } });
+      };
+      const onMessage = (message: DirectMarketWorkerMessage) => {
+        if (settled) return;
+        if ("type" in message) {
+          if (message.type === "request-context") progress = { ...message.diagnostics };
+          return;
+        }
+        finish(message);
       };
       const onAbort = () => finish(directMarketFailure("cancelled"));
       const timeout = setTimeout(() => finish(directMarketFailure("timeout")), WORKER_TIMEOUT_MS);
+      this.activeWorker = { worker, cancel: onAbort };
       signal?.addEventListener("abort", onAbort, { once: true });
-      worker.once("message", (result: DirectMarketWorkerResult) => finish(result));
+      worker.on("message", onMessage);
       worker.once("error", () => finish(directMarketFailure("worker")));
       worker.once("exit", () => finish(directMarketFailure("worker")));
       if (signal?.aborted) onAbort();
