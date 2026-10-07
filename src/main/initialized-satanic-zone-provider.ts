@@ -90,9 +90,9 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     return context;
   }
   get preparation(): SatanicZonePreparation {
-    const state = projectPreparation(this.context.snapshot(), this.context.continuitySuspended, this.context.cachedContext);
+    const state = projectPreparation(this.context.snapshot(), this.context.continuitySuspended, this.context.cachedContext, this.context.continuityIncomplete);
     const cache = this.options.loginCache?.snapshot();
-    if (cache?.enabled && !["ready", "requesting"].includes(state.phase)) {
+    if (cache?.enabled && !["ready", "requesting"].includes(state.phase) && state.reason !== "traffic_incomplete") {
       const reason = CACHE_REASONS[cache.status];
       if (reason) state.reason = reason;
     }
@@ -226,7 +226,7 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
       pending.completed = true; pending.cleanup();
       const errorCode = state.phase === "timed-out" || state.directOutcome === "timeout" ? "response_timeout" : "helper_failed";
       pending.dispatch(rejected(errorCode));
-      pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: retainedFailure && !context.continuitySuspended });
+      pending.settle({ kind: "terminal", errorCode, availabilityConsumed: false, refreshAvailable: retainedFailure && this.preparation.phase === "ready" });
     }
     this.options.onPreparation(this.preparation);
     if (!context.active) this.options.loginCache?.suspend();
@@ -254,13 +254,14 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
   }
 }
 
-function projectPreparation(state: SatanicZoneDiagnosticState, suspended: boolean, cached = false): SatanicZonePreparation {
+function projectPreparation(state: SatanicZoneDiagnosticState, suspended: boolean, cached = false, incomplete = false): SatanicZonePreparation {
   const phase: SatanicZonePreparation["phase"] = suspended ? "suspended" : state.phase === "arming" ? "opening"
     : state.phase === "waiting-initialization" ? "waiting_connection" : state.phase === "collecting" ? "collecting"
-    : state.phase === "ready" ? "ready" : state.phase === "requesting" ? "requesting"
+    : state.phase === "ready" ? incomplete ? "collecting" : "ready" : state.phase === "requesting" ? "requesting"
     : state.phase === "idle" || state.phase === "cancelled" ? "idle" : state.phase === "timed-out" ? "expired" : "unavailable";
   const missedLogin = phase === "waiting_connection" && ["api-flow-no-syn", "endpoint-changed-no-syn"].includes(state.selectionStatus);
   return { phase, expiresAt: phase === "requesting" ? state.deadlineAt : null,
+    ...(phase === "collecting" && incomplete ? { reason: "traffic_incomplete" as const } : {}),
     ...(missedLogin ? { reason: "login_missed" as const } : {}), ...(cached ? { origin: "cached" as const } : {}) };
 }
 function rejected(errorCode: SatanicZoneRefreshDispatchResult["errorCode"]): SatanicZoneRefreshDispatchResult {

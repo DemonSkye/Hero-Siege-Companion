@@ -135,9 +135,35 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
     const identity = frameDiagnosticBody(inventedPostLogin(), 9);
     f.receive(f.packet(true, sequence + 17, identity.subarray(17)));
+    expect(f.provider.preparation).toEqual({ phase: "collecting", expiresAt: null, reason: "traffic_incomplete" });
+    expect(f.snapshots.at(-1)).toEqual(f.provider.preparation);
+    expect(await f.provider.getAvailability()).toMatchObject({ available: false, errorCode: "helper_not_ready" });
     expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0);
+    expect(f.snapshots.at(-1)?.phase).toBe("collecting");
     f.receive(f.packet(true, sequence, identity.subarray(0, 17)));
+    expect(f.provider.preparation).toEqual({ phase: "ready", expiresAt: null });
+    expect(f.snapshots.at(-1)).toEqual(f.provider.preparation);
+    expect(await f.provider.getAvailability()).toMatchObject({ available: true, errorCode: null });
     expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1); f.provider.dispose();
+  });
+  test("incomplete private traffic is reported ahead of an unrelated unavailable saved-sign-in build", async () => {
+    const f = cacheFixture(cacheFile()); f.cache.configure(true); f.cacheBuildIdentity.mockResolvedValueOnce(null as unknown as string);
+    await f.collect(); expect(f.cache.snapshot().status).toBe("build_unavailable");
+    const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
+    const identity = frameDiagnosticBody(inventedPostLogin(), 9); f.receive(f.packet(true, sequence + 17, identity.subarray(17)));
+    expect(f.snapshots.at(-1)).toEqual({ phase: "collecting", expiresAt: null, reason: "traffic_incomplete" });
+    expect(await f.provider.getAvailability()).toMatchObject({ available: false });
+    f.receive(f.packet(true, sequence, identity.subarray(0, 17)));
+    expect(f.snapshots.at(-1)).toEqual({ phase: "ready", expiresAt: null }); f.provider.dispose();
+  });
+  test("an owned attempt ending while private continuity is incomplete cannot advertise Refresh availability", async () => {
+    const f = fixture(); await f.collect(); const request = await f.dispatch();
+    const waiting = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
+    const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
+    const identity = frameDiagnosticBody(inventedPostLogin(), 9); f.receive(f.packet(true, sequence + 17, identity.subarray(17)));
+    f.sockets[0].receive(inventedZoneBody); await flush();
+    expect(await waiting).toMatchObject({ kind: "terminal", refreshAvailable: false });
+    expect(f.snapshots.at(-1)).toEqual({ phase: "collecting", expiresAt: null, reason: "traffic_incomplete" }); f.provider.dispose();
   });
   test("explicit Refresh retries a transient local build/save failure while the coherent native pair remains usable", async () => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);

@@ -72,6 +72,10 @@ export class SatanicZoneInitializedProbeController {
   get active(): boolean { return isSatanicZoneDiagnosticActive(this.state); }
   get continuitySuspended(): boolean { return this.session?.suspended ?? false; }
   get cachedContext(): boolean { return this.session?.cached ?? false; }
+  get continuityIncomplete(): boolean {
+    const session = this.session;
+    return Boolean(session?.prepared && !session.cached && !session.suspended && session.stream && !session.stream.complete);
+  }
   get observesContinuity(): boolean {
     const session = this.session;
     return Boolean(this.dependencies.autoWatch && session?.prepared && !session.cached && !session.suspended && session.handle
@@ -217,7 +221,11 @@ export class SatanicZoneInitializedProbeController {
       if (!this.dependencies.autoWatch) return;
       if (!terminated && !freshSyn) {
         if (session.stream?.matches(packet) && (outbound ? packet.srcPort : packet.dstPort) === session.nativePort) {
-          try { session.stream.push(packet); }
+          const incomplete = this.continuityIncomplete;
+          try {
+            session.stream.push(packet);
+            if (this.current(session) && session.prepared && incomplete !== this.continuityIncomplete) this.publish();
+          }
           catch (error) { this.collectionFailure(session, error, "invalid-frame"); }
         }
         return;

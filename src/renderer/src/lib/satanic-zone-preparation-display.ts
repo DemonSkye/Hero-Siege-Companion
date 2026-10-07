@@ -2,6 +2,7 @@ import type { SatanicZonePreparation } from "../../../shared/satanic-zone-prepar
 
 export function satanicZonePreparationDetail(state: SatanicZonePreparation | undefined, _now: number): string | null {
   if (!state) return null;
+  if (state.reason === "traffic_incomplete") return "Waiting for a complete game update before Refresh is ready. You can keep playing.";
   if (state.reason === "cache_empty") return "No saved sign-in is available. Companion needs to observe a complete sign-in before Refresh is ready. You can keep playing.";
   if (state.reason === "cache_identity_required") return "Experimental saved sign-in needs fresh account and mode evidence from the game. Refresh is unavailable until they match.";
   if (state.reason === "cache_identity_mismatch") return "The account or mode did not match the saved sign-in. It was cleared.";
