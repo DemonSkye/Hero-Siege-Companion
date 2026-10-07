@@ -225,6 +225,21 @@ test("disable and Forget remain direct actions using their existing narrow IPC",
   expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
 });
 
+test("Remember disable failure uses the shared clearing status without claiming Forget was attempted", async () => {
+  const methods = api(), wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "loaded" });
+  methods.setSatanicZoneLoginCacheEnabled.mockImplementationOnce(async () => {
+    await wrapper.setProps({ state: { enabled: false, unlocked: false, status: "clear_failed" } });
+    return {};
+  });
+  await wrapper.get('.settings-switch input').setValue(false); await flushPromises();
+  expect(methods.setSatanicZoneLoginCacheEnabled).toHaveBeenCalledWith(false);
+  expect(methods.clearSatanicZoneLoginCache).not.toHaveBeenCalled();
+  expect(wrapper.get('[role="status"]').text()).toBe("Could not clear saved sign-in files. Try again.");
+  expect(wrapper.get('[role="status"]').text()).not.toContain("Forget failed");
+  expect(wrapper.find("form").exists()).toBe(false);
+  expect(button(wrapper, "Forget saved sign-in").attributes("disabled")).toBeUndefined();
+});
+
 test("safe failure statuses keep manual migration recoverable without exposing errors or silently consenting", async () => {
   const methods = api(), wrapper = mountCache(locked());
   methods.enableSatanicZoneLoginCacheAutomatic.mockRejectedValue(new Error("invented private key detail"));
@@ -259,5 +274,5 @@ test("loaded, route pending and deletion failure explain the real cache state", 
   await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "route_required" } });
   expect(wrapper.get('[role="status"]').text()).toBe("Waiting for the game's server address. No new sign-in needed.");
   await wrapper.setProps({ state: { enabled: false, unlocked: false, automatic: false, status: "clear_failed" } });
-  expect(wrapper.get('[role="status"]').text()).toBe("Forget failed. Saved Refresh is disabled; try again.");
+  expect(wrapper.get('[role="status"]').text()).toBe("Could not clear saved sign-in files. Try again.");
 });

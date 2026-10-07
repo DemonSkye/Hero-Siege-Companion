@@ -24,7 +24,7 @@ const detail = computed(() => failed.value ? "Could not change saved sign-in. Tr
   loaded: "Saved sign-in loaded.",
   route_required: "Waiting for the game's server address. No new sign-in needed.",
   storage_error: "Could not save or load sign-in. Try again.",
-  clear_failed: "Forget failed. Saved Refresh is disabled; try again.",
+  clear_failed: "Could not clear saved sign-in files. Try again.",
 }[props.state?.status ?? "disabled"]);
 
 function clearPassphrase() {
