@@ -1,5 +1,8 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
+// Retained active-feature guidance research, separate from release acceptance.
+vi.mock("../../src/shared/release-features", () => ({ ACTIVE_SATANIC_ZONE_REFRESH_ENABLED: true }));
 import CompactView from "../../src/renderer/src/components/CompactView.vue";
 import { createInitialCompanionState } from "../../src/shared/initial-state";
 import { satanicZonePreparationDetail } from "../../src/renderer/src/lib/satanic-zone-preparation-display";

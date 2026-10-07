@@ -14,7 +14,7 @@ const { e2eTrafficPayloads } = require("./support/fixtures.cjs");
 
 const STANDALONE_EXECUTABLE = "C:\\Games\\Hero Siege\\Hero_Siege.exe";
 
-test("autosaves the settings ledger and persists launch, theme, and SZ choices", async () => {
+test("autosaves launch and theme choices while active SZ settings remain unavailable across restart", async () => {
   const userDataDir = createUserDataDir();
 
   try {
@@ -170,7 +170,7 @@ test("keeps full-window pinning session-only and resets window bounds from suppo
 });
 
 async function configureDurableSettings({ electronApp, page }) {
-  expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
+  expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
   await emitCapturePayloads(electronApp, e2eTrafficPayloads());
   await expect(page.getByText("Aurelion Fury").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Check Aurelion Fury on the market" })).toBeVisible();
@@ -203,10 +203,9 @@ async function configureDurableSettings({ electronApp, page }) {
   await expect(settings.getByRole("status")).toHaveText("Saved");
 
   await settings.getByRole("button", { name: "Features", exact: true }).click();
-  await settings.getByRole("checkbox", { name: /Enable SZ Refresh/ }).click();
-  await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
-  await settings.getByRole("checkbox", { name: /Enable SZ Refresh/ }).click();
-  await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
+  await expect(settings.getByRole("checkbox", { name: /Enable SZ Refresh/ })).toHaveCount(0);
+  await expect(settings).toContainText("Manual Refresh is temporarily unavailable.");
+  expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
 
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settings).toHaveCount(0);
@@ -215,7 +214,7 @@ async function configureDurableSettings({ electronApp, page }) {
 
 async function assertDurableSettings({ electronApp, page }, { reopened }) {
   await expect.poll(async () => (await getDocumentTheme(page)).theme).toBe("light");
-  await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
+  await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
 
   const state = await getRendererState(page);
   expect(state.captureDiagnostics).toMatchObject({
@@ -226,7 +225,7 @@ async function assertDurableSettings({ electronApp, page }, { reopened }) {
     skipEmptyRuns: true,
     minDurationMinutes: 0,
   });
-  expect(state.satanicZone.refreshEnabled).toBe(true);
+  expect(state.satanicZone.refreshEnabled).toBe(false);
 
   const windowState = await getMainWindowState(electronApp);
   expect(windowState.alwaysOnTop).toBe(false);
@@ -262,7 +261,8 @@ async function assertDurableSettings({ electronApp, page }, { reopened }) {
   await expect(settings.getByLabel("Compact theme")).toHaveValue("cyberpunk");
 
   await settings.getByRole("button", { name: "Features", exact: true }).click();
-  await expect(settings.getByRole("checkbox", { name: /Enable SZ Refresh/ })).toBeChecked();
+  await expect(settings.getByRole("checkbox", { name: /Enable SZ Refresh/ })).toHaveCount(0);
+  await expect(settings).toContainText("Manual Refresh is temporarily unavailable.");
 }
 
 async function launchAndUseSettings(callback) {

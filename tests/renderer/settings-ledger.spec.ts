@@ -1,6 +1,10 @@
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
+// Retained active-feature UI research; release exclusion is verified separately
+// with the real false capability and real main/preload/UI production wiring.
+vi.mock("../../src/shared/release-features", () => ({ ACTIVE_SATANIC_ZONE_REFRESH_ENABLED: true }));
 import type { CaptureDiagnosticsState } from "../../src/shared/app-state";
 import CompactCustomizeModal from "../../src/renderer/src/components/CompactCustomizeModal.vue";
 import SettingsModal from "../../src/renderer/src/components/SettingsModal.vue";

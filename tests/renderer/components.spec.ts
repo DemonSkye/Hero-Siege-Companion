@@ -1,6 +1,10 @@
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
+// Historical active SZ component contracts are retained under an explicit
+// test-only override. Unmocked release UI and Electron suites verify exclusion.
+vi.mock("../../src/shared/release-features", () => ({ ACTIVE_SATANIC_ZONE_REFRESH_ENABLED: true }));
 
 import AppTitlebar from "../../src/renderer/src/components/AppTitlebar.vue";
 import CompactView from "../../src/renderer/src/components/CompactView.vue";
@@ -532,31 +536,15 @@ describe("Vue component contracts", () => {
 
     expect(wrapper.text()).toContain(`Hero Siege Companion ${WHATS_NEW_RELEASE.version}`);
     expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.title);
-    expect(wrapper.text()).toContain("Refined Live Session by removing the separate Run Command banner");
-    expect(wrapper.text()).toContain("Added a full-width collapsible Run Pace graph");
-    expect(wrapper.text()).toContain("Redesigned Item Filters as a collapsible Filter Stack");
-    expect(wrapper.text()).toContain("Redesigned Past Runs as Report Desk");
-    expect(wrapper.text()).toContain("Rebuilt Settings as one autosaving");
-    expect(wrapper.text()).toContain("Past Runs now keeps up to 250 meaningful runs");
-    expect(wrapper.text()).toContain("Retired the player-facing Item Research notebook");
-    expect(wrapper.text()).toContain("Market price checks are available to everyone.");
-    expect(wrapper.text()).toContain("Satanic Zone Refresh watches automatically while capture is enabled and sends a request only when you click Refresh.");
-    expect(wrapper.text()).toContain("Patched stability issues across capture startup, packet handling, diagnostics, and native shutdown.");
-    expect(wrapper.text()).toContain("Updated the tracked Hero Siege season number to Season 11.");
-    expect(wrapper.text()).toContain(
-      "Added automatic item recognition using the game's own item list, so most named drops no longer need to be identified by hand.",
-    );
-    expect(wrapper.text()).toContain(
-      "Fixed ordinary randomly generated items, including charms, being mistaken for Set items. They now show their correct base type and no longer inflate Set totals.",
-    );
-    expect(wrapper.text()).toContain(
-      "Fixed captured item drops disappearing before they reached the timeline, including Satanic and Set items while optional manual refresh is enabled.",
-    );
-    expect(wrapper.text()).toContain(
-      "Added the current Act 9 Satanic Zone names, so zones such as Shipwreck Cove no longer appear as raw map codes.",
-    );
-    expect(wrapper.text()).toContain("Various bug fixes and reliability improvements.");
-    expect(wrapper.text()).toContain("Npcap is still required for capture.");
+    expect(wrapper.text()).toContain("Version 0.3.1 adds a dedicated Market workspace with saved item filters");
+    expect(wrapper.text()).toContain("Existing shopping-list entries migrate without losing their original names.");
+    expect(wrapper.text()).toContain("up to 20 gold-price listings from one page");
+    expect(wrapper.text()).toContain("Loading saved filters never searches automatically");
+    expect(wrapper.text()).toContain("Manual Satanic Zone Refresh and its sign-in settings are temporarily disabled.");
+    expect(wrapper.text()).toContain("Passive game-observed zone effects, freshness and expiry remain visible");
+    expect(wrapper.text()).toContain("Existing saved sign-in files are preserved.");
+    expect(wrapper.text()).toContain("No MITMproxy, certificate installation or interception setup is required.");
+    expect(wrapper.text()).toContain("Npcap is still required for passive capture");
     expect(WHATS_NEW_RELEASE.sections).toHaveLength(0);
     expect(wrapper.text()).toContain("Highlights");
     const whatsNew = wrapper.get(".settings-whats-new");

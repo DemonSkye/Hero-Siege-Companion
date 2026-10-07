@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } from "../../../shared/release-features";
 import type {
   CaptureDiagnosticsLevel,
   CaptureDiagnosticsMode,
@@ -318,7 +319,7 @@ function saveStatusLabel(): string {
       </div>
 
       <SettingsActionDialog
-        v-if="nestedDialog === 'sz-learn-more'"
+        v-if="ACTIVE_SATANIC_ZONE_REFRESH_ENABLED && nestedDialog === 'sz-learn-more'"
         title="SZ Refresh details"
         dismiss-only
         @close="closeNestedDialog"

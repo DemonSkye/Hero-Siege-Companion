@@ -8,6 +8,7 @@ import type {
 import { createInitialSatanicZoneState } from "./satanic-zone";
 import { createInitialStats } from "./stats";
 import { createInitialMarketReadiness } from "./market-readiness";
+import { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } from "./release-features";
 
 export const DEFAULT_RUN_ARCHIVE_PREFERENCES: RunArchivePreferences = {
   skipEmptyRuns: true,
@@ -50,7 +51,7 @@ export function createInitialCompanionState(logs: LogEntry[] = []): CompanionSta
       parserRestarts: 0,
       lastParserError: null,
     },
-    satanicZone: createInitialSatanicZoneState(),
+    satanicZone: { ...createInitialSatanicZoneState(), refreshEnabled: ACTIVE_SATANIC_ZONE_REFRESH_ENABLED },
     marketReadiness: createInitialMarketReadiness(),
     stats: createInitialStats(),
     pastRuns: [],

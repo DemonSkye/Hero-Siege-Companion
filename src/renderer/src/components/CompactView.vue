@@ -6,6 +6,7 @@ import type { CompactRunTileDisplay } from "../lib/compact-tiles";
 import { satanicZoneRefreshControl } from "../lib/satanic-zone-display";
 import { satanicZonePreparationDetail } from "../lib/satanic-zone-preparation-display";
 import RefreshIcon from "./RefreshIcon.vue";
+import { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } from "../../../shared/release-features";
 
 const props = defineProps<{
   state: CompanionState;
@@ -33,7 +34,7 @@ const refreshControl = computed(() =>
     props.satanicZoneRefreshSubmitting,
   ),
 );
-const preparationDetail = computed(() => props.state.satanicZone.refreshEnabled
+const preparationDetail = computed(() => ACTIVE_SATANIC_ZONE_REFRESH_ENABLED && props.state.satanicZone.refreshEnabled
   ? satanicZonePreparationDetail(props.state.satanicZone.refreshPreparation, props.now) : null);
 
 defineEmits<{
@@ -104,14 +105,14 @@ defineEmits<{
         <div
           v-for="tile in compactRunTileDisplays"
           :key="`cover-${tile.id}`"
-          :class="{ 'compact-zone-tile-with-refresh': tile.kind === 'sz' && refreshControl.visible }"
+          :class="{ 'compact-zone-tile-with-refresh': tile.kind === 'sz' && ACTIVE_SATANIC_ZONE_REFRESH_ENABLED && refreshControl.visible }"
           :title="tile.title"
         >
           <span>{{ tile.kind === "duration" ? "Duration" : tile.label }}</span>
           <span v-if="tile.kind === 'sz'" class="compact-zone-clock">
             <strong>{{ tile.value }}</strong>
             <button
-              v-if="refreshControl.visible"
+              v-if="ACTIVE_SATANIC_ZONE_REFRESH_ENABLED && refreshControl.visible"
               class="compact-zone-refresh-button"
               type="button"
               :disabled="refreshControl.disabled"

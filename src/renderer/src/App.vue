@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } from "../../shared/release-features";
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { CaptureDiagnosticsLevel, CaptureDiagnosticsMode, CompanionState, LogEntry } from "../../shared/app-state";
 import { mergeCompanionStateUpdate } from "../../shared/app-state";
@@ -410,6 +411,7 @@ async function resetStats() {
 }
 
 async function refreshSatanicZone() {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return;
   if (satanicZoneRefreshSubmitting.value) return;
   satanicZoneRefreshSubmitting.value = true;
   try {
@@ -424,6 +426,7 @@ async function refreshSatanicZone() {
 }
 
 async function setSatanicZoneRefreshEnabled(enabled: boolean) {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return;
   try {
     state.value = await window.heroSiegeCompanion.setSatanicZoneRefreshEnabled(enabled);
     showToast(`SZ Refresh ${enabled ? "enabled" : "disabled"}`);

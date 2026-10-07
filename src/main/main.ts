@@ -73,6 +73,7 @@ import {
 } from "../shared/market-search";
 import type { SatanicZoneInfo } from "../shared/parser";
 import type { SatanicZoneState } from "../shared/satanic-zone";
+import { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } from "../shared/release-features";
 import { hasRunActivity, normalizePastRunTags, StatsEngine, type PastRunSummary } from "../shared/stats";
 import type { SupportDiagnosticsSaveResult } from "../shared/support-diagnostics";
 
@@ -458,6 +459,7 @@ ipcMain.handle(IPC_CHANNELS.statsReset, () => {
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   if (!state.satanicZone.refreshEnabled) {
     const result = await satanicZoneController?.refreshNow();
     writeAppLog("satanic-zone-refresh-requested", {
@@ -531,6 +533,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsDeleteAll, () => {
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, enabled: unknown) => {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   const preferences = normalizeSatanicZoneRefreshPreferences({ enabled });
   saveSatanicZoneRefreshPreferences(preferencesPath, preferences, writeAppLog);
   if (satanicZoneController) {
@@ -551,6 +554,7 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, ena
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown) => {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   const requested = enabled === true && state.satanicZone.refreshEnabled;
   if (requested && satanicZoneLoginCache?.snapshot().enabled) return state;
   const saved = saveSatanicZoneLoginCacheEnabled(preferencesPath, requested);
@@ -559,10 +563,12 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown)
   publishStateNow(); return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheUnlock, async (_event, passphrase: unknown) => {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   if (typeof passphrase === "string" && await satanicZoneLoginCache?.unlock(passphrase)) satanicZoneRefreshProvider?.rememberCurrent();
   publishStateNow(); return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheAutomatic, async (_event, passphrase: unknown) => {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   if (state.satanicZone.refreshEnabled && satanicZoneLoginCache && typeof passphrase === "string") {
     if (!satanicZoneLoginCache.snapshot().enabled) {
       if (!saveSatanicZoneLoginCacheEnabled(preferencesPath, true)) {
@@ -579,9 +585,11 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheAutomatic, async (_event, passp
   publishStateNow(); return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheLock, () => {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   satanicZoneLoginCache?.lock(); publishStateNow(); return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheClear, () => {
+  if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   const saved = saveSatanicZoneLoginCacheEnabled(preferencesPath, false);
   satanicZoneLoginCache?.configure(false);
   // Forget disables persistence even if removal fails; no automatic resave.
@@ -820,7 +828,8 @@ app.whenReady().then(async () => {
   state.pastRuns = loadPastRuns(pastRunsPath, writeAppLog);
   state.captureDiagnostics = captureDiagnosticsController.snapshot();
   state.capturePreferences = captureDiagnosticsController.capturePreferences();
-  const satanicZoneRefreshPreferences = loadSatanicZoneRefreshPreferences(preferencesPath, writeAppLog);
+  const satanicZoneRefreshPreferences = ACTIVE_SATANIC_ZONE_REFRESH_ENABLED
+    ? loadSatanicZoneRefreshPreferences(preferencesPath, writeAppLog) : { enabled: false };
   state.satanicZone = {
     ...loadSatanicZoneCache(satanicZoneCachePath, Date.now(), writeAppLog),
     refreshEnabled: satanicZoneRefreshPreferences.enabled,
@@ -848,41 +857,49 @@ app.whenReady().then(async () => {
       { take: () => marketPrivateDiagnostic?.take(), finish: (complete, written) => marketPrivateDiagnostic?.finish(complete, written) },
     );
   }
-  satanicZoneLoginCache = new SatanicZoneLoginCache({
-    store: new SatanicZoneLoginCacheStore(path.join(userDataPath, "sz-login-cache.portable")),
-    networkState: satanicZoneTestRuntime?.dependencies.networkState ?? getHeroSiegeNetworkState,
-    onDiagnostic: (stage, result, files) => writeAppLog("sz-login-cache", { stage, result, ...files }),
-    onChange: cacheState => {
-      state.satanicZoneLoginCache = cacheState; satanicZoneRefreshProvider?.cacheChanged();
-      applyCaptureDiagnosticPreferences(); publishState();
-    },
-  });
-  satanicZoneRefreshProvider = new InitializedSatanicZoneRefreshProvider({
-    loginCache: satanicZoneLoginCache,
-    syntheticOnly: isElectronE2eTestMode(),
-    dependencies: satanicZoneTestRuntime?.dependencies,
-    onReadinessDiagnostic: diagnostic => writeAppLog("sz-refresh-readiness", diagnostic),
-    onWatchDiagnostic: diagnostic => writeAppLog("sz-watch-stage", diagnostic),
-    canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
-      && state.satanicZone.phase !== "refreshing",
-    canRefresh: () => state.satanicZone.refreshEnabled,
-    onPreparation: preparation => {
-      const previous = state.satanicZone.refreshPreparation;
-      satanicZoneController?.setPreparation(preparation);
-      applyCaptureDiagnosticPreferences();
-      // Readiness can change between ordinary one-second state publications.
-      // Send its safe transitions immediately rather than losing a Ready boundary.
-      if (previous?.phase !== preparation.phase || previous?.reason !== preparation.reason || previous?.origin !== preparation.origin) publishStateNow();
-      else publishState();
-    },
-  });
+  // Parking the capability must not configure(false) or touch retained keys/files.
+  // Passive zone events continue through the provider-independent controller below.
+  if (ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) {
+    satanicZoneLoginCache = new SatanicZoneLoginCache({
+      store: new SatanicZoneLoginCacheStore(path.join(userDataPath, "sz-login-cache.portable")),
+      networkState: satanicZoneTestRuntime?.dependencies.networkState ?? getHeroSiegeNetworkState,
+      onDiagnostic: (stage, result, files) => writeAppLog("sz-login-cache", { stage, result, ...files }),
+      onChange: cacheState => {
+        state.satanicZoneLoginCache = cacheState; satanicZoneRefreshProvider?.cacheChanged();
+        applyCaptureDiagnosticPreferences(); publishState();
+      },
+    });
+    satanicZoneRefreshProvider = new InitializedSatanicZoneRefreshProvider({
+      loginCache: satanicZoneLoginCache,
+      syntheticOnly: isElectronE2eTestMode(),
+      dependencies: satanicZoneTestRuntime?.dependencies,
+      onReadinessDiagnostic: diagnostic => writeAppLog("sz-refresh-readiness", diagnostic),
+      onWatchDiagnostic: diagnostic => writeAppLog("sz-watch-stage", diagnostic),
+      canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
+        && state.satanicZone.phase !== "refreshing",
+      canRefresh: () => state.satanicZone.refreshEnabled,
+      onPreparation: preparation => {
+        const previous = state.satanicZone.refreshPreparation;
+        satanicZoneController?.setPreparation(preparation);
+        applyCaptureDiagnosticPreferences();
+        // Readiness can change between ordinary one-second state publications.
+        // Send its safe transitions immediately rather than losing a Ready boundary.
+        if (previous?.phase !== preparation.phase || previous?.reason !== preparation.reason || previous?.origin !== preparation.origin) publishStateNow();
+        else publishState();
+      },
+    });
+  } else {
+    state.satanicZoneLoginCache = { enabled: false, unlocked: false, status: "disabled" };
+  }
   satanicZoneController = new SatanicZoneController({
     provider: satanicZoneRefreshProvider,
     initialState: state.satanicZone,
     onStateChange: applySatanicZoneState,
   });
-  satanicZoneLoginCache.configure(state.satanicZone.refreshEnabled && loadSatanicZoneLoginCacheEnabled(preferencesPath),
-    loadSatanicZoneLoginCacheAutomatic(preferencesPath));
+  if (ACTIVE_SATANIC_ZONE_REFRESH_ENABLED && satanicZoneLoginCache) {
+    satanicZoneLoginCache.configure(state.satanicZone.refreshEnabled && loadSatanicZoneLoginCacheEnabled(preferencesPath),
+      loadSatanicZoneLoginCacheAutomatic(preferencesPath));
+  }
   windowBounds = loadWindowBounds(windowBoundsPath, writeAppLog);
   writeAppLog("app-ready", {
     userDataPath,
@@ -961,7 +978,7 @@ app.whenReady().then(async () => {
     publishStateNow();
     return;
   }
-  await satanicZoneRefreshProvider.preparePassively();
+  await satanicZoneRefreshProvider?.preparePassively();
   if (await captureService.hasHeroSiegeProcess()) {
     await captureService.start();
   } else {

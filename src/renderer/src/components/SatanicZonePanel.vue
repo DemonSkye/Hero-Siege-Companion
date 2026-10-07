@@ -2,6 +2,7 @@
 import { computed } from "vue";
 
 import type { SatanicZoneState } from "../../../shared/satanic-zone";
+import { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } from "../../../shared/release-features";
 import { satanicZoneDisplay, satanicZoneRefreshControl } from "../lib/satanic-zone-display";
 import { satanicZonePreparationDetail } from "../lib/satanic-zone-preparation-display";
 import LiveDashboardCard from "./LiveDashboardCard.vue";
@@ -21,7 +22,7 @@ defineEmits<{
 
 const zone = computed(() => props.zoneState.current);
 const display = computed(() => satanicZoneDisplay(props.zoneState, props.now));
-const preparationDetail = computed(() => props.zoneState.refreshEnabled
+const preparationDetail = computed(() => ACTIVE_SATANIC_ZONE_REFRESH_ENABLED && props.zoneState.refreshEnabled
   ? satanicZonePreparationDetail(props.zoneState.refreshPreparation, props.now) : null);
 const refreshControl = computed(() =>
   satanicZoneRefreshControl(props.zoneState, props.now, props.refreshSubmitting),
@@ -31,7 +32,7 @@ const refreshControl = computed(() =>
 <template>
   <LiveDashboardCard id="satanic-zone-card" panel-class="zone-panel" :title="zone?.zone || 'Waiting for zone update'">
     <template #eyebrow>
-      Satanic Zone <span class="info-bubble" data-tip="Open Companion before signing into the game. Refresh becomes ready automatically while capture is enabled and sends a request only when you click it.">i</span>
+      Satanic Zone <span class="info-bubble" :data-tip="ACTIVE_SATANIC_ZONE_REFRESH_ENABLED ? 'Open Companion before signing into the game. Refresh becomes ready automatically while capture is enabled and sends a request only when you click it.' : 'Shows Satanic Zone updates observed from the game’s own traffic while capture is running.'">i</span>
     </template>
     <template #title>{{ zone?.zone || "Waiting for zone update" }}</template>
     <template #actions>
@@ -40,7 +41,7 @@ const refreshControl = computed(() =>
         <small>until {{ zoneResetLabel }}</small>
       </div>
       <button
-        v-if="refreshControl.visible"
+        v-if="ACTIVE_SATANIC_ZONE_REFRESH_ENABLED && refreshControl.visible"
         class="icon-button ghost zone-refresh-button"
         type="button"
         :disabled="refreshControl.disabled"

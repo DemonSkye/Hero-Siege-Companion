@@ -376,15 +376,12 @@ describe("App orchestration", () => {
     }
   });
 
-  test("routes full and compact Satanic Zone refresh actions through the preload bridge", async () => {
+  test("blocks forced full and compact SZ refresh events before the preload bridge", async () => {
     const api = installHeroSiegeCompanionApi();
     const refreshingState = companionState({
       satanicZone: { ...companionState().satanicZone, phase: "refreshing", refreshAvailable: true, refreshExperimental: true },
     });
-    let resolveRefresh!: (state: ReturnType<typeof companionState>) => void;
-    vi.mocked(api.refreshSatanicZone).mockReturnValue(new Promise((resolve) => {
-      resolveRefresh = resolve;
-    }));
+    vi.mocked(api.refreshSatanicZone).mockResolvedValue(refreshingState);
     const wrapper = mount(App, {
       global: {
         stubs: {
@@ -417,29 +414,22 @@ describe("App orchestration", () => {
       const secondClick = refreshButton.trigger("click");
       await Promise.all([firstClick, secondClick]);
 
-      expect(api.refreshSatanicZone).toHaveBeenCalledTimes(1);
-      expect(refreshButton.attributes("disabled")).toBeDefined();
-      expect(wrapper.find(".toast-bubble").exists()).toBe(false);
-
-      resolveRefresh(refreshingState);
-      await flushPromises();
-
-      expect(api.refreshSatanicZone).toHaveBeenCalledTimes(1);
+      expect(api.refreshSatanicZone).not.toHaveBeenCalled();
       expect(refreshButton.attributes("disabled")).toBeUndefined();
-      expect(wrapper.get(".toast-bubble").text()).toBe("Satanic Zone refresh requested");
+      expect(wrapper.find(".toast-bubble").exists()).toBe(false);
 
       await wrapper.get('[data-test="enter-compact"]').trigger("click");
       await flushPromises();
       await wrapper.get('[data-test="compact-refresh-sz"]').trigger("click");
       await flushPromises();
 
-      expect(api.refreshSatanicZone).toHaveBeenCalledTimes(2);
+      expect(api.refreshSatanicZone).not.toHaveBeenCalled();
     } finally {
       wrapper.unmount();
     }
   });
 
-  test("applies a confirmed SZ Refresh opt-in immediately through the main-process preference bridge", async () => {
+  test("blocks a forced SZ opt-in event before changing preferences or invoking preload", async () => {
     const api = installHeroSiegeCompanionApi();
     const enabledState = companionState({
       satanicZone: { ...companionState().satanicZone, refreshEnabled: true },
@@ -478,7 +468,8 @@ describe("App orchestration", () => {
       await wrapper.get('[data-test="enable-sz-refresh"]').trigger("click");
       await flushPromises();
 
-      expect(api.setSatanicZoneRefreshEnabled).toHaveBeenCalledWith(true);
+      expect(api.setSatanicZoneRefreshEnabled).not.toHaveBeenCalled();
+      expect(wrapper.get('[data-test="draft-sz-refresh"]').text()).toBe("false");
     } finally {
       wrapper.unmount();
     }

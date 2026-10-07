@@ -35,7 +35,7 @@ test("Market is visible by default and after a legacy disabled preference surviv
 
 async function assertMarketJourney({ electronApp, page }) {
   const state = await getRendererState(page);
-  expect(state.satanicZone.refreshEnabled).toBe(true);
+  expect(state.satanicZone.refreshEnabled).toBe(false);
   expect(state).not.toHaveProperty("satanicZoneDiagnostic");
   const removedActions = await page.evaluate(() => [
     "armSatanicZoneDiagnostic", "startSatanicZoneDiagnostic", "cancelSatanicZoneDiagnostic",

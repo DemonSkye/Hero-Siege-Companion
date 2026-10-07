@@ -2,7 +2,7 @@
 
 Local live-session tracking for Hero Siege on Windows.
 
-Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into the Live Session dashboard, Filter Stack for loot alerts, Market for saved item searches, and Report Desk for saved runs. A compact current-run overlay and Satanic Zone Refresh are also available. SZ Refresh is enabled by default for new configurations; existing saved Off choices are preserved.
+Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into the Live Session dashboard, Filter Stack for loot alerts, Market for saved item searches, and Report Desk for saved runs. A compact current-run overlay is also available. In 0.3.1, manual Satanic Zone Refresh is temporarily disabled; passive game-observed zone updates remain available.
 
 > **Required before first launch:** install [Npcap](https://npcap.com/#download) so the companion can read local game traffic. The exact installer options are in [Required: Install Npcap](#required-install-npcap).
 
@@ -16,19 +16,19 @@ Download the latest Windows build from the GitHub Releases page:
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
 
-Current release target follows the `version` field in `package.json`.
+Current local release candidate: **0.3.1**, matching `package.json`. Native game/server compatibility still needs owner testing before publication.
 
 ## Quick Start
 
 1. Install [Npcap](https://npcap.com/#download) using the options shown below.
 2. Launch `Hero Siege Companion.exe`.
 3. Start Hero Siege and leave capture running while you play.
-4. Use `Market` on a recognized drop or `Refresh` beside the Satanic Zone when ready. Optional **Remember sign-in** is in **Settings > Features**.
+4. Open the Market tab or use `Market` on a recognized drop. Edit filters and press Search; save filters to return to them later.
 5. Use `End Run` when a run is complete and should be saved to Past Runs.
 
-Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later passive/manual update.
+Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later game-observed update.
 
-Market checks become ready after capture observes the current account, mode and session fields in ordinary game traffic. SZ Refresh watches for a complete sign-in automatically, or uses a usable saved sign-in after it is loaded. Companion can attach during play; a missed sign-in cannot be recovered from packets that were never observed.
+Market checks become ready after capture observes current account, mode and session evidence. If context is missing, keep capture running and search for an item in Hero Siege's Market. Local readiness does not prove accepted authentication. Companion can attach during play; packets sent before capture began cannot be recovered.
 
 ## Core Features
 
@@ -37,7 +37,7 @@ Market checks become ready after capture observes the current account, mode and 
 - Run pause/resume controls, including automatic run pause when capture stops.
 - Compact overlay mode for keeping the current run visible while playing, with tile presets and custom item/filter counters configured from the compact gear.
 - Satanic Zone name, reset countdown, pros, cons, and freshness status in both full and compact views.
-- Satanic Zone Refresh beside the full-view countdown and the configured compact SZ timer tile, with automatic readiness and a 30-second cooldown after dispatch. It can be turned off in Settings.
+- Passive Satanic Zone effects and freshness remain available; manual Refresh and its sign-in settings are temporarily unavailable in 0.3.1.
 - Market tab with catalog item selection, optional socket/stat minimums, saved filters and up to 20 gold-price listings from one returned page. Eligible Timeline drops open the same editor.
 - Filter Stack loot alerts with independently collapsible groups, concise rule/sound summaries, rarity/type rules, exact watched items, volume, cooldown, and prominent global mute.
 - Contextual Sound Library for built-in previews, imported local audio or zip soundpacks, usage-aware removal, and soundpack ZIP export; Filter Packs carry only the custom sounds their groups use.
@@ -58,17 +58,9 @@ The full-width, collapsible **Run Pace** graph sits between the score strip and 
 
 Item Timeline and Live Log are collapsible dashboard fixtures. Ordinary card collapse lasts for the current session. Hiding either fixture is a saved choice, and a gear-only dashboard customizer in the capture status row restores hidden fixtures. Item Timeline filters are also saved, including the socketable, key, material, unfiltered, type, and linked-filter choices. Eligible normal and unique drop rows also expose a `Market` action for an on-demand comparable-listing check.
 
-Satanic Zone details use the same current-run source data in full and compact mode: zone name, remaining time, pros, and cons come from fresh parsed game packets or the optional sanitized manual-refresh result. The Companion does not restore a prior zone, effects, source, or observation time when it launches. `End Run` also clears the current Satanic Zone details for the next run; the next passive or manual response repopulates them.
+Satanic Zone details in full and compact mode show zone names, pros, cons, observation age and expiry from the game's own captured traffic. Pausing run counters does not stop these updates. End Run clears the prior run's zone display; the next passive response repopulates it.
 
-SZ Refresh is enabled for new/default configuration and can be turned off in **Settings > Features**. Existing saved Off choices are preserved, including older values whose original intent was not recorded. Open Companion before signing into the game, or launch the game here: Companion starts watching before launch and keeps watching for ordinary sign-ins and reconnects. The full dashboard and compact overlay show the current zone, its freshness, and Refresh or a short reason it is unavailable. There is no Prepare step or two-minute listening window. If Companion missed this sign-in and no usable saved sign-in is loaded, keep playing; it cannot recover packets that were already sent, and Refresh becomes available after a complete new sign-in is observed. Changing characters is not known to guarantee that.
-
-Only an explicit Refresh sends an authenticated request on a short-lived Companion-owned connection. Passive watching and recovery never send authentication, and failed requests are not retried automatically. Ready has no time expiry. By default, sign-in data stays in main-process memory, bounded separately from normal capture; detailed traffic logging is suppressed while watching or retaining context. Capture interruptions suspend native readiness until a complete new sign-in is observed; a usable loaded saved sign-in can still support Refresh with capture stopped. Game session changes, disabling the feature, or closing Companion clear the private native runtime context. Each request has a bounded wait; one may run at a time. The 30-second cooldown begins only after the zone request is dispatched, and a still-active cooldown can survive a Companion restart. Npcap never injects raw TCP frames into the game connection. No proxy or certificate installation is required.
-
-**Remember sign-in** is off by default in **Settings > Features**. It saves a complete paired sign-in and its server destination for SZ Refresh in a passphrase-encrypted local file. The Companion passphrase is not your Hero Siege password. Use at least eight characters. **Unlock for this session** permits manual reuse after Companion reopens. Optional **Enable automatic save/load** requires separate consent to keep a local unlocking key beside the encrypted file; anyone who can read both files can use that saved sign-in. This is not Windows-backed key protection.
-
-A usable loaded sign-in can make Refresh ready after Companion reopens without a new game login or fresh account/build matching. Compatible older records may need the server address from ordinary game connections. Loading sends nothing; requests still require an explicit Refresh click. The server may reject a saved sign-in that is no longer valid, so success across different game sessions is not guaranteed. Saving sign-in does not restore a prior zone or observation time.
-
-Turning off Remember or SZ Refresh stops reuse, clears saved inputs from memory and removes the automatic unlocking key, while preserving the encrypted sign-in file. **Forget saved sign-in** removes the encrypted record and retained key and turns Remember off. Saved sign-in and unlocking material are excluded from configuration backups and support exports.
+Manual SZ Refresh and its sign-in settings are temporarily unavailable in 0.3.1 while native Market coexistence is investigated. The release does not initialize the independent SZ provider or restore saved sign-in data, and legacy enable/Refresh/cache calls are blocked. Existing saved preferences, ciphertext and unlocking keys are left untouched. This does not establish the cause of the native compatibility issue.
 
 ## Market and Saved Filters
 
@@ -86,7 +78,7 @@ Compact mode is designed for playing with the companion on top of the game. It k
 
 ![Hero Siege Companion compact overlay](docs/assets/compact.png)
 
-Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. The compact title-bar gear is the only tile-layout editor: it applies default, loot, resource, or XP/kills presets; orders up to eight tiles; and adds exact-item or Filter Stack group counters. Duration remains included because run controls depend on it. If manual Satanic Zone refresh is enabled and the compact layout includes the SZ timer tile, its recycle icon uses the same submission and 30-second deadline rules as the full dashboard.
+Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. The compact title-bar gear is the only tile-layout editor: it applies default, loot, resource, or XP/kills presets; orders up to eight tiles; and adds exact-item or Filter Stack group counters. Duration remains included because run controls depend on it. The SZ timer opens passive zone details; no active Refresh control is shown in 0.3.1.
 
 ## Past Runs
 
@@ -116,7 +108,7 @@ Settings is one autosaving ledger. Choices save as they change, and the saved/sa
 
 - **App:** choose Steam, the default launch method, or Standalone. The executable path appears only when Standalone is selected.
 - **Appearance:** choose the canonical Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, or Quicksilver theme for the full app and compact overlay. Pre-v2 overrides remain available as `Legacy Custom (Migrated)` when present, but ordinary accent, texture, and fill controls are retired.
-- **Features:** turn SZ Refresh on or off, optionally Remember sign-in, or review the capture/direct-connection guidance.
+- **Features:** explains passive Satanic Zone updates and the temporary manual Refresh unavailability.
 - **Help & Support:** export or restore a full backup, manage automatic diagnostics plus manual or exact ten-minute Enhanced/Deep modes, open logs, create a support bundle, reset both saved window positions, factory-reset preferences, and read About/What's New.
 - **Developers:** import/export custom themes, export a theme template, access theme token/schema references, and export legacy Item Research once when migration-only entries remain.
 
@@ -124,7 +116,7 @@ Compact tile layout is intentionally absent from Settings. Open the compact over
 
 Backup and restore is full-only rather than a checklist of configuration sections. A backup contains supported app choices, Item Filters, imported sounds, custom-theme data, report and compact-layout data, and hidden Live Session fixtures. Restoring first validates the selected file and shows a read-only count preview; nothing is applied and no embedded sound is installed until you confirm. Older supported configuration JSON is accepted, while retired options are ignored instead of being restored.
 
-Satanic Zone Refresh keeps its current state during restore, so another person's backup cannot enable or disable it. Factory reset also preserves Past Runs, diagnostic logs, Item Filters, and imported sounds by default; deleting filters is a separate unchecked choice.
+Restoring a backup cannot enable active Satanic Zone Refresh in this release. Factory reset also preserves Past Runs, diagnostic logs, Item Filters, and imported sounds by default; deleting filters is a separate unchecked choice.
 
 Settings, What's New, Item Filter confirmation, and Past Runs report dialogs keep keyboard focus inside the open dialog and return focus to the invoking control when closed.
 
@@ -148,9 +140,9 @@ If capture does not start, reinstall Npcap with the WinPcap-compatible option en
 
 ## Direct Network Features
 
-Market checks use Npcap to observe current game-owned API context. SZ Refresh uses an observed complete sign-in or usable loaded saved inputs. Product capture continues to exclude ports 80 and 443 and never writes or injects raw packets. Each feature owns its separate outbound request: Market uses direct HTTPS, and SZ uses a short-lived direct TCP connection. Neither feature launches a helper process or modifies the game's connection.
+Market checks use Npcap to observe current game-owned API context and send one explicit direct HTTPS request. Product capture continues to exclude ports 80 and 443 and never writes or injects raw packets. Passive SZ updates send no separate authentication. No helper process modifies the game's connection.
 
-No mitmproxy installation, local CA certificate, WinDivert redirector, interception UAC prompt, privileged service, proxy configuration, reconnect, or requirement to launch Hero Siege through Companion remains. Requests are unavailable when their required inputs are incomplete, and invalid responses are reported safely. Native observation gaps suspend captured sign-in readiness; saved sign-in eligibility is handled separately. Attaching during play remains supported, but packets sent before capture began cannot be recovered.
+No mitmproxy installation, local CA certificate, WinDivert redirector, interception UAC prompt, privileged service, proxy configuration, reconnect, or requirement to launch Hero Siege through Companion remains. Requests are unavailable when their required inputs are incomplete, and invalid responses are reported safely. Missing current context blocks Market searches; active SZ authentication remains unavailable. Attaching during play remains supported, but packets sent before capture began cannot be recovered.
 
 ## Development
 
@@ -187,7 +179,7 @@ Run the app:
 npm start
 ```
 
-For development of dropped-item Market checks or native SZ readiness, keep Npcap installed and capture running long enough to observe qualifying traffic. Saved SZ inputs have a separate explicit load/Refresh workflow. No separate proxy runtime is used.
+For development of Market checks or passive SZ display, keep Npcap installed and capture running long enough to observe qualifying traffic. Active SZ implementations and historical tests are retained for investigation, but the release capability is off. No separate proxy runtime is used.
 
 Run tests:
 

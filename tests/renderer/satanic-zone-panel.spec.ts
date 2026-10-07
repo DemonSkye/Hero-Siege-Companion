@@ -1,5 +1,9 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
+// Retained active-feature UI research. The shipping false capability is checked
+// without this override by sz-disabled-release.spec.ts and actual Electron.
+vi.mock("../../src/shared/release-features", () => ({ ACTIVE_SATANIC_ZONE_REFRESH_ENABLED: true }));
 
 import SatanicZonePanel from "../../src/renderer/src/components/SatanicZonePanel.vue";
 import type { SatanicZoneState } from "../../src/shared/satanic-zone";

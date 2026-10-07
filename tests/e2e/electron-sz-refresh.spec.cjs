@@ -2,6 +2,10 @@ const { test, expect } = require("@playwright/test");
 const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } = require("../../dist/main/shared/release-features.js");
+// Preserve the historical owned-authentication journeys for later investigation.
+// They are unavailable in 0.3.1; the unmocked disabled-release suite owns safety.
+test.skip(!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED, "Active SZ Refresh is parked in this release; retained research journeys.");
 const { withCompanionApp, getRendererState, emitCapturePayloads, createUserDataDir, cleanupUserDataDir } = require("./support/companion-app.cjs");
 const PASSPHRASE = "CANARY portable cache passphrase";
 async function enableCache(page) {
