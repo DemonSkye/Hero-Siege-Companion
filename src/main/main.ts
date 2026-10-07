@@ -357,13 +357,12 @@ function markPastRunsForPublish(): void {
   pastRunsPendingPublish = true;
 }
 
-function applySatanicZoneState(nextState: SatanicZoneState): void {
+function applySatanicZoneState(nextState: SatanicZoneState, ownedObservationDelivered = false): void {
   const previous = state.satanicZone;
   if (previous.phase === "refreshing" && nextState.phase !== "refreshing") {
     writeAppLog("satanic-zone-refresh-completed", { phase: nextState.phase, source: nextState.source,
       errorCode: nextState.errorCode, observationPresent: nextState.current !== null,
-      ownedObservationDelivered: nextState.source === "manual" && nextState.errorCode === null
-        && nextState.current !== null && ["current", "stale"].includes(nextState.phase),
+      ownedObservationDelivered,
       successAt: nextState.lastSuccessAt });
   }
   state.satanicZone = nextState;

@@ -108,6 +108,26 @@ async function restoredCacheFixture() {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
+  test("generic owned receipt is reported separately while a specific passive zone stays displayed", async () => {
+    const f = fixture(); const changed = vi.fn();
+    const controller = new SatanicZoneController({ provider: f.provider, now: Date.now, onStateChange: changed });
+    await f.collect();
+    const incomingSequence = 201 + generic(opcodeOnlyReadyBody).length + generic(inventedLoginSuccess()).length;
+    f.receive(f.packet(false, incomingSequence, generic(inventedZoneBody)));
+    const passiveAt = Date.now();
+    expect(controller.getState()).toMatchObject({ phase: "current", source: "captured", current: { rawZone: "Act_04_03" } });
+    const request = controller.refreshNow(); await flush();
+    f.sockets[0].receive(opcodeOnlyReadyBody); f.sockets[0].receive(inventedLoginSuccess());
+    expect(await request).toEqual({ accepted: true, errorCode: null });
+    await vi.advanceTimersByTimeAsync(100); const receivedAt = Date.now();
+    f.sockets[0].receive(Buffer.from('{"satanicZoneName":"Unknown","buffs":"","debuffs":""}')); await flush();
+    expect(controller.getState()).toMatchObject({ phase: "current", source: "captured", errorCode: null,
+      current: { rawZone: "Act_04_03" }, lastSuccessAt: receivedAt });
+    expect(receivedAt).toBeGreaterThan(passiveAt);
+    expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({ source: "captured", lastSuccessAt: receivedAt }), true);
+    expect(satanicZoneDisplay(controller.getState(), receivedAt).phase).toBe("current");
+    controller.dispose(); f.provider.dispose();
+  });
   test("a validated owned SZ arriving before wait registration is delivered once after transport returns Ready", async () => {
     const f = fixture(); await f.collect(); const request = await f.dispatch();
     const responseAt = Date.now(); f.sockets[0].receive(inventedZoneBody); await flush();

@@ -538,3 +538,33 @@ test("legacy encrypted file and consent remain untouched; portable cache needs s
     expect(fs.readFileSync(legacy)).toEqual(original);
   } finally { cleanupUserDataDir(userDataDir); }
 });
+
+test("generic owned response logs delivery while retaining a specific captured zone", async () => {
+  await withCompanionApp(async ({ electronApp, page, userDataDir }) => {
+    const invented = initialization(), login = invented.packets.at(-1);
+    const specificBody = Buffer.from('{"satanicZoneName":"Act_04_03","buffs":"","debuffs":""}');
+    const specific = Buffer.alloc(8 + specificBody.length); specific.writeUInt32LE(specificBody.length, 4); specificBody.copy(specific, 8);
+    await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+    await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), [
+      ...invented.packets, { ...login, seq: login.seq + login.payload.length, payload: [...specific], payloadLength: specific.length }]);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.current?.rawZone).toBe("Act_04_03");
+    const passiveAt = (await getRendererState(page)).satanicZone.lastSuccessAt;
+    expect((await getRendererState(page)).satanicZone.source).toBe("captured");
+    const card = page.locator("#satanic-zone-card");
+    await card.getByRole("button", { name: "Refresh Satanic Zone", exact: true }).click();
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("refreshing");
+    await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.completeSatanicZoneTestResponse(
+      [...Buffer.from('{"satanicZoneName":"Unknown","buffs":"","debuffs":""}')]));
+    await expect.poll(async () => (await getRendererState(page)).satanicZone).toMatchObject({ phase: "current", source: "captured", errorCode: null,
+      current: { rawZone: "Act_04_03" } });
+    const successAt = (await getRendererState(page)).satanicZone.lastSuccessAt;
+    expect(successAt).toBeGreaterThan(passiveAt);
+    await expect(card.locator(".zone-status")).toHaveAttribute("data-phase", "current");
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(1);
+    const log = fs.readFileSync(path.join(userDataDir, "logs", "app-debug.log"), "utf8");
+    expect(log.trim().split("\n").map(line => JSON.parse(line)).filter(row => row.type === "satanic-zone-refresh-completed")).toContainEqual(expect.objectContaining({
+      type: "satanic-zone-refresh-completed", phase: "current", source: "captured", errorCode: null,
+      observationPresent: true, ownedObservationDelivered: true, successAt }));
+    expect(log).not.toMatch(/CANARY|1234567890|9876543210|account_uid|checksum/);
+  });
+});

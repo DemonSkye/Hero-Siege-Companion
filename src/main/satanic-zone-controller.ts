@@ -40,7 +40,8 @@ interface ActiveRefresh {
 export interface SatanicZoneControllerOptions {
   provider?: SatanicZoneRefreshProvider | null;
   initialState?: SatanicZoneState;
-  onStateChange: (state: SatanicZoneState) => void;
+  /** Receipt metadata is independent from the zone/provenance selected for display. */
+  onStateChange: (state: SatanicZoneState, ownedObservationDelivered?: boolean) => void;
   now?: () => number;
   refreshCooldownMs?: number;
   responseTimeoutMs?: number;
@@ -458,7 +459,7 @@ export class SatanicZoneController {
         ? "refresh_disabled"
         : availabilityConsumed ? "one_shot_consumed" : next.errorCode,
       nextAllowedRefreshAt,
-    });
+    }, source === "manual" && activeRefresh?.correlatedProviderWait === true);
   }
 
   private acceptedRefreshDeadline(): number | null {
@@ -518,9 +519,9 @@ export class SatanicZoneController {
     this.setState({ ...this.state, ...patch });
   }
 
-  private setState(next: SatanicZoneState): void {
+  private setState(next: SatanicZoneState, ownedObservationDelivered = false): void {
     this.state = next;
-    this.options.onStateChange(this.getState());
+    this.options.onStateChange(this.getState(), ownedObservationDelivered);
   }
 }
 

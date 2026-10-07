@@ -68,6 +68,33 @@ describe("portable login cache with production encryption and synthetic secrets"
     expect(reopened.cache.snapshot().status).toBe("validated");
     expect(reopened.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
   });
+  test("unchanged topology before the ownership query resolves preserves early identity for later unlock", async () => {
+    const original = await savedFixture(); original.cache.dispose(); const f = fixture(); f.cache.configure(true);
+    let release!: (network: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const observation = f.cache.observe(f.payload);
+    f.cache.observeConnections(f.network.connections);
+    expect(f.cache.restoreInput()).toBeNull(); // Topology alone never validates credentials.
+    release(f.network); await observation;
+    expect(await f.cache.unlock(passphrase)).toBe(true);
+    expect(f.cache.snapshot().status).toBe("validated");
+    expect(f.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+  });
+  test.each(["replacement", "changed pending owner", "closed", "FIN", "gap", "generation"])(
+    "%s before deferred ownership resolves still prevents binding without new evidence", async kind => {
+    const original = await savedFixture(); original.cache.dispose(); const f = fixture(); f.cache.configure(true);
+    f.cache.observeProcesses([42]); let release!: (network: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const observation = f.cache.observe(f.payload);
+    if (kind === "changed pending owner") f.cache.observeConnections(f.network.connections);
+    if (kind === "replacement" || kind === "changed pending owner") f.cache.observeConnections([{ ...f.network.connections[0], owningProcess: 43 }]);
+    if (kind === "closed") f.cache.observeConnections([{ ...f.network.connections[0], state: "closed" }]);
+    if (kind === "FIN") f.cache.observeLifecycle({ src: scope.localAddress, dst: scope.remoteAddress, srcPort: 5000, dstPort: scope.remotePort, flags: 1 });
+    if (kind === "gap") f.cache.suspend();
+    if (kind === "generation") f.cache.observeProcesses([43]);
+    release(f.network); await observation; await f.cache.unlock(passphrase);
+    expect(f.cache.restoreInput()).toBeNull(); expect(f.cache.snapshot().status).not.toBe("validated");
+  });
   test("eight characters can set a new portable passphrase", async () => {
     const f = fixture(); f.cache.configure(true);
     expect(await f.cache.unlock("SYNTHET8")).toBe(true);

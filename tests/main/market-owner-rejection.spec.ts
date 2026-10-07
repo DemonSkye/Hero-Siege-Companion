@@ -29,7 +29,7 @@ describe("owner Market rejection shapes through actual parser/context/worker/red
       crossregion_identifier: "SYNTHETIC-OWNER-CROSSREGION", beta: "0" };
     if (apiHardcore) apiFields.hardcore = "0";
     store.observe({ ...scope, text: `invented_api ${new URLSearchParams(apiFields)}` });
-    store.observe({ ...scope, text: `save ${new URLSearchParams({ account_id: vector.accountRaw, slot: "1",
+    store.observe({ ...scope, text: `save ${new URLSearchParams({ account_id: vector.accountRaw, slot: "1", beta: "0",
       slot_data: JSON.stringify({ season: 11, hardcore: 0 }) })}` });
     store.applyRegionDirectory(new MarketRegionDirectory([
       { address: scope.remoteAddress, port: scope.remotePort, beta: "0", region: "7" },
@@ -38,7 +38,7 @@ describe("owner Market rejection shapes through actual parser/context/worker/red
     expect(context!.fields).toEqual({ account_id: vector.postedAccount, unique_account_id: apiFields.unique_account_id,
       crossregion_identifier: apiFields.crossregion_identifier, season: "11", hardcore: "0", beta: "0" });
     const observedProof = { fieldSources: { account_id: "character-save", unique_account_id: "game-api",
-      crossregion_identifier: "game-api", season: "character-save", hardcore: "character-save", beta: "game-api" },
+      crossregion_identifier: "game-api", season: "character-save", hardcore: "character-save", beta: "character-save" },
       accountQualification: "region-directory", accountPrefixCoherent: true, sameEndpoint: true, sameFlow: true,
       hardcoreApiObserved: apiHardcore, hardcoreSaveObserved: true, hardcoreSourcesAgree: expectedAgreement };
     expect(context!.provenance).toEqual(observedProof);

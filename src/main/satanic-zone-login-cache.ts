@@ -18,6 +18,8 @@ interface CacheOptions {
 }
 interface IdentityEvidence {
   uid: string; beta: string; observedAt: number; scope: SatanicZoneSessionScope;
+  /** Topology hint while the ownership query is pending; never readiness proof. */
+  pendingPid?: number;
 }
 interface AccountEvidence { account: string; scope: SatanicZoneSessionScope }
 const IDENTITY_TTL_MS = 10 * 60_000;
@@ -192,7 +194,9 @@ export class SatanicZoneLoginCache {
         && flow.remoteAddress === scope.remoteAddress && flow.remotePort === scope.remotePort
         && (scope.pid === 0 || scope.pid === flow.owningProcess) && ["established", "5"].includes(String(flow.state).toLowerCase()));
       const flows = owned(evidence.scope);
-      if (flows.length !== 1) { this.clearEvidence(); this.options.onDiagnostic?.("identity_binding", "flow_unavailable"); return; }
+      if (flows.length !== 1 || (evidence.pendingPid !== undefined && flows[0].owningProcess !== evidence.pendingPid)) {
+        this.clearEvidence(); this.options.onDiagnostic?.("identity_binding", "flow_unavailable"); return;
+      }
       const flow = flows[0]; evidence.scope.pid = flow.owningProcess;
       if (accountEvidence && (owned(accountEvidence.scope).length !== 1
         || owned(accountEvidence.scope)[0].owningProcess !== flow.owningProcess)) { this.clearEvidence(); return; }
@@ -241,7 +245,18 @@ export class SatanicZoneLoginCache {
   }
   observeConnections(flows: readonly CaptureConnection[]): void {
     const scope = this.validated ?? this.evidence?.scope;
-    if (scope && satanicZoneSessionScopeStatus(scope, flows) === "changed") this.suspend();
+    if (!scope) return;
+    if (scope.pid === 0 && this.evidence) {
+      const matching = flows.filter(flow => flow.localAddress === scope.localAddress && flow.localPort === scope.localPort
+        && flow.remoteAddress === scope.remoteAddress && flow.remotePort === scope.remotePort);
+      if (matching.length > 1) { this.suspend(); return; }
+      // An unknown PID cannot differ from the first observed owner. Keep that
+      // hint separate until the query confirms game ownership; later contrary
+      // topology or a stale query result still rejects the evidence.
+      if (this.evidence.pendingPid === undefined && matching[0]?.owningProcess > 0) this.evidence.pendingPid = matching[0].owningProcess;
+      const pid = this.evidence.pendingPid;
+      if (pid !== undefined && satanicZoneSessionScopeStatus({ ...scope, pid }, flows) === "changed") this.suspend();
+    } else if (satanicZoneSessionScopeStatus(scope, flows) === "changed") this.suspend();
   }
   observeLifecycle(packet: CapturedTcpLifecycle): void {
     const scope = this.validated ?? this.evidence?.scope;
