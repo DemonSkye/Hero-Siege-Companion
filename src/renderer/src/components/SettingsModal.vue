@@ -334,6 +334,7 @@ function saveStatusLabel(): string {
           <li>With a loaded saved sign-in and known server, you can try Refresh after restarting Companion or stopping capture. The server may reject the saved sign-in.</li>
           <li>Older saved sign-ins without a known server wait for the game's server connection to be observed; a new sign-in is not required.</li>
           <li>Remember sign-in is optional and off by default. Automatic save/load requires consent during setup; existing manual settings stay manual until you choose it. Use the existing passphrase to enable automatic loading without changing the encrypted file.</li>
+          <li>The Companion passphrase protects saved sign-in data for SZ Refresh. It is not your Hero Siege password.</li>
           <li>A lost passphrase cannot be recovered. Turning Remember sign-in or SZ Refresh off removes the local unlocking key and keeps the encrypted file. Forget saved sign-in deletes both files and turns Remember sign-in off. Older Windows-encrypted files stay untouched.</li>
           <li>If saving or loading fails, check access to the saved file and try again. Forget saved sign-in lets you start again if a file is damaged or its passphrase is lost. Existing saved Off settings are preserved.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>

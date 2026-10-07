@@ -99,8 +99,15 @@ test("real tab handles unavailable, loading, rejected, empty and price states wh
     await wrapper.get("#market-sockets").setValue("4");
     expect(button(wrapper, "Search market").attributes("disabled")).toBeDefined();
     expect(wrapper.get(".market-results").text()).toContain("waiting for current session evidence");
+    const readinessStatus = wrapper.get(".market-readiness");
+    expect(readinessStatus.get('[role="status"]').text()).toBe("Market not ready");
+    expect(readinessStatus.text()).toContain("Start capture");
+    expect(readinessStatus.text()).toContain("search for an item in Hero Siege's Market");
+    expect(readinessStatus.text()).not.toMatch(/\d\/6|fields received|vote reset/);
+    expect(readinessStatus.get(".market-readiness-light").attributes("aria-hidden")).toBe("true");
     expect(button(wrapper, "Save item and filters").attributes("disabled")).toBeUndefined();
     emit(companionState({ marketReadiness: { ...companionState().marketReadiness, contextVersion: 1 } })); await flushPromises();
+    expect(readinessStatus.get('[role="status"]').text()).toBe("Market ready");
     let settle!: (response: MarketSearchResponse) => void;
     api.searchMarket.mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
     await wrapper.get("form.market-editor").trigger("submit");
@@ -111,6 +118,8 @@ test("real tab handles unavailable, loading, rejected, empty and price states wh
     settle({ ok: false, errorCode: "checksum_rejected", nextAllowedSearchAt: Date.now() + 14_000 });
     await flushPromises();
     expect(wrapper.get(".market-results").text()).toContain("market rejected this request's checksum");
+    expect(readinessStatus.get('[role="status"]').text()).toBe("Market ready");
+    expect(readinessStatus.text()).not.toMatch(/\d\/6|fields received|vote reset/);
     expect(wrapper.get("form.market-editor").text()).toContain("4+ sockets");
     expect(wrapper.text()).toMatch(/Next search available in 1[45]s/);
     // Reopen with a different API response: cooldown is process-local and no

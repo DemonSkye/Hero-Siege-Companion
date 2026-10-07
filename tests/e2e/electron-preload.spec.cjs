@@ -45,16 +45,18 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     await page.getByRole("tab", { name: "Market", exact: true }).click();
     const workspace = page.locator(".market-workspace");
     await expect(workspace).toBeVisible();
-    await expect(workspace.locator(".market-readiness").getByRole("status")).toHaveText("Market waiting for capture");
+    const timeline = workspace.locator(".market-readiness");
+    await expect(timeline.getByRole("status")).toHaveText("Market not ready");
+    await expect(timeline).toContainText("Start capture");
 
     await page.evaluate(() => window.heroSiegeCompanion.startCapture());
     await expect.poll(async () => (await getRendererState(page)).marketReadiness.reason).toBe("game_unavailable");
     await observe([123], [payload("api account_id=10-42&beta=0")]);
-    const timeline = workspace.locator(".market-readiness");
-    await expect(timeline.getByRole("status")).toHaveText("Market collecting context");
-    await timeline.locator("summary").click();
-    await expect(timeline).toContainText("2/6 fields received");
-    await expect(timeline).toContainText("Account identity: Waiting");
+    await expect(timeline.getByRole("status")).toHaveText("Market not ready");
+    await expect(timeline).toContainText("search for an item");
+    await expect(timeline).not.toContainText("vote reset");
+    await expect(timeline).not.toContainText("fields received");
+    expect((await getRendererState(page)).marketReadiness.missingFields).toHaveLength(4);
     expect(await timeline.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
 
     await emitCapturePayloads(electronApp, e2eTrafficPayloads());
@@ -62,29 +64,34 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     await page.getByRole("button", { name: "Check Aurelion Fury on the market" }).click();
     const dialog = workspace;
     const status = dialog.locator(".market-readiness");
-    await expect(status.getByRole("status")).toHaveText("Market collecting context");
+    await expect(status.getByRole("status")).toHaveText("Market not ready");
+    await expect(status).toContainText("Hero Siege's Market");
     await expect(dialog.locator('button[type="submit"]')).toBeDisabled();
+    if (process.env.HSC_MARKET_NOT_READY_SCREENSHOT) {
+      await page.screenshot({ path: process.env.HSC_MARKET_NOT_READY_SCREENSHOT });
+    }
     const complete = payload("api account_id=10-42&unique_account_id=e2e-identity&crossregion_identifier=e2e-session&season=11&hardcore=0&beta=0");
     await observe([123], [complete]);
     await expect(status.getByRole("status")).toHaveText("Market ready");
     await expect(dialog.locator('button[type="submit"]')).toBeEnabled();
-    await status.locator("summary").click();
-    await expect(status).toContainText("6/6 fields received");
-    await expect(status).toContainText("Current session: Confirmed");
-    await expect(status).toContainText("Account region: Confirmed");
+    await expect(status).not.toContainText("fields received");
+    await expect(status.locator(".market-readiness-light")).toHaveAttribute("aria-hidden", "true");
+    expect((await getRendererState(page)).marketReadiness).toMatchObject({ missingFields: [], sessionCurrent: true, regionQualified: true });
     expect(await status.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
     expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
 
     await page.evaluate(() => window.heroSiegeCompanion.stopCapture());
-    await expect(status.getByRole("status")).toHaveText("Market waiting for capture");
+    await expect(status.getByRole("status")).toHaveText("Market not ready");
+    await expect(status).toContainText("Start capture");
     await expect(dialog.locator('button[type="submit"]')).toBeDisabled();
     // Model the native observer clearing the stopped capture generation, then
     // restarting against the same synthetic PID. No real process is inspected.
     await observe([], []);
     await page.evaluate(() => window.heroSiegeCompanion.startCapture());
     await observe([123], []);
-    await expect(status.getByRole("status")).toHaveText("Market collecting context");
-    await expect(status).toContainText("0/6 fields received");
+    await expect(status.getByRole("status")).toHaveText("Market not ready");
+    await expect(status).not.toContainText("fields received");
+    expect((await getRendererState(page)).marketReadiness.missingFields).toEqual(fields);
     await observe([123], [complete]);
     await expect(status.getByRole("status")).toHaveText("Market ready");
     await expect.poll(() => page.evaluate(() => window.__marketReadinessUpdates.some((entry) => entry.phase === "ready"))).toBe(true);

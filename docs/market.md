@@ -13,10 +13,12 @@ Schema 3 saved entries are authoritative after migration, including an empty arr
 Backups include saved filters; older backups migrate their shopping-list names.
 Saving failures show a retry action while the draft stays open.
 
-Market readiness describes local prerequisites. Receiving all six fields does not
-prove that authentication will be accepted. Search success, empty results, request
-rejection and transport failure are separate outcomes. Keep capture running for
-current session evidence; persistent checksum rejection has no established automatic
+The accessible Market ready / Market not ready indicator describes local
+prerequisites; it does not prove that authentication will be accepted. When context
+is missing, keep capture running and search for an item in Hero Siege's Market to
+collect it. First-search region preparation and region failures have separate
+guidance. Search success, empty results, request rejection and transport failure
+are separate outcomes; persistent checksum rejection has no established automatic
 recovery. Searches are explicit, one request at a time, subject to the existing
 cooldown. Filters are editable while waiting or after a failed request.
 
@@ -37,6 +39,9 @@ No automated purchase, polling, alert or pagination runs from saved entries.
   response states and stale reply suppression.
 - `components/MarketView.vue` and `styles/market.css`: tab workspace and keyboard/focus
   behavior. App coordinates navigation and typed preload calls.
+- `components/MarketReadinessStatus.vue`, `lib/market-readiness-display.ts` and
+  `styles/market-search.css`: accessible status light/text and missing-context
+  guidance; transport eligibility remains in the existing main/shared owners.
 - `main/captured-session-context.ts`: safe numeric readiness context version;
   identity/mode/session changes clear prices, while same-account region preparation
   preserves the first explicit search. No sensitive identity crosses this projection.

@@ -184,6 +184,30 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
   });
 });
 
+test("keeps the Market readiness indicator and recovery guidance compact at minimum window width", async () => {
+  await withCompanionApp({ gameRunning: false }, async ({ electronApp, page }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(980, 700, false));
+    await page.getByRole("tab", { name: "Market", exact: true }).click();
+    const status = page.locator(".market-workspace .market-readiness");
+    await expect(status.getByRole("status")).toHaveText("Market not ready");
+    await expect(status).toContainText("search for an item in Hero Siege's Market");
+    await expect(status).not.toContainText("vote reset");
+    await expect(status).not.toContainText("fields received");
+    const dimensions = await status.evaluate(node => ({
+      height: node.getBoundingClientRect().height,
+      labelHeight: node.querySelector('[role="status"]').getBoundingClientRect().height,
+      statusOverflow: node.scrollWidth - node.clientWidth,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    }));
+    expect(dimensions.height).toBeGreaterThan(0);
+    expect(dimensions.height).toBeLessThanOrEqual(100);
+    expect(dimensions.labelHeight).toBeGreaterThan(0);
+    expect(dimensions.labelHeight).toBeLessThanOrEqual(26);
+    expect(dimensions.statusOverflow).toBeLessThanOrEqual(1);
+    expect(dimensions.pageOverflow).toBeLessThanOrEqual(4);
+  });
+});
+
 test("keeps Run Pace and dashboard customization usable at the minimum full-window width", async () => {
   await withCompanionApp(async ({ electronApp, page }) => {
     await electronApp.evaluate(({ BrowserWindow }) => {

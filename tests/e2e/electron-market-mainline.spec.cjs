@@ -67,12 +67,16 @@ async function assertMarketJourney({ electronApp, page }) {
   const workspace = page.locator(".market-workspace");
   await expect(workspace).toBeVisible();
   await expect(workspace.locator(".market-chosen-item")).toContainText("Aurelion Fury");
+  await expect(workspace.locator(".market-readiness").getByRole("status")).toHaveText("Market ready");
+  await expect(workspace).not.toContainText("fields received");
   expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
   await workspace.getByRole("button", { name: "Search market", exact: true }).click();
   await expect(workspace.getByText("4,000 gold", { exact: true })).toBeVisible();
   await expect(workspace.getByText("6,000 gold", { exact: true })).toBeVisible();
   await expect(workspace.getByText("Server returned count: 101. This may describe a bounded page.", { exact: true })).toBeVisible();
   await expect(workspace.locator("tbody tr")).toHaveCount(20);
+  await expect(workspace.locator(".market-readiness").getByRole("status")).toHaveText("Market ready");
+  await expect(workspace.getByRole("button", { name: /^Search in \d+s$/ })).toBeDisabled();
   expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
   await page.getByRole("tab", { name: "Live Session", exact: true }).click();
 }

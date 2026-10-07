@@ -60,7 +60,7 @@ async function change(action: "toggle" | "forget" | "unlock" | "automatic") {
   <div class="settings-ledger-row">
     <div class="settings-ledger-copy">
       <span id="settings-sz-login-cache-label" class="settings-ledger-title">Remember sign-in</span>
-      <p>Save sign-in for future use.</p>
+      <p>Save sign-in for future SZ Refresh.</p>
     </div>
     <label class="settings-switch">
       <input type="checkbox" :checked="state?.enabled ?? false" :disabled="pending || !refreshEnabled"
@@ -73,14 +73,15 @@ async function change(action: "toggle" | "forget" | "unlock" | "automatic") {
     <p role="status" aria-live="polite">{{ detail }}</p>
     <form v-if="showPassphrase" class="settings-ledger-row" @submit.prevent="change(automatic ? 'unlock' : 'automatic')">
       <div class="settings-ledger-copy">
-        <label for="settings-sz-cache-passphrase" class="settings-ledger-title">Passphrase</label>
+        <label for="settings-sz-cache-passphrase" class="settings-ledger-title">Companion passphrase</label>
+        <p id="settings-sz-cache-passphrase-purpose">This Companion passphrase protects saved sign-in data for SZ Refresh. It is not your Hero Siege password.</p>
         <p id="settings-sz-cache-passphrase-help">Use at least 8 characters. For an existing saved sign-in, use its current passphrase.</p>
         <p v-if="!automatic" id="settings-sz-cache-consent-help">Automatic save/load keeps a local unlocking key beside the encrypted sign-in. Anyone who can read both can use the saved sign-in. Refresh still sends only when clicked.</p>
       </div>
       <div class="settings-ledger-control settings-action-group">
         <input id="settings-sz-cache-passphrase" ref="passphraseInput" v-model="passphrase" type="password" autocomplete="off"
           :disabled="pending" minlength="8" maxlength="1024" spellcheck="false" autocapitalize="off"
-          aria-describedby="settings-sz-cache-passphrase-help" />
+          aria-describedby="settings-sz-cache-passphrase-purpose settings-sz-cache-passphrase-help" />
         <label v-if="!automatic" for="settings-sz-cache-consent">
           <input id="settings-sz-cache-consent" v-model="automaticConsent" type="checkbox" :disabled="pending"
             aria-describedby="settings-sz-cache-consent-help" />

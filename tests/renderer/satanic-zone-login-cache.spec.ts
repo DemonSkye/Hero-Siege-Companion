@@ -57,6 +57,10 @@ test("the existing storage disclosure appears once during setup and disappears d
   expect(form.text()).toContain("local unlocking key beside the encrypted sign-in");
   expect(form.text()).toContain("Anyone who can read both can use the saved sign-in");
   expect(form.text()).toContain("Refresh still sends only when clicked");
+  expect(form.text()).toContain("saved sign-in data for SZ Refresh");
+  expect(form.text()).toContain("not your Hero Siege password");
+  expect(form.get('label[for="settings-sz-cache-passphrase"]').text()).toBe("Companion passphrase");
+  expect(password(wrapper).attributes("aria-describedby")).toContain("settings-sz-cache-passphrase-purpose");
   expect(checked(wrapper)).toBe(false);
   expect(wrapper.findAll("p").filter(entry => entry.text().includes("Anyone who can read"))).toHaveLength(1);
   expect(form.get("#settings-sz-cache-consent").attributes("aria-describedby")).toBe("settings-sz-cache-consent-help");
@@ -64,6 +68,7 @@ test("the existing storage disclosure appears once during setup and disappears d
   expect(wrapper.find("#settings-sz-cache-consent").exists()).toBe(false);
   expect(wrapper.text()).not.toMatch(/unlocking key|Anyone who can read/);
   expect(button(wrapper, "Unlock for this session").exists()).toBe(true);
+  expect(wrapper.text()).toContain("not your Hero Siege password");
 });
 
 test("automatic setup starts off and requires explicit unchecked consent after displaying the local-key risk", async () => {
@@ -117,6 +122,8 @@ test("existing manually enabled settings do not become automatic consent; manual
   const methods = api(), wrapper = mountCache(locked());
   expect(checked(wrapper)).toBe(false);
   expect(wrapper.text()).toContain("use its current passphrase");
+  expect(wrapper.text()).toContain("saved sign-in data for SZ Refresh");
+  expect(wrapper.text()).toContain("not your Hero Siege password");
   expect(wrapper.get('[role="status"]').text()).toBe("Passphrase required.");
   const originalPassphrase = "old portable passphrase";
   await password(wrapper).setValue(originalPassphrase);

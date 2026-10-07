@@ -135,6 +135,7 @@ describe("settings ledger", () => {
     expect(wrapper.get(".settings-action-dialog").text()).toContain("after the game next signs in");
     expect(wrapper.get(".settings-action-dialog").text()).not.toMatch(/Prepare|two.minutes|API|protocol/i);
     expect(wrapper.get(".settings-action-dialog").text()).toContain("requires consent during setup");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("not your Hero Siege password");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("Existing saved Off settings are preserved");
     expect(wrapper.get(".settings-action-dialog").text()).not.toContain("Anyone who can read");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("local unlocking key");

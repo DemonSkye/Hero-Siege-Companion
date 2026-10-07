@@ -6,31 +6,31 @@ export const MARKET_CONTEXT_LABELS: Record<MarketContextField, string> = {
 };
 
 export const MARKET_REGION_UNCONFIRMED_DETAIL = "Session captured, but region information could not be confirmed. Keep capture running; a later search can try preparation again.";
+const MARKET_CONTEXT_RECOVERY_DETAIL = "With capture running, search for an item in Hero Siege's Market to collect context.";
 
 export function marketReadinessDisplay(readiness: MarketReadiness): { label: string; detail: string } {
   switch (readiness.phase) {
     case "ready":
       return { label: "Market ready", detail: "Local prerequisites are present. Press Search to ask the server; accepted authentication is confirmed only by a successful response." };
     case "region-required":
-      return { label: "Market session captured", detail: "Your first search will prepare region information. No in-game Market search is needed." };
+      return { label: "Market ready", detail: "Your first search will prepare region information." };
     case "preparing":
       return { label: "Preparing Market", detail: "Companion is preparing region information for this search." };
     case "region-error":
-      return { label: "Market region not confirmed", detail: MARKET_REGION_UNCONFIRMED_DETAIL };
+      return { label: "Market not ready", detail: MARKET_REGION_UNCONFIRMED_DETAIL };
     case "expired":
-      return { label: "Market session expired", detail: "Keep capture running while the game sends fresh account and session traffic." };
+      return { label: "Market not ready", detail: "Current session information expired. " + MARKET_CONTEXT_RECOVERY_DETAIL };
     case "waiting":
       return readiness.reason === "capture_inactive"
-        ? { label: "Market waiting for capture", detail: "Start capture and keep it running during normal character and world activity." }
-        : { label: "Market waiting for Hero Siege", detail: "Connect to a character with capture running so Companion can observe the current session." };
+        ? { label: "Market not ready", detail: "Start capture. " + MARKET_CONTEXT_RECOVERY_DETAIL }
+        : { label: "Market not ready", detail: "Connect to Hero Siege. " + MARKET_CONTEXT_RECOVERY_DETAIL };
     case "collecting":
       if (readiness.reason === "endpoint_mismatch") {
-        return { label: "Market session changed", detail: "Waiting for matching current-session evidence. Keep capture running during normal game activity." };
+        return { label: "Market not ready", detail: "Waiting for matching session information. " + MARKET_CONTEXT_RECOVERY_DETAIL };
       }
       return {
-        label: "Market collecting context",
-        detail: "Waiting for " + readiness.missingFields.map((field) => MARKET_CONTEXT_LABELS[field]).join(", ")
-          + ". Keep capture running during normal character and world activity.",
+        label: "Market not ready",
+        detail: "Waiting for current game information. " + MARKET_CONTEXT_RECOVERY_DETAIL,
       };
   }
 }

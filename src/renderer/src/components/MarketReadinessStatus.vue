@@ -1,26 +1,21 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { MarketReadiness } from "../../../shared/market-readiness";
-import { marketContextChecklist, marketReadinessDisplay } from "../lib/market-readiness-display";
+import { marketReadinessDisplay } from "../lib/market-readiness-display";
 
 const props = defineProps<{ readiness: MarketReadiness }>();
 const display = computed(() => marketReadinessDisplay(props.readiness));
-const checklist = computed(() => marketContextChecklist(props.readiness));
 </script>
 
 <template>
-  <details class="market-readiness" aria-label="Market readiness">
-    <summary>
-      <strong role="status" aria-live="polite">{{ display.label }}</strong>
-      <span>{{ checklist.filter((entry) => entry.received).length }}/6 fields received</span>
-    </summary>
-    <p>{{ display.detail }}</p>
-    <ul aria-label="Market context checklist">
-      <li v-for="entry in checklist" :key="entry.field">
-        {{ entry.label }}: {{ entry.received ? "Received" : "Waiting" }}
-      </li>
-      <li>Current session: {{ readiness.sessionCurrent ? "Confirmed" : "Waiting" }}</li>
-      <li>Account region: {{ readiness.regionQualified ? "Confirmed" : "Not confirmed" }}</li>
-    </ul>
-  </details>
+  <div class="market-readiness" :class="{
+    'is-ready': readiness.phase === 'ready' || readiness.phase === 'region-required',
+    'is-error': readiness.phase === 'region-error',
+  }">
+    <p class="market-readiness-label" role="status" aria-live="polite">
+      <span class="market-readiness-light" aria-hidden="true"></span>
+      <strong>{{ display.label }}</strong>
+    </p>
+    <p v-if="readiness.phase !== 'ready'" class="market-readiness-detail">{{ display.detail }}</p>
+  </div>
 </template>

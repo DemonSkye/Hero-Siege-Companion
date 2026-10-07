@@ -12,22 +12,51 @@ describe("Market readiness UI", () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
       ...companionState().marketReadiness, phase: "collecting", reason: "endpoint_mismatch", canSearch: false, missingFields: [],
     } } });
-    expect(wrapper.get('[role="status"]').text()).toBe("Market session changed");
-    expect(wrapper.text()).toContain("matching current-session evidence");
+    expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.text()).toContain("matching session information");
+    expect(wrapper.text()).toContain("search for an item");
+    expect(wrapper.text()).not.toContain("vote reset");
   });
-  test("shows the real missing categories and distinguishes six captured fields from a confirmed region", async () => {
+  test("shows accessible readiness and recovery without field counts; first-search preparation stays truthful", async () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: createInitialMarketReadiness() } });
-    expect(wrapper.get('[role="status"]').text()).toBe("Market waiting for capture");
-    expect(wrapper.text()).toContain("0/6 fields received");
+    expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.text()).toContain("Start capture");
+    expect(wrapper.text()).toContain("search for an item");
+    expect(wrapper.text()).not.toContain("vote reset");
+    expect(wrapper.text()).toContain("Hero Siege's Market");
+    expect(wrapper.text()).not.toMatch(/\d\/6|fields received|Account identity/);
+    expect(wrapper.get('[role="status"]').attributes("aria-live")).toBe("polite");
+    expect(wrapper.get(".market-readiness-light").attributes("aria-hidden")).toBe("true");
     await wrapper.setProps({ readiness: { ...companionState().marketReadiness, phase: "region-required", reason: "region_unprepared", regionQualified: false } });
-    expect(wrapper.text()).toContain("6/6 fields received");
-    expect(wrapper.get('[role="status"]').text()).toBe("Market session captured");
+    expect(wrapper.text()).not.toMatch(/\d\/6|fields received/);
+    expect(wrapper.get('[role="status"]').text()).toBe("Market ready");
     expect(wrapper.text()).toContain("Your first search will prepare region information");
-    expect(wrapper.text()).toContain("Account region: Not confirmed");
-    expect(wrapper.text()).toContain("No in-game Market search is needed");
+    expect(wrapper.classes()).toContain("is-ready");
     await wrapper.setProps({ readiness: { ...companionState().marketReadiness, phase: "collecting", reason: "missing_fields", canSearch: false, missingFields: ["season", "hardcore"] } });
-    expect(wrapper.text()).toContain("Waiting for Season, Character mode");
-    expect(wrapper.text()).toContain("4/6 fields received");
+    expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.text()).toContain("current game information");
+    expect(wrapper.text()).toContain("search for an item");
+    expect(wrapper.text()).not.toContain("vote reset");
+    expect(wrapper.text()).not.toMatch(/\d\/6|fields received|Character mode/);
+    await wrapper.setProps({ readiness: companionState().marketReadiness });
+    expect(wrapper.get('[role="status"]').text()).toBe("Market ready");
+    expect(wrapper.text()).not.toContain("vote reset");
+  });
+
+  test("preparing and region failure remain distinct from ready and missing context", async () => {
+    const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
+      ...companionState().marketReadiness, phase: "preparing", canSearch: false,
+    } } });
+    expect(wrapper.get('[role="status"]').text()).toBe("Preparing Market");
+    expect(wrapper.text()).toContain("preparing region information");
+    expect(wrapper.text()).not.toContain("vote reset");
+    await wrapper.setProps({ readiness: { ...companionState().marketReadiness, phase: "region-error", reason: "region_unavailable", regionQualified: false } });
+    expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.text()).toContain("region information could not be confirmed");
+    expect(wrapper.text()).toContain("a later search can try preparation again");
+    expect(wrapper.text()).not.toContain("Hero Siege's Market");
+    expect(wrapper.text()).not.toContain("vote reset");
+    expect(wrapper.classes()).toContain("is-error");
   });
 
   test.each(["before", "after"] as const)("explains region preparation failure when readiness arrives %s the lookup reply", async (order) => {
@@ -75,7 +104,9 @@ describe("Market readiness UI", () => {
     await runtime.searchMarket();
     expect(search).toHaveBeenCalledTimes(1);
     await wrapper.setProps({ readiness: readiness.value, canSearch: runtime.canSearch.value, cooldownRemainingSeconds: 0 });
-    expect(wrapper.text()).toContain("Market session expired");
+    expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.text()).toContain("session information expired");
+    expect(wrapper.text()).not.toContain("vote reset");
     expect(wrapper.get('button[type="submit"]').attributes("disabled")).toBeDefined();
     wrapper.unmount();
   });

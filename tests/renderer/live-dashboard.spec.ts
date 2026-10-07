@@ -47,7 +47,8 @@ describe("Run Command live dashboard", () => {
     expect(wrapper.find(".market-readiness").exists()).toBe(false);
     const waiting = { ...companionState().marketReadiness, phase: "collecting" as const, reason: "missing_fields" as const, missingFields: ["season" as const], canSearch: false };
     await wrapper.setProps({ state: companionState({ marketReadiness: waiting }) });
-    expect(action.attributes("title")).toBe("Market collecting context");
+    expect(action.attributes("title")).toBe("Market not ready");
+    expect(wrapper.text()).not.toMatch(/fields received|5\/6|vote reset/);
     await action.trigger("click");
     expect(wrapper.emitted("searchMarket")?.[0]?.[0]).toMatchObject({ label: "Sash of the Magi" });
     await wrapper.setProps({ marketSearchAvailable: false });

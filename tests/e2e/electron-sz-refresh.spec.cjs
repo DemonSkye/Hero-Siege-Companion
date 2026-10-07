@@ -392,10 +392,15 @@ test("portable cache saves with production encryption, requires reopen unlock an
       await page.getByRole("checkbox", { name: "Remember sign-in", exact: true }).check();
       expect((await getRendererState(page)).satanicZoneLoginCache.status).toBe("locked");
       expect(fs.existsSync(file)).toBe(false);
-      await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+      await expect(page.getByText("This Companion passphrase protects saved sign-in data for SZ Refresh. It is not your Hero Siege password.", { exact: true })).toBeVisible();
+      if (process.env.HSC_CACHE_SETUP_SCREENSHOT) {
+        await page.getByRole("button", { name: "Enable automatic save/load", exact: true }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: process.env.HSC_CACHE_SETUP_SCREENSHOT });
+      }
+      await page.getByLabel("Companion passphrase", { exact: true }).fill(PASSPHRASE);
       await page.getByRole("button", { name: "Unlock for this session", exact: true }).click();
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.unlocked).toBe(true);
-      await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
+      await expect(page.getByLabel("Companion passphrase", { exact: true })).toHaveValue("");
       await page.getByRole("button", { name: "Close settings", exact: true }).click();
       await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
       await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);
@@ -410,19 +415,23 @@ test("portable cache saves with production encryption, requires reopen unlock an
       const ciphertext = fs.readFileSync(file);
       page.setDefaultTimeout(5_000);
       await cacheSettings(page);
-      await page.getByLabel("Passphrase", { exact: true }).fill("CANARY wrong passphrase");
+      await page.getByLabel("Companion passphrase", { exact: true }).fill("CANARY wrong passphrase");
       await page.getByRole("button", { name: "Unlock for this session", exact: true }).click();
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("unlock_failed");
-      await expect(page.getByLabel("Passphrase", { exact: true })).toHaveValue("");
+      await expect(page.getByLabel("Companion passphrase", { exact: true })).toHaveValue("");
       expect(fs.readFileSync(file)).toEqual(ciphertext);
-      await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+      await expect(page.getByText("This Companion passphrase protects saved sign-in data for SZ Refresh. It is not your Hero Siege password.", { exact: true })).toBeVisible();
+      if (process.env.HSC_CACHE_UNLOCK_SCREENSHOT) {
+        await page.screenshot({ path: process.env.HSC_CACHE_UNLOCK_SCREENSHOT });
+      }
+      await page.getByLabel("Companion passphrase", { exact: true }).fill(PASSPHRASE);
       await page.getByRole("button", { name: "Unlock for this session", exact: true }).click();
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("loaded");
       await expect(page.getByRole("button", { name: "Lock", exact: true })).toHaveCount(0);
       await page.evaluate(() => window.heroSiegeCompanion.lockSatanicZoneLoginCache());
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("locked");
       expect(fs.readFileSync(file)).toEqual(ciphertext);
-      await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
+      await page.getByLabel("Companion passphrase", { exact: true }).fill(PASSPHRASE);
       await page.getByRole("button", { name: "Unlock for this session", exact: true }).click();
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("loaded");
       await page.getByRole("button", { name: "Close settings", exact: true }).click();
@@ -459,9 +468,9 @@ test("eight-character automatic consent saves and reopens through main/preload w
   try {
     await withCompanionApp({ userDataDir, gameRunning: false }, async ({ electronApp, page }) => {
       await cacheSettings(page);
-      await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+      await expect(page.getByLabel("Companion passphrase", { exact: true })).toHaveCount(0);
       await page.getByRole("checkbox", { name: "Remember sign-in", exact: true }).check();
-      await page.getByLabel("Passphrase", { exact: true }).fill("CANARY08");
+      await page.getByLabel("Companion passphrase", { exact: true }).fill("CANARY08");
       const enable = page.getByRole("button", { name: "Enable automatic save/load", exact: true });
       await expect(enable).toBeDisabled(); expect(fs.existsSync(keyFile)).toBe(false);
       await page.getByRole("checkbox", { name: /I agree to keep the local unlocking key/ }).check();
@@ -469,7 +478,7 @@ test("eight-character automatic consent saves and reopens through main/preload w
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache).toEqual({ enabled: true, automatic: true, unlocked: true, status: "empty" });
       await expect(page.locator('.settings-login-cache-notice [role="status"]')).toHaveText("Waiting for a complete sign-in to save.");
       await expect(page.getByRole("button", { name: "Lock", exact: true })).toHaveCount(0);
-      await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+      await expect(page.getByLabel("Companion passphrase", { exact: true })).toHaveCount(0);
       expect(fs.existsSync(keyFile)).toBe(true); expect(fs.existsSync(file)).toBe(false);
       await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
       await electronApp.evaluate((_electron, packets) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(packets), invented.packets);

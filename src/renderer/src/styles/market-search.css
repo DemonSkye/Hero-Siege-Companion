@@ -1,31 +1,38 @@
 .market-readiness {
   margin-bottom: 10px;
   padding: 9px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
-.market-readiness summary {
-  cursor: pointer;
-}
-
-.market-readiness summary span {
-  margin-left: 10px;
-  opacity: 0.7;
-  font-size: 0.8rem;
-}
-
-.market-readiness p {
-  margin: 10px 0;
-}
-
-.market-readiness ul {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 6px 16px;
+.market-readiness-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  padding-left: 18px;
-  font-size: 0.82rem;
+}
+
+.market-readiness-light {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.market-readiness.is-ready .market-readiness-light {
+  background: #319457;
+}
+
+.market-readiness.is-error .market-readiness-light {
+  background: var(--danger);
+}
+
+.market-readiness-detail {
+  margin: 6px 0 0;
+  color: var(--app-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 .timeline-market-button {
