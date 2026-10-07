@@ -84,6 +84,26 @@ describe("settings ledger", () => {
     expect(wrapper.findAll("option").filter((option) => option.text().includes("Legacy Custom"))).toHaveLength(2);
   });
 
+  test("Features keeps waiting controls quiet and exposes technical guidance only through Details", async () => {
+    const wrapper = mount(SettingsModal, {
+      props: settingsProps({
+        satanicZoneRefreshEnabled: true,
+        satanicZoneLoginCache: { enabled: true, unlocked: true, automatic: true, status: "empty" },
+      }),
+    });
+    await button(wrapper, "Features").trigger("click");
+    expect(wrapper.get('.settings-login-cache-notice [role="status"]').text()).toBe("Waiting for a complete sign-in to save.");
+    expect(wrapper.text()).not.toMatch(/unlocking key|Anyone who can read|Windows-encrypted|matching sign-in|No certificate/);
+    expect(wrapper.findAll("button").some(entry => entry.text() === "Lock")).toBe(false);
+    await button(wrapper, "Details").trigger("click");
+    const explanation = wrapper.get(".settings-action-dialog").text();
+    expect(explanation).toContain("Npcap");
+    expect(explanation).toContain("server may reject");
+    expect(explanation).toContain("Forget saved sign-in");
+    expect(explanation).not.toContain("Anyone who can read");
+    wrapper.unmount();
+  });
+
   test("SZ Refresh toggles directly and explains automatic readiness and missed sign-in", async () => {
     const wrapper = mount(SettingsModal, { props: settingsProps() });
     await button(wrapper, "Features").trigger("click");
@@ -91,14 +111,16 @@ describe("settings ledger", () => {
     await wrapper.get(".settings-switch input").trigger("change");
     expect(wrapper.emitted("update:satanicZoneRefreshEnabled")?.[0]).toEqual([true]);
     expect(wrapper.find(".settings-action-dialog").exists()).toBe(false);
-    expect(wrapper.text()).toContain("Existing saved Off settings are preserved");
+    expect(wrapper.text()).not.toContain("Existing saved Off settings are preserved");
 
-    await button(wrapper, "Learn More").trigger("click");
+    await button(wrapper, "Details").trigger("click");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("No certificate installation");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("gets ready automatically");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("after the game next signs in");
     expect(wrapper.get(".settings-action-dialog").text()).not.toMatch(/Prepare|two.minutes|API|protocol/i);
-    expect(wrapper.get(".settings-action-dialog").text()).toContain("one-time consent");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("requires consent during setup");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("Existing saved Off settings are preserved");
+    expect(wrapper.get(".settings-action-dialog").text()).not.toContain("Anyone who can read");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("local unlocking key");
     expect(wrapper.get(".settings-action-dialog").text()).not.toContain("enter the passphrase each Companion session");
     expect(wrapper.get(".settings-action-dialog").text()).not.toMatch(/Windows encryption|build matching/);
@@ -114,13 +136,12 @@ describe("settings ledger", () => {
     });
     await button(wrapper, "Features").trigger("click");
     const notice = wrapper.get(".settings-notice").text();
-    expect(notice).toContain("With a loaded saved sign-in and known server, you can try Refresh after restarting Companion or stopping capture");
-    expect(notice).toContain("The server may reject the saved sign-in");
-    expect(notice).toContain("Capture interruptions pause Refresh using live sign-in data");
+    expect(notice).not.toContain("With a loaded saved sign-in");
+    expect(notice).not.toContain("Capture interruptions");
     expect(notice).not.toContain("without a validated saved sign-in");
     expect(notice).not.toContain("Capture interruptions pause Refresh until");
 
-    await button(wrapper, "Learn More").trigger("click");
+    await button(wrapper, "Details").trigger("click");
     const explanation = wrapper.get(".settings-action-dialog").text();
     expect(explanation).toContain("With a loaded saved sign-in and known server, you can try Refresh after restarting Companion or stopping capture");
     expect(explanation).toContain("The server may reject the saved sign-in");
@@ -138,8 +159,8 @@ describe("settings ledger", () => {
       }),
     });
     await button(wrapper, "Features").trigger("click");
-    expect(wrapper.get(".settings-notice").text()).toContain("Older saved sign-ins wait for the game's server connection to be observed; a new sign-in is not required");
-    await button(wrapper, "Learn More").trigger("click");
+    expect(wrapper.get(".settings-notice").text()).not.toContain("Older saved sign-ins");
+    await button(wrapper, "Details").trigger("click");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("Older saved sign-ins without a known server wait for the game's server connection to be observed; a new sign-in is not required");
     wrapper.unmount();
   });
@@ -207,7 +228,7 @@ describe("settings ledger", () => {
 
     expect(document.activeElement).toBe(wrapper.get('[role="dialog"]').element);
     await button(wrapper, "Features").trigger("click");
-    await button(wrapper, "Learn More").trigger("click");
+    await button(wrapper, "Details").trigger("click");
     await nextTick();
     expect((document.activeElement as HTMLElement).getAttribute("aria-label")).toBe("Close dialog");
 

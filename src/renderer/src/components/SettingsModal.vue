@@ -359,13 +359,13 @@ function saveStatusLabel(): string {
 
       <SettingsActionDialog
         v-if="nestedDialog === 'sz-learn-more'"
-        title="Using SZ Refresh"
+        title="SZ Refresh details"
         dismiss-only
         @close="closeNestedDialog"
       >
         <p>Capture collects new sign-in data while you play. Click Refresh when you want to check the current Satanic Zone.</p>
         <ul>
-          <li>No certificate installation, administrator service, proxy, or special game launch is required.</li>
+          <li>Npcap is required to collect a new sign-in. No certificate installation, administrator service, proxy, or special game launch is required.</li>
           <li>Refresh requests remain limited to once every 30 seconds.</li>
           <li>Open Companion before signing into the game, or launch the game here. Refresh gets ready automatically while capture is enabled.</li>
           <li>If Companion missed this sign-in, keep playing. Without a saved sign-in, Refresh will be available after the game next signs in; changing characters may not do that.</li>
@@ -373,10 +373,12 @@ function saveStatusLabel(): string {
           <li>Capture interruptions pause Refresh using live sign-in data until fresh matching sign-in data is observed. With Remember sign-in off, new sign-in data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
           <li>With a loaded saved sign-in and known server, you can try Refresh after restarting Companion or stopping capture. The server may reject the saved sign-in.</li>
           <li>Older saved sign-ins without a known server wait for the game's server connection to be observed; a new sign-in is not required.</li>
-          <li>Remember sign-in is optional. Automatic save/load requires one-time consent to keep a local unlocking key beside the encrypted file. Anyone who can read both can use the saved sign-in.</li>
-          <li>A lost passphrase cannot be recovered. Lock clears memory for this session; automatic reopening stays enabled for the next launch. Disable removes the local unlocking key and keeps the encrypted file. Forget saved sign-in deletes both files and disables the cache. Older Windows-encrypted files stay untouched.</li>
+          <li>Remember sign-in is optional and off by default. Automatic save/load requires consent during setup; existing manual settings stay manual until you choose it. Use the existing passphrase to enable automatic loading without changing the encrypted file.</li>
+          <li>A lost passphrase cannot be recovered. Turning Remember sign-in or SZ Refresh off removes the local unlocking key and keeps the encrypted file. Forget saved sign-in deletes both files and turns Remember sign-in off. Older Windows-encrypted files stay untouched.</li>
+          <li>If saving or loading fails, check access to the saved file and try again. Forget saved sign-in lets you start again if a file is damaged or its passphrase is lost. Existing saved Off settings are preserved.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
+        <p v-if="satanicZoneLoginCache?.accountLabel">{{ satanicZoneLoginCache.accountLabel }}.</p>
       </SettingsActionDialog>
 
       <SettingsActionDialog

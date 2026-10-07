@@ -389,7 +389,7 @@ test("portable cache saves with production encryption, requires reopen unlock an
       page.setDefaultTimeout(5_000);
       expect((await getRendererState(page)).satanicZoneLoginCache).toEqual({ enabled: false, unlocked: false, status: "disabled" });
       await cacheSettings(page);
-      await page.getByRole("checkbox", { name: "Remember sign-in (experimental)", exact: true }).check();
+      await page.getByRole("checkbox", { name: "Remember sign-in", exact: true }).check();
       expect((await getRendererState(page)).satanicZoneLoginCache.status).toBe("locked");
       expect(fs.existsSync(file)).toBe(false);
       await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
@@ -418,7 +418,8 @@ test("portable cache saves with production encryption, requires reopen unlock an
       await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
       await page.getByRole("button", { name: "Unlock for this session", exact: true }).click();
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("loaded");
-      await page.getByRole("button", { name: "Lock", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Lock", exact: true })).toHaveCount(0);
+      await page.evaluate(() => window.heroSiegeCompanion.lockSatanicZoneLoginCache());
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("locked");
       expect(fs.readFileSync(file)).toEqual(ciphertext);
       await page.getByLabel("Passphrase", { exact: true }).fill(PASSPHRASE);
@@ -442,7 +443,7 @@ test("portable cache saves with production encryption, requires reopen unlock an
       expect(fs.readFileSync(path.join(userDataDir, "logs", "app-debug.log"), "utf8")).not.toMatch(/CANARY|1234567890|checksum|account_uid/);
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Features", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name: "Remember sign-in (experimental)", exact: true })).toBeChecked();
+      await expect(page.getByRole("checkbox", { name: "Remember sign-in", exact: true })).toBeChecked();
       await page.getByRole("button", { name: "Forget saved sign-in", exact: true }).click();
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache.status).toBe("disabled");
       expect(fs.existsSync(file)).toBe(false); expect((await getRendererState(page)).satanicZone.refreshAvailable).toBe(false);
@@ -458,12 +459,16 @@ test("eight-character automatic consent saves and reopens through main/preload w
   try {
     await withCompanionApp({ userDataDir, gameRunning: false }, async ({ electronApp, page }) => {
       await cacheSettings(page);
+      await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
+      await page.getByRole("checkbox", { name: "Remember sign-in", exact: true }).check();
       await page.getByLabel("Passphrase", { exact: true }).fill("CANARY08");
       const enable = page.getByRole("button", { name: "Enable automatic save/load", exact: true });
       await expect(enable).toBeDisabled(); expect(fs.existsSync(keyFile)).toBe(false);
-      await page.getByRole("checkbox", { name: /I understand and agree/ }).check();
+      await page.getByRole("checkbox", { name: /I agree to keep the local unlocking key/ }).check();
       await enable.click();
       await expect.poll(async () => (await getRendererState(page)).satanicZoneLoginCache).toEqual({ enabled: true, automatic: true, unlocked: true, status: "empty" });
+      await expect(page.locator('.settings-login-cache-notice [role="status"]')).toHaveText("Waiting for a complete sign-in to save.");
+      await expect(page.getByRole("button", { name: "Lock", exact: true })).toHaveCount(0);
       await expect(page.getByLabel("Passphrase", { exact: true })).toHaveCount(0);
       expect(fs.existsSync(keyFile)).toBe(true); expect(fs.existsSync(file)).toBe(false);
       await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
