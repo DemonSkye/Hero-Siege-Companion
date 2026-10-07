@@ -108,6 +108,30 @@ async function restoredCacheFixture() {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
+  test("deferred cached ownership cannot expose Refresh after the game moves ports", async () => {
+    const f = await restoredCacheFixture();
+    const controller = new SatanicZoneController({ provider: f.provider, now: Date.now, onStateChange: () => {} });
+    f.provider.suspend(); await f.provider.preparePassively();
+    const oldSnapshot = { ...f.network, connections: [...f.network.connections] };
+    let release!: (network: typeof f.network) => void;
+    f.cacheNetworkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    f.provider.observeSessionPayload(f.payload);
+    f.network.connections = [{ ...f.network.connections[0], localPort: 5001 }];
+    f.provider.observeConnections(f.network.connections);
+    release(oldSnapshot); await flush();
+    controller.setPreparation(f.provider.preparation);
+    expect(f.cache.restoreInput()).toBeNull();
+    expect(f.provider.preparation.phase).not.toBe("ready");
+    expect(await f.provider.getAvailability()).toMatchObject({ available: false });
+    expect(satanicZoneRefreshControl(controller.getState(), Date.now(), false).disabled).toBe(true);
+    expect(f.sockets).toHaveLength(0);
+    f.provider.observeSessionPayload({ ...f.payload, localPort: 5001 }); await flush();
+    controller.setPreparation(f.provider.preparation);
+    expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
+    expect(satanicZoneRefreshControl(controller.getState(), Date.now(), false).disabled).toBe(false);
+    expect(f.sockets).toHaveLength(0); // Automatic reacquisition remains passive.
+    controller.dispose(); f.provider.dispose();
+  });
   test("generic owned receipt is reported separately while a specific passive zone stays displayed", async () => {
     const f = fixture(); const changed = vi.fn();
     const controller = new SatanicZoneController({ provider: f.provider, now: Date.now, onStateChange: changed });

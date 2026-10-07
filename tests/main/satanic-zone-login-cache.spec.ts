@@ -8,6 +8,7 @@ import { SatanicZoneLoginCache } from "../../src/main/satanic-zone-login-cache";
 import { SatanicZoneDiagnosticBufferBudget } from "../../src/main/satanic-zone-diagnostic-budget";
 import { inventedConnect, inventedPostLogin, inventedProbeScope as scope, inventedProbeIdentity as identity } from "../fixtures/satanic-zone-initialized";
 import { loadSatanicZoneLoginCacheEnabled, loadSatanicZoneLoginCacheAutomatic, saveSatanicZoneLoginCacheEnabled } from "../../src/main/persistence";
+import type { CaptureConnection } from "../../src/shared/app-state";
 
 // Synthetic material only. Production encryption and filesystem are exercised.
 const passphrase = "SYNTHETIC portable cache passphrase";
@@ -79,6 +80,86 @@ describe("portable login cache with production encryption and synthetic secrets"
     expect(await f.cache.unlock(passphrase)).toBe(true);
     expect(f.cache.snapshot().status).toBe("validated");
     expect(f.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+  });
+  test("loaded cache rejects a same-PID port move before the first ownership hint", async () => {
+    const f = await savedFixture();
+    let release!: (network: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const observation = f.cache.observe(f.payload);
+    f.cache.observeConnections([{ ...f.network.connections[0], localPort: 5001 }]);
+    release(f.network); await observation;
+    expect(f.cache.restoreInput()).toBeNull();
+    expect(f.cache.snapshot().status).not.toBe("validated");
+  });
+  const invalidPendingTopologies: { name: string; flows: (flow: CaptureConnection) => CaptureConnection[] }[] = [
+    { name: "local port move", flows: flow => [{ ...flow, localPort: 5001 }] },
+    { name: "local address move", flows: flow => [{ ...flow, localAddress: "192.0.2.21" }] },
+    { name: "remote address move", flows: flow => [{ ...flow, remoteAddress: "198.51.100.22" }] },
+    { name: "remote port move", flows: flow => [{ ...flow, remotePort: flow.remotePort === 6668 ? 6669 : 6668 }] },
+    { name: "owner replacement", flows: flow => [{ ...flow, owningProcess: 43 }] },
+    { name: "missing tuple", flows: () => [] },
+    { name: "ambiguous tuple", flows: flow => [flow, { ...flow, owningProcess: 43 }] },
+    { name: "duplicate tuple", flows: flow => [flow, { ...flow }] },
+    { name: "unattributed tuple", flows: flow => [{ ...flow, owningProcess: 0 }] },
+    { name: "connecting tuple", flows: flow => [{ ...flow, state: "synsent" }] },
+    { name: "unknown tuple state", flows: flow => [{ ...flow, state: "unknown" }] },
+    { name: "closed tuple", flows: flow => [{ ...flow, state: "closed" }] },
+    { name: "contradictory tuple states", flows: flow => [flow, { ...flow, state: "closed" }] }
+  ];
+  const pendingStages = ["loaded", "loaded with hint", "Locked", "Locked with hint", "attributed while Locked"] as const;
+  test.each(pendingStages.flatMap(stage => invalidPendingTopologies.map(topology => ({ stage, ...topology }))))(
+    "$stage: $name prevents a stale ownership result from restoring Ready", async ({ stage, flows }) => {
+      const original = await savedFixture();
+      let f = original;
+      if (!stage.startsWith("loaded")) { original.cache.dispose(); f = fixture(); f.cache.configure(true); }
+      if (stage === "attributed while Locked") await f.cache.observe(f.payload);
+      let release!: (network: typeof f.network) => void;
+      f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      const observation = stage === "attributed while Locked" ? f.cache.unlock(passphrase) : f.cache.observe(f.payload);
+      if (stage === "attributed while Locked") await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      if (stage.includes("with hint")) f.cache.observeConnections(f.network.connections);
+      f.cache.observeConnections(flows(f.network.connections[0]));
+      // A later good-looking snapshot cannot recover identity discarded on a gap.
+      f.cache.observeConnections(f.network.connections);
+      release(f.network); await observation;
+      if (!stage.startsWith("loaded") && stage !== "attributed while Locked") await f.cache.unlock(passphrase);
+      expect(f.cache.restoreInput()).toBeNull();
+      expect(f.cache.snapshot().status).not.toBe("validated");
+      expect(fs.existsSync(f.file)).toBe(true); // Suspension preserves the recoverable encrypted cache.
+      await f.cache.observe(f.payload);
+      expect(f.cache.restoreInput()?.nativePort).toBe(5000); // Fresh evidence can reacquire normally.
+    });
+  test.each(pendingStages)("%s: unchanged established topology permits passive binding without sending", async stage => {
+    const original = await savedFixture();
+    let f = original;
+    if (!stage.startsWith("loaded")) { original.cache.dispose(); f = fixture(); f.cache.configure(true); }
+    if (stage === "attributed while Locked") await f.cache.observe(f.payload);
+    let release!: (network: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const observation = stage === "attributed while Locked" ? f.cache.unlock(passphrase) : f.cache.observe(f.payload);
+    if (stage === "attributed while Locked") await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    if (stage.includes("with hint")) f.cache.observeConnections(f.network.connections);
+    f.cache.observeConnections([{ ...f.network.connections[0], state: "5" }, { ...f.network.connections[0], localPort: 5001 }]);
+    expect(f.cache.restoreInput()).toBeNull();
+    release(f.network); await observation;
+    if (!stage.startsWith("loaded") && stage !== "attributed while Locked") await f.cache.unlock(passphrase);
+    expect(f.cache.restoreInput()?.nativePort).toBe(5000);
+    expect(f.cache.snapshot().status).toBe("validated");
+  });
+  test("fresh identity on the replacement tuple supersedes an older deferred ownership query", async () => {
+    const f = await savedFixture(); let release!: (network: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const oldSnapshot = { ...f.network, connections: [...f.network.connections] };
+    const stale = f.cache.observe(f.payload);
+    f.network.connections = [{ ...f.network.connections[0], localPort: 5001 }];
+    f.cache.observeConnections(f.network.connections);
+    const fresh = f.cache.observe({ ...f.payload, localPort: 5001 });
+    f.cache.observeConnections(f.network.connections);
+    expect(f.cache.restoreInput()).toBeNull();
+    release(oldSnapshot); await Promise.all([stale, fresh]);
+    expect(f.cache.restoreInput()?.nativePort).toBe(5001);
+    expect(f.cache.snapshot().status).toBe("validated");
+    expect(f.networkState).toHaveBeenCalledTimes(2);
   });
   test.each(["replacement", "changed pending owner", "closed", "FIN", "gap", "generation"])(
     "%s before deferred ownership resolves still prevents binding without new evidence", async kind => {

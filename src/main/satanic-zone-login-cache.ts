@@ -21,7 +21,7 @@ interface IdentityEvidence {
   /** Topology hint while the ownership query is pending; never readiness proof. */
   pendingPid?: number;
 }
-interface AccountEvidence { account: string; scope: SatanicZoneSessionScope }
+interface AccountEvidence { account: string; scope: SatanicZoneSessionScope; pendingPid?: number }
 const IDENTITY_TTL_MS = 10 * 60_000;
 /** Restored credentials require fresh account/mode evidence, not old socket identity. */
 export class SatanicZoneLoginCache {
@@ -189,17 +189,24 @@ export class SatanicZoneLoginCache {
     try {
       const network = await this.options.networkState();
       if (epoch !== this.epoch || revision !== this.evidenceRevision || this.disposed || !this.enabled || bodies !== this.bodies) return;
+      const rejectEvidence = () => {
+        if (this.validated && (!network.gameProcessIds.includes(this.validated.pid)
+          || satanicZoneSessionScopeStatus(this.validated, network.connections) === "changed")) this.suspend();
+        else this.clearEvidence();
+      };
       const owned = (scope: SatanicZoneSessionScope) => network.connections.filter(flow => network.gameProcessIds.includes(flow.owningProcess)
         && flow.localAddress === scope.localAddress && flow.localPort === scope.localPort
         && flow.remoteAddress === scope.remoteAddress && flow.remotePort === scope.remotePort
         && (scope.pid === 0 || scope.pid === flow.owningProcess) && ["established", "5"].includes(String(flow.state).toLowerCase()));
       const flows = owned(evidence.scope);
       if (flows.length !== 1 || (evidence.pendingPid !== undefined && flows[0].owningProcess !== evidence.pendingPid)) {
-        this.clearEvidence(); this.options.onDiagnostic?.("identity_binding", "flow_unavailable"); return;
+        rejectEvidence();
+        this.options.onDiagnostic?.("identity_binding", "flow_unavailable"); return;
       }
       const flow = flows[0]; evidence.scope.pid = flow.owningProcess;
       if (accountEvidence && (owned(accountEvidence.scope).length !== 1
-        || owned(accountEvidence.scope)[0].owningProcess !== flow.owningProcess)) { this.clearEvidence(); return; }
+        || owned(accountEvidence.scope)[0].owningProcess !== flow.owningProcess
+        || (accountEvidence.pendingPid !== undefined && owned(accountEvidence.scope)[0].owningProcess !== accountEvidence.pendingPid))) { rejectEvidence(); return; }
       if (accountEvidence) accountEvidence.scope.pid = owned(accountEvidence.scope)[0].owningProcess;
       if (!bodies || !this.options.store.isUnlocked()) return;
       const identity = connectProbeIdentity(bodies.connectBody)!;
@@ -244,23 +251,31 @@ export class SatanicZoneLoginCache {
     if (this.processSignature !== signature) { this.processSignature = signature; this.suspend(); }
   }
   observeConnections(flows: readonly CaptureConnection[]): void {
-    const scope = this.validated ?? this.evidence?.scope;
-    if (!scope) return;
-    if (scope.pid === 0 && this.evidence) {
+    if (this.validated && satanicZoneSessionScopeStatus(this.validated, flows) === "changed") { this.suspend(); return; }
+    for (const evidence of [this.evidence, this.accountEvidence]) {
+      if (!evidence) continue;
+      const scope = evidence.scope, current = this.validated;
+      if (current && (scope.pid === 0 || scope.pid === current.pid) && scope.localAddress === current.localAddress
+        && scope.localPort === current.localPort && scope.remoteAddress === current.remoteAddress
+        && scope.remotePort === current.remotePort) {
+        // Repeated evidence on the already validated tuple does not withdraw
+        // existing readiness for an inconclusive missing snapshot.
+        evidence.pendingPid = current.pid; continue;
+      }
       const matching = flows.filter(flow => flow.localAddress === scope.localAddress && flow.localPort === scope.localPort
         && flow.remoteAddress === scope.remoteAddress && flow.remotePort === scope.remotePort);
-      if (matching.length > 1) { this.suspend(); return; }
-      // An unknown PID cannot differ from the first observed owner. Keep that
-      // hint separate until the query confirms game ownership; later contrary
-      // topology or a stale query result still rejects the evidence.
-      if (this.evidence.pendingPid === undefined && matching[0]?.owningProcess > 0) this.evidence.pendingPid = matching[0].owningProcess;
-      const pid = this.evidence.pendingPid;
-      if (pid !== undefined && satanicZoneSessionScopeStatus({ ...scope, pid }, flows) === "changed") this.suspend();
-    } else if (satanicZoneSessionScopeStatus(scope, flows) === "changed") this.suspend();
+      // Unconfirmed evidence needs its exact established tuple throughout
+      // attribution. A delayed ownership snapshot cannot undo a topology gap.
+      const flow = matching[0], pid = scope.pid || evidence.pendingPid;
+      if (matching.length !== 1 || flow.owningProcess <= 0 || !["established", "5"].includes(String(flow.state).toLowerCase())
+        || (pid !== undefined && pid !== flow.owningProcess)) { this.suspend(); return; }
+      // This is only a hint; the read-only query still confirms game ownership.
+      evidence.pendingPid = flow.owningProcess;
+    }
   }
   observeLifecycle(packet: CapturedTcpLifecycle): void {
-    const scope = this.validated ?? this.evidence?.scope;
-    if (scope && satanicZoneSessionTerminated(scope, packet)) this.suspend();
+    if ([this.validated, this.evidence?.scope, this.accountEvidence?.scope]
+      .some(scope => scope && satanicZoneSessionTerminated(scope, packet))) this.suspend();
   }
   private clearEvidence(): void { this.evidenceRevision++; this.evidence = null; this.accountEvidence = null; this.releaseEvidence?.(); this.releaseEvidence = null; }
   private publish(): void { if (!this.disposed) this.options.onChange(this.snapshot()); }
