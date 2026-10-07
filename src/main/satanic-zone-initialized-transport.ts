@@ -11,8 +11,8 @@ export interface InitializedProbeInput {
   connectBody: Buffer;
   postLoginBody: Buffer;
   identity: InitializedProbeIdentity;
-  scope: DiagnosticCaptureScope;
-  nativePort: number;
+  scope: Pick<DiagnosticCaptureScope, "remoteAddress" | "remotePort"> & Partial<Pick<DiagnosticCaptureScope, "localAddress">>;
+  nativePort?: number;
 }
 export interface InitializedProbeProgress {
   connectAcknowledgment: SatanicZoneDiagnosticState["connectAcknowledgment"];
@@ -135,12 +135,12 @@ export function runInitializedSatanicZoneProbe(input: InitializedProbeInput, sig
       socket.connect(input.scope.remotePort, input.scope.remoteAddress, () => {
         if (done) return;
         // Ensure this connection is separate from the selected game-owned flow.
-        if (socket!.localAddress !== input.scope.localAddress || socket!.remoteAddress !== input.scope.remoteAddress
+        if ((input.scope.localAddress && socket!.localAddress !== input.scope.localAddress) || socket!.remoteAddress !== input.scope.remoteAddress
           || socket!.remotePort !== input.scope.remotePort || !socket!.localPort || socket!.localPort === input.nativePort) {
           finish("failed"); return;
         }
         try {
-          ownedFlow = { ...input.scope, localPort: socket!.localPort };
+          ownedFlow = { ...input.scope, localAddress: socket!.localAddress!, localPort: socket!.localPort };
           stage = "connect"; publish();
           write(buildDirectApiFrame(input.connectBody, counter++, budget), () => {
             // The verified native sender permits pings between initialization

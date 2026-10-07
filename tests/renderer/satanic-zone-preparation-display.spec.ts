@@ -49,10 +49,10 @@ describe("preparation guidance in the compact overlay", () => {
     expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: null, reason: "cache_unlock_failed" }, 1_000))
       .toBe("Ready to refresh.");
   });
-  test("cached Ready names fresh account and mode matching without claiming executable validation", () => {
+  test("cached Ready names loaded inputs without requiring game identity or claiming executable validation", () => {
     const detail = satanicZonePreparationDetail({ phase: "ready", origin: "cached", expiresAt: null }, 1_000);
-    expect(detail).toContain("current account and mode");
-    expect(detail).toContain("Click Refresh");
+    expect(detail).toContain("Saved sign-in loaded");
+    expect(detail).toContain("Ready to refresh");
     expect(detail).not.toMatch(/build|Windows|Prepare|countdown/);
   });
 });

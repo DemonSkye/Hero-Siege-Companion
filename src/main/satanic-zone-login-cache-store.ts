@@ -1,13 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isIP } from "node:net";
 import { createCipheriv, createDecipheriv, randomBytes, scrypt } from "node:crypto";
 import { connectProbeIdentity, coherentProbePostLogin } from "./satanic-zone-initialized-protocol";
 import type { SatanicZoneDiagnosticBufferBudget } from "./satanic-zone-diagnostic-budget";
 
-export interface LoginCacheBodies { connectBody: Buffer; postLoginBody: Buffer }
+export interface LoginCacheDestination { address: string; port: number }
+export interface LoginCacheBodies { connectBody: Buffer; postLoginBody: Buffer; destination?: LoginCacheDestination }
 // Existing portable ciphertext format/KDF remain compatible. Automatic reopening
 // separately retains a local unlocking key only after explicit consent.
-const MAGIC = Buffer.from("HSCSZ001"), HEADER = 52, MAX_BODY = 16_384, MAX_FILE = HEADER + 8 + 2 * MAX_BODY;
+const MAGIC = Buffer.from("HSCSZ001"), DESTINATION_MAGIC = Buffer.from("HSCSZ002"), HEADER = 52, MAX_BODY = 16_384,
+  MAX_DESTINATION = 128, MAX_FILE = HEADER + 8 + 2 * MAX_BODY + MAX_DESTINATION;
 const KEY_MAGIC = Buffer.from("HSCSZK01"), KEY_SIZE = 56;
 /** Passphrase-encrypted portable file, with an optional explicitly retained key. */
 export class SatanicZoneLoginCacheStore {
@@ -17,12 +20,15 @@ export class SatanicZoneLoginCacheStore {
   private epoch = 0;
   private unlocking = false;
   constructor(private readonly file: string) {}
+  fileMetadata(): { ciphertextPresent: boolean; keyPresent: boolean } {
+    return { ciphertextPresent: fs.existsSync(this.file), keyPresent: fs.existsSync(`${this.file}.key`) };
+  }
   isUnlocked(): boolean { return this.key !== null; }
   lock(): void {
     this.epoch++; this.key?.fill(0); this.salt?.fill(0); this.releaseKey?.();
     this.key = null; this.salt = null; this.releaseKey = null;
   }
-  /** Wrong password/corruption never destroys a file. Fresh identity is a separate gate. */
+  /** Wrong password/corruption never destroys a file. Unlocking sends no request. */
   async unlock(passphrase: string, budget: SatanicZoneDiagnosticBufferBudget): Promise<LoginCacheBodies | null> {
     if (this.unlocking) throw new Error("cancelled");
     this.unlocking = true;
@@ -33,7 +39,7 @@ export class SatanicZoneLoginCacheStore {
     try {
       if (typeof passphrase !== "string" || Buffer.byteLength(passphrase, "utf8") > 1024 || Array.from(passphrase).length < 8) throw new Error("unlock_failed");
       packed = this.read(budget);
-      if (packed && (packed.length < HEADER + 8 || !packed.subarray(0, 8).equals(MAGIC))) throw new Error("unlock_failed");
+      if (packed && (packed.length < HEADER + 8 || !knownMagic(packed))) throw new Error("unlock_failed");
       const salt = packed ? Buffer.from(packed.subarray(8, 24)) : randomBytes(16);
       password = budget.allocate(Buffer.byteLength(passphrase, "utf8")); password.write(passphrase, "utf8");
       derived = await new Promise<Buffer>((resolve, reject) => scrypt(password!, salt, 32,
@@ -63,7 +69,7 @@ export class SatanicZoneLoginCacheStore {
           || !retained.subarray(0, 8).equals(KEY_MAGIC)) throw new Error("unlock_failed");
       } finally { fs.closeSync(fd); }
       packed = this.read(budget);
-      if (packed && (!packed.subarray(0, 8).equals(MAGIC) || !packed.subarray(8, 24).equals(retained.subarray(8, 24)))) throw new Error("unlock_failed");
+      if (packed && (!knownMagic(packed) || !packed.subarray(8, 24).equals(retained.subarray(8, 24)))) throw new Error("unlock_failed");
       this.releaseKey = budget.reserve(32); this.key = Buffer.from(retained.subarray(24)); this.salt = Buffer.from(retained.subarray(8, 24));
       return packed ? this.decrypt(packed, this.key, budget) : null;
     } catch (error) {
@@ -103,15 +109,22 @@ export class SatanicZoneLoginCacheStore {
     let update: Buffer | undefined, tail: Buffer | undefined, plain: Buffer | undefined, connectBody: Buffer | undefined;
     try {
       const cipher = createDecipheriv("aes-256-gcm", key, packed.subarray(24, 36));
-      cipher.setAAD(MAGIC); cipher.setAuthTag(packed.subarray(36, HEADER));
+      cipher.setAAD(packed.subarray(0, 8)); cipher.setAuthTag(packed.subarray(36, HEADER));
       update = cipher.update(packed.subarray(HEADER)); tail = cipher.final(); plain = Buffer.concat([update, tail]);
       const connectSize = plain.readUInt32LE(0), postSize = plain.readUInt32LE(4);
-      if (connectSize < 2 || postSize < 2 || connectSize > MAX_BODY || postSize > MAX_BODY || plain.length !== 8 + connectSize + postSize) throw new Error();
-      const connect = plain.subarray(8, 8 + connectSize), post = plain.subarray(8 + connectSize);
+      const bodyEnd = 8 + connectSize + postSize;
+      if (connectSize < 2 || postSize < 2 || connectSize > MAX_BODY || postSize > MAX_BODY || plain.length < bodyEnd) throw new Error();
+      let destination: LoginCacheDestination | undefined;
+      if (packed.subarray(0, 8).equals(DESTINATION_MAGIC)) {
+        if (plain.length === bodyEnd || plain.length - bodyEnd > MAX_DESTINATION) throw new Error();
+        destination = JSON.parse(plain.subarray(bodyEnd).toString("utf8")) as LoginCacheDestination;
+        if (!validLoginCacheDestination(destination)) throw new Error();
+      } else if (plain.length !== bodyEnd) throw new Error();
+      const connect = plain.subarray(8, 8 + connectSize), post = plain.subarray(8 + connectSize, bodyEnd);
       const identity = connectProbeIdentity(connect);
       if (!identity || !coherentProbePostLogin(post, identity)) throw new Error();
       connectBody = budget.copy(connect);
-      return { connectBody, postLoginBody: budget.copy(post) };
+      return { connectBody, postLoginBody: budget.copy(post), ...(destination ? { destination } : {}) };
     } catch { if (connectBody) budget.release(connectBody); throw new Error("unlock_failed"); }
     finally { update?.fill(0); tail?.fill(0); plain?.fill(0); release(); }
   }
@@ -124,13 +137,17 @@ export class SatanicZoneLoginCacheStore {
       const identity = connectProbeIdentity(bodies.connectBody);
       if (!identity || !coherentProbePostLogin(bodies.postLoginBody, identity)
         || bodies.connectBody.length > MAX_BODY || bodies.postLoginBody.length > MAX_BODY) throw new Error();
-      plain = budget.allocate(8 + bodies.connectBody.length + bodies.postLoginBody.length);
+      if (bodies.destination && !validLoginCacheDestination(bodies.destination)) throw new Error();
+      const destination = bodies.destination ? JSON.stringify(bodies.destination) : "";
+      const magic = bodies.destination ? DESTINATION_MAGIC : MAGIC;
+      plain = budget.allocate(8 + bodies.connectBody.length + bodies.postLoginBody.length + Buffer.byteLength(destination));
       plain.writeUInt32LE(bodies.connectBody.length, 0); plain.writeUInt32LE(bodies.postLoginBody.length, 4);
       bodies.connectBody.copy(plain, 8); bodies.postLoginBody.copy(plain, 8 + bodies.connectBody.length);
+      if (destination) plain.write(destination, 8 + bodies.connectBody.length + bodies.postLoginBody.length);
       release = budget.reserve(2 * plain.length + HEADER);
-      const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", key, iv); cipher.setAAD(MAGIC);
+      const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", key, iv); cipher.setAAD(magic);
       encrypted = cipher.update(plain); tail = cipher.final();
-      packed = Buffer.concat([MAGIC, this.salt, iv, cipher.getAuthTag(), encrypted, tail]);
+      packed = Buffer.concat([magic, this.salt, iv, cipher.getAuthTag(), encrypted, tail]);
       if (epoch !== this.epoch || key !== this.key || packed.length > MAX_FILE) throw new Error();
       this.replace(this.file, packed, () => epoch === this.epoch && key === this.key);
     } catch { throw new Error("storage_error"); }
@@ -161,4 +178,11 @@ export class SatanicZoneLoginCacheStore {
       throw new Error("storage_error");
     }
   }
+}
+function knownMagic(bytes: Buffer): boolean { return bytes.subarray(0, 8).equals(MAGIC) || bytes.subarray(0, 8).equals(DESTINATION_MAGIC); }
+export function validLoginCacheDestination(value: unknown): value is LoginCacheDestination {
+  if (!value || typeof value !== "object") return false;
+  const destination = value as LoginCacheDestination;
+  return typeof destination.address === "string" && isIP(destination.address) === 4 && [6668, 6669].includes(destination.port)
+    && Object.keys(value).length === 2;
 }

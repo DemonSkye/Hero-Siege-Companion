@@ -31,7 +31,6 @@ export interface InitializedProbeDependencies extends Pick<SatanicZoneDiagnostic
   onInvalidation?: () => void;
   onWatchDiagnostic?: SatanicZoneWatchDiagnosticListener;
   onPrepared?: (input: InitializedProbeInput, pid: number) => void;
-  validateCached?: (scope: import("./satanic-zone-session-scope").SatanicZoneSessionScope) => Promise<boolean>;
 }
 interface Session {
   budget: SatanicZoneDiagnosticBufferBudget;
@@ -57,7 +56,6 @@ interface Session {
   suspended: boolean;
   ownedFlows: Array<DiagnosticCaptureScope & { localPort: number }>;
   pendingSyn: ParsedPayload[] | null;
-  cached: boolean;
 }
 const STREAM_FAILURES = new Set<string>(["stream-gap", "invalid-frame", "ambiguous-flow", "byte-limit", ...SZ_DIAGNOSTIC_NATIVE_FAILURES]);
 
@@ -67,42 +65,59 @@ export class SatanicZoneInitializedProbeController {
   private session: Session | null = null;
   private disposed = false;
   private nextAllowedAt = 0;
+  private awaitingOwnedFlow = false;
   private readonly now: () => number;
   constructor(private readonly dependencies: InitializedProbeDependencies) { this.now = dependencies.now ?? Date.now; }
   snapshot(): SatanicZoneDiagnosticState { return copySatanicZoneDiagnosticState(this.state); }
   get active(): boolean { return isSatanicZoneDiagnosticActive(this.state); }
   get continuitySuspended(): boolean { return this.session?.suspended ?? false; }
-  get cachedContext(): boolean { return this.session?.cached ?? false; }
   get continuityIncomplete(): boolean {
     const session = this.session;
-    return Boolean(session?.prepared && !session.cached && !session.suspended && session.stream && !session.stream.outboundComplete);
+    return Boolean(session?.prepared && !session.suspended && session.stream && !session.stream.outboundComplete);
   }
   get observesContinuity(): boolean {
     const session = this.session;
     // A live attributed observer still covers a gameplay-only gap while a
     // frame is partial. Dispatch remains blocked until outbound evidence completes.
-    return Boolean(this.dependencies.autoWatch && session?.prepared && !session.cached && !session.suspended && session.handle
+    return Boolean(this.dependencies.autoWatch && session?.prepared && !session.suspended && session.handle
       && session.stream?.observesBothDirections);
   }
   rememberCurrent(): void {
     const session = this.session;
-    if (session?.prepared && !session.cached && !session.suspended) this.dependencies.onPrepared?.(this.preparedInput(session), session.pid!);
+    if (session?.prepared && !session.suspended) this.dependencies.onPrepared?.(this.preparedInput(session), session.pid!);
   }
-  /** Experimental restore has fresh identity/flow validation, distinct from native initialization. */
-  restoreCached(input: InitializedProbeInput & { pid: number }): boolean {
+  beginOwnedConnection(): void { this.awaitingOwnedFlow = true; }
+  finishOwnedConnection(): void {
+    this.awaitingOwnedFlow = false;
     const session = this.session;
-    if (!session?.handle || session.prepared || session.stream || session.suspended || input.scope.localAddress !== session.captureScope?.localAddress
-      || !this.dependencies.autoWatch || !this.dependencies.validateCached) return false;
-    try {
-      session.connectBody = session.budget.copy(input.connectBody);
-      session.postLoginBody = session.budget.copy(input.postLoginBody);
-      session.identity = { ...input.identity }; session.scope = { ...input.scope };
-      session.pid = input.pid; session.nativePort = input.nativePort;
-      session.prepared = true; session.cached = true; session.loginSuccess = true;
-      if (session.poll) clearTimeout(session.poll); session.poll = null;
-      this.state.phase = "ready"; this.state.probeStage = "ready"; this.state.attributed = true;
-      this.publish(); return true;
-    } catch { this.finish(session, "incomplete", "byte-limit"); return false; }
+    if (session && !session.prepared) this.replayPendingSyn(session);
+  }
+  /** Exclude Companion sockets from native collection, including a SYN observed before connect completed. */
+  registerOwnedFlow(flow: DiagnosticCaptureScope & { localPort: number }): void {
+    const session = this.session;
+    if (!session) return;
+    if (!session.ownedFlows.some(owned => owned.localAddress === flow.localAddress && owned.localPort === flow.localPort
+      && owned.remoteAddress === flow.remoteAddress && owned.remotePort === flow.remotePort)) {
+      session.ownedFlows.push({ ...flow }); if (session.ownedFlows.length > 4) session.ownedFlows.shift();
+    }
+    if (!session.prepared && session.scope?.localAddress === flow.localAddress && session.scope.remoteAddress === flow.remoteAddress
+      && session.scope.remotePort === flow.remotePort && session.stream?.port === flow.localPort) {
+      // Capture can deliver both sockets' SYNs before our connect callback. Keep
+      // the other candidate bounded until this exact owned tuple is known.
+      const queued = session.pendingSyn; session.pendingSyn = null;
+      this.resetInitialization(session); session.ownedFlows.push({ ...flow });
+      session.pendingSyn = queued;
+    }
+    if (this.awaitingOwnedFlow) {
+      this.awaitingOwnedFlow = false;
+      if (!session.prepared) { this.replayPendingSyn(session); this.checkReady(session); this.publish(); }
+    }
+  }
+  private replayPendingSyn(session: Session): void {
+    const queued = session.pendingSyn; session.pendingSyn = null;
+    if (!queued) return;
+    try { for (const packet of queued) this.packet(session, packet, false); }
+    finally { for (const packet of queued) session.budget.release(packet.payload); }
   }
   get blocksManualRefresh(): boolean { return this.active || this.now() < this.nextAllowedAt; }
   async waitForListener(): Promise<boolean> { return this.session ? this.session.opening : false; }
@@ -115,7 +130,7 @@ export class SatanicZoneInitializedProbeController {
     const session: Session = { budget: this.dependencies.bufferBudget ?? new SatanicZoneDiagnosticBufferBudget(), abort: new AbortController(),
       scope: null, captureScope: null, stream: null, handle: null, poll: null, polling: false, pid: null, identity: null, connectBody: null, postLoginBody: null,
       readyControl: false, loginSuccess: false, starting: false, nativePort: null, prepared: false, suspended: false,
-      attemptAbort: null, opening: Promise.resolve(false), ownedFlows: [], pendingSyn: null, cached: false,
+      attemptAbort: null, opening: Promise.resolve(false), ownedFlows: [], pendingSyn: null,
       deadline: this.dependencies.autoWatch ? null : setTimeout(() => this.finish(session, "timed-out", this.state.phase === "ready" ? "deadline" : "missing-initialization"), SZ_DIAGNOSTIC_TIMEOUT_MS) };
     session.deadline?.unref?.(); this.session = session;
     this.state.phase = "arming"; this.state.probeStage = "collecting";
@@ -162,7 +177,7 @@ export class SatanicZoneInitializedProbeController {
     const session = this.session;
     if (!session) return;
     if (this.dependencies.autoWatch && session.prepared && session.handle && !session.suspended) this.resetInitialization(session);
-    else { if (!session.cached) this.dependencies.onInvalidation?.(); this.finish(session, "incomplete", "scope-changed"); }
+    else { this.dependencies.onInvalidation?.(); this.finish(session, "incomplete", "scope-changed"); }
   }
   observeProcessIds(ids: readonly number[]): void {
     if (this.session?.pid !== null && this.session?.pid !== undefined && !ids.includes(this.session.pid)) this.invalidate();
@@ -215,7 +230,9 @@ export class SatanicZoneInitializedProbeController {
     if (freshSyn && session.ownedFlows.some(flow => flow.localAddress === packet.src && flow.localPort === packet.srcPort
       && flow.remoteAddress === packet.dst && flow.remotePort === packet.dstPort)) return;
     if (session.pendingSyn && samePacketFlow(session.pendingSyn[0], packet)) {
-      this.queueSynPacket(session, packet); return;
+      if (!this.queueSynPacket(session, packet) && this.awaitingOwnedFlow && !session.prepared)
+        this.finish(session, "incomplete", "byte-limit");
+      return;
     }
     if (session.prepared) {
       const terminated = session.scope && satanicZoneSessionTerminated(
@@ -249,7 +266,12 @@ export class SatanicZoneInitializedProbeController {
         if (!session.poll) void this.poll(session);
       }
       this.state.selectionStatus = "waiting-owner";
-    } else if (freshSyn && !session.stream.matches(packet)) {
+    } else if (freshSyn && (!session.stream.matches(packet) || session.stream.port !== packet.srcPort)) {
+      if (this.dependencies.autoWatch && this.awaitingOwnedFlow && !session.pendingSyn) {
+        session.pendingSyn = [];
+        if (!this.queueSynPacket(session, packet)) this.finish(session, "incomplete", "byte-limit");
+        return;
+      }
       this.state.selectionStatus = "ambiguous"; this.finish(session, "ambiguous", "ambiguous-flow"); return;
     }
     if (!session.stream.matches(packet)) return;
@@ -353,6 +375,9 @@ export class SatanicZoneInitializedProbeController {
   }
   private checkReady(session: Session): void {
     if (!this.current(session) || session.starting || session.prepared) return;
+    // Resolve the second candidate before admitting Ready; otherwise its queue
+    // could survive preparation and block later reconnects.
+    if (this.awaitingOwnedFlow && session.pendingSyn) return;
     this.state.initializationComplete = Boolean(session.stream?.complete);
     if (this.state.attributed && this.state.initializationComplete && session.connectBody && session.postLoginBody && session.loginSuccess) {
       this.state.phase = "ready"; this.state.probeStage = "ready";
@@ -389,10 +414,7 @@ export class SatanicZoneInitializedProbeController {
       if (session.suspended) { this.restoreReady(session, "failed"); return false; }
       // A missing/partial outbound identity update cannot establish current
       // continuity. Pending inbound responses cannot change outbound account/mode.
-      if (!session.cached && session.stream && !session.stream.outboundComplete) { this.restoreReady(session, "failed"); return false; }
-      if (session.cached && !await this.dependencies.validateCached?.({ ...scope, pid: session.pid!, localPort: session.nativePort! })) {
-        if (this.current(session)) this.finish(session, "incomplete", "scope-changed"); return false;
-      }
+      if (session.stream && !session.stream.outboundComplete) { this.restoreReady(session, "failed"); return false; }
       if (!this.current(session) || (attemptAbort && !this.currentAttempt(session, attemptAbort))) return false;
       const status = network.gameProcessIds.includes(session.pid!)
         ? satanicZoneSessionScopeStatus({ ...scope, pid: session.pid!, localPort: session.nativePort! }, network.connections) : "changed";
@@ -455,11 +477,7 @@ export class SatanicZoneInitializedProbeController {
       const result = await this.dependencies.attempt({ connectBody: session.connectBody, postLoginBody: session.postLoginBody,
         identity: session.identity, scope: session.scope, nativePort }, attemptAbort.signal, session.budget, value => {
         if (!this.currentAttempt(session, attemptAbort)) return;
-        if (value.ownedFlow && !session.ownedFlows.some(flow => flow.localPort === value.ownedFlow!.localPort
-          && flow.remoteAddress === value.ownedFlow!.remoteAddress && flow.remotePort === value.ownedFlow!.remotePort)) {
-          session.ownedFlows.push({ ...value.ownedFlow });
-          if (session.ownedFlows.length > 4) session.ownedFlows.shift();
-        }
+        if (value.ownedFlow) this.registerOwnedFlow(value.ownedFlow);
         this.state.probeStage = value.stage; this.state.inboundFrames = value.inboundFrames;
         this.state.outboundFrames = value.outboundFrames; this.state.controlFrames = value.controlFrames;
         this.state.requestDispatched = value.zoneWritten; this.state.connectAcknowledgment = value.connectAcknowledgment; this.publish();
@@ -495,7 +513,7 @@ export class SatanicZoneInitializedProbeController {
   private resetInitialization(session: Session): void {
     if (!this.current(session)) return;
     this.dependencies.onWatchDiagnostic?.({ stage: "initialization_reset", freshSyn: this.state.freshSyn, attributed: this.state.attributed });
-    if (!session.cached) this.dependencies.onInvalidation?.();
+    this.dependencies.onInvalidation?.();
     session.attemptAbort?.abort(); session.attemptAbort = null;
     if (session.deadline) clearTimeout(session.deadline); session.deadline = null;
     session.stream?.dispose(); session.stream = null;
@@ -508,7 +526,6 @@ export class SatanicZoneInitializedProbeController {
     session.ownedFlows = [];
     if (session.pendingSyn) for (const packet of session.pendingSyn) session.budget.release(packet.payload);
     session.pendingSyn = null;
-    session.cached = false;
     this.state = createInitialSatanicZoneDiagnosticState();
     this.state.phase = "waiting-initialization"; this.state.directOutcome = "cancelled";
     this.state.startedAt = this.now(); this.publish();

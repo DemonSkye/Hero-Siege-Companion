@@ -72,11 +72,11 @@ test("eight-character automatic setup sends once only after consent and clears t
   expect(methods.enableSatanicZoneLoginCacheAutomatic).toHaveBeenCalledTimes(1);
   expect(methods.unlockSatanicZoneLoginCache).not.toHaveBeenCalled();
   resolve({}); await flushPromises();
-  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "unverified" } });
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "loaded" } });
   expect(wrapper.find('input[type="password"]').exists()).toBe(false);
   expect(wrapper.find("#settings-sz-cache-consent").exists()).toBe(false);
   expect(wrapper.text()).toContain("future launches do not require the passphrase");
-  expect(wrapper.get('[role="status"]').text()).toContain("loaded automatically");
+  expect(wrapper.get('[role="status"]').text()).toContain("Saved sign-in loaded");
 });
 
 test("existing manually enabled settings do not become automatic consent; manual unlock remains separate", async () => {
@@ -91,8 +91,8 @@ test("existing manually enabled settings do not become automatic consent; manual
   expect(methods.unlockSatanicZoneLoginCache).toHaveBeenCalledWith(originalPassphrase);
   expect(methods.enableSatanicZoneLoginCacheAutomatic).not.toHaveBeenCalled();
   expect(passValue(wrapper)).toBe(""); expect(checked(wrapper)).toBe(false);
-  await wrapper.setProps({ state: { enabled: true, unlocked: true, status: "unverified" } });
-  expect(wrapper.get('[role="status"]').text()).toContain("unlocked for this session");
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, status: "loaded" } });
+  expect(wrapper.get('[role="status"]').text()).toContain("Saved sign-in loaded");
   expect(button(wrapper, "Enable automatic save/load").attributes("disabled")).toBeDefined();
   await password(wrapper).setValue(originalPassphrase); await consent(wrapper).setValue(true);
   await wrapper.get("form").trigger("submit"); await flushPromises();
@@ -144,7 +144,7 @@ test("cancel, disable, automatic transition and unmount clear transient passphra
   await wrapper.setProps({ refreshEnabled: true }); input = password(wrapper);
   expect(checked(wrapper)).toBe(false);
   await input.setValue("invented automatic secret"); await consent(wrapper).setValue(true);
-  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "unverified" } });
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "loaded" } });
   expect((input.element as HTMLInputElement).value).toBe("");
   expect(wrapper.find('input[type="password"]').exists()).toBe(false);
   await wrapper.setProps({ state: locked() }); input = password(wrapper);
@@ -171,8 +171,8 @@ test("automatic current-session Lock exposes manual recovery while next-launch r
 });
 
 test("disable and Forget describe different retained-file outcomes and use narrow control IPC", async () => {
-  const methods = api(), wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "validated" });
-  expect(wrapper.get('[role="status"]').text()).toContain("current account and mode");
+  const methods = api(), wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "loaded" });
+  expect(wrapper.get('[role="status"]').text()).toContain("only when clicked");
   expect(wrapper.text()).toContain("removes the local unlocking key and keeps the encrypted sign-in file");
   expect(wrapper.text()).toContain("Forget deletes both files");
   await wrapper.get('.settings-switch input').setValue(false); await flushPromises();
@@ -210,12 +210,13 @@ test("external unlock disables setup fields and SZ disabled cannot consent or se
   expect(button(disabled, "Forget saved sign-in").attributes("disabled")).toBeUndefined();
 });
 
-test("automatic pending evidence, mismatch and deletion failure explain the real cache state", async () => {
-  const wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "unverified" });
-  expect(wrapper.get('[role="status"]').text()).toContain("fresh account and mode evidence");
-  expect(wrapper.get('[role="status"]').text()).toContain("no request has been sent");
-  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "identity_mismatch" } });
-  expect(wrapper.get('[role="status"]').text()).toContain("did not match");
+test("loaded, route pending and deletion failure explain the real cache state", async () => {
+  const wrapper = mountCache({ enabled: true, unlocked: true, automatic: true, status: "loaded", accountLabel: "Saved standard account" });
+  expect(wrapper.get('[role="status"]').text()).toContain("Saved sign-in loaded");
+  expect(wrapper.get('[role="status"]').text()).toContain("only when clicked");
+  expect(wrapper.text()).toContain("Saved standard account");
+  await wrapper.setProps({ state: { enabled: true, unlocked: true, automatic: true, status: "route_required" } });
+  expect(wrapper.get('[role="status"]').text()).toContain("no new sign-in is needed");
   await wrapper.setProps({ state: { enabled: false, unlocked: false, automatic: false, status: "clear_failed" } });
   expect(wrapper.get('[role="status"]').text()).toContain("Could not remove all saved sign-in files");
 });

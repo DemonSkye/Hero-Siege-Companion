@@ -185,7 +185,7 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     await f.refresh(); await vi.advanceTimersByTimeAsync(31_000); await f.refresh(); expect(f.sockets).toHaveLength(2);
   });
 
-  test("remembered invented pair survives Companion disposal, but reopen needs freshly parsed identity before Ready", async () => {
+  test("remembered invented pair survives Companion disposal and unlock permits Refresh without new identity", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-evidence-replay-")), file = path.join(directory, "login.encrypted");
     expect(path.dirname(fs.realpathSync(directory))).toBe(fs.realpathSync(os.tmpdir()));
     cleanups.unshift(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -196,17 +196,17 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     const restored = harness(file); restored.game(); await restored.provider.preparePassively();
     expect(restored.cache!.snapshot().status).toBe("locked"); expect((await restored.zone.refreshNow()).accepted).toBe(false);
     expect(restored.sockets).toHaveLength(0); expect(await restored.cache!.unlock(cachePassphrase)).toBe(true);
-    expect(restored.provider.preparation.phase).not.toBe("ready");
-    expect((await restored.zone.refreshNow()).accepted).toBe(false); expect(restored.sockets).toHaveLength(0);
+    expect(restored.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
+    expect(restored.sockets).toHaveLength(0);
     const frame = frameDiagnosticBody(replayIdentity(), 10);
     restored.feed({ outbound: true, sequence: 9000, payload: frame.subarray(0, 9), flags: 24 }); await flush();
-    expect(restored.provider.preparation.phase).not.toBe("ready");
+    expect(restored.provider.preparation.phase).toBe("ready");
     restored.feed({ outbound: true, sequence: 9009, payload: frame.subarray(9), flags: 24 }); await flush();
     expect(restored.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
     expect(restored.sockets).toHaveLength(0); await restored.refresh();
   });
 
-  test.each(["no saved pair", "no fresh identity", "fresh UID without beta"])("cache reopen remains unavailable with %s and sends nothing", async missing => {
+  test.each(["no saved pair", "no fresh identity", "fresh UID without beta"])("cache reopen with %s distinguishes missing saved material from unnecessary identity evidence", async missing => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-evidence-cache-gap-")), file = path.join(directory, "login.encrypted");
     expect(path.dirname(fs.realpathSync(directory))).toBe(fs.realpathSync(os.tmpdir()));
     cleanups.unshift(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -222,9 +222,11 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
       const identity = missing === "fresh UID without beta" ? Buffer.from(replayIdentity().toString().replace("&beta=0", "")) : replayIdentity();
       restored.feed({ outbound: true, sequence: 9000, payload: frameDiagnosticBody(identity, 10), flags: 24 }); await flush();
     }
-    expect(restored.provider.preparation.phase).not.toBe("ready");
-    expect(restored.provider.preparation.reason).toBe(missing === "no saved pair" ? "cache_empty" : "cache_identity_required");
-    expect((await restored.zone.refreshNow()).accepted).toBe(false); expect(restored.sockets).toHaveLength(0);
+    if (missing === "no saved pair") {
+      expect(restored.provider.preparation.phase).not.toBe("ready"); expect(restored.provider.preparation.reason).toBe("cache_empty");
+      expect((await restored.zone.refreshNow()).accepted).toBe(false);
+    } else expect(restored.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
+    expect(restored.sockets).toHaveLength(0);
   });
 
   test.each(["same Companion", "reopened Companion"])("SZ then Market in %s keeps context separate and exposes the observed rejection category", async journey => {

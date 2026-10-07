@@ -85,7 +85,7 @@ export class SatanicZoneController {
   }
   setPreparation(preparation: NonNullable<SatanicZoneState["refreshPreparation"]>): void {
     this.updateState({ refreshPreparation: { phase: preparation.phase, expiresAt: preparation.expiresAt,
-      ...(["login_missed", "traffic_incomplete", "cache_empty", "cache_identity_required", "cache_identity_mismatch", "cache_locked", "cache_unlock_failed"].includes(preparation.reason ?? "") ? { reason: preparation.reason } : {}),
+      ...(["login_missed", "traffic_incomplete", "cache_empty", "cache_route_required", "cache_locked", "cache_unlock_failed"].includes(preparation.reason ?? "") ? { reason: preparation.reason } : {}),
       ...(preparation.origin === "cached" ? { origin: "cached" as const } : {}) },
       refreshAvailable: this.state.refreshEnabled && preparation.phase === "ready" });
   }

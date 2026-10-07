@@ -472,11 +472,6 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
     publishState();
     return state;
   }
-  if (!state.captureRunning || state.captureStatus !== "running") {
-    satanicZoneController?.markUnavailable("capture_unavailable");
-    addLog("warning", "Start capture before requesting a Satanic Zone refresh.");
-    return state;
-  }
   const result = await satanicZoneController?.refreshNow();
   writeAppLog("satanic-zone-refresh-requested", {
     accepted: result?.accepted ?? false,
@@ -863,7 +858,7 @@ app.whenReady().then(async () => {
   satanicZoneLoginCache = new SatanicZoneLoginCache({
     store: new SatanicZoneLoginCacheStore(path.join(userDataPath, "sz-login-cache.portable")),
     networkState: satanicZoneTestRuntime?.dependencies.networkState ?? getHeroSiegeNetworkState,
-    onDiagnostic: (stage, result) => writeAppLog("sz-login-cache", { stage, result }),
+    onDiagnostic: (stage, result, files) => writeAppLog("sz-login-cache", { stage, result, ...files }),
     onChange: cacheState => {
       state.satanicZoneLoginCache = cacheState; satanicZoneRefreshProvider?.cacheChanged();
       applyCaptureDiagnosticPreferences(); publishState();
@@ -877,6 +872,7 @@ app.whenReady().then(async () => {
     onWatchDiagnostic: diagnostic => writeAppLog("sz-watch-stage", diagnostic),
     canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
       && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh,
+    canRefresh: () => state.satanicZone.refreshEnabled && !satanicZoneDiagnostic?.blocksManualRefresh,
     onPreparation: preparation => {
       const previous = state.satanicZone.refreshPreparation;
       satanicZoneController?.setPreparation(preparation);

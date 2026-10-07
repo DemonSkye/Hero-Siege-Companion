@@ -4,7 +4,9 @@ export interface SatanicZoneLoginCacheState {
   unlocked: boolean;
   /** Explicit consent to retaining a locally readable unlocking key. */
   automatic?: boolean;
-  status: "disabled" | "locked" | "unlocking" | "unlock_failed" | "empty" | "saved" | "unverified" | "validated" | "identity_mismatch"
+  /** Generic mode label only; account identifiers stay in main. */
+  accountLabel?: "Saved standard account" | "Saved beta account";
+  status: "disabled" | "locked" | "unlocking" | "unlock_failed" | "empty" | "saved" | "loaded" | "route_required"
     | "storage_error" | "clear_failed";
 }
 export const initialSatanicZoneLoginCache = (): SatanicZoneLoginCacheState => ({ enabled: false, unlocked: false, status: "disabled" });

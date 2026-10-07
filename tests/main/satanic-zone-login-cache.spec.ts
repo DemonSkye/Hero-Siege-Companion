@@ -8,7 +8,6 @@ import { SatanicZoneLoginCache } from "../../src/main/satanic-zone-login-cache";
 import { SatanicZoneDiagnosticBufferBudget } from "../../src/main/satanic-zone-diagnostic-budget";
 import { inventedConnect, inventedPostLogin, inventedProbeScope as scope, inventedProbeIdentity as identity } from "../fixtures/satanic-zone-initialized";
 import { loadSatanicZoneLoginCacheEnabled, loadSatanicZoneLoginCacheAutomatic, saveSatanicZoneLoginCacheEnabled } from "../../src/main/persistence";
-import type { CaptureConnection } from "../../src/shared/app-state";
 
 // Synthetic material only. Production encryption and filesystem are exercised.
 const passphrase = "SYNTHETIC portable cache passphrase";
@@ -23,11 +22,11 @@ afterEach(() => {
 function fixture(file = path.join(directory, "login.portable")) {
   const budget = new SatanicZoneDiagnosticBufferBudget(), store = new SatanicZoneLoginCacheStore(file);
   stores.push(store);
-  const snapshots: unknown[] = [], diagnostics: { stage: string; result: string }[] = [];
+  const snapshots: unknown[] = [], diagnostics: { stage: string; result: string; ciphertextPresent: boolean; keyPresent: boolean }[] = [];
   const network = { gameProcessIds: [42], antiCheatProcessIds: [], connections: [{ ...scope, localPort: 5000, owningProcess: 42, state: "established" }] };
   const networkState = vi.fn(async () => network);
   const cache = new SatanicZoneLoginCache({ store, networkState, onChange: state => snapshots.push(state),
-    onDiagnostic: (stage, result) => diagnostics.push({ stage, result }) });
+    onDiagnostic: (stage, result, files) => diagnostics.push({ stage, result, ...files }) });
   caches.push(cache); cache.attachBudget(budget);
   const input = { connectBody: inventedConnect(), postLoginBody: inventedPostLogin(), identity, scope, nativePort: 5000 };
   const payload = { text: `unique_account_id=${identity.uniqueAccountId}&beta=0`, direction: "outbound" as const,
@@ -43,7 +42,7 @@ function openPortable(bytes: Buffer) {
   const key = scryptSync(passphrase, bytes.subarray(8, 24), 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
   try {
     const cipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(24, 36));
-    cipher.setAAD(Buffer.from("HSCSZ001")); cipher.setAuthTag(bytes.subarray(36, 52));
+    cipher.setAAD(bytes.subarray(0, 8)); cipher.setAuthTag(bytes.subarray(36, 52));
     return Buffer.concat([cipher.update(bytes.subarray(52)), cipher.final()]);
   } finally { key.fill(0); }
 }
@@ -59,122 +58,42 @@ function malformedAuthenticatedFile(connect = inventedConnect(), post = invented
   } finally { key.fill(0); plain.fill(0); }
 }
 
-describe("portable login cache with production encryption and synthetic secrets", () => {
-  test("identity received while Locked binds after unlock without requiring another packet", async () => {
-    const original = await savedFixture(); original.cache.dispose();
-    const reopened = fixture(); reopened.cache.configure(true);
-    await reopened.cache.observe(reopened.payload);
-    expect(reopened.cache.restoreInput()).toBeNull();
-    expect(await reopened.cache.unlock(passphrase)).toBe(true);
-    expect(reopened.cache.snapshot().status).toBe("validated");
-    expect(reopened.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+describe("portable saved inputs with production encryption and synthetic secrets", () => {
+  test("legacy ciphertext loads with route metadata only and remains byte-for-byte unchanged", async () => {
+    const original = fixture(); original.cache.configure(true); expect(await original.cache.unlock(passphrase)).toBe(true);
+    original.store.save({ connectBody: original.input.connectBody, postLoginBody: original.input.postLoginBody }, original.budget);
+    original.store.retainUnlockingKey(original.budget); const previous = fs.readFileSync(original.file); original.cache.dispose();
+    const f = fixture(); f.network.gameProcessIds = []; f.cache.configure(true, true);
+    expect(f.cache.snapshot().status).toBe("route_required");
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(f.cache.snapshot().status).toBe("loaded"); expect(f.cache.restoreInput()?.postLoginBody).toEqual(inventedPostLogin());
+    expect(fs.readFileSync(f.file)).toEqual(previous); expect(f.networkState).toHaveBeenCalledTimes(1);
+    expect(f.diagnostics).toContainEqual({ stage: "load", result: "route_required", ciphertextPresent: true, keyPresent: true });
   });
-  test("unchanged topology before the ownership query resolves preserves early identity for later unlock", async () => {
-    const original = await savedFixture(); original.cache.dispose(); const f = fixture(); f.cache.configure(true);
-    let release!: (network: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const observation = f.cache.observe(f.payload);
-    f.cache.observeConnections(f.network.connections);
-    expect(f.cache.restoreInput()).toBeNull(); // Topology alone never validates credentials.
-    release(f.network); await observation;
-    expect(await f.cache.unlock(passphrase)).toBe(true);
-    expect(f.cache.snapshot().status).toBe("validated");
-    expect(f.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+  test("legacy loaded data stays intact when route discovery fails; later connection metadata resolves it", async () => {
+    const original = fixture(); original.cache.configure(true); await original.cache.unlock(passphrase);
+    original.store.save({ connectBody: original.input.connectBody, postLoginBody: original.input.postLoginBody }, original.budget);
+    const previous = fs.readFileSync(original.file); original.cache.dispose();
+    const f = fixture(); f.networkState.mockRejectedValue(new Error("PRIVATE_PATH_AND_ENDPOINT")); f.cache.configure(true);
+    expect(await f.cache.unlock(passphrase)).toBe(true); expect(f.cache.snapshot().status).toBe("route_required");
+    expect(f.cache.restoreInput()).toBeNull(); expect(fs.readFileSync(f.file)).toEqual(previous);
+    f.cache.observeConnections(f.network.connections); expect(f.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+    expect(JSON.stringify(f.diagnostics)).not.toMatch(/PRIVATE|192\.0\.2|198\.51/);
   });
-  test("loaded cache rejects a same-PID port move before the first ownership hint", async () => {
-    const f = await savedFixture();
-    let release!: (network: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const observation = f.cache.observe(f.payload);
-    f.cache.observeConnections([{ ...f.network.connections[0], localPort: 5001 }]);
-    release(f.network); await observation;
-    expect(f.cache.restoreInput()).toBeNull();
-    expect(f.cache.snapshot().status).not.toBe("validated");
+  test("missing ciphertext is reported separately from locked, failed decrypt and explicit Forget", async () => {
+    const f = await savedFixture(); await f.cache.enableAutomatic(passphrase);
+    f.cache.configure(false); expect(f.diagnostics.at(-1)).toEqual({ stage: "load", result: "disabled", ciphertextPresent: true, keyPresent: false });
+    f.cache.clear(); expect(f.diagnostics.at(-1)).toEqual({ stage: "forget", result: "disabled", ciphertextPresent: false, keyPresent: false });
+    f.cache.configure(true); await f.cache.enableAutomatic(passphrase); f.cache.dispose();
+    const reopened = fixture(); reopened.cache.configure(true, true);
+    expect(reopened.diagnostics.at(-1)).toEqual({ stage: "load", result: "empty", ciphertextPresent: false, keyPresent: true });
   });
-  const invalidPendingTopologies: { name: string; flows: (flow: CaptureConnection) => CaptureConnection[] }[] = [
-    { name: "local port move", flows: flow => [{ ...flow, localPort: 5001 }] },
-    { name: "local address move", flows: flow => [{ ...flow, localAddress: "192.0.2.21" }] },
-    { name: "remote address move", flows: flow => [{ ...flow, remoteAddress: "198.51.100.22" }] },
-    { name: "remote port move", flows: flow => [{ ...flow, remotePort: flow.remotePort === 6668 ? 6669 : 6668 }] },
-    { name: "owner replacement", flows: flow => [{ ...flow, owningProcess: 43 }] },
-    { name: "missing tuple", flows: () => [] },
-    { name: "ambiguous tuple", flows: flow => [flow, { ...flow, owningProcess: 43 }] },
-    { name: "duplicate tuple", flows: flow => [flow, { ...flow }] },
-    { name: "unattributed tuple", flows: flow => [{ ...flow, owningProcess: 0 }] },
-    { name: "connecting tuple", flows: flow => [{ ...flow, state: "synsent" }] },
-    { name: "unknown tuple state", flows: flow => [{ ...flow, state: "unknown" }] },
-    { name: "closed tuple", flows: flow => [{ ...flow, state: "closed" }] },
-    { name: "contradictory tuple states", flows: flow => [flow, { ...flow, state: "closed" }] }
-  ];
-  const pendingStages = ["loaded", "loaded with hint", "Locked", "Locked with hint", "attributed while Locked"] as const;
-  test.each(pendingStages.flatMap(stage => invalidPendingTopologies.map(topology => ({ stage, ...topology }))))(
-    "$stage: $name prevents a stale ownership result from restoring Ready", async ({ stage, flows }) => {
-      const original = await savedFixture();
-      let f = original;
-      if (!stage.startsWith("loaded")) { original.cache.dispose(); f = fixture(); f.cache.configure(true); }
-      if (stage === "attributed while Locked") await f.cache.observe(f.payload);
-      let release!: (network: typeof f.network) => void;
-      f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-      const observation = stage === "attributed while Locked" ? f.cache.unlock(passphrase) : f.cache.observe(f.payload);
-      if (stage === "attributed while Locked") await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-      if (stage.includes("with hint")) f.cache.observeConnections(f.network.connections);
-      f.cache.observeConnections(flows(f.network.connections[0]));
-      // A later good-looking snapshot cannot recover identity discarded on a gap.
-      f.cache.observeConnections(f.network.connections);
-      release(f.network); await observation;
-      if (!stage.startsWith("loaded") && stage !== "attributed while Locked") await f.cache.unlock(passphrase);
-      expect(f.cache.restoreInput()).toBeNull();
-      expect(f.cache.snapshot().status).not.toBe("validated");
-      expect(fs.existsSync(f.file)).toBe(true); // Suspension preserves the recoverable encrypted cache.
-      await f.cache.observe(f.payload);
-      expect(f.cache.restoreInput()?.nativePort).toBe(5000); // Fresh evidence can reacquire normally.
-    });
-  test.each(pendingStages)("%s: unchanged established topology permits passive binding without sending", async stage => {
-    const original = await savedFixture();
-    let f = original;
-    if (!stage.startsWith("loaded")) { original.cache.dispose(); f = fixture(); f.cache.configure(true); }
-    if (stage === "attributed while Locked") await f.cache.observe(f.payload);
-    let release!: (network: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const observation = stage === "attributed while Locked" ? f.cache.unlock(passphrase) : f.cache.observe(f.payload);
-    if (stage === "attributed while Locked") await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-    if (stage.includes("with hint")) f.cache.observeConnections(f.network.connections);
-    f.cache.observeConnections([{ ...f.network.connections[0], state: "5" }, { ...f.network.connections[0], localPort: 5001 }]);
-    expect(f.cache.restoreInput()).toBeNull();
-    release(f.network); await observation;
-    if (!stage.startsWith("loaded") && stage !== "attributed while Locked") await f.cache.unlock(passphrase);
-    expect(f.cache.restoreInput()?.nativePort).toBe(5000);
-    expect(f.cache.snapshot().status).toBe("validated");
-  });
-  test("fresh identity on the replacement tuple supersedes an older deferred ownership query", async () => {
-    const f = await savedFixture(); let release!: (network: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const oldSnapshot = { ...f.network, connections: [...f.network.connections] };
-    const stale = f.cache.observe(f.payload);
-    f.network.connections = [{ ...f.network.connections[0], localPort: 5001 }];
-    f.cache.observeConnections(f.network.connections);
-    const fresh = f.cache.observe({ ...f.payload, localPort: 5001 });
-    f.cache.observeConnections(f.network.connections);
-    expect(f.cache.restoreInput()).toBeNull();
-    release(oldSnapshot); await Promise.all([stale, fresh]);
-    expect(f.cache.restoreInput()?.nativePort).toBe(5001);
-    expect(f.cache.snapshot().status).toBe("validated");
-    expect(f.networkState).toHaveBeenCalledTimes(2);
-  });
-  test.each(["replacement", "changed pending owner", "closed", "FIN", "gap", "generation"])(
-    "%s before deferred ownership resolves still prevents binding without new evidence", async kind => {
-    const original = await savedFixture(); original.cache.dispose(); const f = fixture(); f.cache.configure(true);
-    f.cache.observeProcesses([42]); let release!: (network: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const observation = f.cache.observe(f.payload);
-    if (kind === "changed pending owner") f.cache.observeConnections(f.network.connections);
-    if (kind === "replacement" || kind === "changed pending owner") f.cache.observeConnections([{ ...f.network.connections[0], owningProcess: 43 }]);
-    if (kind === "closed") f.cache.observeConnections([{ ...f.network.connections[0], state: "closed" }]);
-    if (kind === "FIN") f.cache.observeLifecycle({ src: scope.localAddress, dst: scope.remoteAddress, srcPort: 5000, dstPort: scope.remotePort, flags: 1 });
-    if (kind === "gap") f.cache.suspend();
-    if (kind === "generation") f.cache.observeProcesses([43]);
-    release(f.network); await observation; await f.cache.unlock(passphrase);
-    expect(f.cache.restoreInput()).toBeNull(); expect(f.cache.snapshot().status).not.toBe("validated");
+  test("failed explicit Forget reports remaining material while disabling RAM reuse", async () => {
+    const f = await savedFixture(), previous = fs.readFileSync(f.file);
+    vi.spyOn(fs, "unlinkSync").mockImplementation(() => { throw new Error("PRIVATE_PATH"); });
+    f.cache.clear(); expect(f.cache.snapshot().status).toBe("clear_failed"); expect(f.cache.restoreInput()).toBeNull();
+    expect(fs.readFileSync(f.file)).toEqual(previous); expect(f.diagnostics.at(-1)).toEqual({ stage: "forget", result: "clear_failed", ciphertextPresent: true, keyPresent: false });
+    expect(JSON.stringify(f.diagnostics)).not.toContain("PRIVATE_PATH");
   });
   test("eight characters can set a new portable passphrase", async () => {
     const f = fixture(); f.cache.configure(true);
@@ -185,36 +104,37 @@ describe("portable login cache with production encryption and synthetic secrets"
   test("opt-in stays locked; passive identity and remember cannot create a file until explicit unlock", async () => {
     const f = fixture(); f.cache.configure(true);
     expect(f.cache.snapshot()).toEqual({ enabled: true, unlocked: false, status: "locked" });
-    await f.cache.remember(f.input, 42); await f.cache.observe(f.payload);
-    expect(fs.existsSync(f.file)).toBe(false); expect(f.cache.restoreInput()).toBeNull(); expect(f.budget.usedBytes).toBeLessThan(2048);
+    await f.cache.remember(f.input, 42); expect(fs.existsSync(f.file)).toBe(false); expect(f.cache.restoreInput()).toBeNull(); expect(f.budget.usedBytes).toBeLessThan(2048);
     expect(await f.cache.unlock(passphrase)).toBe(true);
     expect(f.cache.snapshot()).toEqual({ enabled: true, unlocked: true, status: "empty" });
     expect(fs.existsSync(f.file)).toBe(false); expect(f.store.isUnlocked()).toBe(true);
   });
-  test("atomic save, dispose, reopen and unlock preserve the byte-exact pair and require fresh identity", async () => {
+  test("atomic save, dispose, reopen and unlock preserve the byte-exact pair and destination without game identity", async () => {
     const f = await savedFixture(), encrypted = fs.readFileSync(f.file);
-    expect(encrypted.subarray(0, 8).toString()).toBe("HSCSZ001");
+    expect(encrypted.subarray(0, 8).toString()).toBe("HSCSZ002");
     expect(encrypted.includes(f.input.connectBody)).toBe(false); expect(encrypted.includes(f.input.postLoginBody)).toBe(false);
     expect(encrypted.toString()).not.toMatch(/CANARY|account_uid|123456789|SYNTHETIC/);
     expect(fs.readdirSync(directory)).toEqual(["login.portable"]); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false);
     const plain = openPortable(encrypted);
     expect(plain.readUInt32LE(0)).toBe(f.input.connectBody.length); expect(plain.readUInt32LE(4)).toBe(f.input.postLoginBody.length);
-    expect(plain).toEqual(Buffer.concat([plain.subarray(0, 8), f.input.connectBody, f.input.postLoginBody]));
+    const bodyEnd = 8 + f.input.connectBody.length + f.input.postLoginBody.length;
+    expect(plain.subarray(0, bodyEnd)).toEqual(Buffer.concat([plain.subarray(0, 8), f.input.connectBody, f.input.postLoginBody]));
+    expect(JSON.parse(plain.subarray(bodyEnd).toString())).toEqual({ address: scope.remoteAddress, port: scope.remotePort });
     plain.fill(0); f.cache.dispose(); expect(f.budget.usedBytes).toBe(0);
     const reopened = fixture(); reopened.cache.configure(true); expect(reopened.cache.snapshot().status).toBe("locked");
     expect(await reopened.cache.unlock(passphrase)).toBe(true);
-    expect(reopened.cache.snapshot().status).toBe("unverified"); expect(reopened.cache.restoreInput()).toBeNull();
-    await reopened.cache.observe(reopened.payload); const restored = reopened.cache.restoreInput()!;
+    expect(reopened.cache.snapshot().status).toBe("loaded"); expect(reopened.cache.restoreInput()).not.toBeNull();
+    const restored = reopened.cache.restoreInput()!;
     expect(restored.connectBody).toEqual(inventedConnect()); expect(restored.postLoginBody).toEqual(inventedPostLogin());
-    expect(restored).toMatchObject({ pid: 42, nativePort: 5000 });
-    expect(await reopened.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(true);
+    expect(restored.scope).toEqual({ remoteAddress: scope.remoteAddress, remotePort: scope.remotePort });
+    expect(restored).not.toHaveProperty("pid"); expect(restored).not.toHaveProperty("nativePort");
     expect(JSON.stringify([...f.snapshots, ...f.diagnostics, ...reopened.snapshots])).not.toMatch(/CANARY|account_uid|123456789|SYNTHETIC/);
   });
   test("a copied portable file unlocks in a separate directory without an adjacent key or machine service", async () => {
     const original = await savedFixture(), moved = path.join(directory, "moved", "login.portable");
     original.cache.dispose(); fs.mkdirSync(path.dirname(moved)); fs.copyFileSync(original.file, moved);
     const reopened = fixture(moved); reopened.cache.configure(true); expect(await reopened.cache.unlock(passphrase)).toBe(true);
-    await reopened.cache.observe(reopened.payload); expect(reopened.cache.restoreInput()?.postLoginBody).toEqual(inventedPostLogin());
+    expect(reopened.cache.restoreInput()?.postLoginBody).toEqual(inventedPostLogin());
     expect(fs.readdirSync(path.dirname(moved))).toEqual(["login.portable"]);
   });
   test.each(["wrong passphrase", "tampered ciphertext", "tampered tag", "truncated", "oversized", "wrong version", "incoherent pair", "invalid lengths"])(
@@ -223,8 +143,8 @@ describe("portable login cache with production encryption and synthetic secrets"
     if (kind === "tampered ciphertext") bytes[bytes.length - 1] ^= 1;
     if (kind === "tampered tag") bytes[36] ^= 1;
     if (kind === "truncated") bytes = bytes.subarray(0, 55);
-    if (kind === "oversized") bytes = Buffer.alloc(52 + 8 + 2 * 16_384 + 1);
-    if (kind === "wrong version") bytes.write("HSCSZ002", 0);
+    if (kind === "oversized") bytes = Buffer.alloc(52 + 8 + 2 * 16_384 + 129);
+    if (kind === "wrong version") bytes.write("HSCSZ003", 0);
     if (kind === "incoherent pair") bytes = malformedAuthenticatedFile(inventedConnect(), inventedPostLogin("444444"));
     if (kind === "invalid lengths") bytes = malformedAuthenticatedFile(undefined, undefined, 1);
     fs.writeFileSync(f.file, bytes); const reopened = fixture(); reopened.cache.configure(true);
@@ -239,8 +159,7 @@ describe("portable login cache with production encryption and synthetic secrets"
   });
   test("wrong passphrase does not prevent a later correct unlock", async () => {
     const f = await savedFixture(); f.cache.lock(); expect(await f.cache.unlock("OTHER synthetic passphrase")).toBe(false);
-    expect(await f.cache.unlock(passphrase)).toBe(true); await f.cache.observe(f.payload);
-    expect(f.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+    expect(await f.cache.unlock(passphrase)).toBe(true); expect(f.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
   });
   test.each(["lock", "disable", "dispose", "forget"] as const)("%s cancels a pending real KDF without resurrecting secrets", async action => {
     const f = fixture(); f.cache.configure(true); const pending = f.cache.unlock(passphrase);
@@ -281,52 +200,6 @@ describe("portable login cache with production encryption and synthetic secrets"
     expect(f.store.isUnlocked()).toBe(false); expect(f.budget.usedBytes).toBe(0);
     expect(await f.cache.unlock(passphrase)).toBe(true); expect(unlock).toHaveBeenCalledTimes(2);
   });
-  test.each(["unique_account_id=888888&beta=0", `unique_account_id=${identity.uniqueAccountId}&beta=1`, `unique_account_id=${identity.uniqueAccountId}&beta=0&account_id=other-123`])(
-    "contrary current account/mode forgets the pair: %s", async text => {
-    const f = await savedFixture(); await f.cache.observe({ ...f.payload, text });
-    expect(f.cache.snapshot().status).toBe("identity_mismatch"); expect(f.cache.restoreInput()).toBeNull();
-    expect(fs.existsSync(f.file)).toBe(false); expect(f.budget.usedBytes).toBe(0); expect(f.store.isUnlocked()).toBe(false);
-  });
-  test("partial, inbound, unattributed or another socket identity cannot validate the pair", async () => {
-    const f = await savedFixture();
-    for (const payload of [{ ...f.payload, text: `unique_account_id=${identity.uniqueAccountId}` },
-      { ...f.payload, direction: "inbound" as const }, { ...f.payload, localPort: undefined }, { ...f.payload, localPort: 6000 }]) await f.cache.observe(payload);
-    expect(f.cache.restoreInput()).toBeNull(); expect(f.cache.snapshot().status).toBe("saved");
-  });
-  test.each(["not game owned", "not established", "ambiguous"])("matching account/mode rejects a %s tuple", async kind => {
-    const f = await savedFixture();
-    if (kind === "not game owned") f.network.gameProcessIds = [43];
-    if (kind === "not established") f.network.connections[0].state = "close_wait";
-    if (kind === "ambiguous") f.network.connections.push({ ...f.network.connections[0] });
-    await f.cache.observe(f.payload); expect(f.cache.restoreInput()).toBeNull();
-  });
-  test.each(["suspend", "lock", "disable", "forget", "dispose"] as const)("%s during delayed OS validation cannot restore continuity", async action => {
-    const f = await savedFixture(); let release!: (state: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; })); const validation = f.cache.observe(f.payload);
-    if (action === "suspend") f.cache.suspend(); else if (action === "lock") f.cache.lock();
-    else if (action === "disable") f.cache.configure(false); else if (action === "forget") f.cache.clear(); else f.cache.dispose();
-    release(f.network); await validation; expect(f.cache.restoreInput()).toBeNull();
-    if (action === "suspend") { await f.cache.observe(f.payload); expect(f.cache.restoreInput()).not.toBeNull(); }
-    else expect(f.budget.usedBytes).toBe(0);
-  });
-  test("process/flow loss, FIN and unknown gaps each require new fresh evidence", async () => {
-    const f = await savedFixture();
-    const invalidations = [() => f.cache.observeProcesses([]), () => f.cache.observeConnections([{ ...f.network.connections[0], localPort: 5001 }]),
-      () => f.cache.observeLifecycle({ src: scope.localAddress, dst: scope.remoteAddress, srcPort: 5000, dstPort: scope.remotePort, flags: 1 }),
-      () => f.cache.suspend()];
-    for (const invalidate of invalidations) {
-      await f.cache.observe(f.payload); expect(f.cache.restoreInput()).not.toBeNull(); invalidate();
-      expect(f.cache.restoreInput()).toBeNull(); expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(false);
-      expect(fs.existsSync(f.file)).toBe(true);
-    }
-  });
-  test("a delayed preflight cannot authorize dispatch after a gap or changed ownership", async () => {
-    const f = await savedFixture(); await f.cache.observe(f.payload); let release!: (state: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const pending = f.cache.preflight({ ...scope, pid: 42, localPort: 5000 }); f.cache.suspend(); release(f.network);
-    expect(await pending).toBe(false); await f.cache.observe(f.payload); f.network.connections[0].owningProcess = 43;
-    expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(false); expect(f.cache.restoreInput()).toBeNull();
-  });
   test.each(["open", "write", "fsync", "rename"] as const)("%s failure preserves previous ciphertext and removes owned temporary bytes", async stage => {
     const f = await savedFixture(), previous = fs.readFileSync(f.file);
     const error = () => { throw Object.assign(new Error("PRIVATE_FILE_PATH"), { code: "EACCES" }); };
@@ -361,18 +234,12 @@ describe("portable login cache with production encryption and synthetic secrets"
     expect(JSON.stringify([...f.snapshots, ...f.diagnostics])).not.toContain("PRIVATE_FILE_PATH");
   });
   test("disable locks and zeros RAM but retains the file; explicit Forget deletes file and temporary data", async () => {
-    const f = await savedFixture(); await f.cache.observe(f.payload); const secret = f.cache.restoreInput()!.connectBody;
+    const f = await savedFixture(); const secret = f.cache.restoreInput()!.connectBody;
     f.cache.configure(false); expect(secret.every(byte => byte === 0)).toBe(true); expect(f.budget.usedBytes).toBe(0);
     expect(f.cache.snapshot()).toEqual({ enabled: false, unlocked: false, status: "disabled" }); expect(fs.existsSync(f.file)).toBe(true);
     f.cache.configure(true); expect(await f.cache.unlock(passphrase)).toBe(true); fs.writeFileSync(`${f.file}.tmp`, "synthetic stale temporary");
     f.cache.configure(false); f.cache.clear(); expect(fs.existsSync(f.file)).toBe(false); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false);
     expect(f.cache.snapshot()).toEqual({ enabled: false, unlocked: false, status: "disabled" }); expect(f.budget.usedBytes).toBe(0);
-  });
-  test("identity invalidation cannot hide a failed deletion or restore cached use", async () => {
-    const f = await savedFixture(); vi.spyOn(fs, "unlinkSync").mockImplementation(() => { throw Object.assign(new Error("PRIVATE_FILE_PATH"), { code: "EACCES" }); });
-    await f.cache.observe({ ...f.payload, text: "unique_account_id=888888&beta=0" });
-    expect(f.cache.snapshot().status).toBe("clear_failed"); expect(f.cache.restoreInput()).toBeNull();
-    expect(fs.existsSync(f.file)).toBe(true); expect(f.budget.usedBytes).toBe(0); expect(f.store.isUnlocked()).toBe(false);
   });
   test("bounded buffer denial leaves neither a usable key nor a file", async () => {
     const f = fixture(); f.cache.attachBudget(new SatanicZoneDiagnosticBufferBudget(1)); f.cache.configure(true);
@@ -401,29 +268,26 @@ describe("portable login cache with production encryption and synthetic secrets"
     const old = await savedFixture(), encrypted = fs.readFileSync(old.file); old.cache.dispose();
     const migrated = fixture(); migrated.cache.configure(true);
     expect(fs.existsSync(`${old.file}.key`)).toBe(false);
-    await migrated.cache.observe(migrated.payload);
     expect(await migrated.cache.enableAutomatic(passphrase)).toBe(true);
-    expect(migrated.cache.snapshot()).toMatchObject({ automatic: true, status: "validated" });
+    expect(migrated.cache.snapshot()).toMatchObject({ automatic: true, status: "loaded" });
     expect(fs.readFileSync(old.file)).toEqual(encrypted);
     const retained = fs.readFileSync(`${old.file}.key`);
     expect(retained.length).toBe(56); expect(retained.subarray(0, 8).toString()).toBe("HSCSZK01");
     expect(retained.toString()).not.toContain(passphrase);
     migrated.cache.dispose(); expect(migrated.budget.usedBytes).toBe(0);
     const reopened = fixture(); reopened.cache.configure(true, true);
-    expect(reopened.cache.snapshot()).toEqual({ enabled: true, automatic: true, unlocked: true, status: "unverified" });
-    expect(reopened.cache.restoreInput()).toBeNull();
-    await reopened.cache.observe(reopened.payload);
+    expect(reopened.cache.snapshot()).toMatchObject({ enabled: true, automatic: true, unlocked: true, status: "loaded" });
+    expect(reopened.cache.restoreInput()).not.toBeNull();
     expect(reopened.cache.restoreInput()?.postLoginBody).toEqual(inventedPostLogin());
     expect(fs.readFileSync(old.file)).toEqual(encrypted);
   });
-  test("eight-character automatic setup saves the next native pair and startup alone cannot authorize it", async () => {
+  test("eight-character automatic setup saves the next native pair and startup loads it without identity evidence", async () => {
     const f = fixture(); f.cache.configure(true);
     expect(await f.cache.enableAutomatic("SYNTHET8")).toBe(true);
     expect(fs.existsSync(f.file)).toBe(false); expect(fs.existsSync(`${f.file}.key`)).toBe(true);
     await f.cache.remember(f.input, 42); f.cache.dispose();
     const reopened = fixture(); reopened.cache.configure(true, true);
-    expect(reopened.cache.snapshot().status).toBe("unverified"); expect(reopened.cache.restoreInput()).toBeNull();
-    await reopened.cache.observe(reopened.payload); expect(reopened.cache.snapshot().status).toBe("validated");
+    expect(reopened.cache.snapshot().status).toBe("loaded"); expect(reopened.cache.restoreInput()).not.toBeNull();
   });
   test.each(["missing", "bad magic", "truncated", "oversized", "wrong key", "wrong salt"])("%s automatic key preserves ciphertext for manual recovery", async kind => {
     const f = await savedFixture(); expect(await f.cache.enableAutomatic(passphrase)).toBe(true);
@@ -441,8 +305,7 @@ describe("portable login cache with production encryption and synthetic secrets"
     const reopened = fixture(); reopened.cache.configure(true, true);
     expect(reopened.cache.snapshot().status).toBe("unlock_failed"); expect(reopened.budget.usedBytes).toBe(0);
     expect(fs.readFileSync(f.file)).toEqual(cipher);
-    expect(await reopened.cache.unlock(passphrase)).toBe(true); await reopened.cache.observe(reopened.payload);
-    expect(reopened.cache.snapshot().status).toBe("validated");
+    expect(await reopened.cache.unlock(passphrase)).toBe(true); expect(reopened.cache.snapshot().status).toBe("loaded");
   });
   test("Lock keeps automatic reopening consent; disable removes the retained key but preserves ciphertext", async () => {
     const f = await savedFixture(); await f.cache.enableAutomatic(passphrase); const cipher = fs.readFileSync(f.file);
@@ -483,42 +346,5 @@ describe("portable login cache with production encryption and synthetic secrets"
     expect(await f.cache.enableAutomatic(passphrase)).toBe(false);
     expect(fs.existsSync(`${f.file}.key`)).toBe(false); expect(fs.existsSync(`${f.file}.key.tmp`)).toBe(false);
     expect(fs.readFileSync(f.file)).toEqual(cipher); expect(f.budget.usedBytes).toBe(0);
-  });
-  test("pre-unlock identity metadata stays bounded and is cleared on disposal", async () => {
-    const f = fixture(); f.cache.configure(true);
-    for (let index = 0; index < 40; index++) await f.cache.observe({ ...f.payload, text: `unique_account_id=${"x".repeat(1024)}&beta=0&account_id=12345678901234567890` });
-    expect(f.budget.usedBytes).toBeLessThan(2048); expect(f.cache.restoreInput()).toBeNull();
-    expect(fs.existsSync(f.file)).toBe(false); expect(fs.existsSync(`${f.file}.key`)).toBe(false);
-    f.cache.dispose(); expect(f.budget.usedBytes).toBe(0);
-  });
-  test("a burst while ownership is pending uses one query and one latest-evidence follow-up", async () => {
-    const f = await savedFixture(); let release!: (network: typeof f.network) => void;
-    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const first = f.cache.observe(f.payload);
-    const burst = Array.from({ length: 40 }, () => f.cache.observe(f.payload));
-    expect(f.networkState).toHaveBeenCalledTimes(1);
-    release(f.network); await Promise.all([first, ...burst]);
-    expect(f.networkState).toHaveBeenCalledTimes(2); expect(f.cache.snapshot().status).toBe("validated");
-    expect(f.budget.usedBytes).toBeLessThan(2048);
-  });
-  test.each(["gap", "generation", "account", "uid", "partial beta"])("%s during deferred unlock cannot resurrect pre-load identity", async kind => {
-    const old = await savedFixture(); old.cache.dispose(); const f = fixture(); f.cache.configure(true);
-    f.cache.observeProcesses([42]); await f.cache.observe(f.payload);
-    const pending = f.cache.unlock(passphrase);
-    if (kind === "gap") f.cache.suspend();
-    if (kind === "generation") f.cache.observeProcesses([43]);
-    if (kind === "account") await f.cache.observe({ ...f.payload, text: "account_id=other-123" });
-    if (kind === "uid") await f.cache.observe({ ...f.payload, text: "unique_account_id=888888&beta=0" });
-    if (kind === "partial beta") await f.cache.observe({ ...f.payload, text: `unique_account_id=${identity.uniqueAccountId}&beta=1` });
-    await pending; expect(f.cache.restoreInput()).toBeNull();
-    expect(f.cache.snapshot().status).not.toBe("validated");
-  });
-  test("expired pre-load identity is rejected without introducing a Ready expiration", async () => {
-    const old = await savedFixture(); old.cache.dispose(); const f = fixture(); f.cache.configure(true);
-    await f.cache.observe({ ...f.payload, observedAt: Date.now() - 600_001 });
-    await f.cache.unlock(passphrase); expect(f.cache.restoreInput()).toBeNull();
-    await f.cache.observe(f.payload); expect(f.cache.restoreInput()).not.toBeNull();
-    const now = Date.now(); vi.spyOn(Date, "now").mockReturnValue(now + 600_001);
-    expect(f.cache.restoreInput()).not.toBeNull(); expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(true);
   });
 });

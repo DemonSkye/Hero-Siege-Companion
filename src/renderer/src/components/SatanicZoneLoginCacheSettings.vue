@@ -24,11 +24,8 @@ const detail = computed(() => failed.value ? "Could not change saved sign-in. Tr
     : "Unlocked for this session. Waiting for a complete sign-in to save.",
   saved: automatic.value ? "Sign-in saved. Companion will load it automatically on future launches."
     : "Sign-in saved for manual unlock. Automatic save/load remains off.",
-  unverified: automatic.value
-    ? "Saved sign-in loaded automatically. Waiting for fresh account and mode evidence from the game; no request has been sent."
-    : "Saved sign-in unlocked for this session. Waiting for fresh account and mode evidence from the game; no request has been sent.",
-  validated: "Saved sign-in matched the current account and mode. Refresh sends only when clicked.",
-  identity_mismatch: "Current account or mode did not match. The saved sign-in was cleared.",
+  loaded: "Saved sign-in loaded. Refresh sends only when clicked.",
+  route_required: "Saved sign-in loaded. Waiting for the game's server address; no new sign-in is needed.",
   storage_error: "Encrypted sign-in could not be saved or restored. Check access to the cache file, then try again.",
   clear_failed: "Could not remove all saved sign-in files. Cached Refresh is disabled; try Forget saved sign-in again.",
 }[props.state?.status ?? "disabled"]);
@@ -78,7 +75,8 @@ async function change(action: "toggle" | "lock" | "forget" | "unlock" | "automat
   </div>
   <div class="settings-notice settings-login-cache-notice">
     <p role="status" aria-live="polite">{{ detail }}</p>
-    <p v-if="automatic">Automatic save/load is enabled. Companion keeps the local unlocking key, so future launches do not require the passphrase. Fresh current account and mode evidence is still needed before Refresh.</p>
+    <p v-if="state?.accountLabel">{{ state.accountLabel }}. Forget saved sign-in clears it.</p>
+    <p v-if="automatic">Automatic save/load is enabled. Companion keeps the local unlocking key, so future launches do not require the passphrase. Saved sign-in can be used without another game sign-in.</p>
     <p>Automatic save/load keeps a local unlocking key alongside the encrypted sign-in. Anyone who can read both files can use the saved sign-in. Refresh still sends only when you click it.</p>
     <form v-if="showPassphrase" class="settings-ledger-row" @submit.prevent="change(automatic ? 'unlock' : 'automatic')">
       <div class="settings-ledger-copy">

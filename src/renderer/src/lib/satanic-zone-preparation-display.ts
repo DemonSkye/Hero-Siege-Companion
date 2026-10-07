@@ -5,11 +5,10 @@ export function satanicZonePreparationDetail(state: SatanicZonePreparation | und
   if (state.phase === "ready" && state.origin !== "cached") return "Ready to refresh.";
   if (state.reason === "traffic_incomplete") return "Waiting for a complete game update before Refresh is ready. You can keep playing.";
   if (state.reason === "cache_empty") return "No saved sign-in is available. Companion needs to observe a complete sign-in before Refresh is ready. You can keep playing.";
-  if (state.reason === "cache_identity_required") return "Experimental saved sign-in needs fresh account and mode evidence from the game. Refresh is unavailable until they match.";
-  if (state.reason === "cache_identity_mismatch") return "The account or mode did not match the saved sign-in. It was cleared.";
+  if (state.reason === "cache_route_required") return "Saved sign-in is loaded. Waiting for the game's server address; no new sign-in is needed.";
   if (state.reason === "cache_locked") return "Saved sign-in is locked. Unlock Remember sign-in in Features to test reuse, or keep playing while Companion watches for sign-in.";
   if (state.reason === "cache_unlock_failed") return "Saved sign-in could not be unlocked. Check the passphrase in Features; you can keep playing.";
-  if (state.origin === "cached" && state.phase === "ready") return "Experimental saved sign-in matched the current account and mode. Click Refresh to test it.";
+  if (state.origin === "cached" && state.phase === "ready") return "Saved sign-in loaded. Ready to refresh.";
   if (state.reason === "login_missed") return "The game's connection is open, but its sign-in was not observed. Refresh is unavailable. You can keep playing.";
   switch (state.phase) {
     case "opening": return "Getting Refresh ready…";
