@@ -8,7 +8,6 @@ test("private one-request recording opts in and cancels through real main/preloa
     expect(fs.existsSync(folder)).toBe(false);
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("button", { name: "Help & Support", exact: true }).click();
-    for (let press = 0; press < 4; press++) await page.getByRole("button", { name: "Help & Support", exact: true }).press("ArrowLeft");
     await page.getByText("Private Market request", { exact: true }).click();
     await expect(page.getByText(/It can contain reusable sign-in values/)).toBeVisible();
     expect(await page.evaluate(() => window.heroSiegeCompanion.getMarketPrivateDiagnosticState())).toEqual({ phase: "off" });

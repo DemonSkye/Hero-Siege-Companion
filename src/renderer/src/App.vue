@@ -44,7 +44,6 @@ import { useSessionDisplay } from "./lib/session-display";
 import type { PastRunsExportPayload } from "./lib/past-runs";
 import { useShoppingListRuntime } from "./lib/shopping-list-runtime";
 import { useSupportDiagnosticsRuntime } from "./lib/support-diagnostics-runtime";
-import { useSatanicZoneDiagnosticRuntime } from "./lib/satanic-zone-diagnostic-runtime";
 import { useUpdateNotice } from "./lib/update-notice";
 import { useWhatsNewPrompt } from "./lib/whats-new-prompt";
 import { WHATS_NEW_RELEASE } from "./lib/whats-new";
@@ -89,7 +88,6 @@ const {
   hideMaterials,
   hideUnfilteredTimelineItems,
   timelineType,
-  marketSearchEnabled,
   gameExecutablePath,
   launchThroughSteam,
   themeId,
@@ -118,8 +116,6 @@ const {
   updatePostRunReportConfig,
 } = useAppPreferences();
 const { toastMessage, showToast } = useToast();
-const { szDiagnosticBusy, szDiagnosticCancelBusy, armSatanicZoneDiagnostic, startSatanicZoneDiagnostic, cancelSatanicZoneDiagnostic } =
-  useSatanicZoneDiagnosticRuntime({ state, showToast });
 const {
   supportDiagnosticsInfo,
   supportBundleBusy,
@@ -346,10 +342,6 @@ watch([timelineType, itemFilterGroups], () => {
   const groupId = itemFilterIdFromTimelineValue(timelineType.value);
   if (groupId && !itemFilterGroups.value.some((group) => group.id === groupId)) timelineType.value = "all";
 }, { deep: true });
-
-watch(marketSearchEnabled, (enabled) => {
-  if (!enabled) closeMarketSearch();
-});
 
 onUnmounted(() => {
   unsubscribe?.();
@@ -712,7 +704,7 @@ function toggleLog(log: LogEntry) {
         :log-limit-options="logLimitOptions"
         :item-type-options="itemTypeOptions"
         :item-filter-groups="itemFilterGroups"
-        :market-search-available="marketSearchEnabled"
+        :market-search-available="true"
         :shopping-list-items="shoppingListItems"
         :shopping-suggestions="shoppingSuggestions"
         :active-shopping-item="activeShoppingItem"
@@ -782,7 +774,7 @@ function toggleLog(log: LogEntry) {
     </div>
 
     <MarketSearchDialog
-      v-if="marketSearchEnabled && marketSearchItem"
+      v-if="marketSearchItem"
       :item="marketSearchItem"
       :readiness="state.marketReadiness"
       :min-sockets="marketSearchMinSockets"
@@ -813,15 +805,11 @@ function toggleLog(log: LogEntry) {
       v-model:compact-theme-custom-mode="compactThemeCustomMode"
       v-model:compact-theme-matches-app="compactThemeMatchesApp"
       v-model:satanic-zone-refresh-enabled="satanicZoneRefreshEnabled"
-      v-model:market-search-enabled="marketSearchEnabled"
       :theme-options="THEME_OPTIONS"
       :legacy-theme-available="legacyThemeAvailable"
       :legacy-compact-theme-available="legacyCompactThemeAvailable"
       :capture-diagnostics="state.captureDiagnostics"
-      :satanic-zone-diagnostic="state.satanicZoneDiagnostic"
       :satanic-zone-login-cache="state.satanicZoneLoginCache"
-      :sz-diagnostic-busy="szDiagnosticBusy"
-      :sz-diagnostic-cancel-busy="szDiagnosticCancelBusy"
       :diagnostics-now="now"
       :diagnostics-busy-level="diagnosticsBusyLevel"
       :support-diagnostics="supportDiagnostics"
@@ -848,9 +836,6 @@ function toggleLog(log: LogEntry) {
       @copy-support-diagnostics-summary="copySupportDiagnosticsSummary"
       @open-npcap-guide="openNpcapGuide"
       @set-diagnostics-mode="setDiagnosticsMode"
-      @arm-satanic-zone-diagnostic="armSatanicZoneDiagnostic"
-      @start-satanic-zone-diagnostic="startSatanicZoneDiagnostic"
-      @cancel-satanic-zone-diagnostic="cancelSatanicZoneDiagnostic"
       @reset-window-position="resetWindowPosition"
       @factory-reset="factoryReset"
       @import-theme="importTheme"

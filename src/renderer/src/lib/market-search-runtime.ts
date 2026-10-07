@@ -18,8 +18,6 @@ import { MARKET_REGION_UNCONFIRMED_DETAIL } from "./market-readiness-display";
 
 export type MarketSearchPhase = "idle" | "searching" | "success" | "error";
 export const MARKET_STAT_SUGGESTION_LIMIT = 12;
-export const MARKET_ACCESS_GESTURE_PRESS_COUNT = 4;
-export const MARKET_ACCESS_GESTURE_WINDOW_MS = 5_000;
 
 export interface MarketStatFilterDraft {
   key: string;
@@ -31,39 +29,6 @@ export interface MarketSearchRuntimeOptions {
   searchMarket: (request: MarketSearchRequest) => Promise<MarketSearchResponse>;
   now: Readonly<Ref<number>>;
   readiness: Readonly<Ref<MarketReadiness>>;
-}
-
-export function createMarketAccessToggleGesture() {
-  let firstPressAt: number | null = null;
-  let pressCount = 0;
-
-  function reset(): void {
-    firstPressAt = null;
-    pressCount = 0;
-  }
-
-  function recordArrowPress(now = Date.now()): boolean {
-    if (!Number.isFinite(now)) {
-      reset();
-      return false;
-    }
-    if (
-      firstPressAt === null
-      || now < firstPressAt
-      || now - firstPressAt >= MARKET_ACCESS_GESTURE_WINDOW_MS
-    ) {
-      firstPressAt = now;
-      pressCount = 1;
-      return false;
-    }
-
-    pressCount += 1;
-    if (pressCount < MARKET_ACCESS_GESTURE_PRESS_COUNT) return false;
-    reset();
-    return true;
-  }
-
-  return { recordArrowPress, reset };
 }
 
 const MARKET_SEARCH_FAILURE_MESSAGES: Record<MarketSearchErrorCode, string> = {

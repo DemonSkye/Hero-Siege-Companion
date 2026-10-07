@@ -35,6 +35,8 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
       const sideColumn = document.querySelector(".dashboard-column-side");
       const timelineCard = document.querySelector("#item-timeline-card");
       const timelineIsIdle = timelineCard?.textContent?.includes("No tracked item drops in this session yet.") ?? false;
+      const marketStatus = timelineCard?.querySelector(".market-readiness");
+      const marketStatusHeight = marketStatus ? rectOf(marketStatus).height : 0;
       const statusStrip = document.querySelector(".status-strip");
       const dashboardCustomizer = document.querySelector('summary[aria-label="Customize dashboard"]');
       const runScoreStrip = document.querySelector(".run-score-strip");
@@ -50,7 +52,8 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
         dashboardCustomizerInStatus: Boolean(statusStrip && dashboardCustomizer && statusStrip.contains(dashboardCustomizer)),
         dashboardCustomizerVisible: dashboardCustomizer ? rectOf(dashboardCustomizer).width > 0 && rectOf(dashboardCustomizer).height > 0 : false,
         horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        idleTimelineHeight: timelineIsIdle && timelineCard ? rectOf(timelineCard).height : null,
+        idleTimelineContentHeight: timelineIsIdle && timelineCard ? rectOf(timelineCard).height - marketStatusHeight : null,
+        marketStatusHeight,
         mainToRailRatio: mainColumn && sideColumn ? rectOf(mainColumn).width / rectOf(sideColumn).width : 0,
         maxScoreCellGap: scoreCellGaps.length ? Math.max(...scoreCellGaps) : Number.POSITIVE_INFINITY,
         oldRunCommandBannerPresent: Boolean(document.querySelector(".live-dashboard-toolbar")),
@@ -109,7 +112,10 @@ test("keeps the live dashboard cards measurable, visible, and non-overlapping", 
     expect(diagnostics.runPacePlotsMeasured).toBe(true);
     expect(diagnostics.runPaceOrderedBetweenScoreAndDashboard).toBe(true);
     expect(diagnostics.mainToRailRatio).toBeGreaterThan(1.5);
-    if (diagnostics.idleTimelineHeight !== null) expect(diagnostics.idleTimelineHeight).toBeLessThan(180);
+    // The default Market status adds a compact row; the existing empty content stays small.
+    expect(diagnostics.marketStatusHeight).toBeGreaterThan(0);
+    expect(diagnostics.marketStatusHeight).toBeLessThanOrEqual(60);
+    if (diagnostics.idleTimelineContentHeight !== null) expect(diagnostics.idleTimelineContentHeight).toBeLessThan(180);
     expect(diagnostics.tinyCards).toEqual([]);
     expect(diagnostics.horizontallyOffscreenCards).toEqual([]);
     expect(diagnostics.overlaps).toEqual([]);

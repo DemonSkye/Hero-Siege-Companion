@@ -7,7 +7,6 @@ import type {
 } from "../../../shared/app-state";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 import type { ConfigurationImportPreview } from "../lib/preferences";
-import { createMarketAccessToggleGesture } from "../lib/market-search-runtime";
 import type { ThemeId } from "../lib/themes";
 import type { WhatsNewRelease } from "../lib/whats-new";
 import { useModalFocus } from "../lib/modal-focus";
@@ -17,7 +16,6 @@ import SettingsCaptureTab from "./SettingsCaptureTab.vue";
 import SettingsConfigTab from "./SettingsConfigTab.vue";
 import SettingsGeneralTab from "./SettingsGeneralTab.vue";
 import SettingsSupportTab from "./SettingsSupportTab.vue";
-import { createInitialSatanicZoneDiagnosticState, type SatanicZoneDiagnosticState } from "../../../shared/satanic-zone-diagnostic";
 
 interface ThemeOption {
   id: ThemeId;
@@ -32,10 +30,7 @@ const props = withDefaults(defineProps<{
   legacyThemeAvailable?: boolean;
   legacyCompactThemeAvailable?: boolean;
   captureDiagnostics: CaptureDiagnosticsState;
-  satanicZoneDiagnostic?: SatanicZoneDiagnosticState;
   satanicZoneLoginCache?: import("../../../shared/satanic-zone-login-cache").SatanicZoneLoginCacheState;
-  szDiagnosticBusy?: boolean;
-  szDiagnosticCancelBusy?: boolean;
   diagnosticsNow: number;
   diagnosticsBusyLevel?: CaptureDiagnosticsLevel | null;
   supportDiagnostics: string;
@@ -75,9 +70,6 @@ const emit = defineEmits<{
   copySupportDiagnosticsSummary: [];
   openNpcapGuide: [];
   setDiagnosticsMode: [level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode];
-  armSatanicZoneDiagnostic: [];
-  startSatanicZoneDiagnostic: [];
-  cancelSatanicZoneDiagnostic: [];
   resetWindowPosition: [];
   factoryReset: [deleteItemFilters: boolean];
   importTheme: [];
@@ -97,7 +89,6 @@ const themeCustomMode = defineModel<boolean>("themeCustomMode", { required: true
 const compactThemeCustomMode = defineModel<boolean>("compactThemeCustomMode", { required: true });
 const compactThemeMatchesApp = defineModel<boolean>("compactThemeMatchesApp", { required: true });
 const satanicZoneRefreshEnabled = defineModel<boolean>("satanicZoneRefreshEnabled", { required: true });
-const marketSearchEnabled = defineModel<boolean>("marketSearchEnabled", { required: true });
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; group: "settings" | "resources" }> = [
   { id: "app", label: "App", group: "settings" },
@@ -111,7 +102,6 @@ const settingsDialog = ref<HTMLElement | null>(null);
 const nestedDialog = ref<SettingsDialogKind | null>(props.backupPreview ? "restore" : null);
 const pendingDeepMode = ref<Exclude<CaptureDiagnosticsMode, "off">>("manual");
 const deleteItemFilters = ref(false);
-const marketAccessToggleGesture = createMarketAccessToggleGesture();
 const { handleModalFocusKeydown } = useModalFocus(settingsDialog);
 
 watch(() => props.initialTab, (tab) => {
@@ -122,10 +112,6 @@ watch(() => props.initialTab, (tab) => {
 watch(() => props.backupPreview, (preview) => {
   if (preview) nestedDialog.value = "restore";
   else if (nestedDialog.value === "restore") nestedDialog.value = null;
-});
-
-watch([activeSettingsSection, nestedDialog], ([section, dialog]) => {
-  if (section !== "support" || dialog !== null) marketAccessToggleGesture.reset();
 });
 
 function normalizeSettingsSection(value: string | undefined): SettingsSection {
@@ -159,25 +145,6 @@ function handleNavigationKeydown(event: KeyboardEvent) {
   const nextSection = SETTINGS_SECTIONS[nextIndex];
   selectSettingsSection(nextSection.id);
   void nextTick(() => document.querySelector<HTMLButtonElement>(`[data-settings-section="${nextSection.id}"]`)?.focus());
-}
-
-function handleSettingsKeydownCapture(event: KeyboardEvent) {
-  if (
-    activeSettingsSection.value !== "support"
-    || nestedDialog.value !== null
-    || event.key !== "ArrowLeft"
-    || event.altKey
-    || event.ctrlKey
-    || event.metaKey
-    || event.shiftKey
-  ) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  if (event.repeat) return;
-  if (marketAccessToggleGesture.recordArrowPress()) {
-    marketSearchEnabled.value = !marketSearchEnabled.value;
-  }
 }
 
 function requestSatanicZoneRefreshChange(enabled: boolean) {
@@ -228,7 +195,6 @@ function saveStatusLabel(): string {
 <template>
   <div
     class="modal-backdrop settings-ledger-backdrop"
-    @keydown.capture="handleSettingsKeydownCapture"
     @keydown="handleModalFocusKeydown"
     @keydown.esc="$emit('close')"
   >
@@ -318,9 +284,6 @@ function saveStatusLabel(): string {
           <SettingsSupportTab
             v-else-if="activeSettingsSection === 'support'"
             :capture-diagnostics="captureDiagnostics"
-            :satanic-zone-diagnostic="satanicZoneDiagnostic ?? createInitialSatanicZoneDiagnosticState()"
-            :sz-diagnostic-busy="szDiagnosticBusy"
-            :sz-diagnostic-cancel-busy="szDiagnosticCancelBusy"
             :diagnostics-now="diagnosticsNow"
             :diagnostics-busy-level="diagnosticsBusyLevel"
             :support-diagnostics="supportDiagnostics"
@@ -328,7 +291,6 @@ function saveStatusLabel(): string {
             :support-log-files="supportLogFiles"
             :support-logs-path="supportLogsPath"
             :support-bundle-busy="supportBundleBusy"
-            :market-search-enabled="marketSearchEnabled"
             :backup-busy="backupBusy"
             :factory-reset-busy="factoryResetBusy"
             :whats-new="whatsNew"
@@ -340,9 +302,6 @@ function saveStatusLabel(): string {
             @copy-support-diagnostics-summary="$emit('copySupportDiagnosticsSummary')"
             @open-npcap-guide="$emit('openNpcapGuide')"
             @set-diagnostics-mode="requestDiagnosticsMode"
-            @arm-satanic-zone-diagnostic="$emit('armSatanicZoneDiagnostic')"
-            @start-satanic-zone-diagnostic="$emit('startSatanicZoneDiagnostic')"
-            @cancel-satanic-zone-diagnostic="$emit('cancelSatanicZoneDiagnostic')"
             @reset-window-position="$emit('resetWindowPosition')"
             @request-factory-reset="requestFactoryReset"
           />

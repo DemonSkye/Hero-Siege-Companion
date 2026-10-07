@@ -46,7 +46,6 @@ export interface UiPreferences {
   hideMaterials: boolean;
   hideUnfilteredTimelineItems: boolean;
   timelineType: string;
-  marketSearchEnabled: boolean;
   shoppingListItems: string[];
   gameExecutablePath: string;
   launchThroughSteam: boolean;
@@ -125,7 +124,6 @@ export const defaultPreferences: UiPreferences = {
   hideMaterials: true,
   hideUnfilteredTimelineItems: false,
   timelineType: "all",
-  marketSearchEnabled: false,
   shoppingListItems: DEFAULT_SHOPPING_LIST,
   gameExecutablePath: "",
   launchThroughSteam: true,
@@ -187,7 +185,6 @@ export function serializeDurablePreferences(value: Partial<UiPreferences>): stri
     hideMaterials: preferences.hideMaterials,
     hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
     timelineType: preferences.timelineType,
-    marketSearchEnabled: preferences.marketSearchEnabled,
     shoppingListItems: preferences.shoppingListItems,
     gameExecutablePath: preferences.gameExecutablePath,
     launchThroughSteam: preferences.launchThroughSteam,
@@ -411,7 +408,6 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     hideMaterials: Boolean(value.hideMaterials),
     hideUnfilteredTimelineItems: Boolean(value.hideUnfilteredTimelineItems),
     timelineType: validTimelineType,
-    marketSearchEnabled: value.marketSearchEnabled === true,
     shoppingListItems: normalizeShoppingList(value.shoppingListItems),
     gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),

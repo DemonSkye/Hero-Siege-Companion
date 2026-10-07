@@ -31,7 +31,6 @@ export function useAppPreferences() {
   const hideMaterials = ref(initial.hideMaterials);
   const hideUnfilteredTimelineItems = ref(initial.hideUnfilteredTimelineItems);
   const timelineType = ref(initial.timelineType);
-  const marketSearchEnabled = ref(initial.marketSearchEnabled);
   const gameExecutablePath = ref(initial.gameExecutablePath);
   const launchThroughSteam = ref(initial.launchThroughSteam);
   const themeId = ref(initial.themeId);
@@ -63,7 +62,6 @@ export function useAppPreferences() {
     hideMaterials,
     hideUnfilteredTimelineItems,
     timelineType,
-    marketSearchEnabled,
     gameExecutablePath,
     launchThroughSteam,
     themeId,
@@ -96,7 +94,6 @@ export function useAppPreferences() {
       hideMaterials: hideMaterials.value,
       hideUnfilteredTimelineItems: hideUnfilteredTimelineItems.value,
       timelineType: timelineType.value,
-      marketSearchEnabled: marketSearchEnabled.value,
       shoppingListItems,
       gameExecutablePath: gameExecutablePath.value,
       launchThroughSteam: launchThroughSteam.value,
@@ -132,7 +129,6 @@ export function useAppPreferences() {
     hideMaterials.value = next.hideMaterials;
     hideUnfilteredTimelineItems.value = next.hideUnfilteredTimelineItems;
     timelineType.value = next.timelineType;
-    marketSearchEnabled.value = next.marketSearchEnabled;
     gameExecutablePath.value = next.gameExecutablePath;
     launchThroughSteam.value = next.launchThroughSteam;
     themeId.value = next.themeId;
@@ -169,7 +165,6 @@ export function useAppPreferences() {
     hideMaterials,
     hideUnfilteredTimelineItems,
     timelineType,
-    marketSearchEnabled,
     gameExecutablePath,
     launchThroughSteam,
     themeId,

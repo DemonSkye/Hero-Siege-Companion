@@ -42,17 +42,12 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     expect((await getRendererState(page)).marketReadiness).toMatchObject({
       phase: "waiting", reason: "capture_inactive", canSearch: false, missingFields: fields,
     });
-    await expect(page.locator(".market-readiness")).toHaveCount(0);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    const settings = page.getByRole("dialog", { name: "Settings" });
-    await settings.getByRole("button", { name: "Help & Support", exact: true }).click();
-    for (let press = 0; press < 4; press += 1) await page.keyboard.press("ArrowLeft");
-    await settings.getByRole("button", { name: "Close settings" }).click();
+    const timeline = page.locator("#item-timeline-card .market-readiness");
+    await expect(timeline.getByRole("status")).toHaveText("Market waiting for capture");
 
     await page.evaluate(() => window.heroSiegeCompanion.startCapture());
     await expect.poll(async () => (await getRendererState(page)).marketReadiness.reason).toBe("game_unavailable");
     await observe([123], [payload("api account_id=10-42&beta=0")]);
-    const timeline = page.locator("#item-timeline-card .market-readiness");
     await expect(timeline.getByRole("status")).toHaveText("Market collecting context");
     await timeline.locator("summary").click();
     await expect(timeline).toContainText("2/6 fields received");

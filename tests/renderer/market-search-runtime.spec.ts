@@ -7,9 +7,7 @@ import {
   type MarketSearchResponse,
 } from "../../src/shared/market-search";
 import {
-  MARKET_ACCESS_GESTURE_WINDOW_MS,
   MARKET_STAT_SUGGESTION_LIMIT,
-  createMarketAccessToggleGesture,
   marketStatSuggestions,
   useMarketSearchRuntime as createMarketSearchRuntime,
   type MarketSearchRuntimeOptions,
@@ -22,23 +20,6 @@ function useMarketSearchRuntime(options: Omit<MarketSearchRuntimeOptions, "readi
 
 
 describe("market search runtime", () => {
-  test("requires four left-arrow presses strictly within five seconds for the access toggle", () => {
-    const gesture = createMarketAccessToggleGesture();
-
-    expect(gesture.recordArrowPress(1_000)).toBe(false);
-    expect(gesture.recordArrowPress(2_000)).toBe(false);
-    expect(gesture.recordArrowPress(4_000)).toBe(false);
-    expect(gesture.recordArrowPress(5_999)).toBe(true);
-
-    expect(gesture.recordArrowPress(10_000)).toBe(false);
-    expect(gesture.recordArrowPress(10_100)).toBe(false);
-    expect(gesture.recordArrowPress(10_200)).toBe(false);
-    expect(gesture.recordArrowPress(10_000 + MARKET_ACCESS_GESTURE_WINDOW_MS)).toBe(false);
-    expect(gesture.recordArrowPress(15_100)).toBe(false);
-    expect(gesture.recordArrowPress(15_200)).toBe(false);
-    expect(gesture.recordArrowPress(15_300)).toBe(true);
-  });
-
   test("builds a comparable-item request and keeps only the lowest two prices", async () => {
     const item = itemTimelineEntry();
     const mask = resolveMarketItemMask({

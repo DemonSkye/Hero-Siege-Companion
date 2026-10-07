@@ -94,7 +94,6 @@ export interface CompanionState {
   runArchivePreferences: RunArchivePreferences;
   capturePreferences: CapturePreferences;
   captureDiagnostics: CaptureDiagnosticsState;
-  satanicZoneDiagnostic: import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState;
   logs: LogEntry[];
 }
 

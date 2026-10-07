@@ -484,7 +484,8 @@ describe("App orchestration", () => {
     }
   });
 
-  test("keeps dropped-item Market actions hidden until the durable gate is enabled", async () => {
+  test("offers dropped-item Market actions by default and ignores a legacy saved disabled gate", async () => {
+    window.localStorage.setItem("hero-siege-companion:preferences:v1", JSON.stringify({ marketSearchEnabled: false }));
     installHeroSiegeCompanionApi();
     const stubs = {
       AppTitlebar: { template: "<div />" },
@@ -498,9 +499,7 @@ describe("App orchestration", () => {
         template: '<span data-test="market-search-available">{{ marketSearchAvailable }}</span>',
       },
       SettingsModal: {
-        props: ["marketSearchEnabled"],
-        emits: ["update:marketSearchEnabled"],
-        template: '<button data-test="unlock-market" type="button" @click="$emit(\'update:marketSearchEnabled\', true)">Unlock</button>',
+        template: "<div />",
       },
       UpdateBanner: { template: "<div />" },
       WhatsNewPrompt: { template: "<div />" },
@@ -513,14 +512,7 @@ describe("App orchestration", () => {
 
     try {
       await flushPromises();
-      expect(wrapper.get('[data-test="market-search-available"]').text()).toBe("false");
-      await wrapper.get('[data-test="open-settings"]').trigger("click");
-      await wrapper.get('[data-test="unlock-market"]').trigger("click");
-      await flushPromises();
       expect(wrapper.get('[data-test="market-search-available"]').text()).toBe("true");
-      expect(JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}")).toMatchObject({
-        marketSearchEnabled: true,
-      });
     } finally {
       wrapper.unmount();
     }

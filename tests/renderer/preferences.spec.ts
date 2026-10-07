@@ -54,6 +54,18 @@ import {
 import { itemTimelineEntry } from "./fixtures";
 
 describe("renderer preferences persistence", () => {
+  test("ignores the retired hidden Market gate in saved preferences and backups", () => {
+    window.localStorage.setItem("hero-siege-companion:preferences:v1", JSON.stringify({ marketSearchEnabled: false, hideKeys: false }));
+    const restored = loadPreferences();
+    expect(restored.hideKeys).toBe(false);
+    expect(restored).not.toHaveProperty("marketSearchEnabled");
+    expect(createConfigurationExportPayload(restored).uiPreferences).not.toHaveProperty("marketSearchEnabled");
+    const imported = importConfigurationPayload({ app: "hero-siege-companion", kind: "configuration", version: 1,
+      uiPreferences: { marketSearchEnabled: false, hideKeys: false } }, defaultPreferences).uiPreferences;
+    expect(imported.hideKeys).toBe(false);
+    expect(imported).not.toHaveProperty("marketSearchEnabled");
+  });
+
   beforeEach(() => {
     const values = new Map<string, string>();
     Object.defineProperty(window, "localStorage", {
@@ -76,7 +88,6 @@ describe("renderer preferences persistence", () => {
       hideSocketables: true,
       hideKeys: true,
       hideMaterials: true,
-      marketSearchEnabled: false,
       themeId: "voidglass",
       compactThemeId: "voidglass",
       compactThemeMatchesApp: true,
@@ -100,7 +111,6 @@ describe("renderer preferences persistence", () => {
       hideMaterials: preferences.hideMaterials,
       hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
       timelineType: preferences.timelineType,
-      marketSearchEnabled: preferences.marketSearchEnabled,
       gameExecutablePath: preferences.gameExecutablePath,
       launchThroughSteam: preferences.launchThroughSteam,
       themeId: preferences.themeId,
@@ -217,7 +227,7 @@ describe("renderer preferences persistence", () => {
     expect(preferences.logLimit).toBe(defaultPreferences.logLimit);
     expect(preferences.timelineLimit).toBe(defaultPreferences.timelineLimit);
     expect(preferences.timelineType).toBe(defaultPreferences.timelineType);
-    expect(preferences.marketSearchEnabled).toBe(false);
+    expect(preferences).not.toHaveProperty("marketSearchEnabled");
     expect(preferences.shoppingListItems).toEqual(["Copper Ore", "Ruby"]);
     expect(preferences.gameExecutablePath).toBe("");
     expect(preferences.launchThroughSteam).toBe(false);
@@ -427,7 +437,7 @@ describe("renderer preferences persistence", () => {
     expect(loadPreferences().schemaVersion).toBe(UI_PREFERENCES_SCHEMA_VERSION);
     expect(loadPreferences().timelineType).toBe("item-filter:boss-drops");
     expect(loadPreferences().shoppingListItems).toEqual(["Jade"]);
-    expect(loadPreferences().marketSearchEnabled).toBe(true);
+    expect(loadPreferences()).not.toHaveProperty("marketSearchEnabled");
     expect(loadPreferences().liveRunGraphEnabledMetrics).toEqual([]);
     expect(loadPreferences().liveRunGraphItemNames).toEqual(["Jade Ore"]);
     expect(normalizeShoppingList(["Ruby", "Ruby", "", "Jade"])).toEqual(["Ruby", "Jade"]);
@@ -484,18 +494,6 @@ describe("renderer preferences persistence", () => {
     expect(savePreferences({ ...defaultPreferences, itemFilterGroups: [] })).toBe(true);
 
     expect(loadPreferences().itemFilterGroups).toEqual([]);
-  });
-
-  test("keeps hidden Market access local instead of enabling it through portable backups", () => {
-    const enabled = { ...defaultPreferences, marketSearchEnabled: true };
-    const payload = createConfigurationExportPayload(enabled);
-
-    expect(payload.uiPreferences).not.toHaveProperty("marketSearchEnabled");
-    expect(importConfigurationPayload(payload, enabled).uiPreferences.marketSearchEnabled).toBe(true);
-    expect(importConfigurationPayload({
-      ...payload,
-      uiPreferences: { ...payload.uiPreferences, marketSearchEnabled: true },
-    }, defaultPreferences).uiPreferences.marketSearchEnabled).toBe(false);
   });
 
   test("treats generic item labels as research candidates and exports shareable research JSON", () => {

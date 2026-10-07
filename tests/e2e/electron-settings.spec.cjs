@@ -173,7 +173,7 @@ async function configureDurableSettings({ electronApp, page }) {
   expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
   await emitCapturePayloads(electronApp, e2eTrafficPayloads());
   await expect(page.getByText("Aurelion Fury").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Check Aurelion Fury on the market" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Check Aurelion Fury on the market" })).toBeVisible();
 
   await openSettings(page);
   const settings = page.getByRole("dialog", { name: "Settings" });
@@ -208,10 +208,6 @@ async function configureDurableSettings({ electronApp, page }) {
   await settings.getByRole("checkbox", { name: /Enable SZ Refresh/ }).click();
   await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshEnabled).toBe(true);
 
-  await settings.getByRole("button", { name: "Help & Support", exact: true }).click();
-  for (let press = 0; press < 4; press += 1) await page.keyboard.press("ArrowLeft");
-  await expect.poll(async () => (await getStoredUiPreferences(page)).marketSearchEnabled).toBe(true);
-
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settings).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Check Aurelion Fury on the market" })).toBeVisible();
@@ -243,9 +239,9 @@ async function assertDurableSettings({ electronApp, page }, { reopened }) {
     compactThemeId: "cyberpunk",
     compactThemeMatchesApp: false,
     themeId: "light",
-    marketSearchEnabled: true,
   });
   expect(storedPreferences).not.toHaveProperty("satanicZoneRefreshEnabled");
+  expect(storedPreferences).not.toHaveProperty("marketSearchEnabled");
   expect(storedPreferences).not.toHaveProperty("alwaysOnTop");
   expect(storedPreferences).not.toHaveProperty("showCaptureDetails");
   expect(storedPreferences).not.toHaveProperty("developerItemResearchEnabled");

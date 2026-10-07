@@ -10,8 +10,6 @@ const PREFERENCES_STORAGE_KEY = "hero-siege-companion:preferences:v1";
 const WHATS_NEW_SEEN_STORAGE_KEY = "hero-siege-companion:whats-new-seen-version:v1";
 
 const EXPECTED_PRELOAD_API = [
-  "armSatanicZoneDiagnostic",
-  "cancelSatanicZoneDiagnostic",
   "checkForUpdate",
   "chooseGameExecutable",
   "clearSatanicZoneLoginCache",
@@ -56,7 +54,6 @@ const EXPECTED_PRELOAD_API = [
   "setSatanicZoneRefreshEnabled",
   "setSatanicZoneLoginCacheEnabled",
   "startCapture",
-  "startSatanicZoneDiagnostic",
   "stopCapture",
   "toggleMaximizeWindow",
   "writeClipboardText",

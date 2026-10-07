@@ -8,15 +8,10 @@ import type {
 } from "../../../shared/app-state";
 import type { SupportDiagnosticGeneratedFileInfo, SupportDiagnosticLogFileInfo } from "../../../shared/support-diagnostics";
 import type { WhatsNewRelease } from "../lib/whats-new";
-import SatanicZoneDiagnosticCard from "./SatanicZoneDiagnosticCard.vue";
 import MarketPrivateDiagnosticSettings from "./MarketPrivateDiagnosticSettings.vue";
-import { createInitialSatanicZoneDiagnosticState, type SatanicZoneDiagnosticState } from "../../../shared/satanic-zone-diagnostic";
 
 const props = withDefaults(defineProps<{
   captureDiagnostics: CaptureDiagnosticsState;
-  satanicZoneDiagnostic?: SatanicZoneDiagnosticState;
-  szDiagnosticBusy?: boolean;
-  szDiagnosticCancelBusy?: boolean;
   diagnosticsNow: number;
   diagnosticsBusyLevel?: CaptureDiagnosticsLevel | null;
   supportDiagnostics: string;
@@ -24,14 +19,12 @@ const props = withDefaults(defineProps<{
   supportLogFiles: SupportDiagnosticLogFileInfo[];
   supportLogsPath: string;
   supportBundleBusy: boolean;
-  marketSearchEnabled?: boolean;
   backupBusy?: boolean;
   factoryResetBusy?: boolean;
   whatsNew: WhatsNewRelease;
   initiallyExpandWhatsNew?: boolean;
 }>(), {
   diagnosticsBusyLevel: null,
-  satanicZoneDiagnostic: createInitialSatanicZoneDiagnosticState,
   backupBusy: false,
   factoryResetBusy: false,
   initiallyExpandWhatsNew: false,
@@ -39,9 +32,6 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{
   exportBackup: [];
-  armSatanicZoneDiagnostic: [];
-  startSatanicZoneDiagnostic: [];
-  cancelSatanicZoneDiagnostic: [];
   chooseBackup: [];
   openSupportLogsDirectory: [];
   saveSupportDiagnostics: [];
@@ -133,10 +123,6 @@ function nextMode(state: CaptureDiagnosticsModeState, requested: Exclude<Capture
       </div>
     </div>
 
-    <SatanicZoneDiagnosticCard :diagnostic="satanicZoneDiagnostic" :now="diagnosticsNow"
-      :busy="szDiagnosticBusy" :cancel-busy="szDiagnosticCancelBusy"
-      @arm="$emit('armSatanicZoneDiagnostic')" @start="$emit('startSatanicZoneDiagnostic')" @cancel="$emit('cancelSatanicZoneDiagnostic')" />
-
     <div class="settings-ledger-row">
       <div class="settings-ledger-copy">
         <span class="settings-ledger-title">Enhanced diagnostics</span>
@@ -187,7 +173,7 @@ function nextMode(state: CaptureDiagnosticsModeState, requested: Exclude<Capture
       </div>
     </details>
 
-    <MarketPrivateDiagnosticSettings v-if="marketSearchEnabled" />
+    <MarketPrivateDiagnosticSettings />
     <details class="settings-disclosure settings-diagnostics-files">
       <summary>
         <span><strong>Support bundle contents</strong><small>{{ availableSupportLogFiles.length }} local log file{{ availableSupportLogFiles.length === 1 ? "" : "s" }} currently available.</small></span>

@@ -1,5 +1,4 @@
 import type { CompanionState, LogEntry } from "../../src/shared/app-state";
-import { createInitialSatanicZoneDiagnosticState } from "../../src/shared/satanic-zone-diagnostic";
 import { PAST_RUN_SCHEMA_VERSION, createInitialStats, type ItemTimelineEntry, type PastRunSummary } from "../../src/shared/stats";
 import type { ItemFilterGroup } from "../../src/renderer/src/lib/item-filters";
 
@@ -17,7 +16,6 @@ export function companionState(overrides: Partial<CompanionState> = {}): Compani
     updatedAt: baseTime,
   };
   return {
-    satanicZoneDiagnostic: createInitialSatanicZoneDiagnosticState(),
     marketReadiness: {
       phase: "ready", reason: null, missingFields: [], sessionCurrent: true,
       regionQualified: true, expiresAt: baseTime + 600_000, canSearch: true,

@@ -539,8 +539,8 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain("Rebuilt Settings as one autosaving");
     expect(wrapper.text()).toContain("Past Runs now keeps up to 250 meaningful runs");
     expect(wrapper.text()).toContain("Retired the player-facing Item Research notebook");
-    expect(wrapper.text()).toContain("Manual Satanic Zone Refresh now uses a short-lived Companion-owned connection.");
-    expect(wrapper.text()).toContain("no longer requires a proxy, certificate, reconnect, or special game launch.");
+    expect(wrapper.text()).toContain("Market price checks are available to everyone.");
+    expect(wrapper.text()).toContain("Satanic Zone Refresh watches automatically while capture is enabled and sends a request only when you click Refresh.");
     expect(wrapper.text()).toContain("Patched stability issues across capture startup, packet handling, diagnostics, and native shutdown.");
     expect(wrapper.text()).toContain("Updated the tracked Hero Siege season number to Season 11.");
     expect(wrapper.text()).toContain(
@@ -557,7 +557,6 @@ describe("Vue component contracts", () => {
     );
     expect(wrapper.text()).toContain("Various bug fixes and reliability improvements.");
     expect(wrapper.text()).toContain("Npcap is still required for capture.");
-    expect(WHATS_NEW_RELEASE.items).toHaveLength(17);
     expect(WHATS_NEW_RELEASE.sections).toHaveLength(0);
     expect(wrapper.text()).toContain("Highlights");
     const whatsNew = wrapper.get(".settings-whats-new");
@@ -1187,7 +1186,6 @@ function settingsModalProps() {
     launchThroughSteam: true,
     gameExecutablePath: "",
     satanicZoneRefreshEnabled: false,
-    marketSearchEnabled: false,
     themeId: "voidglass" as const,
     compactThemeId: "voidglass" as const,
     themeCustomMode: false,

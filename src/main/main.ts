@@ -13,8 +13,6 @@ import {
 } from "./capture-runtime";
 import { CaptureDiagnosticsController } from "./capture-diagnostics-controller";
 import { diagnosticCapturePreferences } from "./satanic-zone-diagnostic-runtime";
-import { createSatanicZoneInitializedProbeRuntime, type SatanicZoneInitializedProbeController } from "./satanic-zone-initialized-controller";
-import { isSatanicZoneDiagnosticActive } from "../shared/satanic-zone-diagnostic";
 import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
 import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
@@ -106,7 +104,6 @@ let marketPrivateDiagnostic: MarketPrivateDiagnostic | null = null;
 let satanicZoneController: SatanicZoneController | null = null;
 let satanicZoneRefreshProvider: InitializedSatanicZoneRefreshProvider | null = null;
 let satanicZoneLoginCache: SatanicZoneLoginCache | null = null;
-let satanicZoneDiagnostic: SatanicZoneInitializedProbeController | null = null;
 const satanicZoneTestRuntime = isElectronE2eTestMode() ? new ElectronSatanicZoneTestRuntime() : null;
 const marketTestRuntime = ElectronMarketTestRuntime.enabled() ? new ElectronMarketTestRuntime() : null;
 let directMarketSearchProvider: DirectMarketSearchProvider | null = null;
@@ -125,7 +122,7 @@ const captureDiagnosticsController = new CaptureDiagnosticsController({
 });
 function applyCaptureDiagnosticPreferences(): void {
   state.capturePreferences = diagnosticCapturePreferences(captureDiagnosticsController.capturePreferences(),
-    isSatanicZoneDiagnosticActive(state.satanicZoneDiagnostic) || satanicZoneRefreshProvider?.suppressRawLogging === true);
+    satanicZoneRefreshProvider?.suppressRawLogging === true);
   captureService?.setCapturePreferences(state.capturePreferences);
 }
 const gameCaptureCoordinator = new GameCaptureCoordinator({
@@ -439,7 +436,6 @@ ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
 ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
 ipcMain.handle(IPC_CHANNELS.captureStop, () => {
   gameCaptureCoordinator.setCaptureEnabled(false);
-  satanicZoneDiagnostic?.cancel();
   satanicZoneRefreshProvider?.suspend();
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   applyPendingCaptureEvents();
@@ -462,10 +458,6 @@ ipcMain.handle(IPC_CHANNELS.statsReset, () => {
   return state;
 });
 ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
-  if (satanicZoneDiagnostic?.blocksManualRefresh) {
-    addLog("warning", "Finish the SZ diagnostic and its cooldown before another refresh.");
-    return state;
-  }
   if (!state.satanicZone.refreshEnabled) {
     const result = await satanicZoneController?.refreshNow();
     writeAppLog("satanic-zone-refresh-requested", {
@@ -709,7 +701,6 @@ ipcMain.handle(IPC_CHANNELS.windowToggleMaximize, () => {
   windowManager?.toggleMaximize();
 });
 ipcMain.handle(IPC_CHANNELS.windowClose, () => {
-  satanicZoneDiagnostic?.dispose();
   satanicZoneRefreshProvider?.dispose();
   windowManager?.close();
 });
@@ -732,9 +723,6 @@ ipcMain.handle(IPC_CHANNELS.marketPrivateDiagnosticOpen, async () => {
   if (!marketPrivateDiagnostic || !fs.existsSync(marketPrivateDiagnostic.directory)) return false;
   try { return !(await shell.openPath(marketPrivateDiagnostic.directory)); } catch { return false; }
 });
-ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticArm, () => satanicZoneDiagnostic?.arm() ?? state.satanicZoneDiagnostic);
-ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticStart, () => satanicZoneDiagnostic?.startAttempt() ?? state.satanicZoneDiagnostic);
-ipcMain.handle(IPC_CHANNELS.satanicZoneDiagnosticCancel, () => satanicZoneDiagnostic?.cancel() ?? state.satanicZoneDiagnostic);
 ipcMain.handle(IPC_CHANNELS.supportOpenLogsDirectory, openSupportLogsDirectory);
 ipcMain.handle(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
   saveSupportDiagnostics(String(diagnosticsSummary ?? "")),
@@ -886,8 +874,8 @@ app.whenReady().then(async () => {
     onReadinessDiagnostic: diagnostic => writeAppLog("sz-refresh-readiness", diagnostic),
     onWatchDiagnostic: diagnostic => writeAppLog("sz-watch-stage", diagnostic),
     canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
-      && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh,
-    canRefresh: () => state.satanicZone.refreshEnabled && !satanicZoneDiagnostic?.blocksManualRefresh,
+      && state.satanicZone.phase !== "refreshing",
+    canRefresh: () => state.satanicZone.refreshEnabled,
     onPreparation: preparation => {
       const previous = state.satanicZone.refreshPreparation;
       satanicZoneController?.setPreparation(preparation);
@@ -905,20 +893,6 @@ app.whenReady().then(async () => {
   });
   satanicZoneLoginCache.configure(state.satanicZone.refreshEnabled && loadSatanicZoneLoginCacheEnabled(preferencesPath),
     loadSatanicZoneLoginCacheAutomatic(preferencesPath));
-  satanicZoneDiagnostic = createSatanicZoneInitializedProbeRuntime({
-    syntheticOnly: isElectronE2eTestMode(),
-    canArm: () => state.satanicZone.phase !== "refreshing"
-      && !satanicZoneRefreshProvider?.suppressRawLogging
-      && Date.now() >= (state.satanicZone.nextAllowedRefreshAt ?? 0),
-    onChange: (diagnostic) => {
-      state.satanicZoneDiagnostic = diagnostic;
-      applyCaptureDiagnosticPreferences();
-      if (!isSatanicZoneDiagnosticActive(diagnostic) && diagnostic.startedAt !== null) {
-        writeAppLog("satanic-zone-diagnostic-summary", { summary: diagnostic });
-      }
-      publishState();
-    },
-  });
   windowBounds = loadWindowBounds(windowBoundsPath, writeAppLog);
   writeAppLog("app-ready", {
     userDataPath,
@@ -1038,7 +1012,6 @@ app.on("window-all-closed", () => {
 });
 
 function shutdownCapture(reason: string): void {
-  satanicZoneDiagnostic?.dispose();
   writeAppLog("shutdown-capture", { reason, captureStatus: state.captureStatus, captureRunning: state.captureRunning });
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   gameCaptureCoordinator.stopMonitor();

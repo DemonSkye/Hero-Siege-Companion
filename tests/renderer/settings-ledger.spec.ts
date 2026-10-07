@@ -22,7 +22,6 @@ function settingsProps(overrides: Record<string, unknown> = {}) {
     compactThemeCustomMode: false,
     compactThemeMatchesApp: true,
     satanicZoneRefreshEnabled: false,
-    marketSearchEnabled: false,
     themeOptions: THEME_OPTIONS,
     captureDiagnostics,
     diagnosticsNow: 1_000,
@@ -49,6 +48,23 @@ function button(wrapper: VueWrapper, label: string) {
 }
 
 describe("settings ledger", () => {
+  test("offers the private Market recorder without a hidden access preference", async () => {
+    const wrapper = mount(SettingsModal, { props: settingsProps({ initialTab: "support" }) });
+    expect(wrapper.text()).toContain("Private Market request");
+    for (let count = 0; count < 4; count++) await wrapper.get(".settings-ledger-panel-heading").trigger("keydown", { key: "ArrowLeft" });
+    expect(wrapper.text()).toContain("Private Market request");
+    expect(wrapper.emitted("update:marketSearchEnabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  test("Help & Support no longer offers the one-shot initialized SZ probe", () => {
+    const wrapper = mount(SettingsModal, { props: settingsProps({ initialTab: "support" }) });
+    expect(wrapper.text()).not.toContain("One-shot initialized SZ probe");
+    expect(wrapper.text()).not.toContain("Collect native initialization");
+    expect(wrapper.text()).not.toContain("Start one initialized attempt");
+    wrapper.unmount();
+  });
+
   test("keeps launch method as the only App decision and reveals the standalone path conditionally", async () => {
     const wrapper = mount(SettingsModal, { props: settingsProps() });
 
@@ -193,30 +209,6 @@ describe("settings ledger", () => {
 
     expect(wrapper.text()).toContain("10:00 remaining");
     expect(button(wrapper, "Stop").attributes("aria-pressed")).toBe("true");
-  });
-
-  test("toggles hidden Market access after four rapid left arrows in Help & Support", async () => {
-    const wrapper = mount(SettingsModal, { props: settingsProps() });
-    const supportButton = button(wrapper, "Help & Support");
-    await supportButton.trigger("click");
-    supportButton.element.focus();
-
-    expect(wrapper.text()).not.toContain("Market");
-    await supportButton.trigger("keydown", { key: "ArrowLeft", repeat: true });
-    for (let press = 0; press < 3; press += 1) {
-      await supportButton.trigger("keydown", { key: "ArrowLeft" });
-    }
-    expect(wrapper.emitted("update:marketSearchEnabled")).toBeUndefined();
-    expect(wrapper.get(".settings-ledger-panel-heading h2").text()).toBe("Help & Support");
-
-    await supportButton.trigger("keydown", { key: "ArrowLeft" });
-    expect(wrapper.emitted("update:marketSearchEnabled")).toEqual([[true]]);
-
-    await wrapper.setProps({ marketSearchEnabled: true });
-    for (let press = 0; press < 4; press += 1) {
-      await supportButton.trigger("keydown", { key: "ArrowLeft" });
-    }
-    expect(wrapper.emitted("update:marketSearchEnabled")).toEqual([[true], [false]]);
   });
 
   test("keeps Escape inside a nested confirmation and restores focus when the settings modal closes", async () => {
