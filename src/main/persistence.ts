@@ -227,13 +227,16 @@ export function normalizeSatanicZoneRefreshPreferences(preferences: unknown): Sa
 }
 
 export function loadSatanicZoneLoginCacheEnabled(filePath: string): boolean {
-  try { return (loadPreferencesFile(filePath) as { satanicZoneLoginCache?: { enabled?: unknown } }).satanicZoneLoginCache?.enabled === true; }
+  try {
+    const choice = (loadPreferencesFile(filePath) as { satanicZonePortableCache?: { version?: unknown; enabled?: unknown } }).satanicZonePortableCache;
+    return choice?.version === 1 && choice.enabled === true;
+  }
   catch { return false; }
 }
 export function saveSatanicZoneLoginCacheEnabled(filePath: string, enabled: boolean): boolean {
   try {
     savePreferencesFile(filePath, { ...withoutRetiredMainPreferenceSections(loadPreferencesFile(filePath)),
-      satanicZoneLoginCache: { enabled: enabled === true } });
+      satanicZonePortableCache: { version: 1, enabled: enabled === true } });
     return true;
   } catch { return false; }
 }

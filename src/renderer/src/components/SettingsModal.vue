@@ -368,10 +368,11 @@ function saveStatusLabel(): string {
           <li>No certificate installation, administrator service, proxy, or special game launch is required.</li>
           <li>Refresh requests remain limited to once every 30 seconds.</li>
           <li>Open Companion before signing into the game, or launch the game here. Refresh gets ready automatically while capture is enabled.</li>
-          <li>If Companion missed this sign-in, keep playing. Refresh will be available after the game next signs in; changing characters may not do that.</li>
+          <li>If Companion missed this sign-in, keep playing. Without a validated saved sign-in, Refresh will be available after the game next signs in; changing characters may not do that.</li>
           <li>Requests are sent only when you click Refresh. A ready game session has no time limit.</li>
-            <li>Capture interruptions pause Refresh until a new sign-in is observed. With Remember sign-in off, data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
-            <li>Remember sign-in is an optional experiment using Windows encryption. Restored sign-in requires fresh account, mode and build matching; Clear saved sign-in removes it.</li>
+          <li>Capture interruptions pause Refresh until fresh matching evidence is observed. With Remember sign-in off, new sign-in data stays in memory and is cleared on a game session change, disable or closing Companion.</li>
+          <li>Remember sign-in is an optional portable file encrypted with your passphrase. Enable and unlock it explicitly; enter the passphrase each Companion session. Saved sign-in needs fresh current account and mode evidence. Reuse may not be accepted across game sessions.</li>
+          <li>A lost passphrase cannot be recovered. Anyone with the file and passphrase can use its sign-in. Lock or disable keeps the encrypted file; Forget saved sign-in deletes the portable file and disables the cache. Older Windows-encrypted files stay untouched.</li>
           <li>Restoring a backup never enables SZ Refresh.</li>
         </ul>
       </SettingsActionDialog>

@@ -8,13 +8,6 @@ export type ElectronSatanicZoneTestPacket = Omit<ParsedPayload, "payload"> & { p
 
 /** Installed only in E2E mode. No native adapter, process query or socket exists. */
 export class ElectronSatanicZoneTestRuntime {
-  /** Fake encryption for invented E2E material only. Production uses Electron safeStorage. */
-  readonly cacheEncryption = {
-    isEncryptionAvailable: () => true,
-    encryptString: (value: string) => Buffer.from(Buffer.from(value).map(byte => byte ^ 0x5a)),
-    decryptString: (value: Buffer) => Buffer.from(value.map(byte => byte ^ 0x5a)).toString("utf8"),
-  };
-  readonly buildIdentity = async () => "e".repeat(64);
   attemptCount = 0;
   private network: HeroSiegeNetworkState = { gameProcessIds: [], antiCheatProcessIds: [], connections: [] };
   private receive: ((packet: ParsedPayload, truncated: boolean) => void) | null = null;

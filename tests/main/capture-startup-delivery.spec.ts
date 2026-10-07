@@ -18,7 +18,6 @@ vi.mock("node:module", () => { const createRequire = () => () => ({ Cap: class {
 } }); return { createRequire, default: { createRequire } }; });
 import { openPacketCapture } from "../../src/main/capture-adapter";
 import { createDiagnosticCaptureDependencies, type SatanicZoneWatchDiagnostic } from "../../src/main/satanic-zone-diagnostic-runtime";
-import { getHeroSiegeBuildIdentity } from "../../src/main/capture-network";
 import { GameCaptureCoordinator } from "../../src/main/game-capture-coordinator";
 import { CaptureService, type CaptureUpdate } from "../../src/main/capture";
 import { InitializedSatanicZoneRefreshProvider } from "../../src/main/initialized-satanic-zone-provider";
@@ -96,7 +95,7 @@ describe("startup capture delivery, with an invented buffering Windows adapter",
       expect((await provider.requestRefresh()).accepted).toBe(true); expect(runtime.attemptCount).toBe(1);
     } finally { coordinator.stopMonitor(); coordinator.clearLaunchCaptureTimer(); service.stop(); zone.dispose(); provider.dispose(); }
   });
-  test("actual launch/runtime/parser/provider/cache wiring reaches native Ready, retains it through gameplay open and persists via fallback", async () => {
+  test("launch/runtime/parser/provider/cache wiring retains native Ready and saves after explicit portable unlock", async () => {
     vi.useFakeTimers();
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-startup-delivery-")), file = path.join(directory, "login.encrypted");
     const runtime = new ElectronSatanicZoneTestRuntime();
@@ -105,21 +104,21 @@ describe("startup capture delivery, with an invented buffering Windows adapter",
       ? [{ ...replayScope, localPort: 5000, owningProcess: 42, state: "established" }] : [] });
     fake.exec.mockImplementation((_exe, args, _options, done) => {
       const script = args.at(-1);
-      if (script.includes("Get-FileHash")) { expect(script).toContain("Get-CimInstance");
-        done(null, JSON.stringify({ stage: "ready", hash: "e".repeat(64) }), ""); }
-      else if (script.includes("Get-NetRoute")) done(null, JSON.stringify({ address: replayScope.localAddress, metric: 1 }), "");
+      expect(script).not.toContain("Get-FileHash"); expect(script).not.toContain("Get-CimInstance");
+      if (script.includes("Get-NetRoute")) done(null, JSON.stringify({ address: replayScope.localAddress, metric: 1 }), "");
       else done(null, JSON.stringify({ ...network(), connections: network().connections.map(flow => ({
         OwningProcess: flow.owningProcess, LocalAddress: flow.localAddress, LocalPort: flow.localPort,
         RemoteAddress: flow.remoteAddress, RemotePort: flow.remotePort, State: flow.state })) }), "");
     });
     const diagnostics: unknown[] = [];
-    const cache = new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file, runtime.cacheEncryption),
-      networkState: async () => network(), buildIdentity: getHeroSiegeBuildIdentity,
+    const cache = new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file),
+      networkState: async () => network(),
       onChange: () => provider?.cacheChanged(), onDiagnostic: (stage, result) => diagnostics.push({ stage, result }) });
     provider = new InitializedSatanicZoneRefreshProvider({ loginCache: cache, canPrepare: () => true,
       onPreparation: preparation => zone?.setPreparation(preparation), dependencies: {
         ...createDiagnosticCaptureDependencies(false, "startup-api"), attempt: runtime.dependencies.attempt } });
     zone = new SatanicZoneController({ provider, onStateChange: () => {} }); cache.configure(true);
+    expect(await cache.unlock("SYNTHETIC startup cache passphrase")).toBe(true);
     const state = createInitialCompanionState();
     const coordinator = new GameCaptureCoordinator({ state, getCaptureService: () => ({ hasHeroSiegeProcess: async () => false }) as any,
       addLog: () => {}, publishState: () => {}, writeAppLog: () => {}, beforeCapture: () => provider.preparePassively() });

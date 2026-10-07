@@ -39,4 +39,20 @@ describe("preparation guidance in the compact overlay", () => {
     const detail = satanicZonePreparationDetail({ phase: "waiting_connection", expiresAt: null, reason: "cache_empty" }, 1_000);
     expect(detail).toContain("No saved sign-in"); expect(detail).toContain("complete sign-in");
   });
+  test("locked cache guidance names unlock and lets native Ready remain available", () => {
+    expect(satanicZonePreparationDetail({ phase: "waiting_connection", expiresAt: null, reason: "cache_locked" }, 1_000))
+      .toContain("Unlock Remember sign-in in Features");
+    expect(satanicZonePreparationDetail({ phase: "waiting_connection", expiresAt: null, reason: "cache_unlock_failed" }, 1_000))
+      .toContain("Check the passphrase");
+    expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: null, reason: "cache_locked" }, 1_000))
+      .toBe("Ready to refresh.");
+    expect(satanicZonePreparationDetail({ phase: "ready", expiresAt: null, reason: "cache_unlock_failed" }, 1_000))
+      .toBe("Ready to refresh.");
+  });
+  test("cached Ready names fresh account and mode matching without claiming executable validation", () => {
+    const detail = satanicZonePreparationDetail({ phase: "ready", origin: "cached", expiresAt: null }, 1_000);
+    expect(detail).toContain("current account and mode");
+    expect(detail).toContain("Click Refresh");
+    expect(detail).not.toMatch(/build|Windows|Prepare|countdown/);
+  });
 });

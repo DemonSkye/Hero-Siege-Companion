@@ -19,6 +19,8 @@ export const enum IpcChannel {
   satanicZoneRefresh = "satanic-zone:refresh",
   satanicZoneLoginCacheSet = "satanic-zone-login-cache:set",
   satanicZoneLoginCacheClear = "satanic-zone-login-cache:clear",
+  satanicZoneLoginCacheUnlock = "satanic-zone-login-cache:unlock",
+  satanicZoneLoginCacheLock = "satanic-zone-login-cache:lock",
   marketSearch = "market:search",
   runPause = "run:pause",
   runResume = "run:resume",
@@ -65,6 +67,8 @@ export const IPC_CHANNELS = {
   satanicZoneRefresh: IpcChannel.satanicZoneRefresh,
   satanicZoneLoginCacheSet: IpcChannel.satanicZoneLoginCacheSet,
   satanicZoneLoginCacheClear: IpcChannel.satanicZoneLoginCacheClear,
+  satanicZoneLoginCacheUnlock: IpcChannel.satanicZoneLoginCacheUnlock,
+  satanicZoneLoginCacheLock: IpcChannel.satanicZoneLoginCacheLock,
   marketSearch: IpcChannel.marketSearch,
   runPause: IpcChannel.runPause,
   runResume: IpcChannel.runResume,
@@ -139,6 +143,8 @@ export interface HeroSiegeCompanionApi {
   refreshSatanicZone: () => Promise<CompanionState>;
   setSatanicZoneLoginCacheEnabled: (enabled: boolean) => Promise<CompanionState>;
   clearSatanicZoneLoginCache: () => Promise<CompanionState>;
+  unlockSatanicZoneLoginCache: (passphrase: string) => Promise<CompanionState>;
+  lockSatanicZoneLoginCache: () => Promise<CompanionState>;
   armSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   startSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;
   cancelSatanicZoneDiagnostic: () => Promise<import("./satanic-zone-diagnostic").SatanicZoneDiagnosticState>;

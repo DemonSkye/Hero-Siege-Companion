@@ -292,6 +292,7 @@
 
 .settings-ledger-control select,
 .settings-ledger-control input[type="text"],
+.settings-ledger-control input[type="password"],
 .compact-custom-ledger-row select,
 .compact-custom-ledger-row input[type="text"] {
   min-width: 190px;
@@ -449,6 +450,26 @@
   color: var(--app-muted-strong);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.settings-login-cache-notice {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-login-cache-notice .settings-ledger-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.settings-login-cache-notice .settings-action-group {
+  justify-content: flex-start;
+}
+
+.settings-login-cache-notice input[type="password"] {
+  min-width: 0;
+  width: min(100%, 320px);
 }
 
 .settings-status-badge {
@@ -747,6 +768,7 @@
 
   .settings-ledger-control select,
   .settings-ledger-control input[type="text"],
+  .settings-ledger-control input[type="password"],
   .settings-choice-group,
   .settings-path-control {
     width: 100%;

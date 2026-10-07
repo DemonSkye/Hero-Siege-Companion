@@ -88,7 +88,7 @@ export class SatanicZoneInitializedProbeController {
     const session = this.session;
     if (session?.prepared && !session.cached && !session.suspended) this.dependencies.onPrepared?.(this.preparedInput(session), session.pid!);
   }
-  /** Experimental restore has fresh identity/build validation, distinct from native initialization. */
+  /** Experimental restore has fresh identity/flow validation, distinct from native initialization. */
   restoreCached(input: InitializedProbeInput & { pid: number }): boolean {
     const session = this.session;
     if (!session?.handle || session.prepared || session.stream || session.suspended || input.scope.localAddress !== session.captureScope?.localAddress

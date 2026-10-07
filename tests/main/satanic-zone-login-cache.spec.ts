@@ -1,173 +1,268 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createCipheriv, createDecipheriv, scryptSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { SatanicZoneLoginCacheStore } from "../../src/main/satanic-zone-login-cache-store";
 import { SatanicZoneLoginCache } from "../../src/main/satanic-zone-login-cache";
 import { SatanicZoneDiagnosticBufferBudget } from "../../src/main/satanic-zone-diagnostic-budget";
-import { ElectronSatanicZoneTestRuntime } from "../../src/main/electron-satanic-zone-test-runtime";
 import { inventedConnect, inventedPostLogin, inventedProbeScope as scope, inventedProbeIdentity as identity } from "../fixtures/satanic-zone-initialized";
 import { loadSatanicZoneLoginCacheEnabled, saveSatanicZoneLoginCacheEnabled } from "../../src/main/persistence";
+
+// Synthetic material only. Production encryption and filesystem are exercised.
+const passphrase = "SYNTHETIC portable cache passphrase";
 let directory: string;
+const caches: SatanicZoneLoginCache[] = [], stores: SatanicZoneLoginCacheStore[] = [];
 beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-login-cache-")); });
-afterEach(() => { vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, force: true }); });
-function fixture() {
-  const file = path.join(directory, "login.encrypted"), budget = new SatanicZoneDiagnosticBufferBudget();
-  const crypto = new ElectronSatanicZoneTestRuntime().cacheEncryption;
-  const store = new SatanicZoneLoginCacheStore(file, crypto), snapshots: unknown[] = [], diagnostics: { stage: string; result: string }[] = [];
+afterEach(() => {
+  for (const cache of caches.splice(0)) cache.dispose();
+  for (const store of stores.splice(0)) store.lock();
+  vi.restoreAllMocks(); fs.rmSync(directory, { recursive: true, force: true });
+});
+function fixture(file = path.join(directory, "login.portable")) {
+  const budget = new SatanicZoneDiagnosticBufferBudget(), store = new SatanicZoneLoginCacheStore(file);
+  stores.push(store);
+  const snapshots: unknown[] = [], diagnostics: { stage: string; result: string }[] = [];
   const network = { gameProcessIds: [42], antiCheatProcessIds: [], connections: [{ ...scope, localPort: 5000, owningProcess: 42, state: "established" }] };
-  const buildIdentity = vi.fn(async () => "e".repeat(64)), networkState = vi.fn(async () => network);
-  const cache = new SatanicZoneLoginCache({ store, buildIdentity, networkState, onChange: state => snapshots.push(state),
+  const networkState = vi.fn(async () => network);
+  const cache = new SatanicZoneLoginCache({ store, networkState, onChange: state => snapshots.push(state),
     onDiagnostic: (stage, result) => diagnostics.push({ stage, result }) });
-  cache.attachBudget(budget);
+  caches.push(cache); cache.attachBudget(budget);
   const input = { connectBody: inventedConnect(), postLoginBody: inventedPostLogin(), identity, scope, nativePort: 5000 };
   const payload = { text: `unique_account_id=${identity.uniqueAccountId}&beta=0`, direction: "outbound" as const,
     ...scope, localPort: 5000 };
-  return { file, budget, crypto, store, cache, snapshots, diagnostics, network, buildIdentity, networkState, input, payload };
+  return { file, budget, store, cache, snapshots, diagnostics, network, networkState, input, payload };
 }
-describe("experimental encrypted login cache, invented material and mocked encryption/build only", () => {
-  test("safe stages distinguish absent load, build failure, cancelled save and failed disk write", async () => {
+async function savedFixture() {
+  const f = fixture(); f.cache.configure(true); expect(await f.cache.unlock(passphrase)).toBe(true);
+  await f.cache.remember(f.input, 42); expect(f.cache.snapshot().status).toBe("saved"); return f;
+}
+// Independent decoding pins file format/minimum data, not a production helper.
+function openPortable(bytes: Buffer) {
+  const key = scryptSync(passphrase, bytes.subarray(8, 24), 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+  try {
+    const cipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(24, 36));
+    cipher.setAAD(Buffer.from("HSCSZ001")); cipher.setAuthTag(bytes.subarray(36, 52));
+    return Buffer.concat([cipher.update(bytes.subarray(52)), cipher.final()]);
+  } finally { key.fill(0); }
+}
+function malformedAuthenticatedFile(connect = inventedConnect(), post = inventedPostLogin(), lengthDelta = 0) {
+  const magic = Buffer.from("HSCSZ001"), salt = Buffer.alloc(16, 17), iv = Buffer.alloc(12, 19);
+  const key = scryptSync(passphrase, salt, 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+  const plain = Buffer.concat([Buffer.alloc(8), connect, post]);
+  plain.writeUInt32LE(connect.length + lengthDelta, 0); plain.writeUInt32LE(post.length, 4);
+  try {
+    const cipher = createCipheriv("aes-256-gcm", key, iv); cipher.setAAD(magic);
+    const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
+    return Buffer.concat([magic, salt, iv, cipher.getAuthTag(), encrypted]);
+  } finally { key.fill(0); plain.fill(0); }
+}
+
+describe("portable login cache with production encryption and synthetic secrets", () => {
+  test("opt-in stays locked; passive identity and remember cannot create a file until explicit unlock", async () => {
     const f = fixture(); f.cache.configure(true);
-    expect(f.diagnostics).toContainEqual({ stage: "load", result: "empty" });
-    f.buildIdentity.mockResolvedValueOnce(null as unknown as string); await f.cache.remember(f.input, 42);
-    expect(f.diagnostics).toContainEqual({ stage: "save_build", result: "build_unavailable" });
-    let release!: (build: string) => void;
-    f.buildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const save = f.cache.remember(f.input, 42); f.cache.suspend(); release("e".repeat(64)); await save;
-    expect(f.diagnostics).toContainEqual({ stage: "save_cancelled", result: "invalidated" });
-    vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("CANARY_PRIVATE_PATH"); });
-    await f.cache.remember(f.input, 42);
-    expect(f.diagnostics).toContainEqual({ stage: "save_write", result: "storage_error" });
-    expect(JSON.stringify(f.diagnostics)).not.toMatch(/CANARY|eeeeeeee|account|checksum/); f.cache.dispose();
+    expect(f.cache.snapshot()).toEqual({ enabled: true, unlocked: false, status: "locked" });
+    await f.cache.remember(f.input, 42); await f.cache.observe(f.payload);
+    expect(fs.existsSync(f.file)).toBe(false); expect(f.cache.restoreInput()).toBeNull(); expect(f.budget.usedBytes).toBe(0);
+    expect(await f.cache.unlock(passphrase)).toBe(true);
+    expect(f.cache.snapshot()).toEqual({ enabled: true, unlocked: true, status: "empty" });
+    expect(fs.existsSync(f.file)).toBe(false); expect(f.networkState).not.toHaveBeenCalled();
   });
-  test("off by default; plaintext identity/bodies never appear on disk or status; exact pair restores unverified", async () => {
-    const f = fixture(); expect(f.cache.snapshot()).toEqual({ enabled: false, status: "disabled" });
-    await f.cache.remember(f.input, 42); expect(fs.existsSync(f.file)).toBe(false);
-    f.cache.configure(true); await f.cache.remember(f.input, 42);
-    expect(f.cache.snapshot().status).toBe("saved"); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false);
-    expect(fs.readFileSync(f.file).toString()).not.toMatch(/CANARY|account|123456789/);
-    f.cache.dispose(); expect(f.budget.usedBytes).toBe(0); expect(fs.existsSync(f.file)).toBe(true);
-    const reopened = fixture(); reopened.cache.configure(true);
+  test("atomic save, dispose, reopen and unlock preserve the byte-exact pair and require fresh identity", async () => {
+    const f = await savedFixture(), encrypted = fs.readFileSync(f.file);
+    expect(encrypted.subarray(0, 8).toString()).toBe("HSCSZ001");
+    expect(encrypted.includes(f.input.connectBody)).toBe(false); expect(encrypted.includes(f.input.postLoginBody)).toBe(false);
+    expect(encrypted.toString()).not.toMatch(/CANARY|account_uid|123456789|SYNTHETIC/);
+    expect(fs.readdirSync(directory)).toEqual(["login.portable"]); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false);
+    const plain = openPortable(encrypted);
+    expect(plain.readUInt32LE(0)).toBe(f.input.connectBody.length); expect(plain.readUInt32LE(4)).toBe(f.input.postLoginBody.length);
+    expect(plain).toEqual(Buffer.concat([plain.subarray(0, 8), f.input.connectBody, f.input.postLoginBody]));
+    plain.fill(0); f.cache.dispose(); expect(f.budget.usedBytes).toBe(0);
+    const reopened = fixture(); reopened.cache.configure(true); expect(reopened.cache.snapshot().status).toBe("locked");
+    expect(await reopened.cache.unlock(passphrase)).toBe(true);
     expect(reopened.cache.snapshot().status).toBe("unverified"); expect(reopened.cache.restoreInput()).toBeNull();
-    await reopened.cache.observe(reopened.payload);
-    expect(reopened.cache.restoreInput()).toMatchObject({ connectBody: inventedConnect(), postLoginBody: inventedPostLogin(), pid: 42 });
-    expect(JSON.stringify(reopened.snapshots)).not.toMatch(/CANARY|account_uid|123456789|eeeeeeee/);
-    reopened.cache.dispose();
+    await reopened.cache.observe(reopened.payload); const restored = reopened.cache.restoreInput()!;
+    expect(restored.connectBody).toEqual(inventedConnect()); expect(restored.postLoginBody).toEqual(inventedPostLogin());
+    expect(restored).toMatchObject({ pid: 42, nativePort: 5000 });
+    expect(await reopened.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(true);
+    expect(JSON.stringify([...f.snapshots, ...f.diagnostics, ...reopened.snapshots])).not.toMatch(/CANARY|account_uid|123456789|SYNTHETIC/);
   });
-  test("only the minimum pair/schema/build are encrypted; old counters/identifiers/socket state are absent", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
-    const record = JSON.parse(f.crypto.decryptString(fs.readFileSync(f.file)));
-    expect(Object.keys(record).sort()).toEqual(["build", "connect", "post", "schema"]);
-    expect(Buffer.from(record.connect, "hex")).toEqual(f.input.connectBody); f.cache.dispose();
+  test("a copied portable file unlocks in a separate directory without an adjacent key or machine service", async () => {
+    const original = await savedFixture(), moved = path.join(directory, "moved", "login.portable");
+    original.cache.dispose(); fs.mkdirSync(path.dirname(moved)); fs.copyFileSync(original.file, moved);
+    const reopened = fixture(moved); reopened.cache.configure(true); expect(await reopened.cache.unlock(passphrase)).toBe(true);
+    await reopened.cache.observe(reopened.payload); expect(reopened.cache.restoreInput()?.postLoginBody).toEqual(inventedPostLogin());
+    expect(fs.readdirSync(path.dirname(moved))).toEqual(["login.portable"]);
   });
-  test.each(["unique_account_id=888888&beta=0", `unique_account_id=${identity.uniqueAccountId}&beta=1`, `unique_account_id=${identity.uniqueAccountId}&beta=0&account_id=other-123`])("wrong account/mode clears cache: %s", async text => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
-    await f.cache.observe({ ...f.payload, text });
+  test.each(["wrong passphrase", "tampered ciphertext", "tampered tag", "truncated", "oversized", "wrong version", "incoherent pair", "invalid lengths"])(
+    "%s fails locked and preserves the file for explicit recovery", async kind => {
+    const f = await savedFixture(); f.cache.dispose(); let bytes = fs.readFileSync(f.file);
+    if (kind === "tampered ciphertext") bytes[bytes.length - 1] ^= 1;
+    if (kind === "tampered tag") bytes[36] ^= 1;
+    if (kind === "truncated") bytes = bytes.subarray(0, 55);
+    if (kind === "oversized") bytes = Buffer.alloc(52 + 8 + 2 * 16_384 + 1);
+    if (kind === "wrong version") bytes.write("HSCSZ002", 0);
+    if (kind === "incoherent pair") bytes = malformedAuthenticatedFile(inventedConnect(), inventedPostLogin("444444"));
+    if (kind === "invalid lengths") bytes = malformedAuthenticatedFile(undefined, undefined, 1);
+    fs.writeFileSync(f.file, bytes); const reopened = fixture(); reopened.cache.configure(true);
+    expect(await reopened.cache.unlock(kind === "wrong passphrase" ? "OTHER synthetic passphrase" : passphrase)).toBe(false);
+    expect(reopened.cache.snapshot()).toEqual({ enabled: true, unlocked: false, status: "unlock_failed" });
+    expect(reopened.cache.restoreInput()).toBeNull(); expect(reopened.budget.usedBytes).toBe(0);
+    expect(fs.readFileSync(f.file)).toEqual(bytes); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false);
+  });
+  test.each(["short", "é".repeat(513)])("invalid passphrase cannot create a file or key", async value => {
+    const f = fixture(); f.cache.configure(true); expect(await f.cache.unlock(value)).toBe(false);
+    expect(f.cache.snapshot().status).toBe("unlock_failed"); expect(f.budget.usedBytes).toBe(0); expect(fs.existsSync(f.file)).toBe(false);
+  });
+  test("wrong passphrase does not prevent a later correct unlock", async () => {
+    const f = await savedFixture(); f.cache.lock(); expect(await f.cache.unlock("OTHER synthetic passphrase")).toBe(false);
+    expect(await f.cache.unlock(passphrase)).toBe(true); await f.cache.observe(f.payload);
+    expect(f.cache.restoreInput()?.connectBody).toEqual(inventedConnect());
+  });
+  test.each(["lock", "disable", "dispose", "forget"] as const)("%s cancels a pending real KDF without resurrecting secrets", async action => {
+    const f = fixture(); f.cache.configure(true); const pending = f.cache.unlock(passphrase);
+    expect(f.cache.snapshot().status).toBe("unlocking");
+    if (action === "lock") f.cache.lock(); else if (action === "disable") f.cache.configure(false);
+    else if (action === "dispose") f.cache.dispose(); else f.cache.clear();
+    expect(await pending).toBe(false); expect(f.store.isUnlocked()).toBe(false);
+    expect(f.budget.usedBytes).toBe(0); expect(f.cache.restoreInput()).toBeNull(); expect(fs.existsSync(f.file)).toBe(false);
+    if (action !== "dispose") expect(f.cache.snapshot().status).toBe(action === "disable" ? "disabled" : "locked");
+  });
+  test("concurrent unlock cannot replace a pending passphrase; lock and retry cannot adopt the older key", async () => {
+    const f = fixture(); f.cache.configure(true); const first = f.cache.unlock(passphrase);
+    expect(await f.cache.unlock("OTHER synthetic passphrase")).toBe(false); f.cache.lock();
+    const retry = f.cache.unlock("OTHER synthetic passphrase"); expect(await retry).toBe(false); expect(await first).toBe(false);
+    expect(f.store.isUnlocked()).toBe(false); expect(f.budget.usedBytes).toBe(0); expect(await f.cache.unlock(passphrase)).toBe(true);
+  });
+  test.each(["lock", "disable and reenable"])("%s cannot reenter unlock while an older store operation is pending", async action => {
+    const f = fixture(); f.cache.configure(true); let release!: (bodies: null) => void;
+    const unlock = vi.spyOn(f.store, "unlock").mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const older = f.cache.unlock(passphrase);
+    if (action === "lock") f.cache.lock(); else { f.cache.configure(false); f.cache.configure(true); }
+    expect(f.cache.snapshot().status).toBe("locked");
+    expect(await f.cache.unlock("OTHER synthetic passphrase")).toBe(false); expect(unlock).toHaveBeenCalledTimes(1);
+    release(null); expect(await older).toBe(false); expect(f.store.isUnlocked()).toBe(false); expect(f.budget.usedBytes).toBe(0);
+    expect(await f.cache.unlock(passphrase)).toBe(true); expect(unlock).toHaveBeenCalledTimes(2);
+    await f.cache.remember(f.input, 42); expect(f.cache.snapshot().status).toBe("saved");
+  });
+  test.each(["lock", "disable and reenable"])("%s cannot reenter between store fulfillment and cache continuation", async action => {
+    const f = fixture(); f.cache.configure(true); let release!: (bodies: null) => void;
+    const unlock = vi.spyOn(f.store, "unlock").mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const older = f.cache.unlock(passphrase);
+    release(null);
+    // Keep this synchronous: the store has fulfilled, but cache.unlock has not resumed.
+    if (action === "lock") f.cache.lock(); else { f.cache.configure(false); f.cache.configure(true); }
+    const retry = f.cache.unlock("OTHER synthetic passphrase");
+    expect(unlock).toHaveBeenCalledTimes(1);
+    expect(await retry).toBe(false); expect(await older).toBe(false);
+    expect(f.store.isUnlocked()).toBe(false); expect(f.budget.usedBytes).toBe(0);
+    expect(await f.cache.unlock(passphrase)).toBe(true); expect(unlock).toHaveBeenCalledTimes(2);
+  });
+  test.each(["unique_account_id=888888&beta=0", `unique_account_id=${identity.uniqueAccountId}&beta=1`, `unique_account_id=${identity.uniqueAccountId}&beta=0&account_id=other-123`])(
+    "contrary current account/mode forgets the pair: %s", async text => {
+    const f = await savedFixture(); await f.cache.observe({ ...f.payload, text });
     expect(f.cache.snapshot().status).toBe("identity_mismatch"); expect(f.cache.restoreInput()).toBeNull();
-    expect(fs.existsSync(f.file)).toBe(false); expect(f.budget.usedBytes).toBe(0); f.cache.dispose();
+    expect(fs.existsSync(f.file)).toBe(false); expect(f.budget.usedBytes).toBe(0); expect(f.store.isUnlocked()).toBe(false);
   });
-  test("partial, inbound, unattributed and metadata-only identity cannot validate", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
+  test("partial, inbound, unattributed or another socket identity cannot validate the pair", async () => {
+    const f = await savedFixture();
     for (const payload of [{ ...f.payload, text: `unique_account_id=${identity.uniqueAccountId}` },
       { ...f.payload, direction: "inbound" as const }, { ...f.payload, localPort: undefined }, { ...f.payload, localPort: 6000 }]) await f.cache.observe(payload);
-    expect(f.cache.restoreInput()).toBeNull(); expect(f.buildIdentity).toHaveBeenCalledTimes(1); f.cache.dispose();
+    expect(f.cache.restoreInput()).toBeNull(); expect(f.cache.snapshot().status).toBe("saved");
   });
-  test("matching identity still requires current build; mismatched build forgets, unavailable build blocks", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
-    f.buildIdentity.mockResolvedValueOnce(null as unknown as string); await f.cache.observe(f.payload);
-    expect(f.cache.snapshot().status).toBe("build_unavailable"); expect(f.cache.restoreInput()).toBeNull();
-    f.buildIdentity.mockResolvedValueOnce("f".repeat(64)); await f.cache.observe(f.payload);
-    expect(f.cache.snapshot().status).toBe("build_mismatch"); expect(fs.existsSync(f.file)).toBe(false); f.cache.dispose();
+  test.each(["not game owned", "not established", "ambiguous"])("matching account/mode rejects a %s tuple", async kind => {
+    const f = await savedFixture();
+    if (kind === "not game owned") f.network.gameProcessIds = [43];
+    if (kind === "not established") f.network.connections[0].state = "close_wait";
+    if (kind === "ambiguous") f.network.connections.push({ ...f.network.connections[0] });
+    await f.cache.observe(f.payload); expect(f.cache.restoreInput()).toBeNull();
   });
-  test("capture gap and delayed validation cannot restore continuity; a new identity observation is required", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
-    let release!: (build: string) => void;
-    f.buildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const validation = f.cache.observe(f.payload); await Promise.resolve(); await Promise.resolve();
-    f.cache.suspend(); release("e".repeat(64)); await validation;
-    expect(f.cache.restoreInput()).toBeNull();
-    await f.cache.observe(f.payload); const restored = f.cache.restoreInput()!;
-    expect(await f.cache.preflight({ ...restored.scope, pid: 42, localPort: 5000 })).toBe(true);
-    f.cache.suspend(); expect(await f.cache.preflight({ ...restored.scope, pid: 42, localPort: 5000 })).toBe(false); f.cache.dispose();
+  test.each(["suspend", "lock", "disable", "forget", "dispose"] as const)("%s during delayed OS validation cannot restore continuity", async action => {
+    const f = await savedFixture(); let release!: (state: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; })); const validation = f.cache.observe(f.payload);
+    if (action === "suspend") f.cache.suspend(); else if (action === "lock") f.cache.lock();
+    else if (action === "disable") f.cache.configure(false); else if (action === "forget") f.cache.clear(); else f.cache.dispose();
+    release(f.network); await validation; expect(f.cache.restoreInput()).toBeNull();
+    if (action === "suspend") { await f.cache.observe(f.payload); expect(f.cache.restoreInput()).not.toBeNull(); }
+    else expect(f.budget.usedBytes).toBe(0);
   });
-  test("preflight rejects changed topology/build even if initial restore matched", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42); await f.cache.observe(f.payload);
-    f.network.connections[0].owningProcess = 43;
-    expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(false);
-    expect(f.cache.restoreInput()).toBeNull(); f.cache.dispose();
-  });
-  test("encryption unavailable or throwing cannot write/restore credentials", async () => {
-    const f = fixture(); vi.spyOn(f.crypto, "isEncryptionAvailable").mockReturnValue(false);
-    f.cache.configure(true); await f.cache.remember(f.input, 42);
-    expect(f.cache.snapshot().status).toBe("encryption_unavailable"); expect(fs.existsSync(f.file)).toBe(false);
-    expect(f.budget.usedBytes).toBe(0); f.cache.dispose();
-  });
-  test("encryption becoming unavailable after restore blocks explicit preflight and clears RAM", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42); await f.cache.observe(f.payload);
-    const secret = f.cache.restoreInput()!.connectBody;
-    vi.spyOn(f.crypto, "isEncryptionAvailable").mockReturnValue(false);
-    expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(false);
-    expect(f.cache.snapshot().status).toBe("encryption_unavailable"); expect(secret.every(byte => byte === 0)).toBe(true);
-    expect(f.budget.usedBytes).toBe(0); f.cache.dispose();
-  });
-  test("encryption exceptions, missing build and process loss during save never persist plaintext", async () => {
-    const f = fixture(); f.cache.configure(true);
-    vi.spyOn(f.crypto, "encryptString").mockImplementationOnce(() => { throw new Error("PRIVATE_LOGIN"); });
-    await f.cache.remember(f.input, 42); expect(f.cache.snapshot().status).toBe("storage_error");
-    f.buildIdentity.mockResolvedValueOnce(null as unknown as string); await f.cache.remember(f.input, 42);
-    expect(f.cache.snapshot().status).toBe("build_unavailable");
-    let release!: (hash: string) => void; f.buildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const saving = f.cache.remember(f.input, 42); f.cache.observeProcesses([]); release("e".repeat(64)); await saving;
-    expect(fs.existsSync(f.file)).toBe(false); expect(f.budget.usedBytes).toBe(0);
-    expect(JSON.stringify(f.snapshots)).not.toContain("PRIVATE_LOGIN"); f.cache.dispose();
-  });
-  test.each(["garbage", "oversized", "wrong-schema", "incoherent"])("invalid cache fails closed and is forgotten: %s", async kind => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42); f.cache.dispose();
-    if (kind === "garbage") fs.writeFileSync(f.file, Buffer.from("garbage"));
-    if (kind === "oversized") fs.writeFileSync(f.file, Buffer.alloc(131073));
-    if (kind === "wrong-schema" || kind === "incoherent") {
-      const record = JSON.parse(f.crypto.decryptString(fs.readFileSync(f.file)));
-      if (kind === "wrong-schema") record.schema = 2; else record.post = inventedPostLogin("444444").toString("hex");
-      fs.writeFileSync(f.file, f.crypto.encryptString(JSON.stringify(record)));
+  test("process/flow loss, FIN and unknown gaps each require new fresh evidence", async () => {
+    const f = await savedFixture();
+    const invalidations = [() => f.cache.observeProcesses([]), () => f.cache.observeConnections([{ ...f.network.connections[0], localPort: 5001 }]),
+      () => f.cache.observeLifecycle({ src: scope.localAddress, dst: scope.remoteAddress, srcPort: 5000, dstPort: scope.remotePort, flags: 1 }),
+      () => f.cache.suspend()];
+    for (const invalidate of invalidations) {
+      await f.cache.observe(f.payload); expect(f.cache.restoreInput()).not.toBeNull(); invalidate();
+      expect(f.cache.restoreInput()).toBeNull(); expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(false);
+      expect(fs.existsSync(f.file)).toBe(true);
     }
-    const reopened = fixture(); reopened.cache.configure(true);
-    expect(reopened.cache.snapshot().status).toBe("storage_error"); expect(reopened.cache.restoreInput()).toBeNull();
-    expect(fs.existsSync(f.file)).toBe(false); expect(reopened.budget.usedBytes).toBe(0); reopened.cache.dispose();
   });
-  test("atomic write failure leaves previous ciphertext intact and removes temporary file", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
-    const previous = fs.readFileSync(f.file); vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("PRIVATE_CANARY"); });
-    await f.cache.remember(f.input, 42);
+  test("a delayed preflight cannot authorize dispatch after a gap or changed ownership", async () => {
+    const f = await savedFixture(); await f.cache.observe(f.payload); let release!: (state: typeof f.network) => void;
+    f.networkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const pending = f.cache.preflight({ ...scope, pid: 42, localPort: 5000 }); f.cache.suspend(); release(f.network);
+    expect(await pending).toBe(false); await f.cache.observe(f.payload); f.network.connections[0].owningProcess = 43;
+    expect(await f.cache.preflight({ ...scope, pid: 42, localPort: 5000 })).toBe(false); expect(f.cache.restoreInput()).toBeNull();
+  });
+  test.each(["open", "write", "fsync", "rename"] as const)("%s failure preserves previous ciphertext and removes owned temporary bytes", async stage => {
+    const f = await savedFixture(), previous = fs.readFileSync(f.file);
+    const error = () => { throw Object.assign(new Error("PRIVATE_FILE_PATH"), { code: "EACCES" }); };
+    if (stage === "open") { const open = fs.openSync; vi.spyOn(fs, "openSync").mockImplementation((file, flags, mode) => {
+      if (String(file) === `${f.file}.tmp`) return error(); return open(file, flags, mode);
+    }); } else if (stage === "write") vi.spyOn(fs, "writeFileSync").mockImplementationOnce(error);
+    else if (stage === "fsync") vi.spyOn(fs, "fsyncSync").mockImplementationOnce(error);
+    else vi.spyOn(fs, "renameSync").mockImplementationOnce(error);
+    await f.cache.remember(f.input, 42); expect(f.cache.snapshot().status).toBe("storage_error");
     expect(fs.readFileSync(f.file)).toEqual(previous); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false);
-    expect(f.cache.snapshot().status).toBe("storage_error"); expect(JSON.stringify(f.snapshots)).not.toContain("PRIVATE_CANARY"); f.cache.dispose();
+    expect(JSON.stringify([...f.snapshots, ...f.diagnostics])).not.toContain("PRIVATE_FILE_PATH");
   });
-  test("disable/clear zero RAM, delete ciphertext and cancel an in-flight save", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42); await f.cache.observe(f.payload);
-    const secret = f.cache.restoreInput()!.connectBody; f.cache.clear();
-    expect(secret.every(byte => byte === 0)).toBe(true); expect(f.cache.restoreInput()).toBeNull(); expect(fs.existsSync(f.file)).toBe(false);
-    let release!: (build: string) => void; f.buildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const saving = f.cache.remember(f.input, 42); f.cache.configure(false); release("e".repeat(64)); await saving;
-    expect(f.cache.snapshot()).toEqual({ enabled: false, status: "disabled" }); expect(fs.existsSync(f.file)).toBe(false);
-    expect(f.budget.usedBytes).toBe(0); f.cache.dispose();
+  test("lock during filesystem finalization cancels replacement and removes the temporary file", async () => {
+    const f = await savedFixture(), previous = fs.readFileSync(f.file), fsync = fs.fsyncSync;
+    vi.spyOn(fs, "fsyncSync").mockImplementationOnce(fd => { fsync(fd); f.store.lock(); });
+    expect(() => f.store.save(f.input, f.budget)).toThrow("storage_error");
+    expect(fs.readFileSync(f.file)).toEqual(previous); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false); expect(f.store.isUnlocked()).toBe(false);
   });
-  test("delete failure reports a concrete error and prevents cached use", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
-    vi.spyOn(fs, "unlinkSync").mockImplementation(() => { throw Object.assign(new Error("private path"), { code: "EACCES" }); });
-    f.cache.configure(false); expect(f.cache.snapshot()).toEqual({ enabled: false, status: "clear_failed" });
-    expect(f.cache.restoreInput()).toBeNull(); expect(f.budget.usedBytes).toBe(0); f.cache.dispose();
+  test("unowned existing temporary file is preserved and blocks replacement", async () => {
+    const f = await savedFixture(), previous = fs.readFileSync(f.file), unrelated = Buffer.from("unrelated synthetic artifact");
+    fs.writeFileSync(`${f.file}.tmp`, unrelated); await f.cache.remember(f.input, 42);
+    expect(f.cache.snapshot().status).toBe("storage_error"); expect(fs.readFileSync(f.file)).toEqual(previous);
+    expect(fs.readFileSync(`${f.file}.tmp`)).toEqual(unrelated);
   });
-  test("wrong account cannot hide failed deletion behind a successful-cleared message", async () => {
-    const f = fixture(); f.cache.configure(true); await f.cache.remember(f.input, 42);
-    vi.spyOn(fs, "unlinkSync").mockImplementation(() => { throw Object.assign(new Error("private path"), { code: "EACCES" }); });
+  test("read permission failure reports a safe error and leaves the file intact", async () => {
+    const f = await savedFixture(), previous = fs.readFileSync(f.file); f.cache.lock(); const open = fs.openSync;
+    vi.spyOn(fs, "openSync").mockImplementation((file, flags, mode) => {
+      if (String(file) === f.file && flags === "r") throw Object.assign(new Error("PRIVATE_FILE_PATH"), { code: "EACCES" }); return open(file, flags, mode);
+    });
+    expect(await f.cache.unlock(passphrase)).toBe(false); expect(f.cache.snapshot().status).toBe("storage_error");
+    vi.restoreAllMocks(); expect(fs.readFileSync(f.file)).toEqual(previous); expect(f.budget.usedBytes).toBe(0);
+    expect(JSON.stringify([...f.snapshots, ...f.diagnostics])).not.toContain("PRIVATE_FILE_PATH");
+  });
+  test("disable locks and zeros RAM but retains the file; explicit Forget deletes file and temporary data", async () => {
+    const f = await savedFixture(); await f.cache.observe(f.payload); const secret = f.cache.restoreInput()!.connectBody;
+    f.cache.configure(false); expect(secret.every(byte => byte === 0)).toBe(true); expect(f.budget.usedBytes).toBe(0);
+    expect(f.cache.snapshot()).toEqual({ enabled: false, unlocked: false, status: "disabled" }); expect(fs.existsSync(f.file)).toBe(true);
+    f.cache.configure(true); expect(await f.cache.unlock(passphrase)).toBe(true); fs.writeFileSync(`${f.file}.tmp`, "synthetic stale temporary");
+    f.cache.configure(false); f.cache.clear(); expect(fs.existsSync(f.file)).toBe(false); expect(fs.existsSync(`${f.file}.tmp`)).toBe(false);
+    expect(f.cache.snapshot()).toEqual({ enabled: false, unlocked: false, status: "disabled" }); expect(f.budget.usedBytes).toBe(0);
+  });
+  test("identity invalidation cannot hide a failed deletion or restore cached use", async () => {
+    const f = await savedFixture(); vi.spyOn(fs, "unlinkSync").mockImplementation(() => { throw Object.assign(new Error("PRIVATE_FILE_PATH"), { code: "EACCES" }); });
     await f.cache.observe({ ...f.payload, text: "unique_account_id=888888&beta=0" });
-    expect(f.cache.snapshot().status).toBe("clear_failed"); expect(fs.existsSync(f.file)).toBe(true);
-    expect(f.cache.restoreInput()).toBeNull(); expect(f.budget.usedBytes).toBe(0); f.cache.dispose();
+    expect(f.cache.snapshot().status).toBe("clear_failed"); expect(f.cache.restoreInput()).toBeNull();
+    expect(fs.existsSync(f.file)).toBe(true); expect(f.budget.usedBytes).toBe(0); expect(f.store.isUnlocked()).toBe(false);
   });
-  test("explicit opt-in alone persists; missing, malformed, corrupted and saved Off remain off", () => {
+  test("bounded buffer denial leaves neither a usable key nor a file", async () => {
+    const f = fixture(); f.cache.attachBudget(new SatanicZoneDiagnosticBufferBudget(1)); f.cache.configure(true);
+    expect(await f.cache.unlock(passphrase)).toBe(false); expect(f.store.isUnlocked()).toBe(false); expect(fs.existsSync(f.file)).toBe(false);
+  });
+  test("only portable consent persists; legacy encrypted-cache consent, malformed values and Off stay off", () => {
     const file = path.join(directory, "preferences.json"); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
+    fs.writeFileSync(file, '{"satanicZoneLoginCache":{"enabled":true}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
     expect(saveSatanicZoneLoginCacheEnabled(file, true)).toBe(true); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).satanicZonePortableCache).toEqual({ version: 1, enabled: true });
     saveSatanicZoneLoginCacheEnabled(file, false); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
-    fs.writeFileSync(file, '{"satanicZoneLoginCache":{"enabled":"true"}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
+    fs.writeFileSync(file, '{"satanicZonePortableCache":{"version":1,"enabled":"true"}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
+    fs.writeFileSync(file, '{"satanicZonePortableCache":{"version":2,"enabled":true}}'); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
     fs.writeFileSync(file, "garbage"); expect(loadSatanicZoneLoginCacheEnabled(file)).toBe(false);
   });
 });

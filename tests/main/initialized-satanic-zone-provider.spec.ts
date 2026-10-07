@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { SatanicZoneLoginCache } from "../../src/main/satanic-zone-login-cache";
 import { SatanicZoneLoginCacheStore } from "../../src/main/satanic-zone-login-cache-store";
-import { ElectronSatanicZoneTestRuntime } from "../../src/main/electron-satanic-zone-test-runtime";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { InitializedSatanicZoneRefreshProvider } from "../../src/main/initialized-satanic-zone-provider";
 import { runInitializedSatanicZoneProbe, type InitializedProbeInput } from "../../src/main/satanic-zone-initialized-transport";
@@ -79,12 +78,13 @@ function fixture(loginCache?: SatanicZoneLoginCache) {
     denyPreparation: () => { canPrepare = false; } };
 }
 const cacheDirectories: string[] = [];
+const cachePassphrase = "SYNTHETIC provider cache passphrase";
 function cacheFixture(file: string) {
   let f: ReturnType<typeof fixture> | undefined;
-  const cacheBuildIdentity = vi.fn(async () => "e".repeat(64));
-  const cache = new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file, new ElectronSatanicZoneTestRuntime().cacheEncryption),
-    networkState: async () => f!.network, buildIdentity: cacheBuildIdentity, onChange: () => f?.provider.cacheChanged() });
-  f = fixture(cache); return { ...f, cache, cacheBuildIdentity };
+  const cacheNetworkState = vi.fn(async () => f!.network);
+  const cache = new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file),
+    networkState: cacheNetworkState, onChange: () => f?.provider.cacheChanged() });
+  f = fixture(cache); return { ...f, cache, cacheNetworkState };
 }
 function cacheFile() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-provider-cache-")); cacheDirectories.push(directory);
@@ -92,8 +92,10 @@ function cacheFile() {
 }
 async function restoredCacheFixture() {
   const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true);
+  expect(await original.cache.unlock(cachePassphrase)).toBe(true);
   await original.collect(); await flush(); original.provider.dispose();
-  const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively();
+  const f = cacheFixture(file); f.cache.configure(true); expect(await f.cache.unlock(cachePassphrase)).toBe(true);
+  await f.provider.preparePassively();
   f.network.connections[0].localPort = 5000;
   const payload = { ...scope, localPort: 5000, direction: "outbound" as const,
     text: "unique_account_id=12345678901234567890&beta=0&account_id=CANARY_ACCOUNT" };
@@ -101,17 +103,16 @@ async function restoredCacheFixture() {
   expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" });
   return { ...f, file, payload };
 }
-afterEach(() => { vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); for (const directory of cacheDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
 describe("normal Refresh using the proven initialized transport, all boundaries mocked", () => {
   test.each([["77777777777777777777", "0"], ["12345678901234567890", "1"]])(
-    "native Ready and pending save survive gameplay-only reconfiguration; private identity %s/%s still invalidates", async (uid, beta) => {
+    "native Ready and saved pair survive gameplay-only reconfiguration; private identity %s/%s still invalidates", async (uid, beta) => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
-    let build!: (value: string) => void;
-    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { build = resolve; }));
+    expect(await f.cache.unlock(cachePassphrase)).toBe(true);
     await f.collect();
     f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
     expect(f.provider.preparation.phase).toBe("ready"); expect(f.close).not.toHaveBeenCalled();
-    build("e".repeat(64)); await flush(); expect(f.cache.snapshot().status).toBe("saved");
+    expect(f.cache.snapshot().status).toBe("saved");
     const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
     const changed = frameDiagnosticBody(inventedPostLogin(uid, beta), 9);
     // Only private packets provide this contrary identity, through real framing.
@@ -120,13 +121,15 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     expect(f.provider.preparation.phase).not.toBe("ready"); expect(fs.existsSync(file)).toBe(false);
     expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0); f.provider.dispose();
   });
-  test("contrary private identity cancels the native pair save before deferred build discovery completes", async () => {
+  test("contrary private identity after a failed local save prevents resaving stale native credentials", async () => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
-    let build!: (value: string) => void;
-    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { build = resolve; })); await f.collect();
+    expect(await f.cache.unlock(cachePassphrase)).toBe(true);
+    vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("synthetic write failure"); });
+    await f.collect(); expect(f.cache.snapshot().status).toBe("storage_error");
     const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
     f.receive(f.packet(true, sequence, frameDiagnosticBody(inventedPostLogin("77777777777777777777"), 9)));
-    build("e".repeat(64)); await flush(); expect(fs.existsSync(file)).toBe(false);
+    await flush(); expect(fs.existsSync(file)).toBe(false);
+    expect((await f.provider.requestRefresh()).accepted).toBe(false);
     expect(f.provider.preparation.phase).not.toBe("ready"); expect(f.sockets).toHaveLength(0); f.provider.dispose();
     expect(f.budgets[0].usedBytes).toBe(0);
   });
@@ -146,9 +149,9 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     expect(await f.provider.getAvailability()).toMatchObject({ available: true, errorCode: null });
     expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1); f.provider.dispose();
   });
-  test("incomplete private traffic is reported ahead of an unrelated unavailable saved-sign-in build", async () => {
-    const f = cacheFixture(cacheFile()); f.cache.configure(true); f.cacheBuildIdentity.mockResolvedValueOnce(null as unknown as string);
-    await f.collect(); expect(f.cache.snapshot().status).toBe("build_unavailable");
+  test("incomplete private traffic is reported ahead of an unrelated locked portable cache", async () => {
+    const f = cacheFixture(cacheFile()); f.cache.configure(true);
+    await f.collect(); expect(f.cache.snapshot().status).toBe("locked");
     const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
     const identity = frameDiagnosticBody(inventedPostLogin(), 9); f.receive(f.packet(true, sequence + 17, identity.subarray(17)));
     expect(f.snapshots.at(-1)).toEqual({ phase: "collecting", expiresAt: null, reason: "traffic_incomplete" });
@@ -200,13 +203,14 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     expect(await waiting).toMatchObject({ kind: "terminal", refreshAvailable: false });
     expect(f.snapshots.at(-1)).toEqual({ phase: "collecting", expiresAt: null, reason: "traffic_incomplete" }); f.provider.dispose();
   });
-  test("explicit Refresh retries a transient local build/save failure while the coherent native pair remains usable", async () => {
+  test("explicit Refresh retries a local disk failure while the native pair remains usable", async () => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
-    f.cacheBuildIdentity.mockResolvedValueOnce(null as unknown as string); await f.collect();
-    expect(f.cache.snapshot().status).toBe("build_unavailable"); expect(fs.existsSync(file)).toBe(false);
+    expect(await f.cache.unlock(cachePassphrase)).toBe(true);
+    const rename = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("synthetic write failure"); });
+    await f.collect(); expect(f.cache.snapshot().status).toBe("storage_error"); expect(fs.existsSync(file)).toBe(false);
     const result = await f.dispatch(); await flush(); expect(result.accepted).toBe(true);
     expect(f.cache.snapshot().status).toBe("saved"); expect(fs.existsSync(file)).toBe(true);
-    expect(f.cacheBuildIdentity).toHaveBeenCalledTimes(2); f.provider.dispose();
+    expect(rename).toHaveBeenCalledTimes(2); rename.mockRestore(); f.provider.dispose();
   });
   test("readiness diagnostics report safe stage/counts, throttle unchanged stages and never include identity or bodies", async () => {
     const f = fixture(); await f.provider.preparePassively(); await flush();
@@ -224,6 +228,7 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
   });
   test("gameplay capture reconfiguration during sign-in preserves the independent listener, reaches Ready and saves without sending", async () => {
     const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
+    expect(await f.cache.unlock(cachePassphrase)).toBe(true);
     await f.collect(inventedConnect(), inventedPostLogin(), true, scope, 5000, () => {
       f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
       f.provider.observeCaptureUpdate({ status: "waiting" }, true);
@@ -270,14 +275,13 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(1);
     f.provider.dispose();
   });
-  test("an unknown gap cancels an async save of a prepared pair without resaving old identity", async () => {
-    const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true); let release!: (build: string) => void;
-    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    await f.collect(); expect(f.provider.preparation.phase).toBe("ready"); expect(fs.existsSync(file)).toBe(false);
+  test("an unknown gap suspends a saved native pair and requires fresh evidence without sending", async () => {
+    const file = cacheFile(), f = cacheFixture(file); f.cache.configure(true);
+    expect(await f.cache.unlock(cachePassphrase)).toBe(true);
+    await f.collect(); expect(f.provider.preparation.phase).toBe("ready"); expect(fs.existsSync(file)).toBe(true);
     f.provider.observeCaptureUpdate({ observationGap: true }, true); await flush();
-    expect(f.provider.preparation.phase).toBe("suspended"); expect(fs.existsSync(file)).toBe(false);
-    release("e".repeat(64)); await flush(); expect(fs.existsSync(file)).toBe(false);
-    expect(f.cacheBuildIdentity).toHaveBeenCalledTimes(1);
+    expect(f.provider.preparation.phase).toBe("suspended"); expect(f.cache.restoreInput()).toBeNull();
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(fs.existsSync(file)).toBe(true);
     expect(f.close).toHaveBeenCalledTimes(1); expect(f.sockets).toHaveLength(0); f.provider.dispose();
     expect(f.budgets[0].usedBytes).toBe(0);
   });
@@ -306,13 +310,13 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" }); f.provider.dispose();
   });
   test("identical ordinary evidence during deferred cached preflight still permits the explicit send", async () => {
-    const f = await restoredCacheFixture(); let release!: (build: string) => void;
-    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const f = await restoredCacheFixture(); let release!: (network: typeof f.network) => void;
+    f.cacheNetworkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     const pending = f.provider.requestRefresh(); await flush();
     expect(release).toBeTypeOf("function"); expect(f.sockets).toHaveLength(0);
     const validation = f.cache.restoreInput()!.scope;
     f.provider.observeSessionPayload({ ...f.payload }); await flush();
-    release("e".repeat(64)); await flush();
+    release(f.network); await flush();
     expect(f.sockets).toHaveLength(1);
     f.sockets[0].receive(opcodeOnlyReadyBody); f.sockets[0].receive(inventedLoginSuccess()); await flush();
     const request = await pending;
@@ -323,38 +327,42 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
   test("identical ordinary evidence during deferred cached postflight preserves a successful response", async () => {
     const f = await restoredCacheFixture(), request = await f.dispatch();
     const waiting = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });
-    let release!: (build: string) => void;
-    f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    let release!: (network: typeof f.network) => void;
+    f.cacheNetworkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     f.sockets[0].receive(inventedZoneBody); await flush(); expect(release).toBeTypeOf("function");
     const validation = f.cache.restoreInput()!.scope;
     f.provider.observeSessionPayload({ ...f.payload }); await flush();
-    release("e".repeat(64)); await flush();
+    release(f.network); await flush();
     expect((await waiting)?.kind).toBe("observation"); expect(f.sockets).toHaveLength(1);
     expect(f.cache.restoreInput()!.scope).toBe(validation);
     expect(f.provider.preparation).toMatchObject({ phase: "ready", origin: "cached" }); f.provider.dispose();
   });
   test.each(["preflight", "postflight"] as const)("wrong identity or an observation gap still rejects deferred cached %s", async stage => {
     for (const invalidation of ["identity", "gap"] as const) {
-      const f = await restoredCacheFixture(); let release!: (build: string) => void;
+      const f = await restoredCacheFixture(); let release!: (network: typeof f.network) => void;
       const request = stage === "postflight" ? await f.dispatch() : null;
-      f.cacheBuildIdentity.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      f.cacheNetworkState.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
       const pending = request ? f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 }) : f.provider.requestRefresh();
       if (request) f.sockets[0].receive(inventedZoneBody);
       await flush(); expect(release).toBeTypeOf("function");
       if (invalidation === "identity") f.provider.observeSessionPayload({ ...f.payload, text: "unique_account_id=888888&beta=0" });
       else { f.provider.suspend(); await f.provider.preparePassively(); f.provider.observeSessionPayload({ ...f.payload }); }
-      await flush(); release("e".repeat(64)); await flush();
+      await flush(); release(f.network); await flush();
       const result = await pending;
       if (request) expect(result).not.toMatchObject({ kind: "observation" });
       else expect(result).toMatchObject({ accepted: false });
       expect(f.sockets).toHaveLength(request ? 1 : 0); f.provider.dispose();
     }
   });
-  test("collect once, close/reopen, validate cached identity/build and explicit Refresh alone sends", async () => {
+  test("collect once, close/reopen, unlock and validate fresh identity; explicit Refresh alone sends", async () => {
     const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true);
+    expect(await original.cache.unlock(cachePassphrase)).toBe(true);
     await original.collect(); await flush(); expect(original.cache.snapshot().status).toBe("saved");
     expect(original.sockets).toHaveLength(0); original.provider.dispose();
-    const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively(); await flush();
+    const f = cacheFixture(file); f.cache.configure(true);
+    expect(f.cache.snapshot().status).toBe("locked"); expect(f.provider.preparation.phase).not.toBe("ready");
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0);
+    expect(await f.cache.unlock(cachePassphrase)).toBe(true); await f.provider.preparePassively(); await flush();
     expect(f.provider.preparation).toMatchObject({ phase: "waiting_connection", reason: "cache_identity_required" });
     expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0);
     f.network.connections[0].localPort = 5000;
@@ -369,8 +377,10 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     f.provider.dispose(); expect(fs.existsSync(file)).toBe(true);
   });
   test("cached Ready loses validation on Stop and the same old numeric tuple cannot resume it", async () => {
-    const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true); await original.collect(); await flush(); original.provider.dispose();
-    const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively(); f.network.connections[0].localPort = 5000;
+    const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true);
+    expect(await original.cache.unlock(cachePassphrase)).toBe(true); await original.collect(); await flush(); original.provider.dispose();
+    const f = cacheFixture(file); f.cache.configure(true); expect(await f.cache.unlock(cachePassphrase)).toBe(true);
+    await f.provider.preparePassively(); f.network.connections[0].localPort = 5000;
     const payload = { ...scope, localPort: 5000, direction: "outbound" as const, text: "unique_account_id=12345678901234567890&beta=0" };
     f.provider.observeSessionPayload(payload); await flush(); expect(f.provider.preparation.origin).toBe("cached");
     f.provider.suspend(); await f.provider.preparePassively(); await flush();
@@ -380,8 +390,10 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     f.cache.clear(); expect(f.provider.preparation.phase).not.toBe("ready"); expect(fs.existsSync(file)).toBe(false); f.provider.dispose();
   });
   test("wrong current account clears restored cache and cannot invoke the transport", async () => {
-    const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true); await original.collect(); await flush(); original.provider.dispose();
-    const f = cacheFixture(file); f.cache.configure(true); await f.provider.preparePassively(); f.network.connections[0].localPort = 5000;
+    const file = cacheFile(), original = cacheFixture(file); original.cache.configure(true);
+    expect(await original.cache.unlock(cachePassphrase)).toBe(true); await original.collect(); await flush(); original.provider.dispose();
+    const f = cacheFixture(file); f.cache.configure(true); expect(await f.cache.unlock(cachePassphrase)).toBe(true);
+    await f.provider.preparePassively(); f.network.connections[0].localPort = 5000;
     f.provider.observeSessionPayload({ ...scope, localPort: 5000, direction: "outbound", text: "unique_account_id=888888&beta=0" }); await flush();
     expect(f.cache.snapshot().status).toBe("identity_mismatch"); expect((await f.provider.requestRefresh()).accepted).toBe(false);
     expect(f.sockets).toHaveLength(0); expect(fs.existsSync(file)).toBe(false); f.provider.dispose();

@@ -2,13 +2,14 @@ import type { SatanicZonePreparation } from "../../../shared/satanic-zone-prepar
 
 export function satanicZonePreparationDetail(state: SatanicZonePreparation | undefined, _now: number): string | null {
   if (!state) return null;
+  if (state.phase === "ready" && state.origin !== "cached") return "Ready to refresh.";
   if (state.reason === "traffic_incomplete") return "Waiting for a complete game update before Refresh is ready. You can keep playing.";
   if (state.reason === "cache_empty") return "No saved sign-in is available. Companion needs to observe a complete sign-in before Refresh is ready. You can keep playing.";
   if (state.reason === "cache_identity_required") return "Experimental saved sign-in needs fresh account and mode evidence from the game. Refresh is unavailable until they match.";
   if (state.reason === "cache_identity_mismatch") return "The account or mode did not match the saved sign-in. It was cleared.";
-  if (state.reason === "cache_build_unavailable") return "Cannot verify the running game build for saved sign-in. Refresh is unavailable.";
-  if (state.reason === "cache_build_mismatch") return "The game build changed. The saved sign-in was cleared.";
-  if (state.origin === "cached" && state.phase === "ready") return "Experimental saved sign-in matched this account and game build. Click Refresh to test it.";
+  if (state.reason === "cache_locked") return "Saved sign-in is locked. Unlock Remember sign-in in Features to test reuse, or keep playing while Companion watches for sign-in.";
+  if (state.reason === "cache_unlock_failed") return "Saved sign-in could not be unlocked. Check the passphrase in Features; you can keep playing.";
+  if (state.origin === "cached" && state.phase === "ready") return "Experimental saved sign-in matched the current account and mode. Click Refresh to test it.";
   if (state.reason === "login_missed") return "The game's connection is open, but its sign-in was not observed. Refresh is unavailable. You can keep playing.";
   switch (state.phase) {
     case "opening": return "Getting Refresh ready…";

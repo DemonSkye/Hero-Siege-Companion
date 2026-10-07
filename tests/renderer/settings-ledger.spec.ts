@@ -98,6 +98,9 @@ describe("settings ledger", () => {
     expect(wrapper.get(".settings-action-dialog").text()).toContain("gets ready automatically");
     expect(wrapper.get(".settings-action-dialog").text()).toContain("after the game next signs in");
     expect(wrapper.get(".settings-action-dialog").text()).not.toMatch(/Prepare|two.minutes|API|protocol/i);
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("encrypted with your passphrase");
+    expect(wrapper.get(".settings-action-dialog").text()).toContain("enter the passphrase each Companion session");
+    expect(wrapper.get(".settings-action-dialog").text()).not.toMatch(/Windows encryption|build matching/);
     expect(wrapper.find('a[href*="mitmproxy"]').exists()).toBe(false);
   });
 

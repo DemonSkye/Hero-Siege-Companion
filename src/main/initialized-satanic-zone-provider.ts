@@ -17,7 +17,7 @@ import type { SatanicZoneRefreshAvailability, SatanicZoneRefreshDispatchResult, 
 const CACHE_REASONS: Partial<Record<SatanicZoneLoginCacheState["status"], NonNullable<SatanicZonePreparation["reason"]>>> = {
   empty: "cache_empty",
   unverified: "cache_identity_required", identity_mismatch: "cache_identity_mismatch",
-  build_unavailable: "cache_build_unavailable", build_mismatch: "cache_build_mismatch",
+  locked: "cache_locked", unlocking: "cache_locked", unlock_failed: "cache_unlock_failed",
 };
 export type SatanicZoneReadinessDiagnostic = Pick<SatanicZoneDiagnosticState,
   "phase" | "reason" | "selectionStatus" | "probeStage" | "capturePackets" | "bytesObserved" | "freshSyn"
@@ -157,9 +157,9 @@ export class InitializedSatanicZoneRefreshProvider implements SatanicZoneRefresh
     if (this.pending) return rejected("refresh_in_progress");
     if (this.now() < this.nextAllowedAt) return rejected("refresh_cooldown");
     if (this.preparation.phase !== "ready") return rejected("helper_not_ready");
-    // A transient build lookup failure must not strand the usable native pair.
+    // A transient disk failure must not strand the usable native pair.
     // Retrying its local save uses current RAM only; it sends no authentication.
-    if (["empty", "build_unavailable", "storage_error"].includes(this.options.loginCache?.snapshot().status ?? "")) this.context.rememberCurrent();
+    if (["empty", "storage_error"].includes(this.options.loginCache?.snapshot().status ?? "")) this.context.rememberCurrent();
     let dispatch!: Pending["dispatch"], settle!: Pending["settle"];
     const dispatched = new Promise<SatanicZoneRefreshDispatchResult>(resolve => { dispatch = resolve; });
     const outcome = new Promise<SatanicZoneProviderWaitOutcome>(resolve => { settle = resolve; });

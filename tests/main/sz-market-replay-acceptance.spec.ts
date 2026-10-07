@@ -7,7 +7,6 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { CapturedSessionContextStore } from "../../src/main/captured-session-context";
 import type { HeroSiegeNetworkState } from "../../src/main/capture-network";
 import { DirectMarketSearchProvider } from "../../src/main/direct-market-search-provider";
-import { ElectronSatanicZoneTestRuntime } from "../../src/main/electron-satanic-zone-test-runtime";
 import { InitializedSatanicZoneRefreshProvider } from "../../src/main/initialized-satanic-zone-provider";
 import { buildDirectMarketRequestBody } from "../../src/main/market-direct-search-worker";
 import { inspectDirectMarketResponse } from "../../src/main/market-direct-response";
@@ -45,6 +44,7 @@ class ReplaySocket extends EventEmitter {
 }
 
 const cleanups: (() => void)[] = [];
+const cachePassphrase = "SYNTHETIC evidence replay passphrase";
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); launch.steam.mockReset(); vi.useRealTimers(); });
 
 /** Real decoder, reassembly, stores/controllers and owned transport; only platform I/O is replaced. */
@@ -53,8 +53,8 @@ function harness(file?: string, gameplayCapture = true) {
   const network: HeroSiegeNetworkState = { gameProcessIds: [], antiCheatProcessIds: [], connections: [] };
   const sockets: ReplaySocket[] = [], packets = new PacketBuffers(), events: string[] = [];
   let receive: ((packet: ParsedPayload, truncated: boolean) => void) | undefined, zone: SatanicZoneController;
-  const cache = file ? new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file, new ElectronSatanicZoneTestRuntime().cacheEncryption),
-    networkState: async () => network, buildIdentity: async () => "e".repeat(64), onChange: () => provider.cacheChanged() }) : undefined;
+  const cache = file ? new SatanicZoneLoginCache({ store: new SatanicZoneLoginCacheStore(file),
+    networkState: async () => network, onChange: () => provider.cacheChanged() }) : undefined;
   const provider = new InitializedSatanicZoneRefreshProvider({ canPrepare: () => true, loginCache: cache,
     onPreparation: next => zone?.setPreparation(next), dependencies: {
       prepare: async () => replayScope, networkState: async () => network,
@@ -189,10 +189,13 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "hsc-evidence-replay-")), file = path.join(directory, "login.encrypted");
     expect(path.dirname(fs.realpathSync(directory))).toBe(fs.realpathSync(os.tmpdir()));
     cleanups.unshift(() => fs.rmSync(directory, { recursive: true, force: true }));
-    const original = harness(file); await original.provider.preparePassively(); await original.initialize(); await flush();
+    const original = harness(file); expect(await original.cache!.unlock(cachePassphrase)).toBe(true);
+    await original.provider.preparePassively(); await original.initialize(); await flush();
     expect(original.cache!.snapshot().status).toBe("saved"); expect(fs.existsSync(file)).toBe(true);
     expect(original.sockets).toHaveLength(0); original.dispose();
     const restored = harness(file); restored.game(); await restored.provider.preparePassively();
+    expect(restored.cache!.snapshot().status).toBe("locked"); expect((await restored.zone.refreshNow()).accepted).toBe(false);
+    expect(restored.sockets).toHaveLength(0); expect(await restored.cache!.unlock(cachePassphrase)).toBe(true);
     expect(restored.provider.preparation.phase).not.toBe("ready");
     expect((await restored.zone.refreshNow()).accepted).toBe(false); expect(restored.sockets).toHaveLength(0);
     const frame = frameDiagnosticBody(replayIdentity(), 10);
@@ -208,11 +211,13 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     expect(path.dirname(fs.realpathSync(directory))).toBe(fs.realpathSync(os.tmpdir()));
     cleanups.unshift(() => fs.rmSync(directory, { recursive: true, force: true }));
     const original = harness(file);
+    expect(await original.cache!.unlock(cachePassphrase)).toBe(true);
     if (missing !== "no saved pair") {
       await original.provider.preparePassively(); await original.initialize(); await flush();
       expect(original.cache!.snapshot().status).toBe("saved");
     }
-    original.dispose(); const restored = harness(file); restored.game(); await restored.provider.preparePassively();
+    original.dispose(); const restored = harness(file); expect(await restored.cache!.unlock(cachePassphrase)).toBe(true);
+    restored.game(); await restored.provider.preparePassively();
     if (missing !== "no fresh identity") {
       const identity = missing === "fresh UID without beta" ? Buffer.from(replayIdentity().toString().replace("&beta=0", "")) : replayIdentity();
       restored.feed({ outbound: true, sequence: 9000, payload: frameDiagnosticBody(identity, 10), flags: 24 }); await flush();

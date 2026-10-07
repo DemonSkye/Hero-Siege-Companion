@@ -1,4 +1,4 @@
-import { app, clipboard, crashReporter, ipcMain, shell, safeStorage } from "electron";
+import { app, clipboard, crashReporter, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { createAppDiagnostics, type AppDiagnostics } from "./app-diagnostics";
@@ -22,7 +22,7 @@ import { DirectMarketSearchProvider } from "./direct-market-search-provider";
 import { InitializedSatanicZoneRefreshProvider } from "./initialized-satanic-zone-provider";
 import { SatanicZoneLoginCache } from "./satanic-zone-login-cache";
 import { SatanicZoneLoginCacheStore } from "./satanic-zone-login-cache-store";
-import { getHeroSiegeBuildIdentity, getHeroSiegeNetworkState } from "./capture-network";
+import { getHeroSiegeNetworkState } from "./capture-network";
 import { ElectronSatanicZoneTestRuntime } from "./electron-satanic-zone-test-runtime";
 import { MarketRegionDirectoryCache } from "./market-region-directory";
 import { MarketReadinessController } from "./market-readiness-controller";
@@ -563,12 +563,23 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown)
   const requested = enabled === true && state.satanicZone.refreshEnabled;
   const saved = saveSatanicZoneLoginCacheEnabled(preferencesPath, requested);
   satanicZoneLoginCache?.configure(saved && requested);
-  if (saved && requested) satanicZoneRefreshProvider?.rememberCurrent();
-  if (!saved) state.satanicZoneLoginCache = { enabled: false, status: "storage_error" };
+  if (!saved) state.satanicZoneLoginCache = { enabled: false, unlocked: false, status: "storage_error" };
   publishStateNow(); return state;
 });
+ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheUnlock, async (_event, passphrase: unknown) => {
+  if (typeof passphrase === "string" && await satanicZoneLoginCache?.unlock(passphrase)) satanicZoneRefreshProvider?.rememberCurrent();
+  publishStateNow(); return state;
+});
+ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheLock, () => {
+  satanicZoneLoginCache?.lock(); publishStateNow(); return state;
+});
 ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheClear, () => {
-  satanicZoneLoginCache?.clear(); publishStateNow(); return state;
+  const saved = saveSatanicZoneLoginCacheEnabled(preferencesPath, false);
+  satanicZoneLoginCache?.configure(false);
+  // Forget disables persistence even if removal fails; no automatic resave.
+  satanicZoneLoginCache?.clear();
+  if (!saved && state.satanicZoneLoginCache?.status !== "clear_failed") state.satanicZoneLoginCache = { enabled: false, unlocked: false, status: "storage_error" };
+  publishStateNow(); return state;
 });
 ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string, options?: ConfigurationExportOptions) => {
   const contents = embedConfigurationSoundData(String(json ?? ""), app.getPath("userData"));
@@ -822,11 +833,8 @@ app.whenReady().then(async () => {
     );
   }
   satanicZoneLoginCache = new SatanicZoneLoginCache({
-    store: new SatanicZoneLoginCacheStore(path.join(userDataPath, "sz-login-cache.encrypted"),
-      satanicZoneTestRuntime?.cacheEncryption ?? safeStorage),
+    store: new SatanicZoneLoginCacheStore(path.join(userDataPath, "sz-login-cache.portable")),
     networkState: satanicZoneTestRuntime?.dependencies.networkState ?? getHeroSiegeNetworkState,
-    buildIdentity: satanicZoneTestRuntime?.buildIdentity ?? (pid => getHeroSiegeBuildIdentity(pid,
-      stage => writeAppLog("sz-login-cache-build", { stage }))),
     onDiagnostic: (stage, result) => writeAppLog("sz-login-cache", { stage, result }),
     onChange: cacheState => {
       state.satanicZoneLoginCache = cacheState; satanicZoneRefreshProvider?.cacheChanged();
