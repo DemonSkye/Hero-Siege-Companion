@@ -7,6 +7,10 @@ import { marketStatSuggestions, type MarketSearchPhase, type MarketStatFilterDra
 import { formatNumber } from "../lib/format";
 import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 
+// Unit prices can be fractional. Preserve significant digits, including small
+// nonzero prices, while using the same default locale as other app numbers.
+const unitPriceFormatter = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 21 });
+
 const props = defineProps<{
   readiness: MarketReadiness;
   item: { label: string; rarity: string } | null;
@@ -172,7 +176,7 @@ function chooseStat(statId: number): void {
             <table v-if="listings.length" class="market-price-table">
               <caption>{{ item?.label }} · returned page, lowest price first</caption>
               <thead><tr><th scope="col">Listing</th><th scope="col">Price</th><th scope="col">Price per unit</th></tr></thead>
-              <tbody><tr v-for="(listing, index) in listings" :key="index"><th scope="row">{{ index + 1 }}</th><td>{{ formatNumber(listing.price) }} gold</td><td>{{ listing.unitPrice !== undefined ? `${formatNumber(listing.unitPrice)} gold per unit` : 'Unavailable' }}</td></tr></tbody>
+              <tbody><tr v-for="(listing, index) in listings" :key="index"><th scope="row">{{ index + 1 }}</th><td>{{ formatNumber(listing.price) }} gold</td><td>{{ listing.unitPrice !== undefined ? `${unitPriceFormatter.format(listing.unitPrice)} gold per unit` : 'Unavailable' }}</td></tr></tbody>
             </table>
             <p v-else class="empty-copy">{{ returnedCount !== null && returnedCount > 0 ? 'The returned page had no readable price listings.' : 'No matching price listings were returned.' }} Try fewer minimums, then press Search.</p>
             <p>Up to {{ MARKET_SEARCH_LISTING_LIMIT }} gold-price listings from the first page. Matching relies on the server; rolled stats and socket capacity are not reconstructed.</p>

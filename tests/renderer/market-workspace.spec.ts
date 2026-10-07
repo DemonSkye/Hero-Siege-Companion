@@ -140,6 +140,35 @@ test("real tab handles unavailable, loading, rejected, empty and price states wh
   } finally { reopened.unmount(); }
 });
 
+test("real Market results retain fractional unit prices without rounding small prices to zero", async () => {
+  const { api } = setup();
+  api.searchMarket.mockResolvedValue({ ok: true, result: { listings: [
+    { price: 300, unitPrice: 0.5 },
+    { price: 600, unitPrice: 1_234.56789 },
+    { price: 900, unitPrice: 0.0000001 },
+    { price: 1_200, unitPrice: 100_000 },
+    { price: 1_500 },
+  ] } });
+  const wrapper = mount(App, { global: { stubs } });
+  try {
+    await flushPromises();
+    await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
+    await wrapper.get(".market-options button").trigger("click");
+    await wrapper.get("form.market-editor").trigger("submit");
+    await flushPromises();
+    // Literal values are independent of the presentation formatter. These use
+    // the test environment's existing en-US grouping/decimal convention.
+    expect(wrapper.findAll(".market-price-table tbody tr td:last-child").map(cell => cell.text())).toEqual([
+      "0.5 gold per unit", "1,234.56789 gold per unit", "0.0000001 gold per unit", "100,000 gold per unit", "Unavailable",
+    ]);
+    expect(wrapper.findAll(".market-price-table tbody tr td:first-of-type").map(cell => cell.text())).toEqual([
+      "300 gold", "600 gold", "900 gold", "1,200 gold", "1,500 gold",
+    ]);
+  } finally { wrapper.unmount(); }
+});
+
 test("tab keyboard navigation wraps and focuses the selected tab", async () => {
   setup();
   const wrapper = mount(App, { attachTo: document.body, global: { stubs } });
