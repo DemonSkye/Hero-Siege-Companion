@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { CompleteCapturedSessionContext } from "../../src/main/captured-session-context";
 import type { DirectMarketWorkerResult } from "../../src/main/market-direct-response";
 import type { MarketSearchRequest } from "../../src/shared/market-search";
+import { MarketRecordEvidenceStore } from "../../src/main/market-record-evidence";
+import { extractSessionContextMessages } from "../../src/main/session-context-fields";
 import evidence from "../fixtures/market-native-evidence.json";
 
 const bridge = vi.hoisted(() => ({ data: undefined as unknown, post: vi.fn(), request: vi.fn() }));
@@ -126,6 +128,38 @@ async function blockedEntry(snapshot: CompleteCapturedSessionContext) {
 }
 
 describe("actual Market worker entry with retained native structure and independent synthetic expectations", () => {
+  test("actual POST progress and completion compare frozen independent records, not merged agreement flags", async () => {
+    const snapshot: CompleteCapturedSessionContext = context(), records = new MarketRecordEvidenceStore();
+    const observe = (text: string, localPort = 5000) => {
+      const payload = { text, direction: "outbound" as const, observedAt: NOW - 4000,
+        remoteAddress: snapshot.endpoint.address, remotePort: snapshot.endpoint.port, localAddress: "192.0.2.7", localPort };
+      for (const message of extractSessionContextMessages(text)) records.observe(payload, message, snapshot.generation, payload.observedAt);
+    };
+    observe("api " + new URLSearchParams({ ...snapshot.fields, slot: "4" }));
+    observe("save " + new URLSearchParams({ account_id: snapshot.fields.account_id, beta: "0", slot: "8",
+      slot_data: JSON.stringify({ season: 12, hardcore: 0 }) }), 5001);
+    observe("save " + new URLSearchParams({ account_id: snapshot.fields.account_id, beta: "0", slot: "4",
+      slot_data: JSON.stringify({ season: 11, hardcore: 0 }) }));
+    snapshot.diagnosticRecords = records.freeze(snapshot.generation, NOW);
+    const run = await entry(snapshot);
+    const comparison = progressMessages()[1].diagnostics.requestContext.recordComparison;
+    expect(comparison).toMatchObject({ contextEqualsForm: { unique_account_id: true, season: true },
+      api: [{ equalToRequest: { unique_account_id: true, season: true } }],
+      saves: [{ equalToRequest: { season: false } }, { equalToRequest: { season: true } }],
+      apiSave: [[{ observedSlotEqual: false, sameFlow: false }, { observedSlotEqual: true, sameFlow: true }]],
+      selectedNativeSlotEstablished: false, nativeMarketDigestObserved: false });
+    // A later save/identity observation cannot rewrite the already submitted diagnostic.
+    snapshot.diagnosticRecords.saves[0].fields.season = "11";
+    snapshot.diagnosticRecords.api[0].fields.unique_account_id = "SYNTHETIC-OVERWRITTEN-UID";
+    receive(run.response, successBody());
+    const result = await run.result();
+    expect(result.response.ok).toBe(true);
+    expect(result.diagnostics.requestContext?.recordComparison).toEqual(comparison);
+    for (const message of [...progressMessages(), result]) expectNoSecrets(message, run.form);
+    expect(JSON.stringify(bridge.post.mock.calls)).not.toMatch(/SYNTHETIC-OVERWRITTEN|192\.0\.2\.7|slot_data/);
+    records.clear();
+  });
+
   test("fixture distinguishes native observations from substituted identities and response bodies", () => {
     expect(evidence.provenance).toMatchObject({
       syntheticIdentifiers: true, nativeServerAcceptanceClaimed: false,

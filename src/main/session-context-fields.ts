@@ -8,6 +8,8 @@ export type SessionContextFields = Partial<Record<SessionContextField, string>>;
 export interface SessionContextMessage {
   fields: SessionContextFields;
   source: "mailbox" | "market" | "game-api" | "json" | "character-save" | "region-directory";
+  /** Directly observed top-level slot only; no selected-slot authority is implied. */
+  slot?: string;
 }
 
 // Identity is top-level. Only the selected-character save may supply mode from
@@ -19,7 +21,9 @@ export function extractSessionContextMessages(text: string): SessionContextMessa
   const formStart = normalized.indexOf("=");
   if (jsonStart >= 0 && (formStart < 0 || jsonStart < formStart)) {
     try {
-      return [{ fields: pickFields(JSON.parse(normalized.slice(jsonStart))), source: "json" }];
+      const value = JSON.parse(normalized.slice(jsonStart));
+      const slot = value && typeof value === "object" && !Array.isArray(value) ? validSlot(value.slot) : undefined;
+      return [{ fields: pickFields(value), source: "json", ...(slot ? { slot } : {}) }];
     } catch {
       return [];
     }
@@ -36,15 +40,20 @@ export function extractSessionContextMessages(text: string): SessionContextMessa
     const fields = pickFields(Object.fromEntries(params));
     if (SESSION_CONTEXT_FIELDS.some((field) => params.getAll(field).length > 1)) return [];
     const prefix = fragment.slice(0, start);
+    const slot = params.getAll("slot").length === 1 ? validSlot(params.get("slot")) : undefined;
     if (/(?:^|\s)save(?:\s+\S)?\s*$/.test(prefix) && fields.account_id
       && params.getAll("slot").length === 1 && /^\d{1,3}$/.test(params.get("slot") ?? "")
       && params.getAll("slot_data").length === 1) {
       const mode = characterSaveMode(params.get("slot_data")!);
-      if (mode) return [{ fields: { ...fields, ...mode }, source: "character-save" }];
+      if (mode) return [{ fields: { ...fields, ...mode }, source: "character-save", ...(slot ? { slot } : {}) }];
     }
     const source = prefix.includes("mailbox/") ? "mailbox" : prefix.includes("market/") ? "market" : "game-api";
-    return [{ fields, source }];
+    return [{ fields, source, ...(slot ? { slot } : {}) }];
   });
+}
+function validSlot(value: unknown): string | undefined {
+  const candidate = typeof value === "number" ? String(value) : value;
+  return typeof candidate === "string" && /^\d{1,3}$/.test(candidate) ? candidate : undefined;
 }
 
 function characterSaveMode(text: string): Pick<SessionContextFields, "season" | "hardcore"> | null {

@@ -1,5 +1,6 @@
 import type { MarketRegionDirectory } from "./market-region-directory";
 import type { MarketReadiness } from "../shared/market-readiness";
+import { MarketRecordEvidenceStore, type FrozenMarketRecordEvidence } from "./market-record-evidence";
 import {
   extractSessionContextMessages,
   isRegionQualifiedAccount,
@@ -55,6 +56,8 @@ export interface CompleteCapturedSessionContext {
   endpoint: { address: string; port: number };
   scopeKey: string;
   provenance?: MarketContextProvenance;
+  /** Detached diagnostic snapshot set only for an outgoing main-process worker. */
+  diagnosticRecords?: FrozenMarketRecordEvidence;
 }
 
 export interface SatanicZoneRequestContext {
@@ -80,6 +83,7 @@ export class CapturedSessionContextStore {
   private saveHardcore?: HardcoreEvidence;
   private readonly listeners = new Set<() => void>();
   private readonly readinessListeners = new Set<() => void>();
+  private readonly records = new MarketRecordEvidenceStore();
 
   constructor(
     private readonly log: (type: string, data: Record<string, unknown>) => void = () => undefined,
@@ -92,12 +96,16 @@ export class CapturedSessionContextStore {
     if (signature === this.processSignature) return;
     this.processSignature = signature;
     this.generation += 1;
+    this.records.clear();
     this.clearContext("game-generation", true);
   }
 
   observe(payload: CapturedSessionPayload): void {
     if (!this.processSignature || payload.direction !== "outbound") return;
-    for (const message of extractSessionContextMessages(payload.text)) this.observeMessage(payload, message);
+    for (const message of extractSessionContextMessages(payload.text)) {
+      this.records.observe(payload, message, this.generation, payload.observedAt ?? this.now());
+      this.observeMessage(payload, message);
+    }
     this.qualifyCurrentAccount();
     this.notifyReadiness();
   }
@@ -107,6 +115,8 @@ export class CapturedSessionContextStore {
     this.qualifyCurrentAccount();
     this.notifyReadiness();
   }
+  marketRecordSnapshot(): FrozenMarketRecordEvidence { return this.records.freeze(this.generation, this.now()); }
+  clearMarketRecordEvidenceForGap(): void { this.records.clear(true); }
 
   marketReadiness(): MarketReadiness {
     const unique = this.evidence.unique_account_id;
@@ -195,6 +205,7 @@ export class CapturedSessionContextStore {
   }
 
   dispose(): void {
+    this.records.clear();
     this.listeners.clear();
     this.readinessListeners.clear();
     this.fields = {};

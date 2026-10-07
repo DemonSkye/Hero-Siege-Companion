@@ -18,6 +18,7 @@ export interface DirectMarketContextSource {
   marketContext(): CompleteCapturedSessionContext | null;
   subscribe(listener: () => void): () => void;
   marketProvenance?(): CompleteCapturedSessionContext["provenance"];
+  marketRecordSnapshot?(): CompleteCapturedSessionContext["diagnosticRecords"];
 }
 
 interface ActiveSearch {
@@ -67,11 +68,12 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
       options.signal?.removeEventListener("abort", abortPreparation);
     }
 
-    const context = this.contextSource.marketContext();
-    if (!context) {
+    const liveContext = this.contextSource.marketContext();
+    if (!liveContext) {
       this.log("market-direct-blocked", { reason: "context-unavailable", provenance: this.contextSource.marketProvenance?.() });
       return { ok: false, errorCode: "template_unavailable" };
     }
+    const context = structuredClone(liveContext);
 
     const key = this.cache.key(context.scopeKey, normalized.request);
     const cached = this.cache.get(key);
@@ -88,6 +90,9 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
     }
 
     this.nextAllowedSearchAt = this.now() + MARKET_SEARCH_COOLDOWN_MS;
+    // Freeze separately observed records with this dispatch, including injected runners.
+    const records = this.contextSource.marketRecordSnapshot?.();
+    if (records) context.diagnosticRecords = structuredClone(records);
     const promise = this.executeSearch(context, key, normalized.request, options.signal);
     this.activeSearch = { key, promise };
     try {

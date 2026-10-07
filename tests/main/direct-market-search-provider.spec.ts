@@ -3,6 +3,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { CompleteCapturedSessionContext } from "../../src/main/captured-session-context";
 import { DirectMarketSearchProvider, type DirectMarketContextSource } from "../../src/main/direct-market-search-provider";
 import { MarketResultCache } from "../../src/main/market-result-cache";
+import { MarketRecordEvidenceStore } from "../../src/main/market-record-evidence";
+import { buildMarketRequestDiagnostics } from "../../src/main/market-request-diagnostics";
 
 const mock = vi.hoisted(() => ({
   workers: [] as Array<EventEmitter & { terminate: ReturnType<typeof vi.fn>; options: unknown }>,
@@ -64,11 +66,13 @@ function setup(options: {
   prepare?: (signal: AbortSignal) => Promise<void>;
   now?: () => number;
   context?: CompleteCapturedSessionContext | null;
+  records?: () => CompleteCapturedSessionContext["diagnosticRecords"];
 } = {}) {
   let context = options.context === undefined ? completeContext : options.context;
   let listener = () => undefined;
   const source: DirectMarketContextSource = {
     marketContext: () => context,
+    ...(options.records ? { marketRecordSnapshot: options.records } : {}),
     subscribe: (next) => { listener = next; return () => { listener = () => undefined; }; },
   };
   const log = vi.fn();
@@ -82,6 +86,69 @@ function setup(options: {
 }
 
 describe("direct-market provider worker boundary", () => {
+  function evidence() {
+    const records = new MarketRecordEvidenceStore();
+    records.observe({ text: "", direction: "outbound", remoteAddress: completeContext.endpoint.address,
+      remotePort: completeContext.endpoint.port, localAddress: "192.0.2.7", localPort: 5000 },
+    { fields: { ...completeContext.fields }, source: "game-api", slot: "4" }, completeContext.generation, 9000);
+    return records.freeze(completeContext.generation, 10_000);
+  }
+  test("freezes context and independent evidence only for a new dispatch, preserving cache/coalescing behavior", async () => {
+    const context = structuredClone(completeContext), records = evidence(), snapshot = vi.fn(() => records);
+    const { provider } = setup({ context, records: snapshot, now: () => 10_000 });
+    const pending = provider.search(request), duplicate = provider.search(request);
+    await Promise.resolve();
+    const data = (mock.workers[0].options as { workerData: { context: CompleteCapturedSessionContext } }).workerData;
+    expect(snapshot).toHaveBeenCalledTimes(1); expect(mock.workers).toHaveLength(1);
+    context.fields.unique_account_id = "SYNTHETIC-MUTATED-CONTEXT";
+    records.api[0].fields.unique_account_id = "SYNTHETIC-MUTATED-RECORD";
+    expect(data.context.fields.unique_account_id).toBe("hero-7");
+    expect(data.context.diagnosticRecords?.api[0].fields.unique_account_id).toBe("hero-7");
+    mock.workers[0].emit("message", { response: { ok: true, result: { listings: [] } }, diagnostics: {} });
+    expect((await pending).ok).toBe(true); expect((await duplicate).ok).toBe(true);
+    expect(await provider.search(request)).toMatchObject({ ok: true, cached: true });
+    expect(snapshot).toHaveBeenCalledTimes(1); expect(mock.workers).toHaveLength(1); provider.dispose();
+  });
+  test.each(["cancel", "timeout", "error", "exit", "context-change", "dispose"] as const)(
+    "%s retains only worker-reported per-record booleans after submission", async outcome => {
+      vi.useFakeTimers();
+      const { provider, log, setContext } = setup({ records: evidence, now: () => 10_000 });
+      const abort = new AbortController(), pending = provider.search(request, { signal: abort.signal });
+      await Promise.resolve();
+      const worker = mock.workers[0], data = (worker.options as { workerData: { context: CompleteCapturedSessionContext } }).workerData;
+      const requestContext = buildMarketRequestDiagnostics(data.context, new URLSearchParams(data.context.fields).toString());
+      worker.emit("message", { type: "request-context", diagnostics: { requestContext, dispatchStatus: "submitted" } });
+      if (outcome === "cancel") abort.abort();
+      else if (outcome === "timeout") await vi.advanceTimersByTimeAsync(20_000);
+      else if (outcome === "error") worker.emit("error", new Error("SYNTHETIC private failure"));
+      else if (outcome === "exit") worker.emit("exit", 1);
+      else if (outcome === "context-change") setContext({ ...completeContext, revision: 4, scopeKey: "scope-b" });
+      else provider.dispose();
+      expect((await pending).ok).toBe(false);
+      const result = log.mock.calls.find(([type]) => type === "market-direct-result")![1];
+      expect(result).toMatchObject({ dispatchStatus: "submitted", requestContext: { recordComparison: {
+        api: [{ equalToRequest: { unique_account_id: true, crossregion_identifier: true, season: true } }],
+      } } });
+      expect(worker.terminate).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/hero-7|na-42|203\.0\.113\.10|192\.0\.2\.7|SYNTHETIC|scope-a|scope-b/);
+      provider.dispose();
+    },
+  );
+  test("an injected runner gets the same frozen records but cannot invent final-form evidence", async () => {
+    const context = structuredClone(completeContext), records = evidence(), log = vi.fn();
+    let supplied!: CompleteCapturedSessionContext, finish!: (value: { response: { ok: false; errorCode: "helper_unavailable" }; diagnostics: {} }) => void;
+    const provider = new DirectMarketSearchProvider({ marketContext: () => context, marketRecordSnapshot: () => records,
+      subscribe: () => () => undefined }, log, undefined, undefined, () => 10_000,
+    async snapshot => { supplied = snapshot; return await new Promise(resolve => { finish = resolve; }); });
+    const pending = provider.search(request); await Promise.resolve();
+    records.api[0].fields.unique_account_id = "SYNTHETIC-REPLACEMENT"; context.fields.unique_account_id = "SYNTHETIC-REPLACEMENT";
+    expect(supplied.fields.unique_account_id).toBe("hero-7"); expect(supplied.diagnosticRecords?.api[0].fields.unique_account_id).toBe("hero-7");
+    finish({ response: { ok: false, errorCode: "helper_unavailable" }, diagnostics: {} });
+    expect((await pending).ok).toBe(false);
+    const result = log.mock.calls.find(([type]) => type === "market-direct-result")![1];
+    expect(result).not.toHaveProperty("requestContext"); expect(JSON.stringify(log.mock.calls)).not.toMatch(/SYNTHETIC|hero-7|na-42/);
+    provider.dispose();
+  });
   test("passes only an in-memory context snapshot to the worker and logs safe diagnostics", async () => {
     let now = 10_000;
     const { provider, log } = setup({ now: () => now });

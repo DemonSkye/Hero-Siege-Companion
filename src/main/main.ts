@@ -246,6 +246,8 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.status) state.captureStatus = update.status;
   if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
   satanicZoneRefreshProvider?.observeCaptureUpdate(update, previousCaptureRunning);
+  if (update.observationGap || (previousCaptureRunning && update.running === false) || update.status === "error")
+    capturedSessionContext?.clearMarketRecordEvidenceForGap();
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) { state.connections = update.connections; satanicZoneRefreshProvider?.observeConnections(update.connections); }
   if (state.captureRunning && state.captureStatus === "running" && state.satanicZone.refreshEnabled && (!previousCaptureRunning
