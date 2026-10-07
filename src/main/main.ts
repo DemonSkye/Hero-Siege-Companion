@@ -841,8 +841,13 @@ app.whenReady().then(async () => {
     canPrepare: () => state.satanicZone.refreshEnabled && gameCaptureCoordinator.captureEnabled
       && state.satanicZone.phase !== "refreshing" && !satanicZoneDiagnostic?.blocksManualRefresh,
     onPreparation: preparation => {
+      const previous = state.satanicZone.refreshPreparation;
       satanicZoneController?.setPreparation(preparation);
-      applyCaptureDiagnosticPreferences(); publishState();
+      applyCaptureDiagnosticPreferences();
+      // Readiness can change between ordinary one-second state publications.
+      // Send its safe transitions immediately rather than losing a Ready boundary.
+      if (previous?.phase !== preparation.phase || previous?.reason !== preparation.reason || previous?.origin !== preparation.origin) publishStateNow();
+      else publishState();
     },
   });
   satanicZoneController = new SatanicZoneController({

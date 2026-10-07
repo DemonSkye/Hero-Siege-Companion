@@ -156,6 +156,41 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
     f.receive(f.packet(true, sequence, identity.subarray(0, 17)));
     expect(f.snapshots.at(-1)).toEqual({ phase: "ready", expiresAt: null }); f.provider.dispose();
   });
+  test("a gameplay-only reconfiguration during a partial private identity keeps its observer open until the matching tail", async () => {
+    const f = fixture(); await f.collect();
+    const sequence = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
+    const identity = frameDiagnosticBody(inventedPostLogin(), 9);
+    f.receive(f.packet(true, sequence, identity.subarray(0, 17)));
+    expect(f.provider.preparation.phase).toBe("collecting");
+    f.provider.observeCaptureUpdate({ observationGap: true, observationGapSource: "gameplay-reconfigure" }, true);
+    expect(f.provider.preparation).toEqual({ phase: "collecting", expiresAt: null, reason: "traffic_incomplete" });
+    expect(f.close).not.toHaveBeenCalled(); expect(f.open).toHaveBeenCalledTimes(1);
+    expect((await f.provider.requestRefresh()).accepted).toBe(false); expect(f.sockets).toHaveLength(0);
+    f.receive(f.packet(true, sequence + 17, identity.subarray(17)));
+    expect(f.snapshots.at(-1)).toEqual({ phase: "ready", expiresAt: null });
+    expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1); f.provider.dispose();
+  });
+  test("overlapping inbound/outbound fragments need no simultaneous idle boundary after native initialization", async () => {
+    const f = fixture(); await f.collect();
+    let outgoing = 101 + frameDiagnosticBody(inventedConnect(), 7).length + frameDiagnosticBody(inventedPostLogin(), 8).length;
+    let incoming = 201 + generic(opcodeOnlyReadyBody).length + generic(inventedLoginSuccess()).length;
+    const response = generic(inventedZoneBody);
+    f.receive(f.packet(false, incoming, response.subarray(0, 17)));
+    for (let counter = 9; counter < 13; counter++) {
+      const identity = frameDiagnosticBody(inventedPostLogin(), counter);
+      f.receive(f.packet(true, outgoing, identity.subarray(0, 17)));
+      expect(f.provider.preparation.phase).toBe("collecting");
+      if (counter > 9) {
+        f.receive(f.packet(false, incoming + 17, response.subarray(17))); incoming += response.length;
+        f.receive(f.packet(false, incoming, response.subarray(0, 17)));
+      }
+      f.receive(f.packet(true, outgoing + 17, identity.subarray(17))); outgoing += identity.length;
+      expect(f.snapshots.at(-1)).toEqual({ phase: "ready", expiresAt: null });
+      expect(await f.provider.getAvailability()).toMatchObject({ available: true });
+      expect(f.sockets).toHaveLength(0);
+    }
+    expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1); f.provider.dispose();
+  });
   test("an owned attempt ending while private continuity is incomplete cannot advertise Refresh availability", async () => {
     const f = fixture(); await f.collect(); const request = await f.dispatch();
     const waiting = f.provider.waitForObservation(request.correlationId!, { timeoutMs: 30_000 });

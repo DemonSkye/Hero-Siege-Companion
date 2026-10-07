@@ -105,6 +105,43 @@ test("incomplete private traffic publishes Waiting to main/preload/UI, disables 
   });
 });
 
+test("brief readiness transitions reach preload before coalescing and overlapping response fragments do not strand Refresh", async () => {
+  await withCompanionApp(async ({ electronApp, page }) => {
+    const invented = initialization(), post = invented.packets[4], login = invented.packets[5];
+    const emit = packets => electronApp.evaluate((_electron, values) => globalThis.heroSiegeCompanionE2e.emitSatanicZoneTestPackets(values), packets);
+    await electronApp.evaluate((_electron, network) => globalThis.heroSiegeCompanionE2e.setSatanicZoneTestNetwork(network), invented.network);
+    await emit(invented.packets);
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+    const body = Buffer.from(post.payload).subarray(16), api = counter => {
+      const header = Buffer.alloc(16); header.write(createHash("md5").update(body).update(Buffer.from([counter])).digest("hex").slice(0, 12));
+      header.writeUInt32LE(body.length, 12); return Buffer.concat([header, body]);
+    };
+    const first = api(9), second = api(10), sequence = post.seq + post.payload.length;
+    const fragment = (packet, seq, bytes) => ({ ...packet, seq, payload: [...bytes], payloadLength: bytes.length });
+    await page.evaluate(() => {
+      window.__szPreparationPhases = [];
+      window.heroSiegeCompanion.onStateUpdated(state => window.__szPreparationPhases.push(state.satanicZone.refreshPreparation.phase));
+    });
+    await emit([fragment(post, sequence, first.subarray(0, 17)), fragment(post, sequence + 17, first.subarray(17)),
+      fragment(post, sequence + first.length, second.subarray(0, 17))]);
+    await expect.poll(() => page.evaluate(() => window.__szPreparationPhases.slice(0, 3))).toEqual(["collecting", "ready", "collecting"]);
+    await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.emitCaptureUpdate(
+      { observationGap: true, observationGapSource: "gameplay-reconfigure" }));
+    expect((await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("collecting");
+    const responseBody = Buffer.from('{"satanicZoneName":"Act_04_03","buffs":"","debuffs":""}');
+    const response = Buffer.alloc(8 + responseBody.length); response.writeUInt32LE(responseBody.length, 4); responseBody.copy(response, 8);
+    await emit([fragment(login, login.seq + login.payload.length, response.subarray(0, 17)),
+      fragment(post, sequence + first.length + 17, second.subarray(17))]);
+    const card = page.locator("#satanic-zone-card");
+    await expect(card.getByRole("button", { name: "Refresh Satanic Zone", exact: true })).toBeEnabled();
+    expect((await getRendererState(page)).satanicZone.refreshPreparation.phase).toBe("ready");
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(0);
+    await card.getByRole("button", { name: "Refresh Satanic Zone", exact: true }).click();
+    await expect.poll(async () => (await getRendererState(page)).satanicZone.phase).toBe("refreshing");
+    expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getSatanicZoneTestAttemptCount())).toBe(1);
+  });
+});
+
 test("gameplay capture reconfiguration during sign-in reaches native Ready and saves without losing the independent API listener", async () => {
   await withCompanionApp(async ({ electronApp, page, userDataDir }) => {
     const invented = initialization();

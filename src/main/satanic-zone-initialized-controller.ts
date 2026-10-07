@@ -74,12 +74,14 @@ export class SatanicZoneInitializedProbeController {
   get cachedContext(): boolean { return this.session?.cached ?? false; }
   get continuityIncomplete(): boolean {
     const session = this.session;
-    return Boolean(session?.prepared && !session.cached && !session.suspended && session.stream && !session.stream.complete);
+    return Boolean(session?.prepared && !session.cached && !session.suspended && session.stream && !session.stream.outboundComplete);
   }
   get observesContinuity(): boolean {
     const session = this.session;
+    // A live attributed observer still covers a gameplay-only gap while a
+    // frame is partial. Dispatch remains blocked until outbound evidence completes.
     return Boolean(this.dependencies.autoWatch && session?.prepared && !session.cached && !session.suspended && session.handle
-      && session.stream?.observesBothDirections && session.stream.complete);
+      && session.stream?.observesBothDirections);
   }
   rememberCurrent(): void {
     const session = this.session;
@@ -381,8 +383,9 @@ export class SatanicZoneInitializedProbeController {
     const scope = session.scope;
     if (session.prepared) {
       if (session.suspended) { this.restoreReady(session, "failed"); return false; }
-      // A missing/partial framed identity update cannot establish current continuity.
-      if (!session.cached && session.stream && !session.stream.complete) { this.restoreReady(session, "failed"); return false; }
+      // A missing/partial outbound identity update cannot establish current
+      // continuity. Pending inbound responses cannot change outbound account/mode.
+      if (!session.cached && session.stream && !session.stream.outboundComplete) { this.restoreReady(session, "failed"); return false; }
       if (session.cached && !await this.dependencies.validateCached?.({ ...scope, pid: session.pid!, localPort: session.nativePort! })) {
         if (this.current(session)) this.finish(session, "incomplete", "scope-changed"); return false;
       }

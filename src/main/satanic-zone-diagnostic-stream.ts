@@ -165,6 +165,11 @@ export class SatanicZoneDiagnosticStream {
     return this.attributed && this.queued.length === 0 && this.clientSyn !== null && this.serverSyn !== null
       && Boolean((this.incomingOnly || this.outgoing?.complete) && this.incoming?.complete);
   }
+  /** After native initialization, current account/mode evidence comes from outbound frames. */
+  get outboundComplete(): boolean {
+    return this.attributed && this.queued.length === 0 && this.clientSyn !== null && this.serverSyn !== null
+      && Boolean(this.outgoing?.complete);
+  }
 
   /** After Ready, keep only bounded unparsed inbound bytes for passive updates. */
   continueIncoming(): void {
