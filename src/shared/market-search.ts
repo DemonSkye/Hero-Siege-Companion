@@ -1,4 +1,5 @@
 import { MARKET_STAT_CATALOG_BUILD_24868792_DATA } from "./data/market-stat-catalog-build-24868792";
+import { ITEM_BASE_STAT_CATALOG } from "./item-base-stat-catalog";
 import { resolveItemDefinition } from "./item-catalog";
 import { sanitizeMarketListingItem, type MarketListingItem } from "./market-listing-item";
 
@@ -21,6 +22,8 @@ export interface MarketStatOption {
   statId: number;
   localizationKey: string;
   name: string;
+  /** Grounded numeric ID outside the retained native Market menu. */
+  experimental?: true;
 }
 
 export interface MarketStatFilter {
@@ -28,11 +31,11 @@ export interface MarketStatFilter {
   minimum: number;
 }
 
-export interface MarketSearchRequest {
-  itemMask: number;
+export interface MarketFilterCriteria {
   minSockets?: number;
   statFilters: MarketStatFilter[];
 }
+export interface MarketSearchRequest extends MarketFilterCriteria { itemMask: number; }
 
 export interface MarketListing {
   price: number;
@@ -79,9 +82,13 @@ export interface MarketItemIdentity {
 }
 
 export const MARKET_STAT_OPTIONS: readonly MarketStatOption[] = Object.freeze(
-  MARKET_STAT_CATALOG_BUILD_24868792_DATA.stats.map(([statId, localizationKey, name]) =>
-    Object.freeze({ statId, localizationKey, name }),
-  ).sort((left, right) => left.name.localeCompare(right.name)),
+  [
+    ...MARKET_STAT_CATALOG_BUILD_24868792_DATA.stats.map(([statId, localizationKey, name]) =>
+      Object.freeze({ statId, localizationKey, name })),
+    ...ITEM_BASE_STAT_CATALOG.stats.filter(stat => !stat.nativeMarketMenu).map(stat =>
+      Object.freeze({ statId: stat.statId, localizationKey: stat.localizationKey,
+        name: `${stat.name} (experimental)`, experimental: true as const })),
+  ].sort((left, right) => left.name.localeCompare(right.name)),
 );
 
 const MARKET_STAT_OPTIONS_BY_ID = new Map(MARKET_STAT_OPTIONS.map((option) => [option.statId, option]));
@@ -154,6 +161,14 @@ export function normalizeMarketSearchRequest(value: unknown): MarketSearchReques
   if (!isIntegerInRange(value.itemMask, 0, MARKET_MASK_MAX_VALUE)) {
     return { ok: false, reason: "invalid-item-mask" };
   }
+  const filters = normalizeMarketFilterCriteria(value);
+  return filters.ok ? { ok: true, request: { itemMask: value.itemMask, ...filters.criteria } } : filters;
+}
+
+export function normalizeMarketFilterCriteria(value: unknown):
+  | { ok: true; criteria: MarketFilterCriteria }
+  | { ok: false; reason: MarketSearchRequestRejectionReason } {
+  if (!isRecord(value)) return { ok: false, reason: "invalid-request" };
   if (!Array.isArray(value.statFilters)) return { ok: false, reason: "invalid-stat-filters" };
   if (value.statFilters.length > MARKET_SEARCH_MAX_STAT_FILTERS) {
     return { ok: false, reason: "too-many-stat-filters" };
@@ -187,12 +202,9 @@ export function normalizeMarketSearchRequest(value: unknown): MarketSearchReques
     return { ok: false, reason: "invalid-min-sockets" };
   }
 
-  const request: MarketSearchRequest = {
-    itemMask: value.itemMask,
-    statFilters,
-  };
-  if (value.minSockets !== undefined) request.minSockets = value.minSockets;
-  return { ok: true, request };
+  const criteria: MarketFilterCriteria = { statFilters };
+  if (value.minSockets !== undefined) criteria.minSockets = value.minSockets;
+  return { ok: true, criteria };
 }
 
 export function sanitizeMarketSearchResult(value: unknown): MarketSearchResult {

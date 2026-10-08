@@ -13,6 +13,13 @@ Schema 3 saved entries are authoritative after migration, including an empty arr
 Backups include saved filters; older backups migrate their shopping-list names.
 Saving failures show a retry action while the draft stays open.
 
+All 2,035 retained identities are discoverable: 956 normal, 979 unique and
+100 runewords. The 24 untranslated normal/unique names use their localization
+key with `(experimental)` rather than a guessed English name. Their masks are
+grounded. Runeword names and filters can be saved, loaded and edited, but searching
+is disabled while the native `filter_runeword` selector binding is unresolved.
+Their saved criteria stay separate from a request so no invented mask is sent.
+
 The accessible Market ready / Market not ready indicator describes local
 prerequisites; it does not prove that authentication will be accepted. When context
 is missing, keep capture running and search for an item in Hero Siege's Market to
@@ -30,15 +37,30 @@ reused, still displays only its lowest two cards.
 Matching relies on the server. Unsupported game filter operators are not exposed.
 No automated purchase, polling, alert or pagination runs from saved entries.
 
+The stat picker accepts 381 evidenced numeric IDs: the original 167 native Market
+menu entries and 214 additional entries suffixed `(experimental)`. Missing English
+labels remain `Stat N`. These are grounded keys from the retained native menu,
+label bindings and constructor setters; they are not a complete game enum or
+proof that the server honors every numeric clause. Minimum sockets keeps its
+separate native field. Shared validation and the real request builder accept
+these IDs consistently; arbitrary IDs remain rejected.
+
 Catalog base ranges sit beside the filters on wide layouts and above the saved
-name on narrow layouts. They describe unmodified definitions, not listing rolls
-or additional filter capabilities. Grounded catalog ranges currently include
-Battle Mage's Shield, Bob's Piece of Plywood, and Tiny Planet, from the
-build-24868792 constructor translations. Verified listing-roll reconstruction is
-limited to the two independently observed shield definitions. Tiny Planet retains
-its 15–25% Orbital Projectile Duration catalog range, but its listing rolls are
-withheld until a same-specimen compact record and independently observed tooltip
-validate them. Other definitions show ranges unavailable.
+name on narrow layouts. The compact bordered card shows static base definitions
+from build 24868792 / version 7.0.0.0, with experimental/current-build-parity copy.
+All identities have explicit records; 1,636 have retained values, totaling 9,584
+fields: 5,497 ranges, 3,907 scalars, 178 native tables and two dynamic tablet-zone
+values. Tables are shown as tables, and dynamic values have descriptions rather
+than invented bounds. Four unconditional repeated setters keep the later value.
+Records without numeric values say none were retained, not that the item has no
+possible stats. These counts cover recognized constructor setters, not generated
+affixes, tier/context calculations, final tooltips or current installed-game parity.
+
+Verified listing-roll reconstruction remains limited to the two independently
+observed shield definitions. Tiny Planet retains its 15-25% Orbital Projectile
+Duration base range and separate Orbital Gravity set bonus; listing rolls remain
+withheld until a same-specimen compact record and independent tooltip validate
+them. Broad static definitions do not confer listing-roll verification.
 
 Results place variant and stat information beside prices. Identified, supported
 unmodified listings show their reconstructed rolls; other definitions, modified
@@ -69,8 +91,12 @@ last. Loading/saving filters still never fetches results.
   response for the preload IPC capability, including safe error/timing metadata.
 - `main/market-listing-projection.ts`, `shared/market-listing-item.ts` and
   `shared/item-stat-ranges.ts`: bounded main-only reconstruction, safe listing
-  contract and independently checked base-definition ranges. Stat display coverage
-  does not expand `shared/market-search.ts`'s filter catalog.
+  contract and the two verified definition/roll mappings.
+- `shared/item-base-stat-catalog.ts` and its versioned data: sanitized static
+  constructor facts, separate from listing reconstruction. Raw source, operands
+  and extraction receipts remain private workspace evidence.
+- `shared/market-search.ts`: native and experimental stat options, shared criteria
+  validation, and proven normal/unique masks. Runeword encoding stays unresolved.
 - `components/MarketListingDetails.vue`: variant/roll display with honest unknown
   and unidentified states.
 
@@ -89,3 +115,8 @@ synthetic listing rows derived from compact links and observed tooltip values.
 Worker-entry, reducer/IPC/cache/UI and responsive Electron checks retain production
 glue while replacing external transport. Their expected tooltip values are
 independent of the reconstruction code.
+`item-base-stat-catalog.spec.ts` uses literal operand expectations across item
+categories, later-setter regressions and distinct table/dynamic states.
+`market-grounded-stat-ids.ts` freezes the expected ID set without production
+imports. Real-App and Electron checks cover offline cloak ranges, experimental
+filter saving/search, pending runeword criteria, persistence and restart.

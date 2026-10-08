@@ -1,4 +1,14 @@
 import type { ItemStatDefinition } from "../../../shared/item-stat-ranges";
+import { itemBaseStatMetadata, type ItemBaseNumericValue, type ItemBaseStat } from "../../../shared/item-base-stat-catalog";
+
+export function marketBaseStatValue(stat: ItemBaseStat): string {
+  if (stat.kind === "dynamic") return stat.description;
+  const unit = itemBaseStatMetadata(stat.statId)?.unit === "percent" ? "%" : "";
+  const format = (value: ItemBaseNumericValue) => value.kind === "series"
+    ? `Table: ${(value.values ?? []).join(", ")}`
+    : value.minimum === value.maximum ? `${value.minimum}${unit}` : `${value.minimum}${unit}–${value.maximum}${unit}`;
+  return format(stat);
+}
 
 /** Proc mappings are scoped to a definition with a paired tooltip oracle. */
 export function marketTriggeredSkillDescription(definition: ItemStatDefinition | null,

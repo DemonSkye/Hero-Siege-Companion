@@ -11,7 +11,7 @@ afterEach(() => {
   vi.doUnmock("node:worker_threads");
 });
 
-async function runWorker(mode: string) {
+async function runWorker(mode: string, statFilters?: {statId:number;minimum:number}[]) {
   let posted!: (value: DirectMarketWorkerResult) => void;
   const completion = new Promise<DirectMarketWorkerResult>((resolve) => { posted = resolve; });
   const postMessage = vi.fn((value: DirectMarketWorkerResult | { type: string }) => {
@@ -49,7 +49,7 @@ async function runWorker(mode: string) {
   });
   vi.doMock("node:worker_threads", () => {
     const thread = { parentPort: { postMessage }, workerData: { context: marketContextFixture,
-      request: mode === "items" ? { itemMask: 1073766438, minSockets: 4, statFilters: [{ statId: 60, minimum: 400 }] } : marketSearchFixture } };
+      request: statFilters ? {...marketSearchFixture,statFilters} : mode === "items" ? { itemMask: 1073766438, minSockets: 4, statFilters: [{ statId: 60, minimum: 400 }] } : marketSearchFixture } };
     return { ...thread, default: thread };
   });
   vi.doMock("node:https", () => ({ default: { request: httpsRequest } }));
@@ -71,6 +71,17 @@ test("production worker dispatch constructs observed filters and posts a bounded
   });
   expect(JSON.parse(Buffer.from(form.get("stat_filter")!, "base64").toString("utf8"))).toEqual([{ statId: 64, filter: 2, statValue: 8 }]);
   expect(result.response).toEqual({ ok: true, result: { listings: [{ price: 200_000, unitPrice: 100_000 }, { price: 500_000 }, { price: 900_000 }], totalMatches: 3, returnedCount: 3 } });
+});
+
+test("production worker serializes grounded experimental IDs once and retains checksum rejection", async () => {
+  const filters = [{statId:271,minimum:10},{statId:185,minimum:103}];
+  const {result,form} = await runWorker("checksum",filters);
+  expect(form.get("filter_masks")).toBe("[1073746020]");
+  expect(form.get("scroll_page")).toBe("0");
+  expect(JSON.parse(Buffer.from(form.get("stat_filter")!,"base64").toString("utf8"))).toEqual([
+    {statId:271,filter:2,statValue:10},{statId:185,filter:2,statValue:103},
+  ]);
+  expect(result.response).toMatchObject({ok:false,errorCode:"checksum_rejected"});
 });
 
 test.each([

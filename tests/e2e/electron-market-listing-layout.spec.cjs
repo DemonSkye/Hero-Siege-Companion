@@ -97,7 +97,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     await expect(results.locator(".market-listing-item").first()).toContainText("Enhanced Defense124%");
     await expect(results.locator(".market-listing-item").nth(1)).toContainText("Stats unknown for this variant");
     await expect(results.locator(".market-listing-item").nth(2)).toContainText("Unidentified — rolls hidden");
-    await expect(workspace.locator(".market-catalog-ranges")).toContainText("Mana300–450");
+    await expect(workspace.locator(".market-catalog-ranges")).toContainText("Mana[300–450]");
     await expect(workspace.locator(".market-result-details")).not.toHaveAttribute("open");
     const wide = await workspace.evaluate(root => {
       const box = selector => root.querySelector(selector).getBoundingClientRect();
@@ -110,7 +110,8 @@ test("Market listing rolls, responsive alignment and saved state compose through
         changeDistance: box(".market-chosen-item button").left - box(".market-chosen-item > div").right };
     });
     expect(Math.max(...wide.lefts) - Math.min(...wide.lefts)).toBeLessThan(2);
-    expect(Math.abs(wide.filter - wide.ranges)).toBeLessThan(2);
+    expect(wide.ranges).toBeLessThanOrEqual(wide.filter);
+    expect(wide.ranges).toBeLessThanOrEqual(440);
     expect(wide.sameRow).toBe(true);
     expect(wide.table - wide.title).toBeLessThan(20);
     expect(wide.footer).toBeGreaterThanOrEqual(wide.tableBottom);
@@ -149,7 +150,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     await workspace.getByRole("button", { name: "Change item", exact: true }).click();
     await workspace.locator("#market-item-query").fill("Sharpshooter's Cloak");
     await workspace.locator("#market-item-query").press("Enter");
-    await expect(workspace.locator(".market-catalog-ranges")).toContainText("Catalog ranges are not available");
+    await expect(workspace.locator(".market-catalog-ranges")).toContainText("Ranged Skills[6–12]");
     await size(1380, 1000);
     await screenshot("market-cloak-unknown-ranges");
     await closeCompanionApp(session);
@@ -157,7 +158,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     await session.page.getByRole("tab", { name: "Market", exact: true }).click();
     await session.page.locator(".market-saved-load").filter({ hasText: "Shield stats" }).click();
     await expect(session.page.locator(".market-chosen-item")).toContainText("Battle Mage's Shield");
-    await expect(session.page.locator(".market-catalog-ranges")).toContainText("Mana300–450");
+    await expect(session.page.locator(".market-catalog-ranges")).toContainText("Mana[300–450]");
     await expect(session.page.locator("tbody tr")).toHaveCount(0);
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
   } finally {
@@ -171,7 +172,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
 for (const specimen of [
   { name: "Tiny Planet", slug: "tiny-planet", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-10",
     item_data: { c: 1, b: 92, j: 0, d: 1, e: 11, w: 1, a: 618478963 } },
-    catalog: "Increased Orbital Projectile Duration15%–25%", listing: "Listing rolls are not verified for this item" },
+    catalog: "Increased Orbital Projectile Duration[15%–25%]", listing: "Listing rolls are not verified for this item" },
   { name: "Bob's Piece of Plywood", slug: "bobs-plywood", row: fixture.specimens[1].row,
     catalog: "10% Chance when Struck: Chainsaw Massacre (Level 40)", listing: "10% Chance when Struck: Chainsaw Massacre (Level 40)" },
 ]) {
@@ -215,3 +216,85 @@ for (const specimen of [
     }
   });
 }
+
+test("offline catalog cards, experimental search and pending runeword filters survive Electron restart", async () => {
+  const userDataDir = createUserDataDir();
+  let session;
+  const count = () => session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount());
+  try {
+    session = await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
+    await resize(session,1380,1000);
+    await session.page.getByRole("tab",{name:"Market",exact:true}).click();
+    let workspace = session.page.locator(".market-workspace");
+    const choose = async name => {
+      const change = workspace.getByRole("button",{name:"Change item",exact:true});
+      if (await change.count()) await change.click();
+      await workspace.locator("#market-item-query").fill(name);
+      const exactName = name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+      await workspace.locator(".market-options button").filter({hasText:new RegExp(`^${exactName}\\s`)}).first().click();
+    };
+    for (const [name, expected] of [["Short Sword","[5\u20137]"],["Ol","[50]"],["Sharpshooter's Cloak","Ranged Skills[6\u201312]"]]) {
+      await choose(name);
+      await expect(workspace.locator(".market-catalog-ranges")).toContainText(expected);
+      await expect(workspace.locator(".market-catalog-ranges")).toContainText("Experimental: current-build parity unverified.");
+    }
+    await expect(workspace.locator(".market-range-list > div")).toHaveCount(14);
+    await workspace.locator("#market-stat-query").fill("Ranged Skills");
+    await expect(workspace.locator('ul[aria-label="Stat suggestions"]')).toContainText("Ranged Skills (experimental)");
+    await workspace.locator("#market-stat-query").press("Enter");
+    await workspace.locator(".market-stat-row input").fill("10");
+    await workspace.locator("#market-saved-name").fill("Ranged cloak");
+    await workspace.getByRole("button",{name:"Save item and filters",exact:true}).click();
+    await expect.poll(async () => (await getStoredUiPreferences(session.page)).savedMarketItems?.find(x=>x.name==="Ranged cloak")?.request)
+      .toEqual({itemMask:1073746020,statFilters:[{statId:271,minimum:10}]});
+    expect(await count()).toBe(0);
+    await workspace.locator(".market-chosen-item").scrollIntoViewIfNeeded();
+    await capture(session,"market-cloak-full-card-wide");
+    await resize(session,560,1000);
+    const ranged = workspace.locator(".market-range-list > div").filter({hasText:"Ranged Skills"});
+    await ranged.scrollIntoViewIfNeeded();
+    const bytes = await capture(session,"market-cloak-full-card-narrow");
+    await expectPaintedText(session,ranged.locator("dt"),bytes,"market-cloak-full-card-narrow");
+    expect(await session.page.evaluate(()=>document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await session.page.evaluate(()=>window.heroSiegeCompanion.startCapture());
+    await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.emitSessionContext([123],[{
+      text:"api account_id=7-424242&unique_account_id=SYNTHETIC_ID&crossregion_identifier=SYNTHETIC_SESSION&season=11&hardcore=0&beta=0",
+      direction:"outbound",remoteAddress:"203.0.113.42",remotePort:26921,
+    }]));
+    const body = Buffer.from(JSON.stringify({status:1,itemCount:0,items:deflateSync(Buffer.from("[]")).toString("base64")}));
+    await session.electronApp.evaluate((_electron,value)=>globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200,value),[...body]);
+    await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();
+    await workspace.getByRole("button",{name:"Search market",exact:true}).click();
+    await expect(workspace.locator(".market-results")).toContainText("No matching price listings were returned");
+    expect(await count()).toBe(1);
+    await workspace.getByRole("button",{name:"New search",exact:true}).click();
+    await choose("Breath of the Damned");
+    await expect(workspace.locator(".market-catalog-ranges")).toContainText("[730\u2013880]");
+    await expect(workspace).toContainText("Runeword search encoding is not verified yet");
+    await workspace.locator("#market-stat-query").fill("ranged");
+    await workspace.locator("#market-stat-query").press("Enter");
+    await workspace.locator(".market-stat-row input").fill("6");
+    await workspace.locator("#market-saved-name").fill("Pending runeword");
+    await workspace.getByRole("button",{name:"Save item and filters",exact:true}).click();
+    await expect(workspace.locator('.market-editor button[type="submit"]')).toBeDisabled();
+    await expect(workspace).toContainText("Runeword search encoding is not verified yet");
+    await expect.poll(async () => (await getStoredUiPreferences(session.page)).savedMarketItems?.find(x=>x.name==="Pending runeword"))
+      .toMatchObject({itemKey:"runeword:3:0:0",request:null,criteria:{statFilters:[{statId:271,minimum:6}]}});
+    expect(await count()).toBe(1);
+    await closeCompanionApp(session);
+    session = await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
+    await session.page.getByRole("tab",{name:"Market",exact:true}).click();
+    workspace = session.page.locator(".market-workspace");
+    await workspace.locator(".market-saved-load").filter({hasText:"Pending runeword"}).click();
+    await expect(workspace.locator(".market-stat-row input")).toHaveValue("6");
+    await expect(workspace).toContainText("Runeword search encoding is not verified yet");
+    await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeDisabled();
+    await workspace.locator(".market-saved-load").filter({hasText:"Ranged cloak"}).click();
+    await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
+    await expect(workspace.locator(".market-range-list > div")).toHaveCount(14);
+    expect(await count()).toBe(0);
+  } finally {
+    if (session) await closeCompanionApp(session);
+    cleanupUserDataDir(userDataDir);
+  }
+});

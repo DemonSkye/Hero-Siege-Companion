@@ -13,10 +13,14 @@ import {
 } from "../../src/shared/market-search";
 
 describe("market search shared boundary", () => {
-  test("exposes the compact, unique 167-stat filter catalog", () => {
-    expect(MARKET_STAT_OPTIONS).toHaveLength(167);
-    expect(new Set(MARKET_STAT_OPTIONS.map((option) => option.statId)).size).toBe(167);
-    expect(new Set(MARKET_STAT_OPTIONS.map((option) => option.localizationKey)).size).toBe(167);
+  test("preserves 167 native options and labels all grounded extra IDs experimental", () => {
+    expect(MARKET_STAT_OPTIONS).toHaveLength(381);
+    expect(new Set(MARKET_STAT_OPTIONS.map((option) => option.statId)).size).toBe(381);
+    const native = MARKET_STAT_OPTIONS.filter(option => !option.experimental);
+    expect(native).toHaveLength(167);
+    expect(new Set(native.map((option) => option.localizationKey)).size).toBe(167);
+    expect(MARKET_STAT_OPTIONS.filter(option => option.experimental).every(option => option.name.endsWith(" (experimental)"))).toBe(true);
+    expect(marketStatOption(271)).toMatchObject({ statId: 271, name: "Ranged Skills (experimental)", experimental: true });
     expect(MARKET_STAT_OPTIONS.every((option) => option.name.trim().length > 0)).toBe(true);
     const displayedNames = MARKET_STAT_OPTIONS.map((option) => option.name);
     expect(displayedNames).toEqual([...displayedNames].sort((left, right) => left.localeCompare(right)));

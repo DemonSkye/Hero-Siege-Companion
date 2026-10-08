@@ -1,5 +1,5 @@
 import { ref, type Ref } from "vue";
-import { normalizeMarketSearchRequest } from "../../../shared/market-search";
+import { normalizeMarketFilterCriteria, normalizeMarketSearchRequest } from "../../../shared/market-search";
 import { marketItemByKey, type MarketItemOption, type SavedMarketItem } from "./market-items";
 import type { useMarketSearchRuntime } from "./market-search-runtime";
 
@@ -15,7 +15,10 @@ export function normalizeSavedMarketItems(value: unknown): SavedMarketItem[] {
     const normalized = normalizeMarketSearchRequest(raw.request);
     const request = item && normalized.ok && normalized.request.itemMask === item.itemMask
       ? normalized.request : null;
-    return [{ id, name: raw.name, itemKey: request ? item!.key : null, request }];
+    const pending = normalizeMarketFilterCriteria(raw.criteria);
+    const criteria = item?.itemMask === null && pending.ok ? pending.criteria : null;
+    return [{ id, name: raw.name, itemKey: request || criteria ? item!.key : null, request,
+      ...(criteria ? { criteria } : {}) }];
   });
 }
 
@@ -32,8 +35,8 @@ export function useSavedMarketItems(
   function selectItem(item: MarketItemOption): void {
     itemKey.value = item.key;
     if (!editingId.value) savedName.value = item.name;
-    search.openMarketDraft({ label: item.name, rarity: item.typeLabel }, { itemMask: item.itemMask, statFilters: [] });
-    message.value = "";
+    search.openMarketCatalogDraft({ label: item.name, rarity: item.typeLabel }, item.itemMask, { statFilters: [] });
+    message.value = item.searchUnavailable ?? "";
   }
 
   function newSearch(): void {
@@ -51,9 +54,9 @@ export function useSavedMarketItems(
     savedName.value = entry.name;
     itemKey.value = entry.itemKey;
     const item = marketItemByKey(entry.itemKey);
-    if (item && entry.request) {
-      search.openMarketDraft({ label: item.name, rarity: item.typeLabel }, entry.request);
-      message.value = "Filters loaded. Press Search when you are ready.";
+    if (item && (entry.request || entry.criteria)) {
+      search.openMarketCatalogDraft({ label: item.name, rarity: item.typeLabel }, item.itemMask, entry.request ?? entry.criteria!);
+      message.value = item.searchUnavailable ?? "Filters loaded. Press Search when you are ready.";
     } else {
       search.closeMarketSearch();
       message.value = "This saved name needs a catalog item. Choose an item, then save the repaired entry.";
@@ -62,19 +65,21 @@ export function useSavedMarketItems(
 
   function saveDraft(asNew = false): boolean {
     const request = search.draftRequest.value;
+    const criteria = search.draftCriteria.value;
     const item = marketItemByKey(itemKey.value);
-    if (!request || !item || request.itemMask !== item.itemMask) return false;
+    if (!criteria || !item || (item.itemMask !== null && request?.itemMask !== item.itemMask)) return false;
     const id = !asNew && editingId.value ? editingId.value : crypto.randomUUID();
     const entry: SavedMarketItem = {
       id, name: savedName.value.trim() || search.selectedItem.value!.label,
       itemKey: itemKey.value, request,
+      ...(item.itemMask === null ? { criteria } : {}),
     };
     const index = entries.value.findIndex((candidate) => candidate.id === id);
     entries.value = index < 0 ? [...entries.value, entry]
       : entries.value.map((candidate) => candidate.id === id ? entry : candidate);
     editingId.value = id;
     savedName.value = entry.name;
-    message.value = "Saved entry updated. Searches run only when you press Search.";
+    message.value = `Saved entry updated. ${item.searchUnavailable ?? "Searches run only when you press Search."}`;
     return true;
   }
 

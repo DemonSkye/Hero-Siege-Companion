@@ -8,8 +8,8 @@ import { formatNumber } from "../lib/format";
 import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 import MarketListingDetails from "./MarketListingDetails.vue";
 import { itemStatDefinition } from "../../../shared/item-stat-ranges";
-import { lookupKnownItemRarity } from "../../../shared/item-rarity";
-import { marketTriggeredSkillDescription, marketTriggeredSkillStatIds } from "../lib/market-stat-display";
+import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition, itemBaseStatMetadata } from "../../../shared/item-base-stat-catalog";
+import { marketBaseStatValue, marketTriggeredSkillDescription, marketTriggeredSkillStatIds } from "../lib/market-stat-display";
 
 // Unit prices can be fractional. Preserve significant digits, including small
 // nonzero prices, while using the same default locale as other app numbers.
@@ -62,12 +62,13 @@ const itemSuggestions = computed(() => marketItemSuggestions(itemQuery.value));
 const statSuggestions = computed(() => marketStatSuggestions(statQuery.value,
   props.statFilters.flatMap((filter) => filter.statId === null ? [] : [filter.statId])));
 const savedItems = computed(() => props.savedItems.filter((entry) => entry.name.toLowerCase().includes(savedQuery.value.trim().toLowerCase())));
-const catalogDefinition = computed(() => itemStatDefinition(props.itemKey));
-const catalogSkill = computed(() => marketTriggeredSkillDescription(catalogDefinition.value,
-  catalogDefinition.value?.stats.map(stat => ({ statId: stat.statId, value: stat.minimum })) ?? []));
+const catalogDefinition = computed(() => itemBaseStatDefinition(props.itemKey));
+const rollDefinition = computed(() => itemStatDefinition(props.itemKey));
+const catalogSkill = computed(() => marketTriggeredSkillDescription(rollDefinition.value,
+  rollDefinition.value?.stats.map(stat => ({ statId: stat.statId, value: stat.minimum })) ?? []));
 const catalogStats = computed(() => catalogDefinition.value?.stats.filter(stat => !catalogSkill.value
-  || !marketTriggeredSkillStatIds(catalogDefinition.value).includes(stat.statId)) ?? []);
-const showCatalog = computed(() => ["Satanic", "Set", "Heroic", "Angelic"].includes(lookupKnownItemRarity(0, props.item?.label) ?? ""));
+  || !marketTriggeredSkillStatIds(rollDefinition.value).includes(stat.statId)) ?? []);
+const showCatalog = computed(() => props.item !== null);
 const summary = computed(() => [
   props.minSockets === null ? "Any sockets" : `${props.minSockets}+ sockets`,
   ...props.statFilters.map((filter) => `${marketStatOption(filter.statId ?? -1)?.name ?? "Choose stat"} ≥ ${filter.minimum ?? "…"}`),
@@ -123,7 +124,7 @@ function chooseStat(statId: number): void {
           <li v-for="entry in savedItems" :key="entry.id" :class="{ selected: editingId === entry.id }">
             <button class="market-saved-load" type="button" :aria-pressed="editingId === entry.id" @click="load(entry.id)">
               <strong>{{ entry.name || 'Untitled legacy entry' }}</strong>
-              <small>{{ entry.request ? `${entry.request.minSockets ?? 'Any'} sockets · ${entry.request.statFilters.length} stat minimums` : 'Choose catalog item to repair' }}</small>
+              <small>{{ entry.request || entry.criteria ? `${(entry.request ?? entry.criteria)?.minSockets ?? 'Any'} sockets · ${(entry.request ?? entry.criteria)?.statFilters.length} stat minimums` : 'Choose catalog item to repair' }}</small>
             </button>
             <button class="icon-button ghost" type="button" :aria-label="`Delete saved item ${entry.name}`" @click="emit('deleteSaved', entry.id)">×</button>
           </li>
@@ -141,7 +142,7 @@ function chooseStat(statId: number): void {
             <label for="market-item-query">Choose catalog item</label>
             <input id="market-item-query" ref="itemInput" v-model="itemQuery" type="search" placeholder="Search by item name" autocomplete="off" @keydown.enter.prevent="itemSuggestions[0] && chooseItem(itemSuggestions[0])" />
             <ul class="market-options" aria-label="Catalog item suggestions">
-              <li v-for="option in itemSuggestions" :key="option.key"><button type="button" @click="chooseItem(option)">{{ option.name }} <small>{{ option.typeLabel }} · {{ option.key.startsWith('unique:') ? 'Unique' : 'Normal' }}</small></button></li>
+              <li v-for="option in itemSuggestions" :key="option.key"><button type="button" @click="chooseItem(option)">{{ option.name }} <small>{{ option.typeLabel }} · {{ option.repository }}{{ option.searchUnavailable ? ' · Search encoding pending' : '' }}</small></button></li>
             </ul>
             <p v-if="!itemSuggestions.length">No supported catalog item matches. Try another name.</p>
           </div>
@@ -164,17 +165,17 @@ function chooseStat(statId: number): void {
             <p v-if="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS">All {{ MARKET_SEARCH_MAX_STAT_FILTERS }} stat slots are in use. Remove one to add another.</p>
           </fieldset>
           <section v-if="showCatalog" class="market-catalog-ranges" aria-labelledby="market-ranges-title">
-            <h3 id="market-ranges-title">Catalog stat ranges</h3>
-            <p>Base ranges are not listing rolls.</p>
+            <header class="market-stat-card-heading"><h3 id="market-ranges-title">{{ item?.label }}</h3><small>{{ item?.rarity }} · Base stat ranges</small></header>
             <dl v-if="catalogStats.length" class="market-range-list">
               <div v-for="stat in catalogStats" :key="stat.statId">
-                <dt>{{ stat.name }}</dt>
-                <dd>{{ stat.minimum }}{{ stat.unit === 'percent' ? '%' : '' }}<template v-if="stat.maximum !== stat.minimum">–{{ stat.maximum }}{{ stat.unit === 'percent' ? '%' : '' }}</template></dd>
+                <dt>{{ itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}` }}</dt>
+                <dd>[{{ marketBaseStatValue(stat) }}]</dd>
               </div>
             </dl>
-            <p v-else class="empty-copy">Catalog ranges are not available for this item yet.</p>
+            <p v-else class="empty-copy">No fixed base stat values retained for this definition.</p>
             <p v-if="catalogSkill" class="market-triggered-skill">{{ catalogSkill }}</p>
-            <small v-if="catalogStats.length">Unmodified base item · ranges do not imply filter support.</small>
+            <p v-if="itemKey === 'unique:10:0:92'" class="market-set-effect">Orbital Gravity set bonus: Orbital Damage increased by 30%</p>
+            <footer><small>Build {{ ITEM_BASE_STAT_CATALOG.steamBuild }} · Base values, not listing rolls</small><small>Experimental: current-build parity unverified.</small><small v-if="!catalogDefinition?.complete">Some base values are dynamic or remain undecoded.</small></footer>
           </section>
           </div>
           <div v-if="item" class="market-filter-summary" aria-label="Active filters"><span v-for="text in summary" :key="text">{{ text }}</span></div>

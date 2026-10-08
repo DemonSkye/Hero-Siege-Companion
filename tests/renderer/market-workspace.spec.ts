@@ -38,6 +38,39 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
   return match;
 }
 
+test("offline Market shows full cloak ranges and saves an experimental filter through restart", async () => {
+  window.localStorage.setItem(storageKey, JSON.stringify({schemaVersion:3,savedMarketItems:[],shoppingListItems:[]}));
+  const initial = companionState();
+  initial.marketReadiness.canSearch = false;
+  const {api} = setup(initial);
+  let wrapper = mount(App,{global:{stubs}});
+  try {
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
+    await wrapper.get(".market-options button").trigger("click");
+    expect(wrapper.findAll(".market-range-list > div")).toHaveLength(14);
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Ranged Skills[6–12]");
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("All Skills[2]");
+    await wrapper.get("#market-stat-query").setValue("ranged");
+    expect(wrapper.get('ul[aria-label="Stat suggestions"]').text()).toContain("Ranged Skills (experimental)");
+    await wrapper.get('ul[aria-label="Stat suggestions"] button').trigger("click");
+    await wrapper.get(".market-stat-row input").setValue("10");
+    await button(wrapper,"Save item and filters").trigger("click");
+    await flushPromises();
+    expect(api.searchMarket).not.toHaveBeenCalled();
+    expect(JSON.parse(window.localStorage.getItem(storageKey)!).savedMarketItems[0].request).toEqual({itemMask:1073746020,statFilters:[{statId:271,minimum:10}]});
+    wrapper.unmount(); wrapper = mount(App,{global:{stubs}});
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-saved-load").exists()).toBe(true));
+    await wrapper.get(".market-saved-load").trigger("click");
+    expect(wrapper.get(".market-stat-row label").text()).toContain("Ranged Skills (experimental)");
+    expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("10");
+    expect(wrapper.findAll(".market-range-list > div")).toHaveLength(14);
+    expect(api.searchMarket).not.toHaveBeenCalled();
+  } finally {wrapper.unmount();}
+});
+
 test("real Market tab migrates, loads, edits, persists and reopens saved filters without implicit searches", async () => {
   window.localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 2, shoppingListItems: ["Sharpshooter's Cloak", "Owner unknown item"] }));
   const { api } = setup();
@@ -218,9 +251,9 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
     expect(wrapper.get(".market-heading").text()).toBe("MarketNew search");
     expect(wrapper.get(".market-editor").text()).not.toMatch(/Edit saved filters|Choose an item, set your minimums|Price ascending/);
     expect(wrapper.get(".market-filter-layout fieldset").find("legend").exists()).toBe(false);
-    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Base ranges are not listing rolls");
-    const manaRange = wrapper.findAll(".market-range-list > div").find(row => row.text().startsWith("Mana300"));
-    expect(manaRange?.text()).toBe("Mana300–450");
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Base values, not listing rolls");
+    const manaRange = wrapper.findAll(".market-range-list > div").find(row => row.text().startsWith("Mana[300"));
+    expect(manaRange?.text()).toBe("Mana[300–450]");
     expect(api.searchMarket).not.toHaveBeenCalled();
     await wrapper.get("form.market-editor").trigger("submit");
     await flushPromises();
@@ -239,11 +272,11 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
     emit(companionState({ marketReadiness: { ...companionState().marketReadiness, contextVersion: 2 } }));
     await flushPromises();
     expect(results.find(".market-price-table").exists()).toBe(false);
-    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Mana300–450");
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Mana[300–450]");
     await wrapper.get(".market-chosen-item button").trigger("click");
     await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
     await wrapper.get(".market-options button").trigger("click");
-    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Catalog ranges are not available");
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Ranged Skills[6–12]");
     expect(wrapper.text()).not.toContain("Mana300–450");
   } finally { wrapper.unmount(); }
 });
@@ -251,7 +284,7 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
 test.each([
   { name: "Tiny Planet", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-10",
     item_data: { c: 1, b: 92, j: 0, d: 1, e: 11, w: 1, a: 618478963 } },
-    catalog: "Increased Orbital Projectile Duration15%–25%", listing: "Listing rolls are not verified for this item" },
+    catalog: "Increased Orbital Projectile Duration[15%–25%]", listing: "Listing rolls are not verified for this item" },
   { name: "Bob's Piece of Plywood", row: listingFixture.specimens[1].row,
     catalog: "10% Chance when Struck: Chainsaw Massacre (Level 40)", listing: "10% Chance when Struck: Chainsaw Massacre (Level 40)" },
 ])("$name presents grounded catalog data and independently verified listing information", async specimen => {

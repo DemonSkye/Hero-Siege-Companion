@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { ref } from "vue";
-import { migrateShoppingList, marketItemsForName, type SavedMarketItem } from "../../src/renderer/src/lib/market-items";
+import { MARKET_ITEM_OPTIONS, migrateShoppingList, marketItemsForName, marketItemSuggestions, type SavedMarketItem } from "../../src/renderer/src/lib/market-items";
 import { normalizeSavedMarketItems, useSavedMarketItems } from "../../src/renderer/src/lib/saved-market-items";
 import { useMarketSearchRuntime } from "../../src/renderer/src/lib/market-search-runtime";
 import { createConfigurationExportPayload, defaultPreferences, importConfigurationPayload, loadPreferences, normalizePreferences, savePreferences } from "../../src/renderer/src/lib/preferences";
@@ -8,6 +8,52 @@ import { companionState } from "./fixtures";
 import { installMemoryPreferencesStorage } from "../fixtures/market";
 
 beforeEach(installMemoryPreferencesStorage);
+
+test("exact short item names rank before broad substring matches", () => {
+  expect(marketItemSuggestions("ol")[0]).toMatchObject({name:"Ol",key:"normal:15:0:1"});
+  expect(marketItemSuggestions("ol")).toHaveLength(12);
+  expect(marketItemSuggestions("Short Sword")[0]).toMatchObject({name:"Short Sword",key:"normal:3:1:0"});
+});
+
+test("all retained identities are discoverable, while unproved runeword selectors never become masks", () => {
+  expect(MARKET_ITEM_OPTIONS).toHaveLength(2035);
+  expect(MARKET_ITEM_OPTIONS.filter(item => item.itemMask !== null)).toHaveLength(1935);
+  expect(MARKET_ITEM_OPTIONS.filter(item => item.repository === "runeword")).toHaveLength(100);
+  expect(MARKET_ITEM_OPTIONS.filter(item => item.experimental)).toHaveLength(24);
+  expect(new Set(MARKET_ITEM_OPTIONS.map(item => item.key)).size).toBe(2035);
+  expect(marketItemsForName("Codex of the Card Collector")[0]).toMatchObject({
+    key:"runeword:3:0:93",itemMask:null,typeLabel:"Codex · Runeword",
+  });
+});
+
+test("runeword filters survive save, reload, backup and undo while encoding remains blocked", async () => {
+  const searchMarket = vi.fn();
+  const readiness = ref(companionState().marketReadiness);
+  readiness.value.canSearch = true;
+  const search = useMarketSearchRuntime({searchMarket,now:ref(1000),readiness});
+  const entries = ref<SavedMarketItem[]>(migrateShoppingList(["Codex of the Card Collector"]));
+  const saved = useSavedMarketItems(entries,search);
+  saved.loadSaved("legacy-0");
+  expect(search.selectedItem.value?.label).toBe("Codex of the Card Collector");
+  search.addStatFilter(271);
+  search.updateStatFilter(search.statFilters.value[0].key,{minimum:10});
+  expect(saved.saveDraft()).toBe(true);
+  expect(saved.message.value).toContain("Runeword search encoding is not verified");
+  expect(entries.value[0]).toMatchObject({itemKey:"runeword:3:0:93",request:null,criteria:{statFilters:[{statId:271,minimum:10}]}});
+  expect(search.draftValid.value).toBe(true);
+  expect(search.canSearch.value).toBe(false);
+  await search.searchMarket();
+  expect(searchMarket).not.toHaveBeenCalled();
+  const prefs = normalizePreferences({...defaultPreferences,savedMarketItems:entries.value});
+  expect(savePreferences(prefs)).toBe(true);
+  const loaded = loadPreferences();
+  expect(loaded.savedMarketItems).toEqual(entries.value);
+  expect(importConfigurationPayload(createConfigurationExportPayload(loaded),defaultPreferences).uiPreferences.savedMarketItems).toEqual(entries.value);
+  saved.deleteSaved("legacy-0"); saved.undoDelete(); saved.newSearch(); saved.loadSaved("legacy-0");
+  expect(search.draftCriteria.value).toEqual({statFilters:[{statId:271,minimum:10}]});
+  expect(saved.message.value).toContain("Runeword search encoding is not verified");
+  expect(searchMarket).not.toHaveBeenCalled();
+});
 
 test("legacy migration retains every name, preserves rollback data, and runs only once across saves and backups", () => {
   const original = ["Sharpshooter's Cloak", " Unknown original name ", "Copper Ore", "Copper Ore", ""];

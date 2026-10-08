@@ -14,12 +14,15 @@
 .market-chosen-item { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
 .market-chosen-item > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; min-width: 0; }
 .market-chosen-item strong { overflow-wrap: anywhere; }
-.market-catalog-ranges { min-width: 0; }
+.market-catalog-ranges { min-width: 0; max-width: 440px; width: 100%; box-sizing: border-box; border: 1px solid var(--user-accent, #71cec0); border-radius: 0; background: var(--surface-soft); padding: 14px; }
+.market-stat-card-heading { padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.market-workspace .market-stat-card-heading h3 { margin: 0 0 4px; color: var(--user-accent, #71cec0); font-size: 1rem; overflow-wrap: anywhere; }
+.market-catalog-ranges footer { display: grid; gap: 4px; padding-top: 10px; margin-top: 12px; border-top: 1px solid var(--border); font-size: .75rem; }
 .market-catalog-ranges > p { margin: 0 0 12px; font-size: .85rem; }
-.market-range-list { display: grid; gap: 10px; margin: 0 0 12px; }
+.market-range-list { display: grid; gap: 6px; margin: 0; font-size: .85rem; }
 .market-range-list > div, .market-listing-stats li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .market-range-list dt { overflow-wrap: anywhere; }
-.market-range-list dd { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.market-range-list dd { margin: 0; color: var(--app-muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; text-align: right; max-width: 55%; }
 .market-saved-list, .market-options { padding: 0; list-style: none; }
 .market-saved-list li { display: flex; gap: 6px; align-items: center; border-bottom: 1px solid var(--border, #414651); }
 .market-saved-list li.selected { outline: 1px solid var(--user-accent, #71cec0); border-radius: 6px; }
