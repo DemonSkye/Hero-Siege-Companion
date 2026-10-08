@@ -21,8 +21,10 @@ test("socket ranges use actual worker fields, item-specific hints and transparen
     await workspace.getByRole("button", { name: "Change item", exact: true }).click();
     await workspace.locator("#market-item-query").fill("Tiny Planet"); await workspace.locator("#market-item-query").press("Enter");
     await expect(workspace.locator("#market-sockets")).toHaveCount(0);
-    await expect(workspace).toContainText("Socket range cleared");
-    await expect(workspace.locator(".market-stat-row input")).toHaveValue("8");
+    await expect(workspace).not.toContainText("Socket range cleared");
+    await expect(workspace.locator(".market-stat-row input")).toHaveCount(0);
+    await expect(workspace.locator("#market-saved-name")).toHaveValue("");
+    await expect(workspace.locator(".market-saved-list .selected")).toHaveCount(0);
     await workspace.getByRole("button", { name: /Add optional socket filters/ }).click();
     await expect(workspace.locator("#market-sockets-max")).toHaveValue("");
     await workspace.getByRole("button", { name: "Change item", exact: true }).click();
@@ -31,8 +33,12 @@ test("socket ranges use actual worker fields, item-specific hints and transparen
     await expect(workspace.locator("#market-sockets-max")).toHaveAttribute("max", "6");
     await workspace.locator("#market-sockets").fill("5"); await workspace.locator("#market-sockets-max").fill("4");
     await expect(workspace).toContainText("Minimum sockets must be less than or equal to maximum sockets.");
-    await expect(workspace.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+    await expect(workspace.getByRole("button", { name: "Save item and filters", exact: true })).toBeDisabled();
     await workspace.locator("#market-sockets").fill("2");
+    await workspace.locator("#market-stat-query").fill("mana stolen");
+    await workspace.locator('ul[aria-label="Stat suggestions"] button').first().click();
+    await workspace.locator(".market-stat-row input").fill("8");
+    await workspace.locator("#market-saved-name").fill("New glove range");
     const screenshotDir = process.env.HSC_MARKET_SOCKET_SCREENSHOT_DIR;
     if (screenshotDir) {
       const fs = require("node:fs"), path = require("node:path");
@@ -51,9 +57,13 @@ test("socket ranges use actual worker fields, item-specific hints and transparen
         await session.page.screenshot({ path: path.join(screenshotDir, `socket-range-${name}.png`) });
       }
     }
-    await workspace.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect.poll(async () => (await getStoredUiPreferences(session.page)).savedMarketItems[0].criteria)
+    await workspace.getByRole("button", { name: "Save item and filters", exact: true }).click();
+    await expect.poll(async () => (await getStoredUiPreferences(session.page)).savedMarketItems[2].criteria)
       .toEqual({ minSockets: 2, maxSockets: 4, statFilters: [{ statId: 64, minimum: 8 }] });
+    expect((await getStoredUiPreferences(session.page)).savedMarketItems[0]).toMatchObject({
+      id: "old-glove", name: "Legacy glove", itemKey: "unique:4:0:0",
+      criteria: { minSockets: 4, statFilters: [{ statId: 64, minimum: 8 }] },
+    });
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
     await session.page.evaluate(() => window.heroSiegeCompanion.startCapture());
     await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.emitSessionContext([123], [{
@@ -75,10 +85,16 @@ test("socket ranges use actual worker fields, item-specific hints and transparen
     });
     await closeCompanionApp(session); session = await launchCompanionApp({ userDataDir, marketTransport: true, gameRunning: false });
     await session.page.getByRole("tab", { name: "Market", exact: true }).click(); workspace = session.page.locator(".market-workspace");
-    await workspace.locator(".market-saved-load").filter({ hasText: "Legacy glove" }).click();
+    await workspace.locator(".market-saved-load").filter({ hasText: "New glove range" }).click();
     await expect(workspace.locator("#market-sockets")).toHaveValue("2"); await expect(workspace.locator("#market-sockets-max")).toHaveValue("4");
     await expect(workspace.locator(".market-stat-row input")).toHaveValue("8");
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
+    await workspace.getByRole("button", { name: "Clear", exact: true }).click();
+    await expect(workspace.locator(".market-chosen-item")).toHaveCount(0);
+    await expect(workspace.locator(".market-saved-load")).toHaveCount(3);
+    await workspace.locator(".market-saved-load").filter({ hasText: "Legacy glove" }).click();
+    await expect(workspace.locator("#market-sockets")).toHaveValue("4");
+    await expect(workspace.locator(".market-stat-row input")).toHaveValue("8");
     await workspace.locator(".market-saved-load").filter({ hasText: "Reversed legacy range" }).click();
     await expect(workspace.locator("#market-sockets")).toHaveValue(""); await expect(workspace.locator("#market-sockets-max")).toHaveValue("");
     await expect(workspace).toContainText("minimum was greater than maximum");

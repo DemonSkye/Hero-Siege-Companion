@@ -102,12 +102,14 @@ test("Market listing rolls, responsive alignment and saved state compose through
     const wide = await workspace.evaluate(root => {
       const box = selector => root.querySelector(selector).getBoundingClientRect();
       return { lefts: [".market-chosen-item", "#market-filters-title", "label[for=market-sockets]",
-        "#market-sockets", "label[for=market-saved-name]", "#market-saved-name", "#market-results-title"]
+        "#market-sockets", "#market-results-title"]
         .map(selector => box(selector).left), filter: box("fieldset").width,
         ranges: box(".market-catalog-ranges").width, sameRow: box("fieldset").top === box(".market-catalog-ranges").top,
         title: box(".market-results-heading").bottom, table: box(".market-price-table").top,
         footer: box(".market-results-footer").top, tableBottom: box(".market-price-table").bottom,
-        changeDistance: box(".market-chosen-item button").left - box(".market-chosen-item > div").right };
+        changeDistance: box(".market-chosen-item button").left - box(".market-chosen-item > div").right,
+        savedNameWidth: box("#market-saved-name").width,
+        actionsInside: ["button[type=submit]", "#market-saved-name", ".market-save-controls button"].every(selector => root.querySelector(".market-form-actions").contains(root.querySelector(selector))) };
     });
     expect(Math.max(...wide.lefts) - Math.min(...wide.lefts)).toBeLessThan(2);
     expect(wide.ranges).toBeLessThanOrEqual(wide.filter);
@@ -116,6 +118,8 @@ test("Market listing rolls, responsive alignment and saved state compose through
     expect(wide.table - wide.title).toBeLessThan(20);
     expect(wide.footer).toBeGreaterThanOrEqual(wide.tableBottom);
     expect(wide.changeDistance).toBeLessThan(25);
+    expect(wide.savedNameWidth).toBeLessThanOrEqual(256);
+    expect(wide.actionsInside).toBe(true);
     await screenshot("market-known-wide");
     await workspace.locator(".market-results").scrollIntoViewIfNeeded();
     await expect(results.locator("tbody tr")).toHaveCount(3);
@@ -236,9 +240,10 @@ test("offline catalog cards, experimental search and native runeword filters sur
     for (const [name, expected] of [["Short Sword","[5\u20137]"],["Ol","[50]"],["Sharpshooter's Cloak","Ranged Skills[6\u201312]"]]) {
       await choose(name);
       await expect(workspace.locator(".market-catalog-ranges")).toContainText(expected);
-      await expect(workspace.locator(".market-catalog-ranges")).toContainText("Experimental: current-build parity unverified.");
+      await expect(workspace.locator(".market-catalog-ranges")).toContainText("Experimental base ranges.");
+      await expect(workspace.locator(".market-catalog-ranges details")).not.toHaveAttribute("open");
     }
-    await expect(workspace.locator(".market-range-list > div")).toHaveCount(14);
+    await expect(workspace.locator(".market-range-list > div")).toHaveCount(12);
     await workspace.locator("#market-stat-query").fill("Ranged Skills");
     await expect(workspace.locator('ul[aria-label="Stat suggestions"]')).toContainText("Ranged Skills (experimental)");
     await workspace.locator("#market-stat-query").press("Enter");
@@ -303,10 +308,59 @@ test("offline catalog cards, experimental search and native runeword filters sur
     });
     await workspace.locator(".market-saved-load").filter({hasText:"Ranged cloak"}).click();
     await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
-    await expect(workspace.locator(".market-range-list > div")).toHaveCount(14);
+    await expect(workspace.locator(".market-range-list > div")).toHaveCount(12);
     expect(await count()).toBe(1);
   } finally {
     if (session) await closeCompanionApp(session);
     cleanupUserDataDir(userDataDir);
   }
+});
+
+test("Gryphon's tooltip phrases and compact form actions remain readable at wide and narrow sizes", async () => {
+  const userDataDir = createUserDataDir(); let session;
+  try {
+    session = await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
+    await session.page.getByRole("tab",{name:"Market",exact:true}).click();
+    const workspace = session.page.locator(".market-workspace");
+    const originalSaved = (await getStoredUiPreferences(session.page)).savedMarketItems;
+    await workspace.locator("#market-item-query").fill("Gryphon's Claw");
+    await workspace.locator("#market-item-query").press("Enter");
+    const card = workspace.locator(".market-catalog-ranges");
+    await expect(card.locator(".market-range-list > div")).toHaveCount(5);
+    await expect(card).toContainText("+[12\u201318] to [Execute]");
+    await expect(card).toContainText("+[15\u201325]% Chance to Open Wounds");
+    await expect(card.locator(".market-range-list")).not.toContainText("Identifier:");
+    await expect(card.locator("details")).not.toHaveAttribute("open");
+    for (const [name,width] of [["wide",1380],["narrow",560]]) {
+      await resize(session,width,1000);
+      await card.scrollIntoViewIfNeeded();
+      const bytes = await capture(session,`market-gryphon-card-${name}`);
+      await expectPaintedText(session,card.locator("dt").filter({hasText:"+[12\u201318] to [Execute]"}),bytes,`market-gryphon-card-${name}`);
+      await workspace.locator(".market-form-actions").scrollIntoViewIfNeeded();
+      const actions = await workspace.locator(".market-form-actions").evaluate(root => {
+        const box = root.getBoundingClientRect();
+        const controls = [...root.querySelectorAll("button,input")].map(element => element.getBoundingClientRect());
+        return { overflow:document.documentElement.scrollWidth > innerWidth,
+          inside:controls.every(control => control.left >= box.left && control.right <= box.right + 1),
+          nameWidth:root.querySelector("input").getBoundingClientRect().width };
+      });
+      expect(actions.overflow).toBe(false); expect(actions.inside).toBe(true); expect(actions.nameWidth).toBeLessThanOrEqual(256);
+      await capture(session,`market-form-actions-${name}`);
+    }
+    await card.locator("summary").click();
+    await expect(card.locator("details")).toHaveAttribute("open");
+    await expect(card).toContainText("Build 24868792");
+    await workspace.locator("#market-saved-name").fill("Gryphon bonus");
+    await workspace.getByRole("button",{name:"Save item and filters",exact:true}).click();
+    await workspace.locator("#market-stat-query").fill("unfinished");
+    await workspace.getByRole("button",{name:"Clear",exact:true}).click();
+    await expect(workspace.locator(".market-chosen-item")).toHaveCount(0);
+    await expect(workspace.locator("#market-saved-name")).toHaveValue("");
+    await expect(workspace.locator("#market-stat-query")).toHaveValue("");
+    await expect(workspace.locator(".market-saved-load")).toHaveCount(originalSaved.length + 1);
+    const afterClear = (await getStoredUiPreferences(session.page)).savedMarketItems;
+    expect(afterClear.slice(0,originalSaved.length)).toEqual(originalSaved);
+    expect(afterClear.at(-1)).toMatchObject({name:"Gryphon bonus",itemKey:"unique:5:0:65",criteria:{statFilters:[]}});
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
+  } finally { if(session)await closeCompanionApp(session);cleanupUserDataDir(userDataDir); }
 });

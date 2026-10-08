@@ -1,6 +1,68 @@
 import type { ItemStatDefinition } from "../../../shared/item-stat-ranges";
 import { itemBaseStatMetadata, type ItemBaseNumericValue, type ItemBaseStat } from "../../../shared/item-base-stat-catalog";
-import { marketDefinitionHasEncodedField, marketStatRole } from "../../../shared/market-stat-capabilities";
+import { marketDefinitionHasEncodedField, marketStatFieldName, marketStatRole } from "../../../shared/market-stat-capabilities";
+
+export interface MarketCatalogStatRow {
+  key: number;
+  label: string;
+  value?: string;
+  detail?: string;
+}
+
+// Exact v8 item-stat bindings, not character-attribute identifiers. Unresolved
+// talent names and proc chance scales stay explicit rather than becoming IDs.
+const talentModifiers = [[202,203],[205,206],[208,209],[211,212],[214,215],[217,218],[462,463],[444,445]] as const;
+const procFamilies = [
+  [113,114,115,"when attacking"], [116,117,118,"when striking"], [119,120,121,"on spell hit"],
+  [122,123,124,"when killing"], [125,126,127,"when casting"], [185,186,187,"when struck"],
+  [188,189,190,"when blocking"],
+] as const;
+
+/** Presentation only: never changes numeric search identities or seed inputs. */
+export function marketCatalogStatRows(stats: readonly ItemBaseStat[], itemKey: string | null): MarketCatalogStatRow[] {
+  const consumed = new Set<number>();
+  const rows: MarketCatalogStatRow[] = [];
+  const byId = new Map(stats.map(stat => [stat.statId, stat]));
+  const plainValue = (stat: ItemBaseStat) => marketBaseStatValue(stat, itemKey);
+  for (const [talentId, modifierId] of talentModifiers) {
+    const talent = byId.get(talentId), modifier = byId.get(modifierId);
+    if (!talent || !modifier) continue;
+    consumed.add(talentId); consumed.add(modifierId);
+    // The supplied Gryphon tooltip names Execute for this exact constructor's
+    // 202=184 / 203 bonus pair. It is not a global talent-ID lookup.
+    const gryphonExecute = itemKey === "unique:5:0:65" && talentId === 202
+      && talent.kind === "scalar" && talent.minimum === 184 && talent.maximum === 184
+      && modifier.kind === "range" && modifier.minimum === 12 && modifier.maximum === 18;
+    rows.push(gryphonExecute ? { key: talentId, label: "+[12\u201318] to [Execute]" }
+      : { key: talentId, label: "Selected talent bonus", value: `[${plainValue(modifier)}] \u00b7 Talent name unavailable` });
+  }
+  for (const [talentId, levelId, chanceId, event] of procFamilies) {
+    const talent = byId.get(talentId), level = byId.get(levelId), chance = byId.get(chanceId);
+    if (!talent || !level || !chance) continue;
+    for (const id of [talentId, levelId, chanceId]) consumed.add(id);
+    rows.push({ key: talentId, label: `Triggered talent ${event}`,
+      value: `Chance [${plainValue(chance)}]; level [${plainValue(level)}] \u00b7 Talent name unavailable` });
+  }
+  for (const stat of stats) {
+    if (consumed.has(stat.statId)) continue;
+    // Exact retained English key stat_open_wounds, paired owner tooltip: percent
+    // is a display unit here. Other proc families retain their unproved scales.
+    if (stat.statId === 99 && (stat.kind === "scalar" || stat.kind === "range")) {
+      const value = stat.minimum === stat.maximum ? String(stat.minimum) : `${stat.minimum}\u2013${stat.maximum}`;
+      rows.push({ key: stat.statId, label: `+[${value}]% Chance to Open Wounds` });
+      continue;
+    }
+    const role = marketStatRole(stat.statId);
+    if (role?.kind === "class-identifier") {
+      rows.push({ key: stat.statId, label: "Class selection", value: "Class name unavailable", detail: role.detail });
+      continue;
+    }
+    rows.push({ key: stat.statId,
+      label: role?.kind === "talent-identifier" ? "Selected talent" : marketStatFieldName(stat.statId, itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}`),
+      value: role?.kind === "talent-identifier" ? "Talent name unavailable" : `[${plainValue(stat)}]`, detail: role?.detail });
+  }
+  return rows.sort((left, right) => stats.findIndex(stat => stat.statId === left.key) - stats.findIndex(stat => stat.statId === right.key));
+}
 
 export function marketBaseStatValue(stat: ItemBaseStat, itemKey: string | null = null): string {
   const role = marketStatRole(stat.statId);

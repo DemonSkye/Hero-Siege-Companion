@@ -292,16 +292,18 @@ test("saved filters validate identities and values at load, stay editable offlin
   expect(normalizeSavedMarketItems([{ ...entries.value[0], request: { itemMask: 1, statFilters: [] } }])[0].request).toEqual({itemMask:1073746020,minSockets:3,statFilters:[{statId:64,minimum:9}]});
 });
 
-test("unresolved migrated names can be repaired in place without searching", () => {
+test("choosing a catalog item after loading an unresolved migrated name preserves the original and starts a new filter", () => {
   const searchMarket = vi.fn();
   const search = useMarketSearchRuntime({ searchMarket, now: ref(1_000), readiness: ref(companionState().marketReadiness) });
   const entries = ref(migrateShoppingList(["Owner original name"]));
   const saved = useSavedMarketItems(entries, search);
   saved.loadSaved("legacy-0");
-  expect(saved.message.value).toContain("needs a catalog item");
+  expect(saved.message.value).toContain("has no catalog match");
   saved.selectItem(marketItemsForName("Sharpshooter's Cloak")[0]);
   expect(saved.saveDraft()).toBe(true);
-  expect(entries.value).toHaveLength(1);
-  expect(entries.value[0]).toMatchObject({ id: "legacy-0", name: "Owner original name", request: { itemMask: 1_073_746_020 } });
+  expect(entries.value).toHaveLength(2);
+  expect(entries.value[0]).toMatchObject({ id: "legacy-0", name: "Owner original name", itemKey: null, request: null });
+  expect(entries.value[1]).toMatchObject({ name: "Sharpshooter's Cloak", request: { itemMask: 1_073_746_020 } });
+  expect(entries.value[1].id).not.toBe("legacy-0");
   expect(searchMarket).not.toHaveBeenCalled();
 });

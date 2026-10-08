@@ -6,6 +6,13 @@ Save item and filters to keep the search locally. Loading a saved item fills the
 editor; it does not send a request. Save changes updates that entry, Save as new
 creates a separate entry, and Delete offers Undo.
 
+Changing or reselecting the catalog item starts a fresh draft: socket bounds,
+complete or partial stat clauses, text queries, saved name and editing selection
+are cleared. Existing saved entries stay intact. Clear also removes the current
+item and results. Both actions discard pending replies while preserving the
+in-flight request guard and cooldown; neither action searches. Search, Clear,
+the optional short saved name and save buttons share the bottom action group.
+
 The dropped-item Timeline Market action opens the same saveable catalog target
 as the picker. Normal/unique drops keep their mask and drop display; runeword
 Timeline IDs are interpreted as native repository IDs and open the canonical
@@ -17,8 +24,9 @@ This route starts from already-classified drops. Native compact-packet runeword
 classification is not established by the reconstructed Timeline event tests.
 
 Existing shopping-list names migrate on first load. Names without one supported
-catalog identity remain visible: load the entry, choose its item, and save the
-repair. Original shopping-list strings remain in preferences as a rollback archive.
+catalog identity remain visible. Choosing a catalog item starts a new saved
+filter and preserves that original entry; Delete with Undo can remove it when
+desired. Original shopping-list strings remain in preferences as a rollback archive.
 Schema 3 saved entries are authoritative after migration, including an empty array.
 Backups include saved filters; older backups migrate their shopping-list names.
 Saving failures show a retry action while the draft stays open.
@@ -72,8 +80,8 @@ does not establish final capacity, so it does not clamp the user to base bounds.
 Glove/charm exceptions retain their per-item facts. For the other 1,617 identities,
 socket capacity is unknown: optional controls start collapsed and open whenever
 a saved bound is present. Missing data is not labeled socketless. Changing the
-selected item clears both old socket bounds with a visible notice while preserving
-other stat drafts. Legacy bounds remain intact when valid, including unknown item
+selected item starts a fresh form, clearing both bounds and all other unsaved
+criteria. Legacy bounds remain intact when valid, including unknown item
 capacity; malformed bounds are individually cleared, and reversed ranges clear
 both bounds. Repair notices survive reload until the entry is explicitly saved.
 Other stat criteria, names and identities remain intact. Maximum sockets also
@@ -124,7 +132,8 @@ definitions remain available.
 
 Catalog base ranges sit beside the filters on wide layouts and above the saved
 name on narrow layouts. The compact bordered card shows static base definitions
-from build 24868792 / version 7.0.0.0, with experimental/current-build-parity copy.
+from build 24868792 / version 7.0.0.0. A short experimental status remains visible;
+build provenance and limitations sit inside Details.
 All identities have explicit records; 1,636 have retained values, totaling 9,584
 fields: 5,497 ranges, 3,907 scalars, 178 native tables and two dynamic tablet-zone
 values. Tables are shown as tables, and dynamic values have descriptions rather
@@ -133,11 +142,20 @@ Records without numeric values say none were retained, not that the item has no
 possible stats. These counts cover recognized constructor setters, not generated
 affixes, tier/context calculations, final tooltips or current installed-game parity.
 
+Selected-talent bonuses and proc families appear as compound rows. Gryphon's
+Claw shows `+[12–18] to [Execute]`, scoped to that exact constructor and supplied
+tooltip rather than a global mapping of the number 184. Open Wounds shows its
+percentage phrase. Other unresolved talent names remain explicitly unavailable;
+proc chance scales and table-valued parameters are not guessed. These card
+captions do not change the original numeric search controls.
+
 Verified listing-roll reconstruction remains limited to the two independently
 observed shield definitions. Tiny Planet retains its 15-25% Orbital Projectile
 Duration base range and separate Orbital Gravity set bonus; listing rolls remain
-withheld until a same-specimen compact record and independent tooltip validate
-them. Broad static definitions do not confer listing-roll verification.
+outside the currently translated listing paths. The retained deterministic
+generator is reusable beyond those paths; current definition/variant gates are
+implementation limits, not proof that compact Market records lack roll inputs.
+Broad static definitions alone do not prove final variant transformations.
 
 Results place variant and stat information beside prices. Identified, supported
 unmodified listings show their reconstructed rolls; other definitions, modified

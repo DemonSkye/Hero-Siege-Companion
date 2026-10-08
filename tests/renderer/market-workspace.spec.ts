@@ -39,7 +39,7 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
   return match;
 }
 
-test("real Market editor exposes legacy constraints and base hints, clears sockets on item change and preserves stat filters on reopen", async () => {
+test("real Market editor starts fresh on item change and preserves the original saved entry across reopen", async () => {
   window.localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, shoppingListItems: [], savedMarketItems: [
     { id: "legacy-glove", name: "Legacy gloves", itemKey: "unique:4:0:0",
       request: { itemMask: 1073758208, minSockets: 4, statFilters: [{ statId: 64, minimum: 8 }] } },
@@ -57,11 +57,18 @@ test("real Market editor exposes legacy constraints and base hints, clears socke
     expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("8");
     await wrapper.get("form.market-editor").trigger("submit"); await flushPromises();
     expect(api.searchMarket).toHaveBeenCalledExactlyOnceWith({ itemMask: 1073758208, minSockets: 4, statFilters: [{ statId: 64, minimum: 8 }] });
+    await wrapper.get("#market-stat-query").setValue("unfinished stat search");
+    await wrapper.get("#market-saved-name").setValue("Unsaved old name");
     await button(wrapper, "Change item").trigger("click");
     await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
     await wrapper.get(".market-options button").trigger("click");
     expect(wrapper.get("#market-sockets").attributes()).toMatchObject({ min: "0", max: "6", placeholder: "Any" });
     expect(wrapper.get(".market-socket-hint").text()).toContain("Base socket range: 2–4");
+    expect(wrapper.findAll(".market-stat-row")).toHaveLength(0);
+    expect((wrapper.get("#market-stat-query").element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get("#market-saved-name").element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find(".market-saved-list .selected").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Save changes");
     await wrapper.get("#market-sockets").setValue("4");
     await wrapper.get("#market-sockets-max").setValue("6");
     await button(wrapper, "Change item").trigger("click");
@@ -71,20 +78,82 @@ test("real Market editor exposes legacy constraints and base hints, clears socke
     expect(wrapper.get(".market-socket-hint").text()).toContain("Base socket range: 1–2");
     expect((wrapper.get("#market-sockets").element as HTMLInputElement).value).toBe("");
     expect((wrapper.get("#market-sockets-max").element as HTMLInputElement).value).toBe("");
-    expect(wrapper.text()).toContain("Socket range cleared");
-    expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("8");
-    await button(wrapper, "Save changes").trigger("click"); await flushPromises();
-    expect(JSON.parse(window.localStorage.getItem(storageKey)!).savedMarketItems[0]).toMatchObject({
-      itemKey: "unique:4:0:18", request: { itemMask: 1073758226, statFilters: [{ statId: 64, minimum: 8 }] },
-      criteria: { statFilters: [{ statId: 64, minimum: 8 }] },
+    expect(wrapper.text()).not.toContain("Socket range cleared");
+    expect(wrapper.findAll(".market-stat-row")).toHaveLength(0);
+    await button(wrapper, "Save item and filters").trigger("click"); await flushPromises();
+    const persisted = JSON.parse(window.localStorage.getItem(storageKey)!).savedMarketItems;
+    expect(persisted).toHaveLength(2);
+    expect(persisted[0]).toMatchObject({ id: "legacy-glove", name: "Legacy gloves", itemKey: "unique:4:0:0",
+      request: { itemMask: 1073758208, minSockets: 4, statFilters: [{ statId: 64, minimum: 8 }] } });
+    expect(persisted[1]).toMatchObject({
+      name: "Zealot's Deathbringers", itemKey: "unique:4:0:18", request: { itemMask: 1073758226, statFilters: [] },
+      criteria: { statFilters: [] },
     });
     wrapper.unmount(); wrapper = mount(App, { global: { stubs } });
     await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
     await vi.waitFor(() => expect(wrapper.find(".market-saved-load").exists()).toBe(true));
-    await wrapper.get(".market-saved-load").trigger("click");
+    await wrapper.findAll(".market-saved-load")[1].trigger("click");
     expect((wrapper.get("#market-sockets").element as HTMLInputElement).value).toBe("");
+    expect(wrapper.findAll(".market-stat-row")).toHaveLength(0);
+    await wrapper.findAll(".market-saved-load")[0].trigger("click");
+    expect((wrapper.get("#market-sockets").element as HTMLInputElement).value).toBe("4");
     expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("8");
     expect(api.searchMarket).toHaveBeenCalledTimes(1);
+  } finally { wrapper.unmount(); }
+});
+
+test("Clear resets the unsaved editor, partial queries and saved selection without deleting saved items or searching", async () => {
+  window.localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, savedMarketItems: [
+    { id: "old", name: "Saved cloak", itemKey: "unique:1:0:100", criteria: { minSockets: 4, maxSockets: 6, statFilters: [{ statId: 64, minimum: 8 }] } },
+  ] }));
+  const { api } = setup(); const wrapper = mount(App, { attachTo: document.body, global: { stubs } });
+  try {
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-saved-load").exists()).toBe(true));
+    await wrapper.get(".market-saved-load").trigger("click");
+    await wrapper.get("#market-saved-query").setValue("cloak");
+    await wrapper.get("#market-stat-query").setValue("life");
+    await wrapper.get('ul[aria-label="Stat suggestions"] button').trigger("click");
+    await wrapper.get("#market-stat-query").setValue("unfinished");
+    await wrapper.get("#market-saved-name").setValue("Unsaved name");
+    await button(wrapper, "Change item").trigger("click");
+    await wrapper.get("#market-item-query").setValue("partial item");
+    const persisted = window.localStorage.getItem(storageKey);
+    await button(wrapper, "Clear").trigger("click"); await flushPromises();
+    expect(wrapper.find(".market-chosen-item").exists()).toBe(false);
+    expect(wrapper.findAll(".market-stat-row")).toHaveLength(0);
+    expect(wrapper.find(".market-saved-list .selected").exists()).toBe(false);
+    for (const id of ["market-item-query", "market-stat-query", "market-saved-query", "market-saved-name"])
+      expect((wrapper.get(`#${id}`).element as HTMLInputElement).value).toBe("");
+    expect(document.activeElement?.id).toBe("market-item-query");
+    expect(window.localStorage.getItem(storageKey)).toBe(persisted);
+    expect(wrapper.findAll(".market-saved-load")).toHaveLength(1);
+    expect(api.searchMarket).not.toHaveBeenCalled();
+    expect(wrapper.get(".market-form-actions").findAll("button").map(b => b.text())).toEqual(["Search market", "Clear", "Save item and filters"]);
+    await wrapper.get(".market-saved-load").trigger("click");
+    expect((wrapper.get("#market-sockets").element as HTMLInputElement).value).toBe("4");
+    expect((wrapper.get("#market-sockets-max").element as HTMLInputElement).value).toBe("6");
+    expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("8");
+  } finally { wrapper.unmount(); }
+});
+
+test("the real catalog card shows Gryphon's compound talent and percent phrase with provenance inside Details", async () => {
+  const { api } = setup(); const wrapper = mount(App, { global: { stubs } });
+  try {
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    await wrapper.get("#market-item-query").setValue("Gryphon's Claw");
+    await wrapper.get(".market-options button").trigger("click");
+    const card = wrapper.get(".market-catalog-ranges");
+    expect(card.get(".market-range-list").text()).toContain("+[12\u201318] to [Execute]");
+    expect(card.get(".market-range-list").text()).toContain("+[15\u201325]% Chance to Open Wounds");
+    expect(card.findAll(".market-range-list > div")).toHaveLength(5);
+    expect(card.get(".market-range-list").text()).not.toMatch(/Identifier:|Stat 202|Stat 203/);
+    expect(card.get("details summary").text()).toBe("Details");
+    expect(card.get("details").attributes("open")).toBeUndefined();
+    expect(card.get("footer > small").text()).toBe("Experimental base ranges.");
+    expect(card.get("details").text()).toContain("Build 24868792");
+    expect(api.searchMarket).not.toHaveBeenCalled();
   } finally { wrapper.unmount(); }
 });
 
@@ -126,7 +195,7 @@ test("offline Market shows full cloak ranges and saves an experimental filter th
     await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
     await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
     await wrapper.get(".market-options button").trigger("click");
-    expect(wrapper.findAll(".market-range-list > div")).toHaveLength(14);
+    expect(wrapper.findAll(".market-range-list > div")).toHaveLength(12);
     expect(wrapper.get(".market-catalog-ranges").text()).toContain("Ranged Skills[6–12]");
     expect(wrapper.get(".market-catalog-ranges").text()).toContain("All Skills[2]");
     await wrapper.get("#market-stat-query").setValue("ranged");
@@ -143,7 +212,7 @@ test("offline Market shows full cloak ranges and saves an experimental filter th
     await wrapper.get(".market-saved-load").trigger("click");
     expect(wrapper.get(".market-stat-row label").text()).toContain("Ranged Skills (experimental)");
     expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("10");
-    expect(wrapper.findAll(".market-range-list > div")).toHaveLength(14);
+    expect(wrapper.findAll(".market-range-list > div")).toHaveLength(12);
     expect(api.searchMarket).not.toHaveBeenCalled();
   } finally {wrapper.unmount();}
 });

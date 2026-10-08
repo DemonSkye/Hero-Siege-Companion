@@ -199,7 +199,6 @@ const {
   selectedItem: marketSearchItem,
   minSockets: marketSearchMinSockets,
   maxSockets: marketSearchMaxSockets,
-  socketAdjustmentMessage: marketSearchSocketAdjustmentMessage,
   statFilters: marketSearchStatFilters,
   phase: marketSearchPhase,
   listings: marketSearchListings,
@@ -773,7 +772,6 @@ function toggleLog(log: LogEntry) {
         :readiness="state.marketReadiness"
         :min-sockets="marketSearchMinSockets"
         :max-sockets="marketSearchMaxSockets"
-        :socket-adjustment-message="marketSearchSocketAdjustmentMessage"
         :stat-filters="marketSearchStatFilters"
         :phase="marketSearchPhase"
         :listings="marketSearchListings"

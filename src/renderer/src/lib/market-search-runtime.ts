@@ -53,7 +53,6 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   const selectedRunewordId = ref<number | null>(null);
   const minSockets = ref<number | null>(null);
   const maxSockets = ref<number | null>(null);
-  const socketAdjustmentMessage = ref("");
   const statFilters = ref<MarketStatFilterDraft[]>([]);
   const phase = ref<MarketSearchPhase>("idle");
   const listings = ref<MarketListing[]>([]);
@@ -128,31 +127,10 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     selectedRunewordId.value = runewordId;
     minSockets.value = normalized.criteria.minSockets ?? null;
     maxSockets.value = normalized.criteria.maxSockets ?? null;
-    socketAdjustmentMessage.value = "";
     statFilters.value = normalized.criteria.statFilters.map((filter) => ({
       key: `market-stat-${nextStatFilterKey++}`, ...filter,
     }));
     resetResult();
-    return true;
-  }
-
-  function changeMarketCatalogItem(item: Pick<ItemTimelineEntry, "label" | "rarity">,
-    itemMask: number | null, runewordId: number | null = null): boolean {
-    if (!normalizeMarketSearchRequest({ ...(itemMask === null ? {} : { itemMask }),
-      ...(runewordId === null ? {} : { runewordId }), statFilters: [] }).ok) return false;
-    const targetChanged = itemMask !== selectedItemMask.value || runewordId !== selectedRunewordId.value;
-    selectedItem.value = item;
-    selectedItemMask.value = itemMask;
-    selectedRunewordId.value = runewordId;
-    if (targetChanged) {
-      socketAdjustmentMessage.value = minSockets.value !== null || maxSockets.value !== null
-        ? "Socket range cleared for the new item. Other stat filters were preserved." : "";
-      minSockets.value = null;
-      maxSockets.value = null;
-    }
-    // Item changes invalidate prices but preserve unrelated, even incomplete,
-    // stat drafts so choosing a new target does not silently discard edits.
-    markDraftChanged();
     return true;
   }
 
@@ -163,20 +141,17 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     selectedRunewordId.value = null;
     minSockets.value = null;
     maxSockets.value = null;
-    socketAdjustmentMessage.value = "";
     statFilters.value = [];
     resetResult();
   }
 
   function updateMinSockets(value: number | null): void {
     minSockets.value = value;
-    socketAdjustmentMessage.value = "";
     markDraftChanged();
   }
 
   function updateMaxSockets(value: number | null): void {
     maxSockets.value = value;
-    socketAdjustmentMessage.value = "";
     markDraftChanged();
   }
 
@@ -292,7 +267,6 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     minSockets,
     maxSockets,
     socketBaseRange,
-    socketAdjustmentMessage,
     statFilters,
     phase,
     listings,
@@ -307,7 +281,6 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     openMarketSearch,
     openMarketDraft,
     openMarketCatalogDraft,
-    changeMarketCatalogItem,
     closeMarketSearch,
     updateMinSockets,
     updateMaxSockets,

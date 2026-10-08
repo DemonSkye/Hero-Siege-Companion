@@ -59,9 +59,9 @@ export function useSavedMarketItems(
   const deleted = ref<{ item: SavedMarketItem; index: number } | null>(null);
 
   function selectItem(item: MarketItemOption): void {
+    newSearch();
     itemKey.value = item.key;
-    if (!editingId.value) savedName.value = item.name;
-    search.changeMarketCatalogItem({ label: item.name, rarity: item.typeLabel }, item.itemMask, item.runewordId ?? null);
+    search.openMarketCatalogDraft({ label: item.name, rarity: item.typeLabel }, item.itemMask, { statFilters: [] }, item.runewordId ?? null);
     message.value = item.availabilityNotice ?? item.searchUnavailable ?? "";
   }
 
@@ -96,7 +96,7 @@ export function useSavedMarketItems(
       if (entry.socketFilterAdjustment) message.value += ` ${socketFilterAdjustmentMessage(entry.socketFilterAdjustment)}`;
     } else {
       search.closeMarketSearch();
-      message.value = "This saved name needs a catalog item. Choose an item, then save the repaired entry.";
+      message.value = "This saved name has no catalog match. Choose an item to start a new saved filter; this entry stays in Saved items.";
     }
   }
 

@@ -16,9 +16,10 @@ test("Cloak proc quantities search through real IPC while role identifiers remai
     await session.page.reload();await session.page.getByRole("tab",{name:"Market",exact:true}).click();
     let workspace=session.page.locator(".market-workspace");
     await workspace.locator(".market-saved-load").filter({hasText:"Proc cloak"}).click();
-    await expect(workspace.locator(".market-range-list > div").filter({hasText:"Stat 116"})).toContainText("Identifier: 555");
-    await expect(workspace.locator(".market-range-list > div").filter({hasText:"Stat 117"})).toContainText("12\u201320");
-    await expect(workspace.locator(".market-range-list > div").filter({hasText:"Stat 118"})).toContainText("3\u20136");
+    const proc = workspace.locator(".market-range-list > div").filter({hasText:"Triggered talent when striking"});
+    await expect(proc).toContainText("Chance [3\u20136]; level [12\u201320]");
+    await expect(proc).toContainText("Talent name unavailable");
+    await expect(workspace.locator(".market-range-list")).not.toContainText("Identifier: 555");
     await expect(workspace).toContainText("Talent identity needs an exact selector");
     await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
     await expect.poll(async()=>(await getStoredUiPreferences(session.page)).savedMarketItems[0].criteria).toEqual({
