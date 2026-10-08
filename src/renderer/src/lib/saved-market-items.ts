@@ -3,7 +3,11 @@ import { normalizeMarketFilterCriteria, normalizeMarketSearchRequest } from "../
 import { marketItemByKey, type MarketItemOption, type SavedMarketItem } from "./market-items";
 import type { useMarketSearchRuntime } from "./market-search-runtime";
 
-export function normalizeSavedMarketItems(value: unknown): SavedMarketItem[] {
+/** Storage recognizes an identity independently of its current wire encoding. */
+type SavedMarketCatalogIdentity = { key: string; itemMask?: number | null };
+
+export function normalizeSavedMarketItems(value: unknown,
+  itemForKey: (key: string | null) => SavedMarketCatalogIdentity | null = marketItemByKey): SavedMarketItem[] {
   if (!Array.isArray(value)) return [];
   const usedIds = new Set<string>();
   return value.flatMap((raw, index): SavedMarketItem[] => {
@@ -11,12 +15,13 @@ export function normalizeSavedMarketItems(value: unknown): SavedMarketItem[] {
     let id = typeof raw.id === "string" && raw.id ? raw.id : `saved-${index}`;
     while (usedIds.has(id)) id += `-${index}`;
     usedIds.add(id);
-    const item = marketItemByKey(typeof raw.itemKey === "string" ? raw.itemKey : null);
+    const item = itemForKey(typeof raw.itemKey === "string" ? raw.itemKey : null);
     const normalized = normalizeMarketSearchRequest(raw.request);
     const request = item && normalized.ok && normalized.request.itemMask === item.itemMask
       ? normalized.request : null;
-    const pending = normalizeMarketFilterCriteria(raw.criteria);
-    const criteria = item?.itemMask === null && pending.ok ? pending.criteria : null;
+    const savedCriteria = normalizeMarketFilterCriteria(raw.criteria);
+    const criteria = item && savedCriteria.ok ? savedCriteria.criteria : request
+      ? { ...(request.minSockets === undefined ? {} : { minSockets: request.minSockets }), statFilters: request.statFilters } : null;
     return [{ id, name: raw.name, itemKey: request || criteria ? item!.key : null, request,
       ...(criteria ? { criteria } : {}) }];
   });
@@ -55,7 +60,7 @@ export function useSavedMarketItems(
     itemKey.value = entry.itemKey;
     const item = marketItemByKey(entry.itemKey);
     if (item && (entry.request || entry.criteria)) {
-      search.openMarketCatalogDraft({ label: item.name, rarity: item.typeLabel }, item.itemMask, entry.request ?? entry.criteria!);
+      search.openMarketCatalogDraft({ label: item.name, rarity: item.typeLabel }, item.itemMask, entry.criteria ?? entry.request!);
       message.value = item.searchUnavailable ?? "Filters loaded. Press Search when you are ready.";
     } else {
       search.closeMarketSearch();
@@ -71,8 +76,7 @@ export function useSavedMarketItems(
     const id = !asNew && editingId.value ? editingId.value : crypto.randomUUID();
     const entry: SavedMarketItem = {
       id, name: savedName.value.trim() || search.selectedItem.value!.label,
-      itemKey: itemKey.value, request,
-      ...(item.itemMask === null ? { criteria } : {}),
+      itemKey: itemKey.value, request, criteria,
     };
     const index = entries.value.findIndex((candidate) => candidate.id === id);
     entries.value = index < 0 ? [...entries.value, entry]

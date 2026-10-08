@@ -60,7 +60,7 @@ export interface SavedMarketItem {
   name: string;
   itemKey: string | null;
   request: MarketSearchRequest | null;
-  /** Preserve filters while a catalog identity's wire encoding is unresolved. */
+  /** Durable filters independent of request encoding; optional for old entries. */
   criteria?: MarketFilterCriteria;
 }
 
@@ -74,7 +74,7 @@ export function migrateShoppingList(names: readonly string[]): SavedMarketItem[]
       name,
       itemKey: item?.key ?? null,
       request: item && item.itemMask !== null ? { itemMask: item.itemMask, statFilters: [] } : null,
-      ...(item && item.itemMask === null ? { criteria: { statFilters: [] } } : {}),
+      ...(item ? { criteria: { statFilters: [] } } : {}),
     };
   });
 }

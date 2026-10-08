@@ -19,6 +19,10 @@ key with `(experimental)` rather than a guessed English name. Their masks are
 grounded. Runeword names and filters can be saved, loaded and edited, but searching
 is disabled while the native `filter_runeword` selector binding is unresolved.
 Their saved criteria stay separate from a request so no invented mask is sent.
+Saved criteria are durable independently of the current encoder for every known
+item. Older request-only entries recover their criteria from a validated request.
+Loading prefers those criteria and lets the current encoder construct the draft;
+a future catalog/selector migration must preserve them rather than discard them.
 
 The accessible Market ready / Market not ready indicator describes local
 prerequisites; it does not prove that authentication will be accepted. When context

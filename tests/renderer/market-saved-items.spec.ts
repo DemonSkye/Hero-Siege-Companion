@@ -55,6 +55,57 @@ test("runeword filters survive save, reload, backup and undo while encoding rema
   expect(searchMarket).not.toHaveBeenCalled();
 });
 
+test("pending runeword criteria survive promotion to an identity with a separate native selector", () => {
+  const searchMarket = vi.fn();
+  const search = useMarketSearchRuntime({searchMarket,now:ref(1000),readiness:ref(companionState().marketReadiness)});
+  const entries = ref<SavedMarketItem[]>([]);
+  const saved = useSavedMarketItems(entries,search);
+  saved.selectItem(marketItemsForName("Grief")[0]);
+  search.updateMinSockets(4);
+  search.addStatFilter(271);
+  search.updateStatFilter(search.statFilters.value[0].key,{minimum:10});
+  expect(saved.saveDraft()).toBe(true);
+  const persisted = JSON.parse(JSON.stringify(entries.value));
+  expect(persisted[0]).toMatchObject({itemKey:"runeword:3:0:1",request:null,
+    criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}});
+
+  // Research v4 proves Grief's repository/selector ID81. This models a future
+  // catalog migration/encoder boundary, not enabled product search. No mask is
+  // supplied: runewords use filter_runeword independently of filter_masks.
+  const promotedIdentity = {key:"runeword-repository:81",filterRuneword:81};
+  const promoted = normalizeSavedMarketItems(persisted,key=>key==="runeword:3:0:1" ? promotedIdentity : null);
+  expect(promoted[0]).toMatchObject({id:persisted[0].id,name:"Grief",itemKey:"runeword-repository:81",request:null,
+    criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}});
+  expect(promoted[0]).not.toHaveProperty("itemMask");
+  // A subsequent encoder receives the original saved values after promotion.
+  expect({filter_runeword:promotedIdentity.filterRuneword,...promoted[0].criteria}).toEqual({
+    filter_runeword:81,minSockets:4,statFilters:[{statId:271,minimum:10}],
+  });
+  expect(searchMarket).not.toHaveBeenCalled();
+});
+
+test("ready items retain criteria without a stored request and prefer them over stale encoded filters", () => {
+  const criteria = {minSockets:4,statFilters:[{statId:271,minimum:10}]};
+  const raw = {id:"future",name:"Cloak",itemKey:"unique:1:0:100",request:null,criteria};
+  const entries = ref(normalizeSavedMarketItems([raw]));
+  expect(entries.value[0]).toEqual(raw);
+  const searchMarket = vi.fn();
+  const readiness = ref(companionState().marketReadiness);
+  readiness.value.canSearch = true;
+  const search = useMarketSearchRuntime({searchMarket,now:ref(1000),readiness});
+  const saved = useSavedMarketItems(entries,search);
+  saved.loadSaved("future");
+  expect(search.draftRequest.value).toEqual({itemMask:1073746020,...criteria});
+  expect(search.canSearch.value).toBe(true);
+  expect(saved.saveDraft()).toBe(true);
+  expect(entries.value[0].criteria).toEqual(criteria);
+  const conflicting = normalizeSavedMarketItems([{...entries.value[0],request:{itemMask:1073746020,statFilters:[]}}]);
+  entries.value = conflicting;
+  saved.loadSaved("future");
+  expect(search.draftRequest.value).toEqual({itemMask:1073746020,...criteria});
+  expect(searchMarket).not.toHaveBeenCalled();
+});
+
 test("legacy migration retains every name, preserves rollback data, and runs only once across saves and backups", () => {
   const original = ["Sharpshooter's Cloak", " Unknown original name ", "Copper Ore", "Copper Ore", ""];
   const migrated = normalizePreferences({ shoppingListItems: original, schemaVersion: 2 });

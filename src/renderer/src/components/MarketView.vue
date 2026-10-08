@@ -124,7 +124,7 @@ function chooseStat(statId: number): void {
           <li v-for="entry in savedItems" :key="entry.id" :class="{ selected: editingId === entry.id }">
             <button class="market-saved-load" type="button" :aria-pressed="editingId === entry.id" @click="load(entry.id)">
               <strong>{{ entry.name || 'Untitled legacy entry' }}</strong>
-              <small>{{ entry.request || entry.criteria ? `${(entry.request ?? entry.criteria)?.minSockets ?? 'Any'} sockets · ${(entry.request ?? entry.criteria)?.statFilters.length} stat minimums` : 'Choose catalog item to repair' }}</small>
+              <small>{{ entry.request || entry.criteria ? `${(entry.criteria ?? entry.request)?.minSockets ?? 'Any'} sockets · ${(entry.criteria ?? entry.request)?.statFilters.length} stat minimums` : 'Choose catalog item to repair' }}</small>
             </button>
             <button class="icon-button ghost" type="button" :aria-label="`Delete saved item ${entry.name}`" @click="emit('deleteSaved', entry.id)">×</button>
           </li>
