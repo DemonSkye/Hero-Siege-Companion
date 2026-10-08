@@ -32,11 +32,13 @@ No automated purchase, polling, alert or pagination runs from saved entries.
 
 Catalog base ranges sit beside the filters on wide layouts and above the saved
 name on narrow layouts. They describe unmodified definitions, not listing rolls
-or additional filter capabilities. Verified range/reconstruction coverage currently
-includes Battle Mage's Shield, Bob's Piece of Plywood, and Tiny Planet, from the
-build-24868792 constructor translations. Other definitions show ranges unavailable.
-The Tiny Planet roll has weaker recalled-value validation than the two observed
-shield tooltips.
+or additional filter capabilities. Grounded catalog ranges currently include
+Battle Mage's Shield, Bob's Piece of Plywood, and Tiny Planet, from the
+build-24868792 constructor translations. Verified listing-roll reconstruction is
+limited to the two independently observed shield definitions. Tiny Planet retains
+its 15–25% Orbital Projectile Duration catalog range, but its listing rolls are
+withheld until a same-specimen compact record and independently observed tooltip
+validate them. Other definitions show ranges unavailable.
 
 Results place variant and stat information beside prices. Identified, supported
 unmodified listings show their reconstructed rolls; other definitions, modified
