@@ -1,5 +1,6 @@
 import { MARKET_STAT_CATALOG_BUILD_24868792_DATA } from "./data/market-stat-catalog-build-24868792";
 import { resolveItemDefinition } from "./item-catalog";
+import { sanitizeMarketListingItem, type MarketListingItem } from "./market-listing-item";
 
 export const MARKET_PRICE_ASCENDING_SORT = 2 as const;
 export const MARKET_SEARCH_LISTING_LIMIT = 20 as const;
@@ -36,6 +37,7 @@ export interface MarketSearchRequest {
 export interface MarketListing {
   price: number;
   unitPrice?: number;
+  item?: MarketListingItem;
 }
 
 export interface MarketSearchResult {
@@ -220,6 +222,8 @@ function sanitizeListing(value: unknown, sourceIndex: number): SanitizedListing 
   if (!isRecord(value) || !isNonNegativeFiniteNumber(value.price)) return null;
   const listing: SanitizedListing = { price: value.price, sourceIndex };
   if (isNonNegativeFiniteNumber(value.unitPrice)) listing.unitPrice = value.unitPrice;
+  const item = sanitizeMarketListingItem(value.item);
+  if (item) listing.item = item;
   return listing;
 }
 

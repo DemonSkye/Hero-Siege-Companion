@@ -6,6 +6,9 @@ import { marketItemSuggestions, type MarketItemOption, type SavedMarketItem } fr
 import { marketStatSuggestions, type MarketSearchPhase, type MarketStatFilterDraft } from "../lib/market-search-runtime";
 import { formatNumber } from "../lib/format";
 import MarketReadinessStatus from "./MarketReadinessStatus.vue";
+import MarketListingDetails from "./MarketListingDetails.vue";
+import { itemStatDefinition } from "../../../shared/item-stat-ranges";
+import { lookupKnownItemRarity } from "../../../shared/item-rarity";
 
 // Unit prices can be fractional. Preserve significant digits, including small
 // nonzero prices, while using the same default locale as other app numbers.
@@ -14,6 +17,7 @@ const unitPriceFormatter = new Intl.NumberFormat(undefined, { maximumSignificant
 const props = defineProps<{
   readiness: MarketReadiness;
   item: { label: string; rarity: string } | null;
+  itemKey: string | null;
   minSockets: number | null;
   statFilters: MarketStatFilterDraft[];
   phase: MarketSearchPhase;
@@ -57,6 +61,8 @@ const itemSuggestions = computed(() => marketItemSuggestions(itemQuery.value));
 const statSuggestions = computed(() => marketStatSuggestions(statQuery.value,
   props.statFilters.flatMap((filter) => filter.statId === null ? [] : [filter.statId])));
 const savedItems = computed(() => props.savedItems.filter((entry) => entry.name.toLowerCase().includes(savedQuery.value.trim().toLowerCase())));
+const catalogStats = computed(() => itemStatDefinition(props.itemKey)?.stats ?? []);
+const showCatalog = computed(() => ["Satanic", "Set", "Heroic", "Angelic"].includes(lookupKnownItemRarity(0, props.item?.label) ?? ""));
 const summary = computed(() => [
   props.minSockets === null ? "Any sockets" : `${props.minSockets}+ sockets`,
   ...props.statFilters.map((filter) => `${marketStatOption(filter.statId ?? -1)?.name ?? "Choose stat"} ≥ ${filter.minimum ?? "…"}`),
@@ -98,7 +104,7 @@ function chooseStat(statId: number): void {
 <template>
   <section class="market-workspace" aria-labelledby="market-title">
     <header class="market-heading">
-      <div><p class="eyebrow">Saved item searches</p><h2 id="market-title">Market</h2><p>Choose an item, set your minimums, and search when you need to.</p></div>
+      <h2 id="market-title">Market</h2>
       <button class="icon-button ghost" type="button" @click="newSearch">New search</button>
     </header>
     <MarketReadinessStatus :readiness="readiness" />
@@ -122,8 +128,10 @@ function chooseStat(statId: number): void {
       </aside>
       <div class="market-detail">
         <form class="panel market-editor" :aria-busy="inFlight" @submit.prevent="emit('search')">
-          <h3>{{ editingId ? 'Edit saved filters' : 'Item and filters' }}</h3>
-          <div v-if="item" class="market-chosen-item"><strong>{{ item.label }}</strong><small>{{ item.rarity }}</small><button class="icon-button ghost" type="button" :aria-expanded="itemPickerOpen" @click="itemPickerOpen = !itemPickerOpen; nextTick(() => itemInput?.focus())">Change item</button></div>
+          <div v-if="item" class="market-chosen-item">
+            <div><strong>{{ item.label }}</strong><small>{{ item.rarity }}</small></div>
+            <button class="icon-button ghost" type="button" :aria-expanded="itemPickerOpen" @click="itemPickerOpen = !itemPickerOpen; nextTick(() => itemInput?.focus())">Change item</button>
+          </div>
           <div v-if="!item || itemPickerOpen" class="market-item-picker">
             <label for="market-item-query">Choose catalog item</label>
             <input id="market-item-query" ref="itemInput" v-model="itemQuery" type="search" placeholder="Search by item name" autocomplete="off" @keydown.enter.prevent="itemSuggestions[0] && chooseItem(itemSuggestions[0])" />
@@ -132,9 +140,9 @@ function chooseStat(statId: number): void {
             </ul>
             <p v-if="!itemSuggestions.length">No supported catalog item matches. Try another name.</p>
           </div>
-          <fieldset :disabled="!item">
-            <legend>Search filters</legend>
-            <p>Item, minimum sockets, and stat minimums are supported. Other game filters are not available yet.</p>
+          <div class="market-filter-layout" :class="{ 'has-catalog': showCatalog }">
+          <fieldset :disabled="!item" aria-labelledby="market-filters-title">
+            <h3 id="market-filters-title">Search filters</h3>
             <label for="market-sockets">Minimum sockets</label>
             <input id="market-sockets" :value="minSockets ?? ''" type="number" min="1" max="6" step="1" placeholder="Any" @input="emit('updateMinSockets', numericValue($event))" />
             <div class="market-stat-list">
@@ -150,6 +158,19 @@ function chooseStat(statId: number): void {
             <p v-else-if="statQuery.trim().length >= 3">No additional supported stats match.</p>
             <p v-if="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS">All {{ MARKET_SEARCH_MAX_STAT_FILTERS }} stat slots are in use. Remove one to add another.</p>
           </fieldset>
+          <section v-if="showCatalog" class="market-catalog-ranges" aria-labelledby="market-ranges-title">
+            <h3 id="market-ranges-title">Catalog stat ranges</h3>
+            <p>Base ranges are not listing rolls.</p>
+            <dl v-if="catalogStats.length" class="market-range-list">
+              <div v-for="stat in catalogStats" :key="stat.statId">
+                <dt>{{ stat.name }}</dt>
+                <dd>{{ stat.minimum }}{{ stat.unit === 'percent' ? '%' : '' }}<template v-if="stat.maximum !== stat.minimum">–{{ stat.maximum }}{{ stat.unit === 'percent' ? '%' : '' }}</template></dd>
+              </div>
+            </dl>
+            <p v-else class="empty-copy">Catalog ranges are not available for this item yet.</p>
+            <small v-if="catalogStats.length">Unmodified base item · ranges do not imply filter support.</small>
+          </section>
+          </div>
           <div v-if="item" class="market-filter-summary" aria-label="Active filters"><span v-for="text in summary" :key="text">{{ text }}</span></div>
           <p v-if="item && !canSave" role="status">Enter valid socket and stat minimums before saving or searching.</p>
           <div class="market-save-controls">
@@ -161,25 +182,35 @@ function chooseStat(statId: number): void {
           <p v-if="saveStatus === 'error'" class="market-search-error" role="alert">Local saving failed. Keep Companion open and retry.<button class="icon-button ghost" type="button" @click="emit('retrySave')">Retry save</button></p>
           <p v-else-if="saveStatus === 'saving'" role="status">Saving locally…</p>
           <footer class="market-action-row">
-            <small>{{ inFlight ? 'One request is in flight. Filter edits discard its result; wait for it to finish before searching again.' : cooldown > 0 ? `Next search available in ${cooldown}s.` : 'Price ascending · first page only' }}</small>
+            <small v-if="inFlight || cooldown > 0">{{ inFlight ? 'Searching. Editing filters discards the pending result.' : `Next search available in ${cooldown}s.` }}</small>
             <button class="icon-button primary" type="submit" :disabled="!canSearch">{{ inFlight ? 'Searching…' : cooldown > 0 ? `Search in ${cooldown}s` : 'Search market' }}</button>
           </footer>
         </form>
         <section class="panel market-results" aria-labelledby="market-results-title" aria-live="polite">
-          <h3 id="market-results-title">Price results</h3>
+          <div class="market-results-heading"><h3 id="market-results-title">Price results</h3><small>Price ascending · first page only</small></div>
           <p v-if="phase === 'searching'" role="status">Searching current listings…</p>
           <p v-else-if="phase === 'error'" class="market-search-error" role="alert">{{ errorMessage }}</p>
           <template v-else-if="phase === 'success'">
-            <p v-if="resultObservedAt !== null">{{ resultCached ? 'Cached' : 'Fetched' }} at {{ new Date(resultObservedAt).toLocaleTimeString() }}. Prices can change.</p>
-            <p v-if="totalMatches !== null">Server returned count: {{ totalMatches }}. This may describe a bounded page.</p>
-            <p v-if="returnedCount !== null">Showing {{ listings.length }} price listings from {{ returnedCount }} returned page rows. Unreadable and item-priced listings may be omitted.</p>
             <table v-if="listings.length" class="market-price-table">
-              <caption>{{ item?.label }} · returned page, lowest price first</caption>
-              <thead><tr><th scope="col">Listing</th><th scope="col">Price</th><th scope="col">Price per unit</th></tr></thead>
-              <tbody><tr v-for="(listing, index) in listings" :key="index"><th scope="row">{{ index + 1 }}</th><td>{{ formatNumber(listing.price) }} gold</td><td>{{ listing.unitPrice !== undefined ? `${unitPriceFormatter.format(listing.unitPrice)} gold per unit` : 'Unavailable' }}</td></tr></tbody>
+              <thead><tr><th scope="col">Listing</th><th scope="col">Price</th><th scope="col">Price per unit</th><th scope="col">Variant and stats</th></tr></thead>
+              <tbody>
+                <tr v-for="(listing, index) in listings" :key="index">
+                  <th scope="row" data-label="Listing">{{ index + 1 }}</th>
+                  <td class="market-listing-price" data-label="Price">{{ formatNumber(listing.price) }} gold</td>
+                  <td class="market-unit-price" data-label="Price per unit">{{ listing.unitPrice !== undefined ? `${unitPriceFormatter.format(listing.unitPrice)} gold per unit` : 'Unavailable' }}</td>
+                  <td class="market-listing-item"><MarketListingDetails :item="listing.item" /></td>
+                </tr>
+              </tbody>
             </table>
             <p v-else class="empty-copy">{{ returnedCount !== null && returnedCount > 0 ? 'The returned page had no readable price listings.' : 'No matching price listings were returned.' }} Try fewer minimums, then press Search.</p>
-            <p>Up to {{ MARKET_SEARCH_LISTING_LIMIT }} gold-price listings from the first page. Matching relies on the server; rolled stats and socket capacity are not reconstructed.</p>
+            <footer class="market-results-footer">
+              <details class="market-result-details">
+                <summary>Result limits</summary>
+                <p>Up to {{ MARKET_SEARCH_LISTING_LIMIT }} gold-price listings from the first page. Item-priced and unreadable rows are omitted. Matching relies on the server.</p>
+                <p v-if="returnedCount !== null">{{ listings.length }} shown · {{ returnedCount }} returned rows<span v-if="totalMatches !== null"> · server count {{ totalMatches }}</span>.</p>
+              </details>
+              <small v-if="resultObservedAt !== null">{{ resultCached ? 'Cached' : 'Fetched' }} at {{ new Date(resultObservedAt).toLocaleTimeString() }}. Prices can change.</small>
+            </footer>
           </template>
           <p v-else-if="!readiness.canSearch">Search is waiting for current session evidence. You can edit and save filters now; see readiness above for the next action.</p>
           <p v-else>Choose an item and press Search. Saved filters never fetch prices automatically.</p>

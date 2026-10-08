@@ -1,5 +1,6 @@
 import { inflateSync } from "node:zlib";
-import { sanitizeMarketSearchResult, type MarketSearchResponse } from "../shared/market-search";
+import { sanitizeMarketSearchResult, type MarketListing, type MarketSearchResponse } from "../shared/market-search";
+import { projectMarketListingItem } from "./market-listing-projection";
 import type { MarketRequestDiagnostics } from "./market-request-diagnostics";
 
 export type DirectMarketFailure =
@@ -77,7 +78,7 @@ export function inspectDirectMarketResponse(body: Buffer, statusCode: number | u
   try {
     const decoded: unknown = JSON.parse(inflateSync(Buffer.from(envelope.items, "base64"), { maxOutputLength: 4 * 1024 * 1024 }).toString("utf8"));
     if (!Array.isArray(decoded)) return directMarketFailure("invalid-items", diagnostics);
-    const listings = decoded.flatMap((item): { price: number; unitPrice?: number }[] => {
+    const listings = decoded.flatMap((item): MarketListing[] => {
       if (!item || typeof item !== "object" || typeof item.price !== "number" || !Number.isFinite(item.price) || item.price < 0) return [];
       // The retained gold listings have price_items=[]. Do not label item-priced
       // or malformed payment records as gold; this v1 has no barter projection.
@@ -87,8 +88,11 @@ export function inspectDirectMarketResponse(body: Buffer, statusCode: number | u
       // Only bounded ordinary decimal numbers are projected; no blob coercion.
       const unitPrice = typeof rawUnitPrice === "string" && rawUnitPrice.length <= 40
         && /^\d+(?:\.\d+)?$/.test(rawUnitPrice) ? Number(rawUnitPrice) : rawUnitPrice;
-      return typeof unitPrice === "number" && Number.isFinite(unitPrice) && unitPrice >= 0
-        ? [{ price: item.price, unitPrice }] : [{ price: item.price }];
+      const listing: MarketListing = { price: item.price };
+      if (typeof unitPrice === "number" && Number.isFinite(unitPrice) && unitPrice >= 0) listing.unitPrice = unitPrice;
+      const projected = projectMarketListingItem(item.item_data, item.fingerprint);
+      if (projected) listing.item = projected;
+      return [listing];
     });
     const totalMatches = typeof envelope.itemCount === "number" && Number.isSafeInteger(envelope.itemCount) && envelope.itemCount >= 0
       ? envelope.itemCount : undefined;

@@ -3,6 +3,7 @@ import { deflateSync } from "node:zlib";
 import { afterEach, expect, test, vi } from "vitest";
 import { marketContextFixture, marketSearchFixture } from "../fixtures/market";
 import type { DirectMarketWorkerResult } from "../../src/main/market-direct-response";
+import listingFixture from "../fixtures/market-listing-items.json";
 
 afterEach(() => {
   vi.resetModules();
@@ -28,7 +29,7 @@ async function runWorker(mode: string) {
         response.emit(mode, new Error("CANARY_PRIVATE_ERROR")); response.emit("end"); return;
       }
       if (mode === "oversized") { response.emit("data", Buffer.alloc(4 * 1024 * 1024 + 1)); response.emit("end"); return; }
-      const rows = mode === "empty" ? [] : mode === "cap" ? [null, { price: -1 },
+      const rows = mode === "items" ? [listingFixture.specimens[0].row, ...listingFixture.capturedRows] : mode === "empty" ? [] : mode === "cap" ? [null, { price: -1 },
         ...Array.from({ length: 25 }, (_, index) => ({ price: 25 - index, unit_price: "0.5", seller_uid: "CANARY_SELLER" })),
       ] : [
         { price: 500_000, seller_uid: "CANARY_SELLER", item_data: "CANARY_ITEM", fingerprint: "CANARY_FINGERPRINT" },
@@ -47,7 +48,8 @@ async function runWorker(mode: string) {
     return request;
   });
   vi.doMock("node:worker_threads", () => {
-    const thread = { parentPort: { postMessage }, workerData: { context: marketContextFixture, request: marketSearchFixture } };
+    const thread = { parentPort: { postMessage }, workerData: { context: marketContextFixture,
+      request: mode === "items" ? { itemMask: 1073766438, minSockets: 4, statFilters: [{ statId: 60, minimum: 400 }] } : marketSearchFixture } };
     return { ...thread, default: thread };
   });
   vi.doMock("node:https", () => ({ default: { request: httpsRequest } }));
@@ -95,4 +97,16 @@ test("production worker projects 20 listings from one larger page with no additi
     listings: Array.from({ length: 20 }, (_, index) => ({ price: index + 1, unitPrice: 0.5 })),
     returnedCount: 27, totalMatches: 101,
   } });
+});
+
+test("actual worker entry preserves observed item rolls through the request/response boundary", async () => {
+  const { result, form } = await runWorker("items");
+  expect(form.get("filter_masks")).toBe("[1073766438]");
+  expect(form.get("scroll_page")).toBe("0");
+  expect(JSON.parse(Buffer.from(form.get("stat_filter")!, "base64").toString("utf8"))).toEqual([{ statId: 60, filter: 2, statValue: 400 }]);
+  if (!result.response.ok) throw new Error(result.response.errorCode);
+  expect(result.response.result.listings.map(listing => listing.price)).toEqual([4000, 6000, 7000, 25000]);
+  const projected = result.response.result.listings[3].item!;
+  expect(Object.fromEntries(projected.stats!.map(stat => [stat.statId, stat.value]))).toEqual(listingFixture.specimens[0].expectedStats);
+  expect(result.response.result.listings[0].item).toEqual({ itemKey: "unique:4:0:62", identified: true, statsReason: "unsupported-definition" });
 });

@@ -6,6 +6,10 @@ import type { CompanionState, CompanionStateUpdate } from "../../src/shared/app-
 import type { MarketSearchResponse } from "../../src/shared/market-search";
 import { companionState } from "./fixtures";
 import { installMemoryPreferencesStorage } from "../fixtures/market";
+import listingFixture from "../fixtures/market-listing-items.json";
+import { deflateSync } from "node:zlib";
+import { inspectDirectMarketResponse } from "../../src/main/market-direct-response";
+import { handleMarketSearchRequest } from "../../src/main/market-search-handler";
 
 const storageKey = "hero-siege-companion:preferences:v1";
 const stubs = {
@@ -139,10 +143,11 @@ test("real tab handles unavailable, loading, rejected, empty and price states wh
     } });
     await reopened.get("form.market-editor").trigger("submit"); await flushPromises();
     expect(reopened.get(".market-results").text()).toContain("Cached at");
-    expect(reopened.get(".market-results").text()).toContain("Server returned count: 42");
+    expect(reopened.get(".market-result-details").text()).toContain("server count 42");
+    expect(reopened.get(".market-result-details").attributes("open")).toBeUndefined();
     expect(reopened.findAll(".market-price-table tbody tr")).toHaveLength(20);
     expect(reopened.findAll(".market-price-table tbody tr")[0].text()).toContain("200,000 gold");
-    expect(reopened.get(".market-results").text()).toContain("Showing 20 price listings from 101 returned page rows");
+    expect(reopened.get(".market-result-details").text()).toContain("20 shown · 101 returned rows");
     expect(reopened.get(".market-results").text()).toContain("100,000 gold per unit");
     emit(companionState({ marketReadiness: { ...companionState().marketReadiness, contextVersion: 2 } })); await flushPromises();
     expect(reopened.find(".market-price-table").exists()).toBe(false);
@@ -169,7 +174,7 @@ test("real Market results retain fractional unit prices without rounding small p
     await flushPromises();
     // Literal values are independent of the presentation formatter. These use
     // the test environment's existing en-US grouping/decimal convention.
-    expect(wrapper.findAll(".market-price-table tbody tr td:last-child").map(cell => cell.text())).toEqual([
+    expect(wrapper.findAll(".market-price-table .market-unit-price").map(cell => cell.text())).toEqual([
       "0.5 gold per unit", "1,234.56789 gold per unit", "0.0000001 gold per unit", "100,000 gold per unit", "Unavailable",
     ]);
     expect(wrapper.findAll(".market-price-table tbody tr td:first-of-type").map(cell => cell.text())).toEqual([
@@ -191,6 +196,55 @@ test("tab keyboard navigation wraps and focuses the selected tab", async () => {
     await wrapper.get("#view-tab-filter").trigger("keydown", { key: "ArrowRight" }); await flushPromises();
     expect(document.activeElement?.id).toBe("view-tab-market");
     expect(wrapper.get("#view-tab-market").attributes("tabindex")).toBe("0");
+  } finally { wrapper.unmount(); }
+});
+
+test("compressed listing data crosses main allowlist and real Market UI with ranges distinct from rolls", async () => {
+  const { api, emit } = setup();
+  const rows = [listingFixture.specimens[0].row, ...listingFixture.capturedRows];
+  const body = Buffer.from(JSON.stringify({ status: 1, itemCount: rows.length,
+    items: deflateSync(Buffer.from(JSON.stringify(rows))).toString("base64") }));
+  api.searchMarket.mockImplementation(request => handleMarketSearchRequest(request, {
+    search: async () => inspectDirectMarketResponse(body, 200).response,
+  } as never));
+  const wrapper = mount(App, { global: { stubs } });
+  try {
+    await flushPromises();
+    await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    await wrapper.get("#market-item-query").setValue("Battle Mage's Shield");
+    await wrapper.get(".market-options button").trigger("click");
+    expect(wrapper.get(".market-chosen-item").text()).toContain("Shield");
+    expect(wrapper.get(".market-heading").text()).toBe("MarketNew search");
+    expect(wrapper.get(".market-editor").text()).not.toMatch(/Edit saved filters|Choose an item, set your minimums|Price ascending/);
+    expect(wrapper.get(".market-filter-layout fieldset").find("legend").exists()).toBe(false);
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Base ranges are not listing rolls");
+    const manaRange = wrapper.findAll(".market-range-list > div").find(row => row.text().startsWith("Mana300"));
+    expect(manaRange?.text()).toBe("Mana300–450");
+    expect(api.searchMarket).not.toHaveBeenCalled();
+    await wrapper.get("form.market-editor").trigger("submit");
+    await flushPromises();
+    expect(api.searchMarket).toHaveBeenCalledOnce();
+    expect(api.searchMarket).toHaveBeenCalledWith({ itemMask: 1073766438, statFilters: [] });
+    const shield = wrapper.findAll(".market-listing-item")[3];
+    expect(shield.text()).toContain("Actual listing rolls");
+    expect(shield.findAll("li").find(row => row.text().startsWith("Mana439"))?.text()).toBe("Mana439");
+    expect(shield.text()).toContain("Enhanced Defense124%");
+    expect(wrapper.findAll(".market-listing-item")[0].text()).toContain("Stats unknown for this item");
+    const results = wrapper.get(".market-results");
+    expect(results.find("caption").exists()).toBe(false);
+    expect(results.get(".market-results-footer").text()).toContain("Fetched at");
+    expect(results.get(".market-result-details").attributes("open")).toBeUndefined();
+    expect(wrapper.get(".market-editor").text()).not.toContain("Actual listing rolls");
+    emit(companionState({ marketReadiness: { ...companionState().marketReadiness, contextVersion: 2 } }));
+    await flushPromises();
+    expect(results.find(".market-price-table").exists()).toBe(false);
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Mana300–450");
+    await wrapper.get(".market-chosen-item button").trigger("click");
+    await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
+    await wrapper.get(".market-options button").trigger("click");
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain("Catalog ranges are not available");
+    expect(wrapper.text()).not.toContain("Mana300–450");
   } finally { wrapper.unmount(); }
 });
 

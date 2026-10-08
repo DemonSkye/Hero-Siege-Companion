@@ -771,6 +771,7 @@ function toggleLog(log: LogEntry) {
         v-else-if="activeTab === 'market'"
         v-model:saved-name="marketSavedName"
         :item="marketSearchItem"
+          :item-key="marketItemKey"
         :readiness="state.marketReadiness"
         :min-sockets="marketSearchMinSockets"
         :stat-filters="marketSearchStatFilters"

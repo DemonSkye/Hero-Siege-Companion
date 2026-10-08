@@ -98,7 +98,8 @@ test("saved Market uses the accepted price page through real IPC, clears stale p
       "15,000 gold", "15,000 gold", "20,000 gold", "20,000 gold", "20,000 gold", "20,000 gold", "28,888 gold",
       "30,000 gold", "30,000 gold", "33,333 gold", "33,333 gold", "33,333 gold",
     ]);
-    await expect(workspace.locator(".market-results")).toContainText("Showing 20 price listings from 101 returned page rows");
+    await expect(workspace.locator(".market-result-details")).toContainText("20 shown · 101 returned rows");
+    await expect(workspace.locator(".market-result-details")).not.toHaveAttribute("open");
     expect(await attemptCount()).toBe(1);
     await observe("12");
     await expect(workspace.locator("tbody tr")).toHaveCount(0);

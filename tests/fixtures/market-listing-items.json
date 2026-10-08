@@ -1,0 +1,120 @@
+{
+  "provenance": {
+    "capturedRows": "First three rows of the retained accepted Companion Market response, 2026-10-07 17:03:24 UTC. Prices and compact definition/flag numbers retained; seeds replaced; fingerprint replaced; hashes and all seller/listing identifiers omitted. Not a native game capture.",
+    "specimens": "Retained compact item links plus separately observed identified tooltips for build 24868792. Seed/definition/flags retained as reconstruction inputs, fingerprint replaced, hash omitted, w=1 describes identified presentation. Rows/prices/unit prices are synthetic; not Market observations.",
+    "expectedStats": "Literal numbers from the two independently observed tooltips. Generation code does not read expectations."
+  },
+  "capturedRows": [
+    {
+      "price": 4000,
+      "unit_price": "4000",
+      "price_items": [],
+      "fingerprint": "SYNTHETIC-0-0-4",
+      "item_data": {
+        "m": 1,
+        "w": 1,
+        "d": 5,
+        "e": 11,
+        "b": 62,
+        "j": 0,
+        "c": 1,
+        "a": 1000
+      }
+    },
+    {
+      "price": 6000,
+      "unit_price": "6000",
+      "price_items": [],
+      "fingerprint": "SYNTHETIC-0-1-4",
+      "item_data": {
+        "m": 1,
+        "w": 1,
+        "d": 6,
+        "e": 11,
+        "b": 62,
+        "j": 0,
+        "c": 1,
+        "a": 1001
+      }
+    },
+    {
+      "price": 7000,
+      "unit_price": "7000",
+      "price_items": [],
+      "fingerprint": "SYNTHETIC-0-2-4",
+      "item_data": {
+        "d": 3,
+        "e": 11,
+        "w": 1,
+        "b": 62,
+        "j": 0,
+        "c": 1,
+        "m": 1,
+        "a": 1002
+      }
+    }
+  ],
+  "specimens": [
+    {
+      "name": "battle-mages-shield",
+      "row": {
+        "price": 25000,
+        "unit_price": "0.5",
+        "price_items": [],
+        "fingerprint": "SYNTHETIC-0-0-6",
+        "item_data": {
+          "c": 1,
+          "d": 4,
+          "e": 11,
+          "j": 0,
+          "m": 1,
+          "a": 370600734,
+          "b": 38,
+          "w": 1
+        }
+      },
+      "expectedStats": {
+        "20": 4,
+        "29": 124,
+        "60": 439,
+        "63": 45,
+        "101": 13,
+        "154": 62,
+        "157": 60,
+        "196": 30,
+        "201": 2
+      }
+    },
+    {
+      "name": "bobs-plywood",
+      "row": {
+        "price": 35000,
+        "unit_price": "0.5",
+        "price_items": [],
+        "fingerprint": "SYNTHETIC-0-1-6",
+        "item_data": {
+          "c": 1,
+          "d": 4,
+          "e": 11,
+          "j": 0,
+          "m": 1,
+          "a": 574417924,
+          "b": 47,
+          "w": 1
+        }
+      },
+      "expectedStats": {
+        "29": 58,
+        "33": 27,
+        "72": 8,
+        "73": 34,
+        "154": 17,
+        "157": 40,
+        "158": 50,
+        "185": 103,
+        "186": 40,
+        "187": 10
+      }
+    }
+  ]
+}

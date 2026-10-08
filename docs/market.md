@@ -30,6 +30,22 @@ reused, still displays only its lowest two cards.
 Matching relies on the server. Unsupported game filter operators are not exposed.
 No automated purchase, polling, alert or pagination runs from saved entries.
 
+Catalog base ranges sit beside the filters on wide layouts and above the saved
+name on narrow layouts. They describe unmodified definitions, not listing rolls
+or additional filter capabilities. Verified range/reconstruction coverage currently
+includes Battle Mage's Shield, Bob's Piece of Plywood, and Tiny Planet, from the
+build-24868792 constructor translations. Other definitions show ranges unavailable.
+The Tiny Planet roll has weaker recalled-value validation than the two observed
+shield tooltips.
+
+Results place variant and stat information beside prices. Identified, supported
+unmodified listings show their reconstructed rolls; other definitions, modified
+variants and unidentified items have explicit unknown/hidden states. Base defense
+and block values stay labeled as base values rather than claiming full tooltip
+arithmetic. Main discards compact seeds, hashes, fingerprints and seller data
+before IPC. Result limits are collapsed below the table, with fetch/cache time
+last. Loading/saving filters still never fetches results.
+
 ## Owners and verification
 
 - `lib/market-items.ts`: supported catalog selection and reversible legacy migration.
@@ -49,6 +65,12 @@ No automated purchase, polling, alert or pagination runs from saved entries.
   result reduction. Checksum/signature formulas remain unchanged.
 - `main/market-search-handler.ts`: request validation and an allowlisted, bounded
   response for the preload IPC capability, including safe error/timing metadata.
+- `main/market-listing-projection.ts`, `shared/market-listing-item.ts` and
+  `shared/item-stat-ranges.ts`: bounded main-only reconstruction, safe listing
+  contract and independently checked base-definition ranges. Stat display coverage
+  does not expand `shared/market-search.ts`'s filter catalog.
+- `components/MarketListingDetails.vue`: variant/roll display with honest unknown
+  and unidentified states.
 
 Run focused Market specs in `tests/main` and `tests/renderer`, then the offline suite,
 typecheck and builds. `tests/e2e/electron-market-saved-filters.spec.cjs`, the mainline
@@ -60,3 +82,8 @@ Companion response; its credentials and endpoint are substituted. Worker entry,
 composed runtime and real Electron restart checks reuse this projection with an
 independent 20-price expectation. The response body and request oracle are unchanged.
 These offline checks do not establish fresh native or server acceptance.
+`market-listing-items.json` labels retained accepted-response rows separately from
+synthetic listing rows derived from compact links and observed tooltip values.
+Worker-entry, reducer/IPC/cache/UI and responsive Electron checks retain production
+glue while replacing external transport. Their expected tooltip values are
+independent of the reconstruction code.
