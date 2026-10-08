@@ -135,7 +135,8 @@ export class CapturedSessionContextStore {
   observeCaptureUpdate(update: Pick<CaptureUpdate, "observationGap" | "observationGapFlow" | "running" | "status" | "connections">): void {
     const interrupted = update.running === false || update.status === "error";
     if (update.observationGap || interrupted) {
-      this.invalidateForObservationGap(interrupted ? undefined : update.observationGapFlow);
+      this.invalidateForObservationGap(!interrupted && update.observationGapFlow
+        ? [packetFlowKey(update.observationGapFlow)] : undefined);
     }
     if (update.connections) this.observeConnections(update.connections);
   }
@@ -145,7 +146,7 @@ export class CapturedSessionContextStore {
     const key = packetFlowKey(packet);
     if ((packet.flags & 2) !== 0) this.retiredFlows.delete(key);
     if ((packet.flags & 5) !== 0) this.retiredFlows.add(key);
-    this.invalidateForObservationGap(packet);
+    this.invalidateForObservationGap([key]);
   }
 
   private observeConnections(connections: readonly CaptureConnection[]): void {
@@ -155,24 +156,23 @@ export class CapturedSessionContextStore {
     // capture's packet grace period. Keep FIN/RST tombstones only for active tuples.
     for (const key of this.retiredFlows) if (!active.has(key)) this.retiredFlows.delete(key);
     const transient = [this.evidence.unique_account_id, this.evidence.crossregion_identifier];
-    for (const item of transient) {
+    const interrupted = transient.flatMap(item => {
       const key = item && payloadFlowKey(item);
-      if (key && !active.has(key)) {
-        this.invalidateForObservationGap();
-        return;
-      }
-    }
+      return key && !active.has(key) ? [key] : [];
+    });
+    if (interrupted.length) this.invalidateForObservationGap(interrupted);
   }
 
-  private invalidateForObservationGap(flow?: CaptureUpdate["observationGapFlow"]): void {
+  private invalidateForObservationGap(affectedFlows?: readonly string[]): void {
     this.records.clear(true);
-    const sources = Object.values(this.evidence);
+    const sourceFlows = Object.values(this.evidence).map(item => payloadFlowKey(item));
     // Unknown attribution cannot establish continuity. A proved unrelated flow can.
-    if (flow && sources.length && sources.every(item => payloadFlowKey(item) !== null
-      && payloadFlowKey(item) !== packetFlowKey(flow))) return;
+    if (affectedFlows && sourceFlows.length && sourceFlows.every(key => key !== null
+      && !affectedFlows.includes(key))) return;
     this.observationInterrupted = true;
-    for (const item of sources) {
-      const key = payloadFlowKey(item);
+    // Clear credential trust for the whole context, but retire only interrupted
+    // sources on replacement. Healthy sources can supply fresh fields in either order.
+    for (const key of affectedFlows ?? sourceFlows) {
       if (key) this.interruptedFlows.add(key);
     }
     this.clearContext("observation-gap", true);

@@ -69,7 +69,7 @@ function harness(remotePort = replayScope.remotePort) {
   }
   const dispose = () => { provider.dispose(); controller.dispose(); store.dispose(); };
   cleanups.push(dispose);
-  return { store, provider, feed, fields, identity, update, readiness: () => readiness, nextSequence: () => sequences.get(5000) ?? 101,
+  return { store, provider, feed, fields, identity, update, readiness: () => readiness, nextSequence: (localPort = 5000) => sequences.get(localPort) ?? 101,
     syncConnections: (connections: CaptureConnection[]) => { update({ connections }); capture.refreshCaptureFlows(connections); } };
 }
 
@@ -186,6 +186,70 @@ describe("production capture to Market trust after lost evidence", () => {
     f.feed(old.subarray(9, 23), { sequence: start + 9 });
     expect(f.store.marketContext()?.fields.account_id).toBe("na-99");
     expect(f.readiness().contextVersion).toBe(version);
+  });
+
+  test.each(["packet-loss", "connection-loss"].flatMap(loss =>
+    ["account-first", "transient-first"].map(order => ({ loss, order }))))("healthy account flow survives $loss with $order recovery", async ({ loss, order }) => {
+    const f = harness();
+    const account = "account_id=na-42&season=11&hardcore=0&beta=0";
+    const transient = "unique_account_id=12345678901234567890&crossregion_identifier=1111111111&beta=0";
+    f.fields(account, 5000); f.fields(transient, 6000);
+    expect(f.readiness().canSearch).toBe(true);
+    if (loss === "packet-loss") {
+      f.feed(frameDiagnosticBody(requestDiagnosticBody(3, "mailbox/get_mail", 83, transient), 11), { localPort: 6000, truncated: true });
+    } else {
+      f.syncConnections([connection(5000)]);
+      f.syncConnections([connection(5000), connection(6000)]);
+    }
+    expect(f.readiness().canSearch).toBe(false);
+    expect((await f.provider.search(replayMarketRequest)).ok).toBe(false);
+    const freshTransient = transient.replace("1111111111", "3333333333");
+    if (order === "account-first") f.fields(account, 5000);
+    else f.fields(freshTransient, 6000);
+    // Even healthy pre-loss account/mode values cannot complete fresh credentials.
+    expect(f.readiness().canSearch).toBe(false);
+    expect((await f.provider.search(replayMarketRequest)).ok).toBe(false);
+    expect(workers).toHaveLength(0);
+    if (order === "account-first") f.fields(freshTransient, 6000);
+    else f.fields(account, 5000);
+    expect(f.readiness()).toMatchObject({ phase: "ready", canSearch: true });
+    expect(f.store.marketContext()?.fields).toMatchObject({ account_id: "na-42", crossregion_identifier: "3333333333", season: "11", hardcore: "0" });
+    // The healthy continuous source must also accept later normal mode evidence.
+    f.fields(account.replace("hardcore=0", "hardcore=1"), 5000);
+    expect(f.store.marketContext()?.fields.hardcore).toBe("1");
+    const { pending, worker } = await dispatch(f); worker.emit("message", success);
+    expect((await pending).ok).toBe(true);
+  });
+
+  test.each(["account-first", "transient-first"])("healthy source remains usable and late interrupted reassembly stays rejected after %s replacement recovery", async order => {
+    const f = harness();
+    f.syncConnections([connection(5000), connection(6000), connection(7000)]);
+    const account = "account_id=na-42&season=11&hardcore=0&beta=0";
+    const transient = "unique_account_id=12345678901234567890&crossregion_identifier=1111111111&beta=0";
+    f.fields(account, 5000); f.fields(transient, 6000);
+    const oldRequest = await dispatch(f);
+    const oldFrame = frameDiagnosticBody(requestDiagnosticBody(3, "mailbox/get_mail", 83, transient), 11);
+    const start = f.nextSequence(6000);
+    f.feed(oldFrame.subarray(0, 9), { localPort: 6000, sequence: start });
+    f.feed(oldFrame.subarray(23), { localPort: 6000, sequence: start + 23 });
+    expect(f.readiness().canSearch).toBe(false);
+    const freshTransient = transient.replace("1111111111", "3333333333");
+    if (order === "account-first") f.fields(account, 5000);
+    else f.fields(freshTransient, 7000);
+    expect(f.readiness().canSearch).toBe(false);
+    if (order === "account-first") f.fields(freshTransient, 7000);
+    else f.fields(account, 5000);
+    expect(f.readiness().canSearch).toBe(true);
+    const version = f.readiness().contextVersion;
+    // B remains in the inventory: the interrupted-source retirement must reject it.
+    f.feed(oldFrame.subarray(9, 23), { localPort: 6000, sequence: start + 9 });
+    oldRequest.worker.emit("message", success);
+    expect((await oldRequest.pending).ok).toBe(false);
+    expect(oldRequest.worker.terminate).toHaveBeenCalledOnce();
+    expect(f.readiness()).toMatchObject({ phase: "ready", canSearch: true, contextVersion: version });
+    expect(f.store.marketContext()?.fields.crossregion_identifier).toBe("3333333333");
+    f.fields(account.replace("hardcore=0", "hardcore=1"), 5000);
+    expect(f.store.marketContext()?.fields.hardcore).toBe("1");
   });
 
   test("old cache and in-flight results cannot survive loss even when fresh context values are identical", async () => {
