@@ -25,6 +25,9 @@ export function marketReadinessDisplay(readiness: MarketReadiness): { label: str
         ? { label: "Market not ready", detail: "Start capture. " + MARKET_CONTEXT_RECOVERY_DETAIL }
         : { label: "Market not ready", detail: "Connect to Hero Siege. " + MARKET_CONTEXT_RECOVERY_DETAIL };
     case "collecting":
+      if (readiness.reason === "observation_gap") {
+        return { label: "Market not ready", detail: "Capture lost session information. Waiting for fresh game information with capture running." };
+      }
       if (readiness.reason === "endpoint_mismatch") {
         return { label: "Market not ready", detail: "Waiting for matching session information. " + MARKET_CONTEXT_RECOVERY_DETAIL };
       }

@@ -1,5 +1,8 @@
 import type { MarketRegionDirectory } from "./market-region-directory";
 import type { MarketReadiness } from "../shared/market-readiness";
+import type { CaptureConnection } from "../shared/app-state";
+import type { CaptureUpdate } from "./capture";
+import type { CapturedTcpLifecycle } from "./packet-decoder";
 import { MarketRecordEvidenceStore, type FrozenMarketRecordEvidence } from "./market-record-evidence";
 import {
   extractSessionContextMessages,
@@ -85,6 +88,10 @@ export class CapturedSessionContextStore {
   private readonly listeners = new Set<() => void>();
   private readonly readinessListeners = new Set<() => void>();
   private readonly records = new MarketRecordEvidenceStore();
+  private observationInterrupted = false;
+  private readonly retiredFlows = new Set<string>();
+  private readonly interruptedFlows = new Set<string>();
+  private activeFlows: Set<string | null> | null = null;
 
   constructor(
     private readonly log: (type: string, data: Record<string, unknown>) => void = () => undefined,
@@ -97,17 +104,24 @@ export class CapturedSessionContextStore {
     if (signature === this.processSignature) return;
     this.processSignature = signature;
     this.generation += 1;
+    this.retiredFlows.clear();
+    this.interruptedFlows.clear();
+    this.activeFlows = null;
+    this.observationInterrupted = false;
     this.records.clear();
     this.clearContext("game-generation", true);
   }
 
   observe(payload: CapturedSessionPayload): void {
     if (!this.processSignature || payload.direction !== "outbound") return;
+    const flow = payloadFlowKey(payload);
+    if (flow && (this.retiredFlows.has(flow) || (this.activeFlows && !this.activeFlows.has(flow)))) return;
     for (const message of extractSessionContextMessages(payload.text)) {
       this.records.observe(payload, message, this.generation, payload.observedAt ?? this.now());
       this.observeMessage(payload, message);
     }
     this.qualifyCurrentAccount();
+    if (isComplete(this.fields) && this.transientEndpoint(this.now())) this.observationInterrupted = false;
     this.notifyReadiness();
   }
 
@@ -117,7 +131,52 @@ export class CapturedSessionContextStore {
     this.notifyReadiness();
   }
   marketRecordSnapshot(): FrozenMarketRecordEvidence { return this.records.freeze(this.generation, this.now()); }
-  clearMarketRecordEvidenceForGap(): void { this.records.clear(true); }
+  /** Loss changes credential trust as well as diagnostic evidence. Public metadata survives. */
+  observeCaptureUpdate(update: Pick<CaptureUpdate, "observationGap" | "observationGapFlow" | "running" | "status" | "connections">): void {
+    const interrupted = update.running === false || update.status === "error";
+    if (update.observationGap || interrupted) {
+      this.invalidateForObservationGap(interrupted ? undefined : update.observationGapFlow);
+    }
+    if (update.connections) this.observeConnections(update.connections);
+  }
+
+  observeTcpLifecycle(packet: CapturedTcpLifecycle): void {
+    if ((packet.flags & 7) === 0) return;
+    const key = packetFlowKey(packet);
+    if ((packet.flags & 2) !== 0) this.retiredFlows.delete(key);
+    if ((packet.flags & 5) !== 0) this.retiredFlows.add(key);
+    this.invalidateForObservationGap(packet);
+  }
+
+  private observeConnections(connections: readonly CaptureConnection[]): void {
+    const active = new Set(connections.map(connection => payloadFlowKey(connection)));
+    this.activeFlows = active;
+    // Absent flows are rejected by the current connection inventory, even during
+    // capture's packet grace period. Keep FIN/RST tombstones only for active tuples.
+    for (const key of this.retiredFlows) if (!active.has(key)) this.retiredFlows.delete(key);
+    const transient = [this.evidence.unique_account_id, this.evidence.crossregion_identifier];
+    for (const item of transient) {
+      const key = item && payloadFlowKey(item);
+      if (key && !active.has(key)) {
+        this.invalidateForObservationGap();
+        return;
+      }
+    }
+  }
+
+  private invalidateForObservationGap(flow?: CaptureUpdate["observationGapFlow"]): void {
+    this.records.clear(true);
+    const sources = Object.values(this.evidence);
+    // Unknown attribution cannot establish continuity. A proved unrelated flow can.
+    if (flow && sources.length && sources.every(item => payloadFlowKey(item) !== null
+      && payloadFlowKey(item) !== packetFlowKey(flow))) return;
+    this.observationInterrupted = true;
+    for (const item of sources) {
+      const key = payloadFlowKey(item);
+      if (key) this.interruptedFlows.add(key);
+    }
+    this.clearContext("observation-gap", true);
+  }
 
   marketReadiness(): MarketReadiness {
     const unique = this.evidence.unique_account_id;
@@ -126,7 +185,7 @@ export class CapturedSessionContextStore {
       ? Math.min(unique.observedAt, crossregion.observedAt) + TRANSIENT_IDENTITY_TTL_MS : null;
     const snapshot: MarketReadiness = {
       contextVersion: this.readinessContextVersion,
-      phase: "collecting", reason: "missing_fields",
+      phase: "collecting", reason: this.observationInterrupted ? "observation_gap" : "missing_fields",
       missingFields: SESSION_CONTEXT_FIELDS.filter((field) => this.fields[field] === undefined),
       sessionCurrent: Boolean(this.processSignature && this.transientEndpoint(this.now())),
       regionQualified: isRegionQualifiedAccount(this.fields.account_id),
@@ -216,6 +275,9 @@ export class CapturedSessionContextStore {
     this.apiHardcore = this.saveHardcore = undefined;
     this.directory = null;
     this.processSignature = "";
+    this.retiredFlows.clear();
+    this.interruptedFlows.clear();
+    this.activeFlows = null;
   }
 
   private transientEndpoint(currentTime: number): { address: string; port: number } | null {
@@ -255,7 +317,21 @@ export class CapturedSessionContextStore {
     const regionChanged = isRegionQualifiedAccount(candidates.account_id) && isRegionQualifiedAccount(current.account_id)
       && candidates.account_id !== current.account_id;
     const reset = Boolean(accountChanged || uniqueChanged || regionChanged);
-    if (reset) this.clearContext("identity", true);
+    const flow = payloadFlowKey(payload);
+    if (reset) {
+      this.retireOtherFlows(flow, Object.values(this.evidence).map(item => payloadFlowKey(item)));
+      this.clearContext("identity", true);
+    }
+    if (candidates.unique_account_id && candidates.crossregion_identifier && flow) {
+      // A complete newly observed transient pair can replace an interrupted
+      // source. Its late reassembly must not revive the prior account/session.
+      this.retireOtherFlows(flow, this.interruptedFlows);
+      this.interruptedFlows.clear();
+      if (current.crossregion_identifier && candidates.crossregion_identifier !== current.crossregion_identifier) {
+        this.retireOtherFlows(flow, [this.evidence.unique_account_id, this.evidence.crossregion_identifier]
+          .map(item => item ? payloadFlowKey(item) : null));
+      }
+    }
 
     if (message.fields.account_id && message.source !== "region-directory") {
       this.accountSources = [{ ...payload, text: "" }, ...this.accountSources.filter((source) =>
@@ -342,6 +418,11 @@ export class CapturedSessionContextStore {
     this.notifyReadiness();
   }
 
+  private retireOtherFlows(current: string | null, flows: Iterable<string | null>): void {
+    if (!current) return;
+    for (const key of flows) if (key && key !== current) this.retiredFlows.add(key);
+  }
+
   marketProvenance(): MarketContextProvenance {
     const endpoint = this.transientEndpoint(this.now());
     const evidence = SESSION_CONTEXT_FIELDS.flatMap(field => this.evidence[field] ? [this.evidence[field]!] : []);
@@ -386,6 +467,13 @@ export class CapturedSessionContextStore {
 
 function sameEndpoint(left: Pick<CapturedSessionPayload, "remoteAddress" | "remotePort">, right: Pick<CapturedSessionPayload, "remoteAddress" | "remotePort">): boolean {
   return left.remoteAddress === right.remoteAddress && left.remotePort === right.remotePort;
+}
+function packetFlowKey(packet: Pick<CapturedTcpLifecycle, "src" | "dst" | "srcPort" | "dstPort">): string {
+  return [`${packet.src}:${packet.srcPort}`, `${packet.dst}:${packet.dstPort}`].sort().join("|");
+}
+function payloadFlowKey(payload: Pick<CapturedSessionPayload, "remoteAddress" | "remotePort" | "localAddress" | "localPort">): string | null {
+  if (!payload.localAddress || payload.localPort === undefined) return null;
+  return packetFlowKey({ src: payload.localAddress, srcPort: payload.localPort, dst: payload.remoteAddress, dstPort: payload.remotePort });
 }
 function sameFlow(left: Pick<CapturedSessionPayload, "remoteAddress" | "remotePort" | "localAddress" | "localPort">, right: Pick<CapturedSessionPayload, "remoteAddress" | "remotePort" | "localAddress" | "localPort">): boolean | null {
   if (!left.localAddress || !right.localAddress || left.localPort === undefined || right.localPort === undefined) return null;

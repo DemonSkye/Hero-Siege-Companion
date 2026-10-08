@@ -58,6 +58,8 @@ export interface CaptureUpdate {
   observationGap?: true;
   /** This gameplay handle changed; the separate SZ API listener may remain continuous. */
   observationGapSource?: "gameplay-reconfigure";
+  /** Main-only attribution; unrelated continuous flows can retain their context. */
+  observationGapFlow?: Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">;
   connections?: CaptureConnection[];
   health?: Partial<CaptureHealth>;
   events?: ParsedEvent[];
@@ -135,7 +137,10 @@ export class CaptureService {
   private lastPacketAt = 0;
   private lastPayloadAt = 0;
   private lastEventAt = 0;
-  private readonly packetBuffers = new PacketBuffers();
+  private readonly packetBuffers = new PacketBuffers(packet => {
+    const { src, dst, srcPort, dstPort } = packet;
+    this.emit({ observationGap: true, observationGapFlow: { src, dst, srcPort, dstPort } });
+  });
   private packetsSeen = 0;
   private payloadsAssembled = 0;
   private messagesDecoded = 0;
@@ -601,12 +606,19 @@ export class CaptureService {
     const parsedPacket = getTcpSegment(this.buffer, nbytes, this.activeLinkType);
     const endpoints = parsedPacket ?? getTcpPacketEndpoints(this.buffer, nbytes, this.activeLinkType);
     if (!endpoints || !this.isCaptureFlowPacket(endpoints)) return;
-    if ((!parsedPacket || truncated) && ([6668, 6669].includes(endpoints.srcPort) || [6668, 6669].includes(endpoints.dstPort))) {
-      this.emit({ observationGap: true });
+    if (!parsedPacket || truncated) {
+      this.packetBuffers.discardFlow(endpoints);
+      const { src, dst, srcPort, dstPort } = endpoints;
+      this.emit({ observationGap: true, observationGapFlow: { src, dst, srcPort, dstPort } });
     }
     if (!parsedPacket) return;
+    // A reused tuple's SYN belongs to the new stream, before any context payload.
+    if (!truncated && (parsedPacket.flags & 2) !== 0) {
+      this.packetBuffers.discardFlow(parsedPacket);
+      this.observeTcpLifecycleSafely(parsedPacket);
+    }
     if (parsedPacket.payloadLength === 0) {
-      if (!truncated) this.observeTcpLifecycleSafely(parsedPacket);
+      if (!truncated && (parsedPacket.flags & 2) === 0) this.observeTcpLifecycleSafely(parsedPacket);
       return;
     }
 
@@ -680,7 +692,7 @@ export class CaptureService {
         log: observedLogs.length === 1 ? observedLogs[0] : undefined,
         logs: observedLogs.length > 1 ? observedLogs : undefined,
       });
-      this.observeTcpLifecycleSafely(parsedPacket);
+      if ((parsedPacket.flags & 2) === 0) this.observeTcpLifecycleSafely(parsedPacket);
       return;
     }
 
@@ -704,13 +716,14 @@ export class CaptureService {
       log: logs.length === 1 ? logs[0] : undefined,
       logs: logs.length > 1 ? logs : undefined,
     });
-    this.observeTcpLifecycleSafely(parsedPacket);
+    if ((parsedPacket.flags & 2) === 0) this.observeTcpLifecycleSafely(parsedPacket);
   }
 
   private observeTcpLifecycleSafely(packet: ParsedPayload): void {
     if ((packet.flags & 7) === 0) return;
-    // Defer until this packet's log boundaries have passed: invalidation may
-    // restore the user's raw logging preference synchronously.
+    if ((packet.flags & 5) !== 0) this.packetBuffers.discardFlow(packet);
+    // Packet-entry logging preferences stay frozen if invalidation restores the
+    // user's raw logging preference synchronously.
     const { src, dst, srcPort, dstPort, flags } = packet;
     try { this.observeTcpLifecycle({ src, dst, srcPort, dstPort, flags }); }
     catch { /* Lifecycle observation must not interrupt normal capture. */ }
@@ -940,6 +953,8 @@ export class CaptureService {
   }
 
   private refreshCaptureFlows(connections: CaptureConnection[], now = Date.now()): void {
+    this.packetBuffers.retainFlows(connections.map(connection => ({ src: connection.localAddress, srcPort: connection.localPort,
+      dst: connection.remoteAddress, dstPort: connection.remotePort })));
     for (const connection of connections) {
       this.captureFlowExpirations.set(captureConnectionFlowKey(connection), now + CAPTURE_FLOW_GRACE_MS);
     }

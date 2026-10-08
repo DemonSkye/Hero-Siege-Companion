@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { getPayload, getTcpPacketEndpoints, getTcpSegment, isLikelyParseablePayload, PacketBuffers, type ParsedPayload } from "../../src/main/packet-decoder";
 import { captureMessages, messageToEvents } from "../../src/shared/parser";
 import { StatsEngine } from "../../src/shared/stats";
@@ -15,6 +15,52 @@ describe("diagnostic TCP control segments", () => {
     const bytes = tcpPacket(Buffer.alloc(0), "RAW", { flags });
     expect(getTcpSegment(bytes, bytes.length, "RAW")).toMatchObject({ flags, seq: 10, ack: 99, payloadLength: 0 });
     expect(getPayload(bytes, bytes.length, "RAW")).toBeNull();
+  });
+});
+
+describe("TCP evidence loss notifications", () => {
+  test("signals an unresolved sequence hole once, preserves retransmission recovery and detects the next hole", () => {
+    const gap = vi.fn(), buffers = new PacketBuffers(gap), frame = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=42\0");
+    expect(buffers.push(parsedPayload(frame.subarray(0, 9), { seq: 100 }))).toEqual([]);
+    expect(buffers.push(parsedPayload(frame.subarray(23), { seq: 123 }))).toEqual([]);
+    buffers.push(parsedPayload(frame.subarray(23), { seq: 123 }));
+    expect(gap).toHaveBeenCalledOnce();
+    expect(buffers.push(parsedPayload(frame.subarray(9, 23), { seq: 109 }))).toHaveLength(1);
+    buffers.push(parsedPayload(frame, { seq: 100 + frame.length + 10 }));
+    expect(gap).toHaveBeenCalledTimes(2);
+  });
+
+  test("an idle incomplete stream signals discarded evidence; an idle fully consumed stream does not", () => {
+    const gap = vi.fn(), buffers = new PacketBuffers(gap), frame = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=42\0");
+    buffers.push(parsedPayload(frame.subarray(0, 9)), 0);
+    expect(buffers.push(parsedPayload(frame, { seq: 900 }), 30_001)).toHaveLength(1);
+    expect(gap).toHaveBeenCalledOnce();
+    expect(buffers.push(parsedPayload(frame, { seq: 1500 }), 60_002)).toHaveLength(1);
+    expect(gap).toHaveBeenCalledOnce();
+  });
+
+  test("pending-segment and byte capacity drops report lost evidence", () => {
+    const gap = vi.fn(), buffers = new PacketBuffers(gap);
+    buffers.push(parsedPayload(Buffer.from([1]), { seq: 100 }));
+    for (let index = 0; index < 257; index++) buffers.push(parsedPayload(Buffer.from([1]), { seq: 200 + 2 * index }));
+    expect(gap).toHaveBeenCalledTimes(2); // Initial hole and subsequent stream eviction.
+    expect(buffers.stats().streams).toBe(0);
+    gap.mockClear();
+    buffers.push(parsedPayload(Buffer.alloc(1_000_001, 0xff), { seq: 900 }));
+    expect(gap).toHaveBeenCalledOnce(); expect(buffers.stats().streams).toBe(0);
+  });
+
+  test("flow replacement erases old partial bytes and stream capacity eviction signals only incomplete evidence", () => {
+    const gap = vi.fn(), buffers = new PacketBuffers(gap), frame = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=42\0");
+    buffers.push(parsedPayload(frame.subarray(0, 9)));
+    buffers.retainFlows([]);
+    expect(gap).toHaveBeenCalledOnce(); expect(buffers.stats().streams).toBe(0);
+    gap.mockClear();
+    for (let port = 1000; port <= 1128; port++) buffers.push(parsedPayload(frame.subarray(0, 9), { srcPort: port }), port);
+    expect(buffers.stats().streams).toBe(128); expect(gap).toHaveBeenCalledOnce();
+    gap.mockClear();
+    buffers.discardFlow(parsedPayload(frame, { srcPort: 1128 }));
+    expect(buffers.stats().streams).toBe(127); expect(gap).not.toHaveBeenCalled();
   });
 });
 

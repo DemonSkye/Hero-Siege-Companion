@@ -576,7 +576,7 @@ describe("CaptureService lifecycle", () => {
     internals.activeLocalAddress = "10.0.0.2"; internals.activeLinkType = "RAW"; internals.buffer = capturedPacket;
     internals.refreshCaptureFlows([connection({ remotePort: 6669 })], Date.now());
     internals.processPacket(capturedPacket.length, true);
-    expect(onGap).toHaveBeenCalledWith({ observationGap: true });
+    expect(onGap).toHaveBeenCalledWith(expect.objectContaining({ observationGap: true }));
     for (const logPath of [debugPath, widePath]) {
       const contents = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
       expect(contents).not.toContain("CANARY_CONNECT_ACCOUNT"); expect(contents).not.toContain("CANARY_CONNECT_UID");
@@ -833,10 +833,10 @@ describe("CaptureService lifecycle", () => {
     try {
       const pending = provider.search({ itemMask: 1, statFilters: [] });
       await vi.waitFor(() => expect(request.end).toHaveBeenCalledOnce());
-      store.clearMarketRecordEvidenceForGap();
+      store.observeCaptureUpdate({ observationGap: true });
       const response = Object.assign(new EventEmitter(), { statusCode: 200 }); receive(response);
       response.emit("data", Buffer.from('{"status":-3,"message":"checksum"}')); response.emit("end");
-      await expect(pending).resolves.toMatchObject({ ok: false, errorCode: "checksum_rejected" });
+      await expect(pending).resolves.toMatchObject({ ok: false, errorCode: "template_unavailable" });
       expect(progress.at(-1)).toMatchObject({ requestContext: { recordComparison: { nativeMarketDigestObserved: true,
         api: [{ nativeDigest: { route: "market/market_player_get_items_on_sale", nativeDigestAvailable: true } }] } } });
       expect(JSON.stringify(logs.mock.calls)).not.toMatch(/CAPTURE_CANARY|424242|aaaaaaa|203\.0\.113/);

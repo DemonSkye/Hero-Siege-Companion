@@ -41,7 +41,7 @@ describe("native TCP player-sales digest diagnostic", () => {
     expect(JSON.stringify(projection)).not.toMatch(/424242|NATIVE_SALES_CANARY|192\.0\.2/);
     f.observe(text(route, { checksum: "b".repeat(64), season: "12" }));
     expect(buildMarketRequestDiagnostics(frozen, body).recordComparison).toEqual(projection);
-    f.store.clearMarketRecordEvidenceForGap();
+    f.store.observeCaptureUpdate({ observationGap: true });
     expect(f.store.marketRecordSnapshot().api).toEqual([]);
     expect(frozen.diagnosticRecords?.api[0]).toHaveProperty("nativeMarket.checksum", digest);
     f.store.dispose();

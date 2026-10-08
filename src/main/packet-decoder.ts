@@ -50,10 +50,13 @@ interface BufferedTcpStream {
   allowInitialPrepend: boolean;
   pending: Map<number, PendingSegment>;
   lastSeenAt: number;
+  gapPending: boolean;
 }
 
 export class PacketBuffers {
   private readonly streams = new Map<string, BufferedTcpStream>();
+
+  constructor(private readonly onObservationGap: (packet: ParsedPayload) => void = () => undefined) {}
 
   push(packet: ParsedPayload, now = Date.now()): CompletedPayload[] {
     const sourceKey = directionalFlowKey(packet);
@@ -61,6 +64,7 @@ export class PacketBuffers {
     let stream = this.streams.get(sourceKey);
     if (stream && now - stream.lastSeenAt > MAX_STREAM_IDLE_MS) {
       this.streams.delete(sourceKey);
+      if (streamBufferedBytes(stream) > 0) this.onObservationGap(stream.framePacket);
       stream = undefined;
     }
     if (!stream) {
@@ -75,6 +79,7 @@ export class PacketBuffers {
         allowInitialPrepend: true,
         pending: new Map(),
         lastSeenAt: now,
+        gapPending: false,
       };
       this.streams.set(sourceKey, stream);
       this.pruneStreams();
@@ -83,15 +88,33 @@ export class PacketBuffers {
     stream.lastSeenAt = now;
     this.acceptSegment(stream, { packet, sequence, payload: packet.payload });
     this.drainPendingSegments(stream);
+    if (stream.pending.size === 0) stream.gapPending = false;
     const completed = drainApplicationFrames(stream, packet);
     if (streamBufferedBytes(stream) > MAX_STREAM_BUFFER_BYTES || stream.pending.size > MAX_PENDING_SEGMENTS) {
       this.streams.delete(sourceKey);
+      this.onObservationGap(packet);
     }
     return completed;
   }
 
   clear(): void {
     this.streams.clear();
+  }
+
+  /** Discard both directions after known loss or a TCP connection boundary. */
+  discardFlow(packet: Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">): void {
+    this.streams.delete(directionalFlowKey(packet));
+    this.streams.delete(directionalFlowKey({ src: packet.dst, dst: packet.src, srcPort: packet.dstPort, dstPort: packet.srcPort }));
+  }
+
+  retainFlows(flows: readonly Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">[]): void {
+    const active = new Set(flows.flatMap(flow => [directionalFlowKey(flow),
+      directionalFlowKey({ src: flow.dst, dst: flow.src, srcPort: flow.dstPort, dstPort: flow.srcPort })]));
+    for (const [key, stream] of this.streams) {
+      if (active.has(key)) continue;
+      this.streams.delete(key);
+      if (streamBufferedBytes(stream) > 0) this.onObservationGap(stream.framePacket);
+    }
   }
 
   stats(): { streams: number; pendingSegments: number; bufferedBytes: number } {
@@ -129,6 +152,10 @@ export class PacketBuffers {
 
     const delta = sequenceDelta(acceptedSegment.sequence, stream.nextSequence);
     if (delta > 0) {
+      if (!stream.gapPending) {
+        stream.gapPending = true;
+        this.onObservationGap(segment.packet);
+      }
       const existing = stream.pending.get(acceptedSegment.sequence);
       if (!existing || existing.payload.length < acceptedSegment.payload.length) {
         stream.pending.set(acceptedSegment.sequence, acceptedSegment);
@@ -173,7 +200,9 @@ export class PacketBuffers {
         oldestAt = stream.lastSeenAt;
       }
       if (!oldestKey) return;
+      const oldest = this.streams.get(oldestKey)!;
       this.streams.delete(oldestKey);
+      if (streamBufferedBytes(oldest) > 0) this.onObservationGap(oldest.framePacket);
     }
   }
 }
@@ -645,7 +674,7 @@ function balancedJsonEnd(text: string, start: number): number {
   return -1;
 }
 
-function directionalFlowKey(packet: ParsedPayload): string {
+function directionalFlowKey(packet: Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">): string {
   return `${packet.src}:${packet.srcPort}->${packet.dst}:${packet.dstPort}`;
 }
 

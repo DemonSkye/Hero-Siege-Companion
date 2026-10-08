@@ -249,8 +249,7 @@ function applyCaptureUpdate(update: CaptureUpdate): void {
   if (update.status) state.captureStatus = update.status;
   if (update.running !== undefined) marketReadinessController?.setCaptureRunning(update.running);
   satanicZoneRefreshProvider?.observeCaptureUpdate(update, previousCaptureRunning);
-  if (update.observationGap || (previousCaptureRunning && update.running === false) || update.status === "error")
-    capturedSessionContext?.clearMarketRecordEvidenceForGap();
+  capturedSessionContext?.observeCaptureUpdate(update);
   if (update.error !== undefined) state.captureError = update.error;
   if (update.connections) { state.connections = update.connections; satanicZoneRefreshProvider?.observeConnections(update.connections); }
   if (state.captureRunning && state.captureStatus === "running" && state.satanicZone.refreshEnabled && (!previousCaptureRunning
@@ -957,7 +956,7 @@ app.whenReady().then(async () => {
       if (reason !== "capture-stopped") satanicZoneRefreshProvider?.observeProcessIds(processIds);
       capturedSessionContext?.observeGameProcessIds(processIds);
     },
-    packet => satanicZoneRefreshProvider?.observeTcpLifecycle(packet),
+    packet => { capturedSessionContext?.observeTcpLifecycle(packet); satanicZoneRefreshProvider?.observeTcpLifecycle(packet); },
   );
   state.health = { ...state.health, ...(await captureService.diagnostics()) };
   updateCrashReportCaptureContext();

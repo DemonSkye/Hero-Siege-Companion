@@ -30,6 +30,8 @@ Most data appears after Hero Siege sends the relevant packet. For example, gold 
 
 Market checks become ready after capture observes current account, mode and session evidence. If Market is not ready: “With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.” Local readiness does not prove accepted authentication. Companion can attach during play; packets sent before capture began cannot be recovered.
 
+If capture loses session information or the observed game connection closes, Market clears old results and waits for fresh game information. Readiness returns automatically when sufficient current evidence arrives; the search cooldown still applies.
+
 ## Core Features
 
 - Live Session dashboard with capture status, packet counts, run timer, gold, XP, kills, readable Satanic Zone effects, tracked drops, and persistent timeline filters.

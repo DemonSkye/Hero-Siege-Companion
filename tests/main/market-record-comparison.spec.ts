@@ -104,10 +104,10 @@ describe("Market request compared with independently retained TCP records", () =
     expect(result.api.map(record => record.equalToRequest.crossregion_identifier)).toEqual([false, true]);
     f.store.dispose();
   });
-  test("generation, capture gaps and disposal clear diagnostic records without changing request readiness policy", () => {
+  test("generation, capture gaps and disposal clear diagnostic records and capture gaps invalidate request context", () => {
     const f = fixture(); f.store.observe(payload(api())); f.store.observe(payload(save()));
-    const prior = f.store.marketContext(); f.store.clearMarketRecordEvidenceForGap();
-    expect(f.store.marketContext()?.fields).toEqual(prior?.fields);
+    expect(f.store.marketContext()).not.toBeNull(); f.store.observeCaptureUpdate({ observationGap: true });
+    expect(f.store.marketContext()).toBeNull();
     expect(f.store.marketRecordSnapshot()).toMatchObject({ api: [], saves: [], clearedForObservationGap: true });
     f.store.observe(payload(api())); f.store.observe(payload(save())); f.store.observeGameProcessIds([43]);
     expect(f.store.marketRecordSnapshot()).toMatchObject({ api: [], saves: [] });

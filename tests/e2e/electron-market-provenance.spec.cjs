@@ -13,6 +13,10 @@ function results(userDataDir) {
 }
 async function ready(electronApp, page, text = contextText, payloadFlow = flow) {
   await page.evaluate(() => window.heroSiegeCompanion.startCapture());
+  // The synthetic runtime clears its connections on start. Supply the current
+  // game-owned flow before fresh payloads, as real capture discovery does.
+  await electronApp.evaluate((_electron, connection) => globalThis.heroSiegeCompanionE2e.emitCaptureUpdate({ connections: [connection] }),
+    { ...payloadFlow, owningProcess: 42, state: "Established" });
   await electronApp.evaluate((_electron, payload) => globalThis.heroSiegeCompanionE2e.emitSessionContext([42], [payload]), { ...payloadFlow, text });
   await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(true);
 }

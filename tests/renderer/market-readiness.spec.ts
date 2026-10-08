@@ -10,6 +10,15 @@ import { companionState, itemTimelineEntry } from "./fixtures";
 const recoveryCopy = "With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.";
 
 describe("Market readiness UI", () => {
+  test("explains observation loss and automatic fresh-context recovery", () => {
+    const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
+      ...createInitialMarketReadiness(), phase: "collecting", reason: "observation_gap",
+    } } });
+    expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.text()).toContain("Capture lost session information");
+    expect(wrapper.text()).toContain("Waiting for fresh game information");
+    expect(wrapper.text()).not.toContain("restart");
+  });
   test("explains established transient endpoint mismatch even with all six fields", () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
       ...companionState().marketReadiness, phase: "collecting", reason: "endpoint_mismatch", canSearch: false, missingFields: [],
