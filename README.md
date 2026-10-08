@@ -106,7 +106,7 @@ Player-facing Item Research, collection prompts, naming notebook, and cleanup co
 
 Settings is one autosaving ledger. Choices save as they change, and the saved/saving state appears in the header; there is no separate Apply or Done step. Its five sections are:
 
-- **App:** choose Steam, the default launch method, or Standalone. The executable path appears only when Standalone is selected.
+- **App:** choose Steam, the default launch method, or Standalone. For Standalone, use **Browse** to select a local Windows game executable. The selected path is read-only and saved by the Companion. Existing standalone setups need to Browse once; Browse again after a game update changes the executable. Configuration backups do not grant permission to launch an executable.
 - **Appearance:** choose the canonical Dark, Demonsteel, Voidglass, Reliquary, Cyberpunk, or Quicksilver theme for the full app and compact overlay. Pre-v2 overrides remain available as `Legacy Custom (Migrated)` when present, but ordinary accent, texture, and fill controls are retired.
 - **Features:** explains passive Satanic Zone updates and the temporary manual Refresh unavailability.
 - **Help & Support:** export or restore a full backup, manage automatic diagnostics plus manual or exact ten-minute Enhanced/Deep modes, open logs, create a support bundle, reset both saved window positions, factory-reset preferences, and read About/What's New.

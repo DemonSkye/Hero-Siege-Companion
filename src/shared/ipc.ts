@@ -16,6 +16,7 @@ export const enum IpcChannel {
   captureStop = "capture:stop",
   gameLaunchOrCapture = "game:launch-or-capture",
   gameChooseExecutable = "game:choose-executable",
+  gameGetExecutable = "game:get-executable",
   statsReset = "stats:reset",
   satanicZoneRefresh = "satanic-zone:refresh",
   satanicZoneLoginCacheSet = "satanic-zone-login-cache:set",
@@ -66,6 +67,7 @@ export const IPC_CHANNELS = {
   captureStop: IpcChannel.captureStop,
   gameLaunchOrCapture: IpcChannel.gameLaunchOrCapture,
   gameChooseExecutable: IpcChannel.gameChooseExecutable,
+  gameGetExecutable: IpcChannel.gameGetExecutable,
   statsReset: IpcChannel.statsReset,
   satanicZoneRefresh: IpcChannel.satanicZoneRefresh,
   satanicZoneLoginCacheSet: IpcChannel.satanicZoneLoginCacheSet,
@@ -110,8 +112,7 @@ export const IPC_CHANNELS = {
 } as const;
 
 export interface LaunchGameOptions {
-  executablePath?: string;
-  launchThroughSteam?: boolean;
+  launchThroughSteam: boolean;
 }
 
 export interface ImportedSoundReference {
@@ -144,6 +145,7 @@ export interface HeroSiegeCompanionApi {
   launchGameOrCapture: (options: LaunchGameOptions) => Promise<CompanionState>;
   stopCapture: () => Promise<CompanionState>;
   chooseGameExecutable: () => Promise<string | null>;
+  getGameExecutable: () => Promise<string | null>;
   resetStats: () => Promise<CompanionState>;
   refreshSatanicZone: () => Promise<CompanionState>;
   setSatanicZoneLoginCacheEnabled: (enabled: boolean) => Promise<CompanionState>;

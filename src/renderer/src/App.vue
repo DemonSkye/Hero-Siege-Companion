@@ -65,6 +65,7 @@ const state = ref<CompanionState>(createInitialCompanionState());
 const stateHydrated = ref(false);
 const now = ref(Date.now());
 const showSettings = ref(false);
+const approvedGameExecutablePath = ref("");
 const showCompactCustomization = ref(false);
 const settingsInitialTab = ref<SettingsTarget>("app");
 const showCompactZone = ref(false);
@@ -332,6 +333,8 @@ useThemeApplication(effectiveThemeId, activeThemeAccent, activeThemeTokenMaps, a
 onMounted(async () => {
   applyUiPreferences(loadPreferences());
   preferencesLoaded = true;
+  approvedGameExecutablePath.value = await window.heroSiegeCompanion.getGameExecutable() ?? "";
+  gameExecutablePath.value = approvedGameExecutablePath.value;
   await syncWindowMode();
   state.value = await window.heroSiegeCompanion.getState();
   stateHydrated.value = true;
@@ -395,7 +398,6 @@ async function toggleCapture() {
   state.value = state.value.captureRunning
     ? await window.heroSiegeCompanion.stopCapture()
     : await window.heroSiegeCompanion.launchGameOrCapture({
-        executablePath: gameExecutablePath.value,
         launchThroughSteam: launchThroughSteam.value,
       });
 }
@@ -508,8 +510,15 @@ function resetThemes() {
 }
 
 async function chooseGameExecutable() {
-  const selected = await window.heroSiegeCompanion.chooseGameExecutable();
-  if (selected) gameExecutablePath.value = selected;
+  try {
+    const selected = await window.heroSiegeCompanion.chooseGameExecutable();
+    if (selected) {
+      approvedGameExecutablePath.value = selected;
+      gameExecutablePath.value = selected;
+    }
+  } catch {
+    showToast("Could not select the game executable. Browse for a local Windows game .exe.");
+  }
 }
 
 async function exportTheme() {
@@ -825,7 +834,7 @@ function toggleLog(log: LogEntry) {
     <SettingsModal
       v-if="showSettings"
       v-model:launch-through-steam="launchThroughSteam"
-      v-model:game-executable-path="gameExecutablePath"
+      :game-executable-path="approvedGameExecutablePath"
       v-model:theme-id="themeId"
       v-model:compact-theme-id="compactThemeId"
       v-model:theme-custom-mode="themeCustomMode"

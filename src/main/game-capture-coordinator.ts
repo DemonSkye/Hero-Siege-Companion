@@ -1,5 +1,4 @@
 import { shell } from "electron";
-import fs from "node:fs";
 import type { CaptureRuntime } from "./capture-runtime";
 import type { CompanionState, LogEntry } from "../shared/app-state";
 import type { LaunchGameOptions } from "../shared/ipc";
@@ -15,6 +14,7 @@ interface GameCaptureCoordinatorOptions {
   publishState: () => void;
   writeAppLog: (type: string, data: Record<string, unknown>) => void;
   beforeCapture?: () => Promise<boolean>;
+  launchExecutable?: (authorized: () => boolean) => Promise<void>;
 }
 
 export class GameCaptureCoordinator {
@@ -26,22 +26,23 @@ export class GameCaptureCoordinator {
 
   constructor(private readonly options: GameCaptureCoordinatorOptions) {}
 
-  async launchOrCapture(launchOptions: LaunchGameOptions): Promise<CompanionState> {
+  async launchOrCapture(launchOptions: LaunchGameOptions, authorized: () => boolean = () => true): Promise<CompanionState> {
     this.options.writeAppLog("game-launch-stage", { stage: "requested", throughSteam: launchOptions?.launchThroughSteam === true });
     this.captureEnabled = true;
     const service = this.options.getCaptureService();
     if (service && (await service.hasHeroSiegeProcess())) {
+      if (!authorized()) return this.options.state;
       this.options.writeAppLog("game-launch-stage", { stage: "game_present" });
       this.clearLaunchCaptureTimer();
       await this.options.beforeCapture?.();
-      if (this.captureEnabled) await service.start();
+      if (this.captureEnabled && authorized()) await service.start();
       return this.options.state;
     }
 
     if (launchOptions?.launchThroughSteam) {
-      await this.launchThroughSteam();
+      await this.launchThroughSteam(authorized);
     } else {
-      await this.launchExecutable(String(launchOptions?.executablePath ?? "").trim());
+      await this.launchExecutable(authorized);
     }
 
     this.options.publishState();
@@ -70,9 +71,9 @@ export class GameCaptureCoordinator {
     this.gameProcessMonitorTimer = null;
   }
 
-  private async launchThroughSteam(): Promise<void> {
+  private async launchThroughSteam(authorized: () => boolean): Promise<void> {
     try {
-      if (!await this.prepareForLaunch()) return;
+      if (!await this.prepareForLaunch() || !authorized()) return;
       this.options.writeAppLog("game-launch-stage", { stage: "shell_invoked", throughSteam: true });
       await shell.openExternal(STEAM_HERO_SIEGE_URL);
       this.options.addLog("info", "Launched Hero Siege through Steam. Capture is watching for the game.");
@@ -82,29 +83,17 @@ export class GameCaptureCoordinator {
     }
   }
 
-  private async launchExecutable(executablePath: string): Promise<void> {
-    if (!executablePath) {
-      this.options.addLog("warning", "Hero Siege is not running. Choose a non-Steam Hero Siege executable in Settings, then click Launch Game.");
-      this.options.publishState();
-      return;
+  private async launchExecutable(authorized: () => boolean): Promise<void> {
+    try {
+      if (!await this.prepareForLaunch() || !authorized()) return;
+      if (!this.options.launchExecutable) throw new Error("Choose the Hero Siege executable with Browse in Settings first.");
+      await this.options.launchExecutable(() => authorized() && this.captureEnabled);
+      this.options.writeAppLog("game-launch-stage", { stage: "executable_started", throughSteam: false });
+      this.options.addLog("info", "Launched Hero Siege. Capture is watching for the game.");
+      this.scheduleLaunchCaptureAttempt();
+    } catch (error) {
+      this.options.addLog("error", error instanceof Error ? error.message : "Could not launch the selected Hero Siege executable.");
     }
-
-    if (!fs.existsSync(executablePath)) {
-      this.options.addLog("error", `Hero Siege executable was not found: ${executablePath}`);
-      this.options.publishState();
-      return;
-    }
-
-    if (!await this.prepareForLaunch()) return;
-    this.options.writeAppLog("game-launch-stage", { stage: "shell_invoked", throughSteam: false });
-    const launchError = await shell.openPath(executablePath);
-    if (launchError) {
-      this.options.addLog("error", `Failed to launch Hero Siege: ${launchError}`);
-      return;
-    }
-
-    this.options.addLog("info", "Launched Hero Siege. Capture is watching for the game.");
-    this.scheduleLaunchCaptureAttempt();
   }
 
   private async prepareForLaunch(): Promise<boolean> {

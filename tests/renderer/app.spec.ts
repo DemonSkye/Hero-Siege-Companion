@@ -19,8 +19,27 @@ describe("App orchestration", () => {
     });
   });
 
+  test("persists initial preferences while the main executable selection read is pending", async () => {
+    const api = installHeroSiegeCompanionApi();
+    let finish!: (path: string | null) => void;
+    vi.mocked(api.getGameExecutable).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const wrapper = mount(App, { global: { stubs: {
+      AppTitlebar: true, CompactView: true, LiveSessionHeader: true, LiveView: true,
+      UpdateBanner: true, WhatsNewPrompt: true,
+    } } });
+    try {
+      await flushPromises();
+      const stored = JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}");
+      expect(Array.isArray(stored.savedMarketItems)).toBe(true);
+    } finally {
+      finish(null); await flushPromises(); wrapper.unmount();
+    }
+  });
+
   test("keeps backup selection read-only, previews it, then installs embedded sounds on confirmation", async () => {
     const api = installHeroSiegeCompanionApi();
+    const approvedGamePath = "C:\\Games\\approved game.exe";
+    vi.mocked(api.getGameExecutable).mockResolvedValue(approvedGamePath);
     const selectedBackup = {
       app: "hero-siege-companion",
       kind: "backup",
@@ -28,6 +47,7 @@ describe("App orchestration", () => {
       uiPreferences: {
         schemaVersion: 2,
         launchThroughSteam: false,
+        gameExecutablePath: "C:\\unapproved\\Hero_Siege.exe",
         customItemFilterSounds: [{
           id: "custom-sound:alert",
           name: "Alert",
@@ -60,10 +80,11 @@ describe("App orchestration", () => {
           },
           LiveView: { template: "<div />" },
           SettingsModal: {
-            props: ["backupPreview"],
+            props: ["backupPreview", "gameExecutablePath"],
             emits: ["chooseBackup", "confirmRestoreBackup"],
             template: `
               <section data-test="settings-modal">
+                <span data-test="approved-game-path">{{ gameExecutablePath }}</span>
                 <span v-if="backupPreview" data-test="backup-preview">{{ backupPreview.settings }} settings / {{ backupPreview.sounds }} sounds</span>
                 <button data-test="choose-backup" type="button" @click="$emit('chooseBackup')">Choose Backup</button>
                 <button v-if="backupPreview" data-test="confirm-backup" type="button" @click="$emit('confirmRestoreBackup')">Restore Backup</button>
@@ -85,7 +106,8 @@ describe("App orchestration", () => {
       await flushPromises();
       expect(api.importConfiguration).toHaveBeenCalledWith();
       expect(api.installConfigurationSounds).not.toHaveBeenCalled();
-      expect(wrapper.get('[data-test="backup-preview"]').text()).toBe("1 settings / 1 sounds");
+      expect(wrapper.get('[data-test="approved-game-path"]').text()).toBe(approvedGamePath);
+      expect(wrapper.get('[data-test="backup-preview"]').text()).toBe("2 settings / 1 sounds");
 
       await wrapper.get('[data-test="confirm-backup"]').trigger("click");
       await flushPromises();
@@ -95,6 +117,8 @@ describe("App orchestration", () => {
         customItemFilterSounds: [expect.objectContaining({ src: "file:///managed/alert.wav" })],
       });
       expect(wrapper.find('[data-test="backup-preview"]').exists()).toBe(false);
+      expect(wrapper.get('[data-test="approved-game-path"]').text()).toBe(approvedGamePath);
+      expect(api.chooseGameExecutable).not.toHaveBeenCalled();
     } finally {
       wrapper.unmount();
     }
@@ -526,6 +550,7 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     launchGameOrCapture: vi.fn().mockResolvedValue(state),
     stopCapture: vi.fn().mockResolvedValue(state),
     chooseGameExecutable: vi.fn().mockResolvedValue(null),
+    getGameExecutable: vi.fn().mockResolvedValue(null),
     resetStats: vi.fn().mockResolvedValue(state),
     refreshSatanicZone: vi.fn().mockResolvedValue(state),
     searchMarket: vi.fn().mockResolvedValue({ ok: true, result: { listings: [] } }),

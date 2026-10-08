@@ -12,7 +12,8 @@ const {
 } = require("./support/companion-app.cjs");
 const { e2eTrafficPayloads } = require("./support/fixtures.cjs");
 
-const STANDALONE_EXECUTABLE = "C:\\Games\\Hero Siege\\Hero_Siege.exe";
+const { installLaunchStubs } = require("./support/game-launch-stubs.cjs");
+let STANDALONE_EXECUTABLE = "";
 
 test("autosaves launch and theme choices while active SZ settings remain unavailable across restart", async () => {
   const userDataDir = createUserDataDir();
@@ -170,6 +171,7 @@ test("keeps full-window pinning session-only and resets window bounds from suppo
 });
 
 async function configureDurableSettings({ electronApp, page }) {
+  STANDALONE_EXECUTABLE = (await installLaunchStubs(electronApp)).selected;
   expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
   await emitCapturePayloads(electronApp, e2eTrafficPayloads());
   await expect(page.getByText("Aurelion Fury").first()).toBeVisible();
@@ -183,7 +185,8 @@ async function configureDurableSettings({ electronApp, page }) {
   await expect(settings.getByLabel("Game executable")).toHaveCount(0);
   await settings.getByRole("radio", { name: "Standalone", exact: true }).check();
   await expect(settings.getByLabel("Game executable")).toBeVisible();
-  await settings.getByLabel("Game executable").fill(STANDALONE_EXECUTABLE);
+  await expect(settings.getByLabel("Game executable")).toHaveAttribute("readonly", "");
+  await settings.getByRole("button", { name: /^Browse/ }).click();
   await settings.getByRole("radio", { name: "Steam", exact: true }).check();
   await expect(settings.getByLabel("Game executable")).toHaveCount(0);
   await settings.getByRole("radio", { name: "Standalone", exact: true }).check();

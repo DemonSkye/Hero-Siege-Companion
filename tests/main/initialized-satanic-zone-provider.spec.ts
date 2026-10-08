@@ -366,8 +366,8 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
       getCaptureService: () => ({ hasHeroSiegeProcess: async () => false, start: vi.fn(), stop: vi.fn(),
         diagnostics: async () => ({}), setCapturePreferences: vi.fn() }),
       beforeCapture: () => f.provider.preparePassively(),
+      launchExecutable: async () => { await launch.executable(); },
       addLog: vi.fn(), publishState: vi.fn(), writeAppLog: vi.fn() });
-    vi.spyOn(fs, "existsSync").mockReturnValue(true);
     const launched = async () => {
       order.push("launch"); expect(f.open).toHaveBeenCalledTimes(1);
       f.network.gameProcessIds = [42];
@@ -376,7 +376,7 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
       return "";
     };
     launch.steam.mockImplementation(launched); launch.executable.mockImplementation(launched);
-    await coordinator.launchOrCapture({ launchThroughSteam: steam, executablePath: "invented.exe" });
+    await coordinator.launchOrCapture({ launchThroughSteam: steam });
     expect(order).toEqual(["listener", "launch"]);
     expect(f.provider.preparation.phase).toBe("ready"); expect(f.sockets).toHaveLength(0);
     expect((await f.dispatch()).accepted).toBe(true); expect(f.sockets).toHaveLength(1);
@@ -396,7 +396,7 @@ describe("normal Refresh using the proven initialized transport, all boundaries 
       beforeCapture: () => f.provider.preparePassively(), addLog: vi.fn(), publishState: vi.fn(), writeAppLog: vi.fn() });
     const replacement = Buffer.from(inventedPostLogin().toString().replace("a".repeat(64), "b".repeat(64)));
     launch.steam.mockImplementation(async () => { order.push("launch"); await f.collect(inventedConnect(), replacement, false); });
-    await coordinator.launchOrCapture({ launchThroughSteam: true, executablePath: "invented.exe" });
+    await coordinator.launchOrCapture({ launchThroughSteam: true });
     expect(order).toEqual(["listener", "launch"]); expect(f.cache.restoreInput()?.postLoginBody).toEqual(replacement);
     expect(f.provider.preparation).toMatchObject({ phase: "ready" }); expect(f.provider.preparation.origin).toBeUndefined();
     expect(f.sockets).toHaveLength(0); f.provider.dispose(); coordinator.clearLaunchCaptureTimer();

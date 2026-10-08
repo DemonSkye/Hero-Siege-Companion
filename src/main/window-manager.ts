@@ -46,6 +46,13 @@ export class MainWindowManager {
     return this.compactWindowMode;
   }
 
+  isTrustedIpcSender(event: Electron.IpcMainInvokeEvent): boolean {
+    const window = this.mainWindow;
+    return !!window && !window.isDestroyed() && event.sender === window.webContents
+      && event.senderFrame === window.webContents.mainFrame
+      && this.isRendererUrl(event.senderFrame.url);
+  }
+
   create(): BrowserWindow {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.focusExistingWindow();

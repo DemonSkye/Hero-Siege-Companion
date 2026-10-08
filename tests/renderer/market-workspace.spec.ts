@@ -25,7 +25,7 @@ beforeEach(installMemoryPreferencesStorage);
 function setup(state: CompanionState = companionState()) {
   let update: (state: CompanionStateUpdate) => void = () => undefined;
   const api = {
-    getState: vi.fn(async () => state), setCompactMode: vi.fn(), setAlwaysOnTop: vi.fn(),
+    getState: vi.fn(async () => state), getGameExecutable: vi.fn(async () => null), setCompactMode: vi.fn(), setAlwaysOnTop: vi.fn(),
     getSupportDiagnosticsInfo: vi.fn(async () => ({ generatedFiles: [], logFiles: [] })),
     checkForUpdate: vi.fn(async () => null), searchMarket: vi.fn(async (): Promise<MarketSearchResponse> => ({ ok: true, result: { listings: [] } })),
     onStateUpdated: (listener: typeof update) => { update = listener; return () => { update = () => undefined; }; },

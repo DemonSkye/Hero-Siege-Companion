@@ -9,6 +9,7 @@ const electronMock = vi.hoisted(() => {
 
   class FakeWebContents {
     id = 1;
+    mainFrame = { url: pathToFileURL(path.resolve("dist/renderer/index.html")).href };
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
     windowOpenHandler: ((details: { url: string }) => { action: string }) | null = null;
     loadFileCalls = 0;
@@ -230,6 +231,22 @@ describe("main window manager", () => {
       nodeIntegration: false,
       sandbox: true,
     });
+  });
+
+  test("authorizes only the current window main frame at the configured app document", () => {
+    const manager = createManager(); manager.create();
+    const window = electronMock.instances[0];
+    const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame } as unknown as Electron.IpcMainInvokeEvent;
+    expect(manager.isTrustedIpcSender(event)).toBe(true);
+    expect(manager.isTrustedIpcSender({ ...event, sender: {} } as Electron.IpcMainInvokeEvent)).toBe(false);
+    expect(manager.isTrustedIpcSender({ ...event, senderFrame: { url: window.webContents.mainFrame.url } } as Electron.IpcMainInvokeEvent)).toBe(false);
+    expect(manager.isTrustedIpcSender({ ...event, senderFrame: null } as Electron.IpcMainInvokeEvent)).toBe(false);
+    window.webContents.mainFrame.url = "https://example.invalid/";
+    expect(manager.isTrustedIpcSender(event)).toBe(false);
+    window.webContents.mainFrame.url = pathToFileURL(path.resolve("dist/renderer/another.html")).href;
+    expect(manager.isTrustedIpcSender(event)).toBe(false);
+    window.destroyed = true;
+    expect(manager.isTrustedIpcSender(event)).toBe(false);
   });
 
   test("denies renderer-created windows and only opens external http links through the shell", () => {

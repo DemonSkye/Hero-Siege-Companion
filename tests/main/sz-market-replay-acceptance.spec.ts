@@ -125,7 +125,7 @@ describe("evidence-backed SZ/Market journey replay with substituted bytes", () =
     launch.steam.mockImplementation(async () => { expect(f.events).toEqual(["listener-open"]); await f.initialize(); });
     const coordinator = new GameCaptureCoordinator({ state, getCaptureService: () => service as never,
       beforeCapture: () => f.provider.preparePassively(), addLog: vi.fn(), publishState: vi.fn(), writeAppLog: vi.fn() });
-    await coordinator.launchOrCapture({ launchThroughSteam: true, executablePath: "" });
+    await coordinator.launchOrCapture({ launchThroughSteam: true });
     expect(f.events.indexOf("listener-open")).toBeLessThan(f.events.indexOf("first-syn"));
     expect(f.provider.preparation.phase).toBe("ready");
     expect(f.zone.getState()).toMatchObject({ source: "captured", current: { rawZone: "Act_04_03" }, refreshAvailable: true });

@@ -16,6 +16,7 @@ import { diagnosticCapturePreferences } from "./satanic-zone-diagnostic-runtime"
 import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
 import { showOpenDialogWithParent } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
+import { GameExecutable } from "./game-executable";
 import { CapturedSessionContextStore } from "./captured-session-context";
 import { DirectMarketSearchProvider } from "./direct-market-search-provider";
 import { handleMarketSearchRequest } from "./market-search-handler";
@@ -134,7 +135,9 @@ const gameCaptureCoordinator = new GameCaptureCoordinator({
   addLog,
   publishState,
   writeAppLog,
+  launchExecutable: authorized => gameExecutable.launch(authorized),
 });
+const gameExecutable = new GameExecutable(() => preferencesPath ? path.join(path.dirname(preferencesPath), "game-executable.json") : "");
 
 if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
 configureElectronE2eApp(app);
@@ -434,7 +437,14 @@ ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
   if (gameCaptureCoordinator.captureEnabled) await captureService?.start();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (_event, options) => gameCaptureCoordinator.launchOrCapture(options));
+ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (event, options: unknown, ...extra: unknown[]) => {
+  requireGameSender(event);
+  if (extra.length || !options || typeof options !== "object" || Array.isArray(options)
+    || Object.keys(options).length !== 1 || Object.keys(options)[0] !== "launchThroughSteam" || !("launchThroughSteam" in options)
+    || typeof options.launchThroughSteam !== "boolean") throw new Error("Invalid game launch request.");
+  return gameCaptureCoordinator.launchOrCapture({ launchThroughSteam: options.launchThroughSteam },
+    () => windowManager?.isTrustedIpcSender(event) === true);
+});
 ipcMain.handle(IPC_CHANNELS.captureStop, () => {
   gameCaptureCoordinator.setCaptureEnabled(false);
   satanicZoneRefreshProvider?.suspend();
@@ -749,17 +759,29 @@ ipcMain.handle(IPC_CHANNELS.updatesOpenRelease, async (_event, url?: string) => 
 ipcMain.handle(IPC_CHANNELS.docsOpenNpcapGuide, async () => {
   await shell.openExternal(GITHUB_NPCAP_GUIDE_URL);
 });
-ipcMain.handle(IPC_CHANNELS.gameChooseExecutable, async () => {
-  const options = {
-    title: "Choose Hero Siege executable",
-    properties: ["openFile"],
-    filters: [
-      { name: "Executable", extensions: ["exe"] },
-      { name: "All files", extensions: ["*"] },
-    ],
-  } satisfies Electron.OpenDialogOptions;
-  const result = await showOpenDialogWithParent(currentWindow(), options);
-  return result.canceled ? null : result.filePaths[0] ?? null;
+function requireGameSender(event: Electron.IpcMainInvokeEvent): void {
+  if (!windowManager?.isTrustedIpcSender(event)) throw new Error("Game launch request is not authorized.");
+}
+ipcMain.handle(IPC_CHANNELS.gameGetExecutable, event => {
+  requireGameSender(event);
+  return gameExecutable.selectedPath();
+});
+let gameSelectionPending = false;
+ipcMain.handle(IPC_CHANNELS.gameChooseExecutable, async (event, ...extra: unknown[]) => {
+  requireGameSender(event);
+  if (extra.length || gameSelectionPending) throw new Error("Game executable selection is unavailable.");
+  gameSelectionPending = true;
+  try {
+    const options = {
+      title: "Choose Hero Siege executable",
+      properties: ["openFile"],
+      filters: [{ name: "Executable", extensions: ["exe"] }],
+    } satisfies Electron.OpenDialogOptions;
+    const result = await showOpenDialogWithParent(currentWindow(), options);
+    if (result.canceled || result.filePaths.length !== 1) return null;
+    return await gameExecutable.approveNativeSelection(result.filePaths[0],
+      () => windowManager?.isTrustedIpcSender(event) === true);
+  } finally { gameSelectionPending = false; }
 });
 
 async function saveSupportDiagnostics(diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> {

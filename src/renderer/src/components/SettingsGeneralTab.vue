@@ -40,12 +40,13 @@ defineEmits<{
     <div v-if="!launchThroughSteam" class="settings-ledger-row settings-ledger-child-row">
       <div class="settings-ledger-copy">
         <label class="settings-ledger-title" for="settings-game-executable">Game executable</label>
-        <p>Select the Hero Siege executable used by this installation.</p>
+        <p>Use Browse to select the Hero Siege executable. Browse again after a game update.</p>
       </div>
       <div class="settings-ledger-control settings-path-control">
         <input
           id="settings-game-executable"
-          v-model="gameExecutablePath"
+          :value="gameExecutablePath"
+          readonly
           type="text"
           spellcheck="false"
           autocomplete="off"

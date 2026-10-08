@@ -12,6 +12,7 @@ const WHATS_NEW_SEEN_STORAGE_KEY = "hero-siege-companion:whats-new-seen-version:
 const EXPECTED_PRELOAD_API = [
   "checkForUpdate",
   "chooseGameExecutable",
+  "getGameExecutable",
   "clearSatanicZoneLoginCache",
   "unlockSatanicZoneLoginCache",
   "enableSatanicZoneLoginCacheAutomatic",

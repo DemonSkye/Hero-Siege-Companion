@@ -8,6 +8,7 @@ const api: HeroSiegeCompanionApi = {
   launchGameOrCapture: (options) => ipcRenderer.invoke(IpcChannel.gameLaunchOrCapture, options),
   stopCapture: () => ipcRenderer.invoke(IpcChannel.captureStop),
   chooseGameExecutable: () => ipcRenderer.invoke(IpcChannel.gameChooseExecutable),
+  getGameExecutable: () => ipcRenderer.invoke(IpcChannel.gameGetExecutable),
   resetStats: () => ipcRenderer.invoke(IpcChannel.statsReset),
   refreshSatanicZone: () => ipcRenderer.invoke(IpcChannel.satanicZoneRefresh),
   searchMarket: (request) => ipcRenderer.invoke(IpcChannel.marketSearch, request),
