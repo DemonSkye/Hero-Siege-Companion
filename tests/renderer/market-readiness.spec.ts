@@ -7,6 +7,8 @@ import { createInitialMarketReadiness, type MarketReadiness } from "../../src/sh
 import { useMarketSearchRuntime } from "../../src/renderer/src/lib/market-search-runtime";
 import { companionState, itemTimelineEntry } from "./fixtures";
 
+const recoveryCopy = "With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.";
+
 describe("Market readiness UI", () => {
   test("explains established transient endpoint mismatch even with all six fields", () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
@@ -15,15 +17,14 @@ describe("Market readiness UI", () => {
     expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
     expect(wrapper.text()).toContain("matching session information");
     expect(wrapper.text()).toContain("search for an item");
-    expect(wrapper.text()).not.toContain("vote reset");
+    expect(wrapper.text()).toContain(recoveryCopy);
   });
   test("shows accessible readiness and recovery without field counts; first-search preparation stays truthful", async () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: createInitialMarketReadiness() } });
     expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
     expect(wrapper.text()).toContain("Start capture");
     expect(wrapper.text()).toContain("search for an item");
-    expect(wrapper.text()).not.toContain("vote reset");
-    expect(wrapper.text()).toContain("Hero Siege's Market");
+    expect(wrapper.text()).toContain(recoveryCopy);
     expect(wrapper.text()).not.toMatch(/\d\/6|fields received|Account identity/);
     expect(wrapper.get('[role="status"]').attributes("aria-live")).toBe("polite");
     expect(wrapper.get(".market-readiness-light").attributes("aria-hidden")).toBe("true");
@@ -36,7 +37,7 @@ describe("Market readiness UI", () => {
     expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
     expect(wrapper.text()).toContain("current game information");
     expect(wrapper.text()).toContain("search for an item");
-    expect(wrapper.text()).not.toContain("vote reset");
+    expect(wrapper.text()).toContain(recoveryCopy);
     expect(wrapper.text()).not.toMatch(/\d\/6|fields received|Character mode/);
     await wrapper.setProps({ readiness: companionState().marketReadiness });
     expect(wrapper.get('[role="status"]').text()).toBe("Market ready");
@@ -53,9 +54,8 @@ describe("Market readiness UI", () => {
     await wrapper.setProps({ readiness: { ...companionState().marketReadiness, phase: "region-error", reason: "region_unavailable", regionQualified: false } });
     expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
     expect(wrapper.text()).toContain("region information could not be confirmed");
-    expect(wrapper.text()).toContain("a later search can try preparation again");
-    expect(wrapper.text()).not.toContain("Hero Siege's Market");
-    expect(wrapper.text()).not.toContain("vote reset");
+    expect(wrapper.text()).toContain(recoveryCopy);
+    expect(wrapper.get('.market-readiness-detail[role="alert"]').text()).toContain(recoveryCopy);
     expect(wrapper.classes()).toContain("is-error");
   });
 
@@ -68,7 +68,7 @@ describe("Market readiness UI", () => {
     runtime.openMarketSearch(itemTimelineEntry());
     await runtime.searchMarket();
     expect(runtime.errorMessage.value).toContain("Session captured, but region information could not be confirmed");
-    expect(runtime.errorMessage.value).toContain("a later search can try preparation again");
+    expect(runtime.errorMessage.value).toContain(recoveryCopy);
     expect(state.value.phase).toBe(order === "before" ? "region-error" : "region-required");
     if (order === "after") state.value = { ...state.value, phase: "region-error", reason: "region_unavailable" };
     expect(runtime.errorMessage.value).toContain("Session captured, but region information could not be confirmed");
@@ -106,8 +106,38 @@ describe("Market readiness UI", () => {
     await wrapper.setProps({ readiness: readiness.value, canSearch: runtime.canSearch.value, cooldownRemainingSeconds: 0 });
     expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
     expect(wrapper.text()).toContain("session information expired");
-    expect(wrapper.text()).not.toContain("vote reset");
+    expect(wrapper.text()).toContain(recoveryCopy);
     expect(wrapper.get('button[type="submit"]').attributes("disabled")).toBeDefined();
+    wrapper.unmount();
+  });
+
+  test.each([
+    ["waiting", "capture_inactive"], ["waiting", "game_unavailable"],
+    ["collecting", "missing_fields"], ["collecting", "endpoint_mismatch"],
+    ["expired", "identity_expired"], ["region-error", "region_unavailable"],
+  ] as const)("%s/%s offers both in-game context actions in one paragraph", (phase, reason) => {
+    const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
+      ...companionState().marketReadiness, phase, reason, canSearch: false,
+    } } });
+    expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.findAll(".market-readiness-detail")).toHaveLength(1);
+    expect(wrapper.text().split(recoveryCopy)).toHaveLength(2);
+    wrapper.unmount();
+  });
+
+  test("legacy dialog shows shared region guidance once and retains distinct request errors", async () => {
+    const readiness: MarketReadiness = { ...companionState().marketReadiness, phase: "region-error", reason: "region_unavailable", regionQualified: false };
+    const wrapper = mount(MarketSearchDialog, { props: {
+      item: itemTimelineEntry(), readiness, minSockets: null, statFilters: [], phase: "error",
+      listings: [], totalMatches: null, errorMessage: "Session captured, but region information could not be confirmed. " + recoveryCopy,
+      resultObservedAt: null, resultCached: false, canSearch: true, cooldownRemainingSeconds: 0,
+    } });
+    expect(wrapper.text().split(recoveryCopy)).toHaveLength(2);
+    expect(wrapper.find(".market-search-error").exists()).toBe(false);
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1);
+    await wrapper.setProps({ errorMessage: "The market rejected this request's checksum." });
+    expect(wrapper.get('.market-search-error[role="alert"]').text()).toBe("The market rejected this request's checksum.");
+    expect(wrapper.text().split(recoveryCopy)).toHaveLength(2);
     wrapper.unmount();
   });
 });

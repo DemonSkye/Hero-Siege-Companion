@@ -12,6 +12,7 @@ import { inspectDirectMarketResponse } from "../../src/main/market-direct-respon
 import { handleMarketSearchRequest } from "../../src/main/market-search-handler";
 
 const storageKey = "hero-siege-companion:preferences:v1";
+const recoveryCopy = "With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.";
 const stubs = {
   AppTitlebar: { template: "<div />" }, CompactView: { template: "<div />" },
   LiveSessionHeader: { template: "<div />" }, LiveView: { template: "<div />" },
@@ -37,6 +38,33 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
   if (!match) throw new Error(`Missing button ${text}`);
   return match;
 }
+
+test.each(["before", "after"] as const)("Market tab shows recovery guidance once when region status arrives %s the failed request", async (order) => {
+  const initial = companionState();
+  initial.marketReadiness = { ...initial.marketReadiness, phase: "region-required", reason: "region_unprepared", regionQualified: false };
+  const { api, emit } = setup(initial);
+  const failed = companionState({ marketReadiness: { ...initial.marketReadiness, phase: "region-error", reason: "region_unavailable" } });
+  api.searchMarket.mockImplementationOnce(async () => {
+    if (order === "before") emit(failed);
+    return { ok: false, errorCode: "template_unavailable" };
+  });
+  const wrapper = mount(App, { global: { stubs } });
+  try {
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click"); await flushPromises();
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
+    await wrapper.get(".market-options button").trigger("click"); await flushPromises();
+    await wrapper.get("form.market-editor").trigger("submit"); await flushPromises();
+    if (order === "after") { emit(failed); await flushPromises(); }
+    expect(wrapper.get('.market-readiness [role="status"]').text()).toBe("Market not ready");
+    expect(wrapper.get(".market-readiness-detail").text()).toBe("Session captured, but region information could not be confirmed. " + recoveryCopy);
+    expect(wrapper.text().split(recoveryCopy)).toHaveLength(2);
+    expect(wrapper.find(".market-search-error").exists()).toBe(false);
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1);
+    expect(button(wrapper, "Search market").attributes("disabled")).toBeUndefined();
+    expect(api.searchMarket).toHaveBeenCalledExactlyOnceWith({ itemMask: 1073746020, statFilters: [] });
+  } finally { wrapper.unmount(); }
+});
 
 test("offline Market shows full cloak ranges and saves an experimental filter through restart", async () => {
   window.localStorage.setItem(storageKey, JSON.stringify({schemaVersion:3,savedMarketItems:[],shoppingListItems:[]}));
@@ -139,8 +167,9 @@ test("real tab handles unavailable, loading, rejected, empty and price states wh
     const readinessStatus = wrapper.get(".market-readiness");
     expect(readinessStatus.get('[role="status"]').text()).toBe("Market not ready");
     expect(readinessStatus.text()).toContain("Start capture");
-    expect(readinessStatus.text()).toContain("search for an item in Hero Siege's Market");
-    expect(readinessStatus.text()).not.toMatch(/\d\/6|fields received|vote reset/);
+    expect(readinessStatus.text()).toContain(recoveryCopy);
+    expect(wrapper.text().split(recoveryCopy)).toHaveLength(2);
+    expect(readinessStatus.text()).not.toMatch(/\d\/6|fields received/);
     expect(readinessStatus.get(".market-readiness-light").attributes("aria-hidden")).toBe("true");
     expect(button(wrapper, "Save item and filters").attributes("disabled")).toBeUndefined();
     emit(companionState({ marketReadiness: { ...companionState().marketReadiness, contextVersion: 1 } })); await flushPromises();

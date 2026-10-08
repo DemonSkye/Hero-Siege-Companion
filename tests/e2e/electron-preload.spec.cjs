@@ -46,6 +46,7 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     const workspace = page.locator(".market-workspace");
     await expect(workspace).toBeVisible();
     const timeline = workspace.locator(".market-readiness");
+    const recoveryCopy = "With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.";
     await expect(timeline.getByRole("status")).toHaveText("Market not ready");
     await expect(timeline).toContainText("Start capture");
 
@@ -53,8 +54,9 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     await expect.poll(async () => (await getRendererState(page)).marketReadiness.reason).toBe("game_unavailable");
     await observe([123], [payload("api account_id=10-42&beta=0")]);
     await expect(timeline.getByRole("status")).toHaveText("Market not ready");
-    await expect(timeline).toContainText("search for an item");
-    await expect(timeline).not.toContainText("vote reset");
+    await expect(timeline).toContainText(recoveryCopy);
+    await expect(timeline.locator(".market-readiness-detail")).toHaveCount(1);
+    expect(await workspace.evaluate((node, text) => node.textContent.split(text).length - 1, recoveryCopy)).toBe(1);
     await expect(timeline).not.toContainText("fields received");
     expect((await getRendererState(page)).marketReadiness.missingFields).toHaveLength(4);
     expect(await timeline.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
@@ -65,7 +67,8 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     const dialog = workspace;
     const status = dialog.locator(".market-readiness");
     await expect(status.getByRole("status")).toHaveText("Market not ready");
-    await expect(status).toContainText("Hero Siege's Market");
+    await expect(status).toContainText(recoveryCopy);
+    expect(await dialog.evaluate((node, text) => node.textContent.split(text).length - 1, recoveryCopy)).toBe(1);
     await expect(dialog.locator('button[type="submit"]')).toBeDisabled();
     if (process.env.HSC_MARKET_NOT_READY_SCREENSHOT) {
       await page.screenshot({ path: process.env.HSC_MARKET_NOT_READY_SCREENSHOT });

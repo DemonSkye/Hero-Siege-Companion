@@ -7,6 +7,7 @@ import { marketItemSuggestions, type MarketItemOption, type SavedMarketItem } fr
 import { marketStatSuggestions, type MarketSearchPhase, type MarketStatFilterDraft } from "../lib/market-search-runtime";
 import { formatNumber } from "../lib/format";
 import MarketReadinessStatus from "./MarketReadinessStatus.vue";
+import { marketReadinessExplainsError } from "../lib/market-readiness-display";
 import MarketListingDetails from "./MarketListingDetails.vue";
 import { itemStatDefinition } from "../../../shared/item-stat-ranges";
 import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition, itemBaseStatMetadata } from "../../../shared/item-base-stat-catalog";
@@ -59,6 +60,7 @@ const itemPickerOpen = ref(false);
 const itemInput = ref<HTMLInputElement | null>(null);
 const statQuery = ref("");
 const savedQuery = ref("");
+const readinessExplainsError = computed(() => marketReadinessExplainsError(props.readiness, props.errorMessage));
 const itemSuggestions = computed(() => marketItemSuggestions(itemQuery.value));
 const statSuggestions = computed(() => marketStatSuggestions(statQuery.value,
   props.statFilters.flatMap((filter) => filter.statId === null ? [] : [filter.statId])));
@@ -200,7 +202,7 @@ function chooseStat(statId: number): void {
         <section class="panel market-results" aria-labelledby="market-results-title" aria-live="polite">
           <div class="market-results-heading"><h3 id="market-results-title">Price results</h3><small>Price ascending · first page only</small></div>
           <p v-if="phase === 'searching'" role="status">Searching current listings…</p>
-          <p v-else-if="phase === 'error'" class="market-search-error" role="alert">{{ errorMessage }}</p>
+          <template v-else-if="phase === 'error'"><p v-if="!readinessExplainsError" class="market-search-error" role="alert">{{ errorMessage }}</p></template>
           <template v-else-if="phase === 'success'">
             <table v-if="listings.length" class="market-price-table">
               <thead><tr><th scope="col">Listing</th><th scope="col">Price</th><th scope="col">Price per unit</th><th scope="col">Variant and stats</th></tr></thead>

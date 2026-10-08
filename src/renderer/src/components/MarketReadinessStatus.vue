@@ -16,6 +16,6 @@ const display = computed(() => marketReadinessDisplay(props.readiness));
       <span class="market-readiness-light" aria-hidden="true"></span>
       <strong>{{ display.label }}</strong>
     </p>
-    <p v-if="readiness.phase !== 'ready'" class="market-readiness-detail">{{ display.detail }}</p>
+    <p v-if="readiness.phase !== 'ready'" class="market-readiness-detail" :role="readiness.phase === 'region-error' ? 'alert' : undefined">{{ display.detail }}</p>
   </div>
 </template>

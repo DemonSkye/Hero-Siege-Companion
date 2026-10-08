@@ -190,8 +190,10 @@ test("keeps the Market readiness indicator and recovery guidance compact at mini
     await page.getByRole("tab", { name: "Market", exact: true }).click();
     const status = page.locator(".market-workspace .market-readiness");
     await expect(status.getByRole("status")).toHaveText("Market not ready");
-    await expect(status).toContainText("search for an item in Hero Siege's Market");
-    await expect(status).not.toContainText("vote reset");
+    const recoveryCopy = "With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.";
+    await expect(status).toContainText(recoveryCopy);
+    await expect(status.locator(".market-readiness-detail")).toHaveCount(1);
+    expect(await page.locator(".market-workspace").evaluate((node, text) => node.textContent.split(text).length - 1, recoveryCopy)).toBe(1);
     await expect(status).not.toContainText("fields received");
     const dimensions = await status.evaluate(node => ({
       height: node.getBoundingClientRect().height,

@@ -28,7 +28,7 @@ Current local release candidate: **0.3.1**, matching `package.json`. Native game
 
 Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later game-observed update.
 
-Market checks become ready after capture observes current account, mode and session evidence. If context is missing, keep capture running and search for an item in Hero Siege's Market. Local readiness does not prove accepted authentication. Companion can attach during play; packets sent before capture began cannot be recovered.
+Market checks become ready after capture observes current account, mode and session evidence. If Market is not ready: “With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.” Local readiness does not prove accepted authentication. Companion can attach during play; packets sent before capture began cannot be recovered.
 
 ## Core Features
 

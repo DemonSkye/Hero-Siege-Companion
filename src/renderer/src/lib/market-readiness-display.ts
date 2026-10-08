@@ -5,8 +5,8 @@ export const MARKET_CONTEXT_LABELS: Record<MarketContextField, string> = {
   season: "Season", hardcore: "Character mode", beta: "Game mode",
 };
 
-export const MARKET_REGION_UNCONFIRMED_DETAIL = "Session captured, but region information could not be confirmed. Keep capture running; a later search can try preparation again.";
-const MARKET_CONTEXT_RECOVERY_DETAIL = "With capture running, search for an item in Hero Siege's Market to collect context.";
+const MARKET_CONTEXT_RECOVERY_DETAIL = "With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.";
+export const MARKET_REGION_UNCONFIRMED_DETAIL = "Session captured, but region information could not be confirmed. " + MARKET_CONTEXT_RECOVERY_DETAIL;
 
 export function marketReadinessDisplay(readiness: MarketReadiness): { label: string; detail: string } {
   switch (readiness.phase) {
@@ -33,6 +33,11 @@ export function marketReadinessDisplay(readiness: MarketReadiness): { label: str
         detail: "Waiting for current game information. " + MARKET_CONTEXT_RECOVERY_DETAIL,
       };
   }
+}
+
+/** The readiness panel already displays this exact request failure detail. */
+export function marketReadinessExplainsError(readiness: MarketReadiness, errorMessage: string): boolean {
+  return readiness.phase !== "ready" && errorMessage === marketReadinessDisplay(readiness).detail;
 }
 
 export function marketContextChecklist(readiness: MarketReadiness) {

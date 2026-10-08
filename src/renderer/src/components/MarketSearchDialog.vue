@@ -16,6 +16,7 @@ import {
 import { useModalFocus } from "../lib/modal-focus";
 import type { MarketReadiness } from "../../../shared/market-readiness";
 import MarketReadinessStatus from "./MarketReadinessStatus.vue";
+import { marketReadinessExplainsError } from "../lib/market-readiness-display";
 
 const props = defineProps<{
   item: Pick<ItemTimelineEntry, "label" | "rarity">;
@@ -45,6 +46,7 @@ const dialog = ref<HTMLElement | null>(null);
 const statSearchInput = ref<HTMLInputElement | null>(null);
 const statPickerOpen = ref(false);
 const statQuery = ref("");
+const readinessExplainsError = computed(() => marketReadinessExplainsError(props.readiness, props.errorMessage));
 const { handleModalFocusKeydown } = useModalFocus(dialog);
 const statSuggestions = computed(() => marketStatSuggestions(
   statQuery.value,
@@ -194,7 +196,7 @@ function selectedStatName(statId: number | null): string {
         </section>
 
         <div v-if="phase === 'searching'" class="market-search-state" role="status">Searching the market…</div>
-        <div v-else-if="phase === 'error'" class="market-search-state market-search-error" role="alert">{{ errorMessage }}</div>
+        <template v-else-if="phase === 'error'"><div v-if="!readinessExplainsError" class="market-search-state market-search-error" role="alert">{{ errorMessage }}</div></template>
         <section v-else-if="phase === 'success'" class="market-search-results" aria-live="polite">
           <div class="market-search-section-heading">
             <strong>Lowest prices</strong>

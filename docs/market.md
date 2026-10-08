@@ -40,9 +40,11 @@ Loading prefers those criteria and lets the current encoder construct the draft;
 a future catalog/selector migration must preserve them rather than discard them.
 
 The accessible Market ready / Market not ready indicator describes local
-prerequisites; it does not prove that authentication will be accepted. When context
-is missing, keep capture running and search for an item in Hero Siege's Market to
-collect it. First-search region preparation and region failures have separate
+prerequisites; it does not prove that authentication will be accepted. When Market
+is not ready, the guidance is: “With capture running, search for an item in the game’s
+Market or perform an in-game vote reset to collect the information needed.”
+This refers to an action inside Hero Siege; active Companion SZ Refresh remains
+disabled. First-search region preparation and region failures have separate
 guidance. Search success, empty results, request rejection and transport failure
 are separate outcomes; persistent checksum rejection has no established automatic
 recovery. Searches are explicit, one request at a time, subject to the existing
