@@ -19,7 +19,9 @@
     "test:electron": "npm run build && playwright test -c playwright.electron.config.cjs",
     "test:watch": "vitest",
     "rebuild": "node scripts/patch-cap-native.js && electron-rebuild -f -w cap",
-    "postinstall:electron": "node ./node_modules/electron/install.js"
+    "postinstall:electron": "node ./node_modules/electron/install.js",
+    "catalog:check": "npm run build:main && node scripts/item-data.cjs check",
+    "catalog:export": "npm run build:main && node scripts/item-data.cjs export"
   },
   "build": {
     "appId": "com.herosiege.companion",
@@ -76,6 +78,7 @@
     "vite": "8.1.4",
     "vitest": "4.1.7",
     "vue": "^3.5.14",
-    "vue-tsc": "3.3.7"
+    "vue-tsc": "3.3.7",
+    "ajv": "8.20.0"
   }
 }

@@ -1,37 +1,4 @@
-// Generated constructor coverage; raw bodies, addresses and compact data stay private.
-// Audited unique-glove LoadTierStats(0,4) adds only nonrandom 431/432; no ordinary overwrite or draw.
-export const ITEM_LISTING_CONSTRUCTOR_GAPS: Readonly<Record<string, "tier-helper" | "constructor-helper">> = {
-  "unique:8:0": "tier-helper",
-  "unique:3:16": "tier-helper",
-  "unique:3:10": "tier-helper",
-  "normal:14:0": "tier-helper",
-  "unique:3:2": "tier-helper",
-  "unique:3:11": "tier-helper",
-  "normal:3:7": "tier-helper",
-  "normal:3:8": "tier-helper",
-  "unique:3:15": "tier-helper",
-  "unique:3:3": "tier-helper",
-  "unique:7:0": "tier-helper",
-  "unique:3:14": "tier-helper",
-  "unique:3:4": "tier-helper",
-  "unique:3:5": "tier-helper",
-  "normal:3:5": "tier-helper",
-  "normal:3:6": "tier-helper",
-  "normal:3:2": "tier-helper",
-  "normal:11:0": "tier-helper",
-  "normal:19:0": "tier-helper",
-  "unique:5:0": "tier-helper",
-  "unique:3:13": "tier-helper",
-  "unique:3:6": "tier-helper",
-  "normal:13:0": "tier-helper",
-  "unique:3:7": "tier-helper",
-  "unique:3:8": "tier-helper",
-  "unique:3:9": "tier-helper",
-  "normal:12:0": "tier-helper",
-  "unique:18:0": "tier-helper",
-  "normal:3:14": "tier-helper",
-  "normal:6:0": "tier-helper",
-  "normal:3:12": "tier-helper",
-  "normal:3:10": "tier-helper"
-};
-export const ITEM_LISTING_OPTIONAL_GENERATION_KEYS: readonly string[] = ["unique:1:0:35","unique:1:0:98","unique:3:14:14","unique:3:4:6","unique:7:0:42","unique:7:0:51"];
+// Compatibility adapter. Edit the canonical JSON; see docs/item-data.md.
+import data from "./items/build-24868792/listing-coverage.json";
+export const ITEM_LISTING_CONSTRUCTOR_GAPS = data.ITEM_LISTING_CONSTRUCTOR_GAPS as Readonly<Record<string, "tier-helper" | "constructor-helper">>;
+export const ITEM_LISTING_OPTIONAL_GENERATION_KEYS: readonly string[] = data.ITEM_LISTING_OPTIONAL_GENERATION_KEYS;

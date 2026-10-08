@@ -220,4 +220,8 @@ npm run dist:win
 
 ## Notes
 
+OSS contributors can reuse the canonical item JSON, shared stat IDs and typed
+`Items` groups. See the [item data guide](docs/item-data.md) for examples,
+coverage, explicit unknowns and offline validation/export commands.
+
 Npcap is developed by the Nmap Project. Hero Siege Companion is not affiliated with Hero Siege, Panic Art Studios, Nmap, or Npcap.

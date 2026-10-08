@@ -669,6 +669,7 @@ function loadSharedItemCatalog() {
       compilerOptions: {
         module: typescript.ModuleKind.CommonJS,
         target: typescript.ScriptTarget.ES2022,
+        esModuleInterop: true,
       },
       fileName: filename,
     }).outputText;

@@ -3,7 +3,7 @@ const path = require("node:path");
 const https = require("node:https");
 
 const ROOT = path.resolve(__dirname, "..");
-const RARITY_PATH = path.join(ROOT, "src", "shared", "item-rarity.ts");
+const RARITY_PATH = path.join(ROOT, "src", "shared", "data", "items", "build-24868792", "rarities.json");
 const ICON_DIR = path.join(ROOT, "img", "items");
 const MANIFEST_PATH = path.join(ROOT, "src", "shared", "item-icons.ts");
 const REPORT_MD_PATH = path.join(ROOT, "docs", "item-icon-missing-report.md");
@@ -133,12 +133,10 @@ async function main() {
 }
 
 function readLocalTargetItems() {
-  const source = fs.readFileSync(RARITY_PATH, "utf8");
+  const source = JSON.parse(fs.readFileSync(RARITY_PATH, "utf8"));
   const targets = new Map();
-  const entryPattern = /"([^"]+)":\s*"(Set|Satanic|Heroic|Angelic|Unholy)"/g;
-  let match;
-  while ((match = entryPattern.exec(source))) {
-    targets.set(normalizeItemName(match[1]), match[2]);
+  for (const [name, rarity] of Object.entries(source.byNormalizedName)) {
+    if (TARGET_RARITY_SET.has(rarity)) targets.set(normalizeItemName(name), rarity);
   }
   return targets;
 }
@@ -638,7 +636,10 @@ function downloadFile(url, destination) {
   });
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+module.exports = { readLocalTargetItems };
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

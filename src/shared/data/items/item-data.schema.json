@@ -1,0 +1,1143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hero Siege reusable item data sources",
+  "description": "Structural validation; catalog:check also validates cross references, bounds and coverage. Each canonical file uses its named $defs entry.",
+  "type": "object",
+  "properties": {
+    "identities": {
+      "$ref": "#/$defs/identities"
+    },
+    "constructors": {
+      "$ref": "#/$defs/constructors"
+    },
+    "statCatalog": {
+      "$ref": "#/$defs/statCatalog"
+    },
+    "runewords": {
+      "$ref": "#/$defs/runewords"
+    },
+    "rarities": {
+      "$ref": "#/$defs/rarities"
+    },
+    "listingCoverage": {
+      "$ref": "#/$defs/listingCoverage"
+    }
+  },
+  "required": [
+    "identities",
+    "constructors",
+    "statCatalog",
+    "runewords",
+    "rarities",
+    "listingCoverage"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "identityProvenance": {
+      "type": "object",
+      "properties": {
+        "steamAppId": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "steamBuild": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executableVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executableSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "source": {
+          "const": "static-binary-analysis"
+        },
+        "extractorRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extractorSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "configSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "stringInitializerTsvSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "stringInitializerManifestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "translationBundleSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      },
+      "required": [
+        "steamAppId",
+        "steamBuild",
+        "executableVersion",
+        "executableSha256",
+        "source",
+        "extractorRevision",
+        "extractorSha256",
+        "configSha256",
+        "stringInitializerTsvSha256",
+        "stringInitializerManifestSha256",
+        "translationBundleSha256"
+      ],
+      "additionalProperties": false
+    },
+    "identities": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "catalogId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "catalogStatus": {
+          "enum": [
+            "partial",
+            "complete"
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/identityProvenance"
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "activeConstructorCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "accountedConstructorCount": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "activeConstructorCount",
+            "accountedConstructorCount"
+          ],
+          "additionalProperties": false
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "definitionFunction": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bodySha256": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{64}$"
+              },
+              "definitionCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "enum": [
+                  "extracted",
+                  "zero-definitions-proved"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "definitionFunction",
+              "bodySha256",
+              "definitionCount",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "repository": {
+                "enum": [
+                  "normal",
+                  "unique",
+                  "runeword"
+                ]
+              },
+              "type": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "weaponType": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "defaultIdentityMode": {
+                "enum": [
+                  "fixed",
+                  "seeded",
+                  "stack",
+                  "runeword"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "partial",
+                  "complete"
+                ]
+              },
+              "sourceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "expectedItems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "gameId": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "identityMode": {
+                      "enum": [
+                        "fixed",
+                        "seeded",
+                        "stack",
+                        "runeword"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "gameId",
+                    "identityMode"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "repository",
+              "type",
+              "weaponType",
+              "defaultIdentityMode",
+              "status",
+              "sourceRefs",
+              "expectedItems"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "definitions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "repository": {
+                    "enum": [
+                      "normal",
+                      "unique",
+                      "runeword"
+                    ]
+                  },
+                  "type": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "gameId": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "weaponType": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "provenanceRef": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "identityMode": {
+                    "const": "seeded"
+                  },
+                  "baseLocalizationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "baseName": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "repository",
+                  "type",
+                  "gameId",
+                  "weaponType",
+                  "provenanceRef",
+                  "identityMode",
+                  "baseLocalizationId",
+                  "baseName"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "repository": {
+                    "enum": [
+                      "normal",
+                      "unique",
+                      "runeword"
+                    ]
+                  },
+                  "type": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "gameId": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "weaponType": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "provenanceRef": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "identityMode": {
+                    "const": "fixed"
+                  },
+                  "localizationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "repository",
+                  "type",
+                  "gameId",
+                  "weaponType",
+                  "provenanceRef",
+                  "identityMode",
+                  "localizationId",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "repository": {
+                    "enum": [
+                      "normal",
+                      "unique",
+                      "runeword"
+                    ]
+                  },
+                  "type": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "gameId": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "weaponType": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "provenanceRef": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "identityMode": {
+                    "const": "stack"
+                  },
+                  "localizationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "repository",
+                  "type",
+                  "gameId",
+                  "weaponType",
+                  "provenanceRef",
+                  "identityMode",
+                  "localizationId",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "repository": {
+                    "enum": [
+                      "normal",
+                      "unique",
+                      "runeword"
+                    ]
+                  },
+                  "type": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "gameId": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "weaponType": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "provenanceRef": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "identityMode": {
+                    "const": "runeword"
+                  },
+                  "localizationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "repository",
+                  "type",
+                  "gameId",
+                  "weaponType",
+                  "provenanceRef",
+                  "identityMode",
+                  "localizationId",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "repository": {
+                "enum": [
+                  "normal",
+                  "unique",
+                  "runeword"
+                ]
+              },
+              "type": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "gameId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "weaponType": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expectedIdentityMode": {
+                "enum": [
+                  "fixed",
+                  "seeded",
+                  "stack",
+                  "runeword"
+                ]
+              },
+              "localizationId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sourceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "repository",
+              "type",
+              "gameId",
+              "weaponType",
+              "expectedIdentityMode",
+              "reason",
+              "sourceRefs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "quarantine": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "repository": {
+                "enum": [
+                  "normal",
+                  "unique",
+                  "runeword"
+                ]
+              },
+              "type": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "gameId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "weaponType": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expectedIdentityMode": {
+                "enum": [
+                  "fixed",
+                  "seeded",
+                  "stack",
+                  "runeword"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "candidates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "identityMode": {
+                      "enum": [
+                        "fixed",
+                        "seeded",
+                        "stack",
+                        "runeword"
+                      ]
+                    },
+                    "provenanceRef": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "localizationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "baseLocalizationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "baseName": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "identityMode",
+                    "provenanceRef"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "repository",
+              "type",
+              "gameId",
+              "weaponType",
+              "expectedIdentityMode",
+              "reason",
+              "candidates"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "catalogId",
+        "catalogStatus",
+        "provenance",
+        "coverage",
+        "sources",
+        "domains",
+        "definitions",
+        "missing",
+        "quarantine"
+      ],
+      "additionalProperties": false
+    },
+    "constructorValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "statId": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "kind": {
+              "const": "scalar"
+            },
+            "minimum": {
+              "type": "number"
+            },
+            "maximum": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "statId",
+            "kind",
+            "minimum",
+            "maximum"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "statId": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "kind": {
+              "const": "range"
+            },
+            "minimum": {
+              "type": "number"
+            },
+            "maximum": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "statId",
+            "kind",
+            "minimum",
+            "maximum"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "statId": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "kind": {
+              "const": "series"
+            },
+            "minimum": {
+              "type": "number"
+            },
+            "maximum": {
+              "type": "number"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "statId",
+            "kind",
+            "minimum",
+            "maximum",
+            "values"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "statId": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "kind": {
+              "const": "dynamic"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "statId",
+            "kind",
+            "description"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "constructors": {
+      "type": "object",
+      "properties": {
+        "steamBuild": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executableVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currentBuildParity": {
+          "const": "unverified"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "itemKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "stats": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/constructorValue"
+                }
+              },
+              "complete": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "itemKey",
+              "stats",
+              "complete"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "steamBuild",
+        "executableVersion",
+        "currentBuildParity",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "role": {
+      "type": "object",
+      "properties": {
+        "statId": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kind": {
+          "enum": [
+            "quantity",
+            "class-identifier",
+            "talent-identifier",
+            "effect",
+            "marker",
+            "categorical",
+            "collection",
+            "control-only"
+          ]
+        },
+        "caption": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "talentFieldId": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "statId",
+        "kind",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "statCatalog": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "steamBuild": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executableSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {
+            "constructorProjectionSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            },
+            "roleClassificationSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            },
+            "meaningClassificationSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            }
+          },
+          "required": [
+            "constructorProjectionSha256",
+            "roleClassificationSha256",
+            "meaningClassificationSha256"
+          ],
+          "additionalProperties": false
+        },
+        "nativeMarketCatalog": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "catalogId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "steamBuild": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "executableSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            },
+            "sourceCatalogSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "catalogId",
+            "steamBuild",
+            "executableSha256",
+            "sourceCatalogSha256"
+          ],
+          "additionalProperties": false
+        },
+        "nativeMenuStatIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uniqueItems": true
+        },
+        "stats": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "statId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "localizationKey": {
+                "type": "string"
+              },
+              "nativeMarketMenu": {
+                "type": "boolean"
+              },
+              "unit": {
+                "enum": [
+                  "percent",
+                  "flat",
+                  "count",
+                  "seconds",
+                  "unknown"
+                ]
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/role"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "unresolvedMeaning": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "statId",
+              "name",
+              "localizationKey",
+              "nativeMarketMenu",
+              "unit",
+              "role",
+              "unresolvedMeaning"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "encodedFieldContexts": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer",
+                "minimum": 0
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "uniqueItems": true
+        },
+        "procFamilies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "eventKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "skillIdentifierId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "levelId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "chanceId": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "eventKey",
+              "skillIdentifierId",
+              "levelId",
+              "chanceId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "steamBuild",
+        "executableSha256",
+        "provenance",
+        "nativeMarketCatalog",
+        "nativeMenuStatIds",
+        "stats",
+        "encodedFieldContexts",
+        "procFamilies"
+      ],
+      "additionalProperties": false
+    },
+    "runewords": {
+      "type": "object",
+      "properties": {
+        "steamBuild": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ],
+            "items": false,
+            "minItems": 4,
+            "maxItems": 4
+          }
+        }
+      },
+      "required": [
+        "steamBuild",
+        "sourceSha256",
+        "bindings"
+      ],
+      "additionalProperties": false
+    },
+    "rarities": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byNormalizedName": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "enum": [
+              "Satanic",
+              "Set",
+              "Heroic",
+              "Angelic",
+              "Unholy",
+              "Runeword"
+            ]
+          }
+        }
+      },
+      "required": [
+        "source",
+        "byNormalizedName"
+      ],
+      "additionalProperties": false
+    },
+    "listingCoverage": {
+      "type": "object",
+      "properties": {
+        "ITEM_LISTING_CONSTRUCTOR_GAPS": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "tier-helper",
+              "constructor-helper"
+            ]
+          }
+        },
+        "ITEM_LISTING_OPTIONAL_GENERATION_KEYS": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "ITEM_LISTING_CONSTRUCTOR_GAPS",
+        "ITEM_LISTING_OPTIONAL_GENERATION_KEYS"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

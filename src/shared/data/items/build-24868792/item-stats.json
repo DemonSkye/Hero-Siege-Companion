@@ -1,0 +1,4108 @@
+{
+  "schemaVersion": 1,
+  "steamBuild": 24868792,
+  "executableSha256": "BA72B95AC10785D0ECDCC2B3D1925D6CB3439EFAF4CEF9DE2EA1F67D6CFDD4DF",
+  "provenance": {
+    "constructorProjectionSha256": "8d5951a3bfc5e6508f180108ac65778de7f1328e28758d3c8d44db3bb88c9ed8",
+    "roleClassificationSha256": "9f2595a5eb1152e0526ebc0117da3620f19f6bc57e9e73d17b44e3c78cd7f7af",
+    "meaningClassificationSha256": "5fcfd1c8a5f1fa4aff5272a7686af97618dced6d572fbedabc51b7c18ca3a831"
+  },
+  "nativeMarketCatalog": {
+    "schemaVersion": 1,
+    "catalogId": "hero-siege-market-filter-stats-build-24868792",
+    "steamBuild": 24868792,
+    "executableSha256": "BA72B95AC10785D0ECDCC2B3D1925D6CB3439EFAF4CEF9DE2EA1F67D6CFDD4DF",
+    "sourceCatalogSha256": "9BF8623EC520155C0D43097BB5FD8A0E9C0A7B2852C07F90C4F95D521754344F"
+  },
+  "nativeMenuStatIds": [
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    33,
+    34,
+    36,
+    37,
+    39,
+    40,
+    42,
+    43,
+    45,
+    46,
+    48,
+    49,
+    51,
+    52,
+    53,
+    54,
+    55,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    70,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    94,
+    95,
+    97,
+    99,
+    101,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    128,
+    129,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    145,
+    146,
+    147,
+    148,
+    149,
+    150,
+    151,
+    152,
+    153,
+    155,
+    156,
+    159,
+    160,
+    161,
+    162,
+    167,
+    168,
+    169,
+    170,
+    171,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    198,
+    200,
+    201,
+    202,
+    222,
+    223,
+    224,
+    225,
+    226,
+    227,
+    250,
+    281,
+    282,
+    284,
+    285,
+    286,
+    287,
+    288,
+    289,
+    290,
+    327,
+    328,
+    329,
+    330,
+    331,
+    332,
+    333,
+    334,
+    335,
+    336,
+    337,
+    338,
+    339,
+    385,
+    386,
+    388,
+    389,
+    391,
+    393,
+    394,
+    395,
+    396,
+    419,
+    437,
+    465,
+    474
+  ],
+  "stats": [
+    {
+      "statId": 0,
+      "name": "Stat 0",
+      "localizationKey": "stat_id_0",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 1,
+      "name": "Stat 1",
+      "localizationKey": "stat_id_1",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 2,
+      "name": "Stat 2",
+      "localizationKey": "stat_id_2",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 10,
+      "name": "Stat 10",
+      "localizationKey": "stat_id_10",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "unused-in-retained-constructor-catalog"
+    },
+    {
+      "statId": 11,
+      "name": "Stat 11",
+      "localizationKey": "stat_id_11",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "unused-in-retained-constructor-catalog"
+    },
+    {
+      "statId": 12,
+      "name": "Stat 12",
+      "localizationKey": "stat_id_12",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "unused-in-retained-constructor-catalog"
+    },
+    {
+      "statId": 13,
+      "name": "Stat 13",
+      "localizationKey": "stat_id_13",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "unused-in-retained-constructor-catalog"
+    },
+    {
+      "statId": 14,
+      "name": "Stat 14",
+      "localizationKey": "stat_id_14",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "unused-in-retained-constructor-catalog"
+    },
+    {
+      "statId": 15,
+      "name": "Stat 15",
+      "localizationKey": "stat_id_15",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "unused-in-retained-constructor-catalog"
+    },
+    {
+      "statId": 20,
+      "name": "Sockets",
+      "localizationKey": "stat_id_20",
+      "nativeMarketMenu": false,
+      "unit": "count",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 21,
+      "name": "Stat 21",
+      "localizationKey": "stat_id_21",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 21,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 21)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 22,
+      "name": "Stat 22",
+      "localizationKey": "stat_id_22",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 22,
+        "kind": "control-only",
+        "detail": "Participates in the Attack Damage calculation; the complete displayed amount is not established."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 23,
+      "name": "Stat 23",
+      "localizationKey": "stat_id_23",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 23,
+        "kind": "control-only",
+        "detail": "Participates in the Attacks per Second calculation; the complete displayed amount is not established."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 24,
+      "name": "Stat 24",
+      "localizationKey": "stat_id_24",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 25,
+      "name": "Movement Speed",
+      "localizationKey": "movement_speed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 26,
+      "name": "Phasing",
+      "localizationKey": "phasing",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 27,
+      "name": "Jumping Power",
+      "localizationKey": "jumping_power",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 28,
+      "name": "Enhanced Damage",
+      "localizationKey": "enhanced_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 29,
+      "name": "Enhanced Defense",
+      "localizationKey": "enhanced_defense",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 30,
+      "name": "Enhanced Defense per level",
+      "localizationKey": "enhanced_defense_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 31,
+      "name": "Enhanced Damage per level",
+      "localizationKey": "enhanced_damage_per_level",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 32,
+      "name": "Increased Strength",
+      "localizationKey": "stat_strength_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 33,
+      "name": "Strength",
+      "localizationKey": "strength",
+      "nativeMarketMenu": true,
+      "unit": "flat",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 34,
+      "name": "Strength per level",
+      "localizationKey": "strength_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 35,
+      "name": "Increased Dexterity",
+      "localizationKey": "stat_dexterity_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 36,
+      "name": "Dexterity",
+      "localizationKey": "dexterity",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 37,
+      "name": "Dexterity per level",
+      "localizationKey": "dexterity_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 38,
+      "name": "Increased Energy",
+      "localizationKey": "stat_energy_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 39,
+      "name": "Energy",
+      "localizationKey": "energy",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 40,
+      "name": "Energy per level",
+      "localizationKey": "energy_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 41,
+      "name": "Increased Intelligence",
+      "localizationKey": "stat_intelligence_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 42,
+      "name": "Intelligence",
+      "localizationKey": "intelligence",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 43,
+      "name": "Intelligence per level",
+      "localizationKey": "intelligence_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 44,
+      "name": "Increased Armor",
+      "localizationKey": "stat_armor_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 45,
+      "name": "Armor",
+      "localizationKey": "armor",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 46,
+      "name": "Armor per level",
+      "localizationKey": "armor_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 47,
+      "name": "Increased Vitality",
+      "localizationKey": "stat_vitality_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 48,
+      "name": "Vitality",
+      "localizationKey": "vitality",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 49,
+      "name": "Vitality per level",
+      "localizationKey": "vitality_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 50,
+      "name": "Increased All Attributes",
+      "localizationKey": "stat_all_stats_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 51,
+      "name": "All Attributes",
+      "localizationKey": "all_stats",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 52,
+      "name": "Life",
+      "localizationKey": "max_hp",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 53,
+      "name": "Life %",
+      "localizationKey": "hp_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 54,
+      "name": "Life per level",
+      "localizationKey": "hp_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 55,
+      "name": "Life Replenish",
+      "localizationKey": "health_regen",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 57,
+      "name": "Life stolen per Hit",
+      "localizationKey": "life_per_hit",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 58,
+      "name": "Life per second",
+      "localizationKey": "hp_per_second",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 59,
+      "name": "Life After each Kill",
+      "localizationKey": "hp_kill",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 60,
+      "name": "Mana",
+      "localizationKey": "max_mana",
+      "nativeMarketMenu": true,
+      "unit": "flat",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 61,
+      "name": "Mana %",
+      "localizationKey": "mana_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 62,
+      "name": "Mana per level",
+      "localizationKey": "mana_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 63,
+      "name": "Mana Replenish",
+      "localizationKey": "mana_regen",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 64,
+      "name": "Mana stolen per Hit",
+      "localizationKey": "mana_per_hit",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 65,
+      "name": "Mana per second",
+      "localizationKey": "mana_per_second",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 66,
+      "name": "Mana After each Kill",
+      "localizationKey": "mana_kill",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 67,
+      "name": "Attack Range",
+      "localizationKey": "attack_range",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 68,
+      "name": "Attack Speed",
+      "localizationKey": "attack_speed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 69,
+      "name": "Total Attack Speed",
+      "localizationKey": "stat_attack_speed_t",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 70,
+      "name": "Projectile Speed",
+      "localizationKey": "projectile_speed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 71,
+      "name": "to Projectile Speed",
+      "localizationKey": "stat_projectileSpeed",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 72,
+      "name": "Chance for Critical Strike",
+      "localizationKey": "critical_chance",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 73,
+      "name": "Critical Strike Damage",
+      "localizationKey": "critical_damage",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 74,
+      "name": "Attack Rating",
+      "localizationKey": "attack_rating",
+      "nativeMarketMenu": true,
+      "unit": "flat",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 75,
+      "name": "Attack Rating %",
+      "localizationKey": "attack_rating_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 76,
+      "name": "Attack Rating per level",
+      "localizationKey": "attack_rating_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 77,
+      "name": "Piercing",
+      "localizationKey": "piercing",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 78,
+      "name": "Slow Target",
+      "localizationKey": "slow_target",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 79,
+      "name": "Extra damage to Stunned",
+      "localizationKey": "extra_damage_stunned",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 80,
+      "name": "Extra damage to Bleeding",
+      "localizationKey": "extra_damage_bleed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 81,
+      "name": "Extra damage to Frozen",
+      "localizationKey": "extra_damage_frozen",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 82,
+      "name": "Extra damage to Poisoned",
+      "localizationKey": "extra_damage_poisoned",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 83,
+      "name": "Extra damage to Burning",
+      "localizationKey": "extra_damage_burning",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 84,
+      "name": "Extra damage to Stasis",
+      "localizationKey": "extra_damage_stasis",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 85,
+      "name": "Extra Damage to Shadow Burning",
+      "localizationKey": "extra_damage_spellburn",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 86,
+      "name": "Extra Damage to Frost Bitten",
+      "localizationKey": "extra_damage_frostburn",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 87,
+      "name": "Extra Damage to Ailments",
+      "localizationKey": "extra_damage_ailments",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 88,
+      "name": "Extra Fire Damage to Burning Monsters",
+      "localizationKey": "stat_extraFireBurning",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 89,
+      "name": "Extra Cold Damage to Frostbitten Monsters",
+      "localizationKey": "stat_extraColdFrostburn",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 90,
+      "name": "Extra Poison Damage to Poisoned Monsters",
+      "localizationKey": "stat_extraPoisonPoisoned",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 91,
+      "name": "Extra Arcane Damage to Shadow Burning Monsters",
+      "localizationKey": "stat_extraArcaneSpellburn",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 92,
+      "name": "Extra Lightning Damage to Monsters inflicted with Stasis",
+      "localizationKey": "stat_extraLightningStasis",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 93,
+      "name": "Extra Physical Damage to Bleeding Monsters",
+      "localizationKey": "stat_extraPhysicalBleed",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 94,
+      "name": "Ignore Target Defense",
+      "localizationKey": "ignore_defense",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 95,
+      "name": "Deadly Blow",
+      "localizationKey": "deadly_blow",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 96,
+      "name": "Deadly Blow Damage increased by",
+      "localizationKey": "stat_deadly_blow_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 97,
+      "name": "Crushing Blow",
+      "localizationKey": "crushing_blow",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 98,
+      "name": "Crushing Blow Armor Break increased by",
+      "localizationKey": "stat_crushing_blow_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 99,
+      "name": "Open Wounds",
+      "localizationKey": "open_wounds",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 100,
+      "name": "Open Wounds Bleed Damage increased by",
+      "localizationKey": "stat_open_wounds_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 101,
+      "name": "Magic Skill Damage",
+      "localizationKey": "skill_damage",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 102,
+      "name": "Monsters rest in peace after death",
+      "localizationKey": "stat_monsters_rest_in_peace",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 102,
+        "kind": "effect",
+        "detail": "Conditional effect presence; this is not a roll quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 103,
+      "name": "Physical Damage per level",
+      "localizationKey": "damage_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 104,
+      "name": "Increased Bleeding Frequency",
+      "localizationKey": "frequency_bleed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 105,
+      "name": "Increased Poisoned Frequency",
+      "localizationKey": "frequency_poisoned",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 106,
+      "name": "Increased Burning Frequency",
+      "localizationKey": "frequency_burning",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 107,
+      "name": "Increased Stasis Frequency",
+      "localizationKey": "frequency_stasis",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 108,
+      "name": "Increased Shadow Burning Frequency",
+      "localizationKey": "frequency_spellburn",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 109,
+      "name": "Increased Frost Bite Frequency",
+      "localizationKey": "frequency_frostburn",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 110,
+      "name": "Increased Ailment Frequency",
+      "localizationKey": "frequency_ailments",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 111,
+      "name": "Explosion Damage",
+      "localizationKey": "explosion_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 112,
+      "name": "Explosion Skills",
+      "localizationKey": "explosion_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 113,
+      "name": "Stat 113",
+      "localizationKey": "stat_id_113",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 113,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier when attacking (Stat 113)",
+        "detail": "Proc talent selector; a greater-than comparison would select the wrong identity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 114,
+      "name": "Stat 114",
+      "localizationKey": "stat_id_114",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 114,
+        "kind": "quantity",
+        "caption": "Talent level when attacking (Stat 114)",
+        "detail": "Numeric proc level; selected-item tables remain tables."
+      },
+      "unresolvedMeaning": "table-or-series-containing-value"
+    },
+    {
+      "statId": 115,
+      "name": "Stat 115",
+      "localizationKey": "stat_id_115",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 115,
+        "kind": "quantity",
+        "caption": "Talent chance when attacking (Stat 115)",
+        "detail": "Numeric proc chance in its retained scale; no percent conversion is inferred."
+      },
+      "unresolvedMeaning": "table-or-series-containing-value"
+    },
+    {
+      "statId": 116,
+      "name": "Stat 116",
+      "localizationKey": "stat_id_116",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 116,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier when striking (Stat 116)",
+        "detail": "Proc talent selector; a greater-than comparison would select the wrong identity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 117,
+      "name": "Stat 117",
+      "localizationKey": "stat_id_117",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 117,
+        "kind": "quantity",
+        "caption": "Talent level when striking (Stat 117)",
+        "detail": "Numeric proc level; selected-item tables remain tables."
+      },
+      "unresolvedMeaning": "table-or-series-containing-value"
+    },
+    {
+      "statId": 118,
+      "name": "Stat 118",
+      "localizationKey": "stat_id_118",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 118,
+        "kind": "quantity",
+        "caption": "Talent chance when striking (Stat 118)",
+        "detail": "Numeric proc chance in its retained scale; no percent conversion is inferred."
+      },
+      "unresolvedMeaning": "table-or-series-containing-value"
+    },
+    {
+      "statId": 119,
+      "name": "Stat 119",
+      "localizationKey": "",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 119,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier on spell hit (Stat 119)",
+        "detail": "Proc talent selector; a greater-than comparison would select the wrong identity."
+      },
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 120,
+      "name": "Stat 120",
+      "localizationKey": "stat_id_120",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 120,
+        "kind": "quantity",
+        "caption": "Talent level on spell hit (Stat 120)",
+        "detail": "Numeric proc level; selected-item tables remain tables."
+      },
+      "unresolvedMeaning": "unused-in-retained-constructor-catalog"
+    },
+    {
+      "statId": 121,
+      "name": "Stat 121",
+      "localizationKey": "",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 121,
+        "kind": "quantity",
+        "caption": "Talent chance on spell hit (Stat 121)",
+        "detail": "Numeric proc chance in its retained scale; no percent conversion is inferred."
+      },
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 122,
+      "name": "Stat 122",
+      "localizationKey": "stat_id_122",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 122,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier when killing (Stat 122)",
+        "detail": "Proc talent selector; a greater-than comparison would select the wrong identity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 123,
+      "name": "Stat 123",
+      "localizationKey": "stat_id_123",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 123,
+        "kind": "quantity",
+        "caption": "Talent level when killing (Stat 123)",
+        "detail": "Numeric proc level; selected-item tables remain tables."
+      },
+      "unresolvedMeaning": "table-or-series-containing-value"
+    },
+    {
+      "statId": 124,
+      "name": "Stat 124",
+      "localizationKey": "stat_id_124",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 124,
+        "kind": "quantity",
+        "caption": "Talent chance when killing (Stat 124)",
+        "detail": "Numeric proc chance in its retained scale; no percent conversion is inferred."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 125,
+      "name": "Stat 125",
+      "localizationKey": "stat_id_125",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 125,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier when casting (Stat 125)",
+        "detail": "Proc talent selector; a greater-than comparison would select the wrong identity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 126,
+      "name": "Stat 126",
+      "localizationKey": "stat_id_126",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 126,
+        "kind": "quantity",
+        "caption": "Talent level when casting (Stat 126)",
+        "detail": "Numeric proc level; selected-item tables remain tables."
+      },
+      "unresolvedMeaning": "table-or-series-containing-value"
+    },
+    {
+      "statId": 127,
+      "name": "Stat 127",
+      "localizationKey": "stat_id_127",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 127,
+        "kind": "quantity",
+        "caption": "Talent chance when casting (Stat 127)",
+        "detail": "Numeric proc chance in its retained scale; no percent conversion is inferred."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 128,
+      "name": "Flat Physical Damage",
+      "localizationKey": "physical_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 129,
+      "name": "Physical Damage %",
+      "localizationKey": "physical_damage_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 130,
+      "name": "Projectile Damage increased by",
+      "localizationKey": "stat_projectile_damage_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 132,
+      "name": "Additive Fire Damage",
+      "localizationKey": "fire_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 133,
+      "name": "Flat Fire Skill Damage",
+      "localizationKey": "fire_damage_f",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 134,
+      "name": "Fire Skill Damage %",
+      "localizationKey": "fire_damage_increased",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 135,
+      "name": "Ignore Fire Resistance",
+      "localizationKey": "ignore_fire_resist",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 136,
+      "name": "Additive Cold Damage",
+      "localizationKey": "cold_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 137,
+      "name": "Flat Cold Skill Damage",
+      "localizationKey": "cold_damage_f",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 138,
+      "name": "Cold Skill Damage %",
+      "localizationKey": "cold_damage_increased",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 139,
+      "name": "Ignore Cold Resistance",
+      "localizationKey": "ignore_cold_resist",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 140,
+      "name": "Additive Arcane Damage",
+      "localizationKey": "magic_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 141,
+      "name": "Flat Arcane Skill Damage",
+      "localizationKey": "magic_damage_f",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 142,
+      "name": "Arcane Skill Damage %",
+      "localizationKey": "magic_damage_increased",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 143,
+      "name": "Ignore Arcane Resistance",
+      "localizationKey": "ignore_magic_resist",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 144,
+      "name": "Additive Lightning Damage",
+      "localizationKey": "lightning_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 145,
+      "name": "Flat Lightning Skill Damage",
+      "localizationKey": "lightning_damage_f",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 146,
+      "name": "Lightning Skill Damage %",
+      "localizationKey": "lightning_damage_increased",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 147,
+      "name": "Ignore Lightning Resistance",
+      "localizationKey": "ignore_lightning_resist",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 148,
+      "name": "Additive Poison Damage",
+      "localizationKey": "poison_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 149,
+      "name": "Flat Poison Skill Damage",
+      "localizationKey": "poison_damage_f",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 150,
+      "name": "Poison Skill Damage %",
+      "localizationKey": "poison_damage_increased",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 151,
+      "name": "Ignore Poison Resistance",
+      "localizationKey": "ignore_poison_resist",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 152,
+      "name": "Ignore All Resistance",
+      "localizationKey": "ignore_all_resists",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 153,
+      "name": "Flat Elemental Skill Damage",
+      "localizationKey": "elemental_damage_f",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 154,
+      "name": "Base Defense",
+      "localizationKey": "defense",
+      "nativeMarketMenu": false,
+      "unit": "flat",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 155,
+      "name": "Defense %",
+      "localizationKey": "defense_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 156,
+      "name": "Defense per level",
+      "localizationKey": "defense_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 157,
+      "name": "Base Block Chance",
+      "localizationKey": "block_rate",
+      "nativeMarketMenu": false,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 158,
+      "name": "Increased Chance of Blocking",
+      "localizationKey": "block_rating",
+      "nativeMarketMenu": false,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 159,
+      "name": "Physical damage reduction",
+      "localizationKey": "reduction",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 160,
+      "name": "Magic damage reduction",
+      "localizationKey": "magic_reduction",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 161,
+      "name": "All damage reduction",
+      "localizationKey": "all_reduction",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 162,
+      "name": "Damage reduced",
+      "localizationKey": "damage_reduced",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 163,
+      "name": "Physical Damage taken as Cold",
+      "localizationKey": "phys_taken_cold",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 164,
+      "name": "Physical Damage taken as Fire",
+      "localizationKey": "phys_taken_fire",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 165,
+      "name": "Physical Damage taken as Arcane",
+      "localizationKey": "phys_taken_arcane",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 166,
+      "name": "Physical Damage taken as Lightning",
+      "localizationKey": "phys_taken_lightning",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 167,
+      "name": "Damage taken recouped as Mana",
+      "localizationKey": "damage_taken_mana",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 168,
+      "name": "Damage taken recouped as Life",
+      "localizationKey": "damage_taken_life",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 169,
+      "name": "Defense vs Missiles",
+      "localizationKey": "defense_vs_missile",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 170,
+      "name": "Faster Hit Recovery",
+      "localizationKey": "faster_hit_recovery",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 171,
+      "name": "Damage Return",
+      "localizationKey": "damage_return",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 172,
+      "name": "Every point in resistances increases your damage by",
+      "localizationKey": "stat_all_resistances_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 173,
+      "name": "All Resistances",
+      "localizationKey": "all_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 174,
+      "name": "Maximum All Resists",
+      "localizationKey": "max_all_resistances",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 175,
+      "name": "Fire Resistance",
+      "localizationKey": "fire_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 176,
+      "name": "Maximum Fire Resist",
+      "localizationKey": "max_fire_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 177,
+      "name": "Cold Resistance",
+      "localizationKey": "cold_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 178,
+      "name": "Maximum Cold Resist",
+      "localizationKey": "max_cold_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 179,
+      "name": "Lightning Resistance",
+      "localizationKey": "lightning_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 180,
+      "name": "Maximum Lightning Resist",
+      "localizationKey": "max_lightning_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 181,
+      "name": "Arcane Resistance",
+      "localizationKey": "arcane_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 182,
+      "name": "Maximum Arcane Resist",
+      "localizationKey": "max_magic_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 183,
+      "name": "Poison Resistance",
+      "localizationKey": "poison_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 184,
+      "name": "Maximum Poison Resist",
+      "localizationKey": "max_poison_resistance",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 185,
+      "name": "Triggered skill identifier",
+      "localizationKey": "stat_id_185",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 185,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier when struck (Stat 185)",
+        "detail": "Proc talent selector; a greater-than comparison would select the wrong identity."
+      },
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 186,
+      "name": "Skill parameter 186",
+      "localizationKey": "stat_id_186",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 186,
+        "kind": "quantity",
+        "caption": "Talent level when struck (Stat 186)",
+        "detail": "Numeric proc level; selected-item tables remain tables."
+      },
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 187,
+      "name": "Skill parameter 187",
+      "localizationKey": "stat_id_187",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 187,
+        "kind": "quantity",
+        "caption": "Talent chance when struck (Stat 187)",
+        "detail": "Numeric proc chance in its retained scale; no percent conversion is inferred."
+      },
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 188,
+      "name": "Stat 188",
+      "localizationKey": "stat_id_188",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 188,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier when blocking (Stat 188)",
+        "detail": "Proc talent selector; a greater-than comparison would select the wrong identity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 189,
+      "name": "Stat 189",
+      "localizationKey": "stat_id_189",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 189,
+        "kind": "quantity",
+        "caption": "Talent level when blocking (Stat 189)",
+        "detail": "Numeric proc level; selected-item tables remain tables."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 190,
+      "name": "Stat 190",
+      "localizationKey": "stat_id_190",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 190,
+        "kind": "quantity",
+        "caption": "Talent chance when blocking (Stat 190)",
+        "detail": "Numeric proc chance in its retained scale; no percent conversion is inferred."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 191,
+      "name": "Fire Absorption",
+      "localizationKey": "fire_absorb",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 192,
+      "name": "Cold Absorption",
+      "localizationKey": "cold_absorb",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 193,
+      "name": "Poison Absorption",
+      "localizationKey": "poison_absorb",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 194,
+      "name": "Lightning Absorption",
+      "localizationKey": "lightning_absorb",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 195,
+      "name": "Arcane Absorption",
+      "localizationKey": "arcane_absorb",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 196,
+      "name": "Faster Cast Rate",
+      "localizationKey": "faster_cast_rate",
+      "nativeMarketMenu": true,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 197,
+      "name": "Total Faster Cast Rate",
+      "localizationKey": "stat_faster_cast_rate_t",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 198,
+      "name": "Skill Haste",
+      "localizationKey": "cooldown_reduction",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 199,
+      "name": "Flask Skill Haste",
+      "localizationKey": "cooldown_reduction_potion",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 200,
+      "name": "Mana Cost Reduced",
+      "localizationKey": "mana_costs",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 201,
+      "name": "All Skills",
+      "localizationKey": "all_talents",
+      "nativeMarketMenu": true,
+      "unit": "count",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 202,
+      "name": "Singular Skills",
+      "localizationKey": "singular_skill",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": {
+        "statId": 202,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 202)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 203,
+      "name": "Stat 203",
+      "localizationKey": "stat_id_203",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 203,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 203)",
+        "talentFieldId": 202,
+        "detail": "Numeric modifier for the talent selected by field 202; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 204,
+      "name": "Stat 204",
+      "localizationKey": "stat_id_204",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 204,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 204)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 205,
+      "name": "Stat 205",
+      "localizationKey": "stat_id_205",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 205,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 205)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 206,
+      "name": "Stat 206",
+      "localizationKey": "stat_id_206",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 206,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 206)",
+        "talentFieldId": 205,
+        "detail": "Numeric modifier for the talent selected by field 205; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 207,
+      "name": "Stat 207",
+      "localizationKey": "stat_id_207",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 207,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 207)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 208,
+      "name": "Stat 208",
+      "localizationKey": "stat_id_208",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 208,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 208)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 209,
+      "name": "Stat 209",
+      "localizationKey": "stat_id_209",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 209,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 209)",
+        "talentFieldId": 208,
+        "detail": "Numeric modifier for the talent selected by field 208; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 210,
+      "name": "Stat 210",
+      "localizationKey": "stat_id_210",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 210,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 210)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 211,
+      "name": "Stat 211",
+      "localizationKey": "stat_id_211",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 211,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 211)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 212,
+      "name": "Stat 212",
+      "localizationKey": "stat_id_212",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 212,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 212)",
+        "talentFieldId": 211,
+        "detail": "Numeric modifier for the talent selected by field 211; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 213,
+      "name": "Stat 213",
+      "localizationKey": "stat_id_213",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 213,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 213)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 214,
+      "name": "Stat 214",
+      "localizationKey": "stat_id_214",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 214,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 214)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 215,
+      "name": "Stat 215",
+      "localizationKey": "stat_id_215",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 215,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 215)",
+        "talentFieldId": 214,
+        "detail": "Numeric modifier for the talent selected by field 214; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 216,
+      "name": "Stat 216",
+      "localizationKey": "stat_id_216",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 216,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 216)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 217,
+      "name": "Stat 217",
+      "localizationKey": "stat_id_217",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 217,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 217)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 218,
+      "name": "Stat 218",
+      "localizationKey": "stat_id_218",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 218,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 218)",
+        "talentFieldId": 217,
+        "detail": "Numeric modifier for the talent selected by field 217; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 219,
+      "name": "Stat 219",
+      "localizationKey": "stat_id_219",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 219,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 219)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 220,
+      "name": "to Sub Skills",
+      "localizationKey": "stat_sub_skills",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 221,
+      "name": "Random Skill Element",
+      "localizationKey": "stat_random_skill",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 221,
+        "kind": "marker",
+        "detail": "Conditional marker with scalar/array paths; no displayed scalar amount is established."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 222,
+      "name": "Physical Skills",
+      "localizationKey": "physical_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 223,
+      "name": "Cold Skills",
+      "localizationKey": "cold_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 224,
+      "name": "Arcane Skills",
+      "localizationKey": "arcane_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 225,
+      "name": "Fire Skills",
+      "localizationKey": "fire_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 226,
+      "name": "Lightning Skills",
+      "localizationKey": "lightning_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 227,
+      "name": "Poison Skills",
+      "localizationKey": "poison_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 228,
+      "name": "of Intelligence is added as Magic Skill Damage",
+      "localizationKey": "stat_intelligence_skill_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 229,
+      "name": "of Intelligence is added as Lightning Skill Damage",
+      "localizationKey": "stat_intelligence_lightning",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 230,
+      "name": "of Intelligence is added as Fire Skill Damage",
+      "localizationKey": "stat_intelligence_fire",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 231,
+      "name": "of Intelligence is added as Cold Skill Damage",
+      "localizationKey": "stat_intelligence_cold",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 232,
+      "name": "of Intelligence is added as Arcane Skill Damage",
+      "localizationKey": "stat_intelligence_arcane",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 234,
+      "name": "of Vitality is added as Attack Damage",
+      "localizationKey": "stat_vitality_attack_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 235,
+      "name": "of Vitality is added as Magic Skill Damage",
+      "localizationKey": "stat_vitality_skill_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 241,
+      "name": "of Energy is added as Magic Skill Damage",
+      "localizationKey": "stat_energy_skill_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 242,
+      "name": "of Energy is added as Lightning Skill Damage",
+      "localizationKey": "stat_energy_lightning",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 244,
+      "name": "of Energy is added as Cold Skill Damage",
+      "localizationKey": "stat_energy_cold",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 247,
+      "name": "of Armor is added as Magic Skill Damage",
+      "localizationKey": "stat_armor_skill_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 248,
+      "name": "of Armor is added as Attack Damage",
+      "localizationKey": "stat_armor_attack_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 249,
+      "name": "of Faster Cast Rate is added as Movement Speed",
+      "localizationKey": "stat_fcr_movement_speed",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 250,
+      "name": "Ailment Damage",
+      "localizationKey": "ailment_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 251,
+      "name": "Bleed damage increased by",
+      "localizationKey": "stat_increased_bleed_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 252,
+      "name": "Poisoned damage increased by",
+      "localizationKey": "stat_increased_poisoned_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 253,
+      "name": "Stasis damage increased by",
+      "localizationKey": "stat_increased_stasis_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 254,
+      "name": "Shadow Burn damage increased by",
+      "localizationKey": "stat_increased_shadow_burn_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 255,
+      "name": "Frost Bite damage increased by",
+      "localizationKey": "stat_increased_frost_bite_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 256,
+      "name": "Burning damage increased by",
+      "localizationKey": "stat_increased_burning_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 257,
+      "name": "Chance to critically hit with ailments",
+      "localizationKey": "stat_ailment_crit_chance",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 258,
+      "name": "Ailment critical damage increased by",
+      "localizationKey": "stat_ailment_crit_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 259,
+      "name": "Increases the Effectiveness of Damaging Auras by",
+      "localizationKey": "stat_aura_effectiveness",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 260,
+      "name": "Increased Damaging Aura Range",
+      "localizationKey": "stat_aura_range",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 261,
+      "name": "Increases the Effectiveness of Buffing Auras by",
+      "localizationKey": "stat_buff_aura_effectiveness",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 262,
+      "name": "Increased Buffing Aura Range",
+      "localizationKey": "stat_buff_aura_range",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 263,
+      "name": "to Maximum Crushing Blow Stacks",
+      "localizationKey": "stat_crushing_blow_stack",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 264,
+      "name": "Life replenished when Blocking",
+      "localizationKey": "stat_life_after_block_value",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 265,
+      "name": "Chance to replenish life when blocking",
+      "localizationKey": "stat_life_after_block_chance",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 266,
+      "name": "Increased Orbital Projectile Duration",
+      "localizationKey": "stat_id_266",
+      "nativeMarketMenu": false,
+      "unit": "percent",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 267,
+      "name": "Increased Orbital Projectile Damage",
+      "localizationKey": "stat_orbit_damage_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 268,
+      "name": "Area of Effect Skill Radius increased by",
+      "localizationKey": "stat_aoe_size",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 269,
+      "name": "Area of Effect Skill Damage increased by",
+      "localizationKey": "stat_aoe_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 270,
+      "name": "to Melee Skills",
+      "localizationKey": "stat_melee_skills",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 271,
+      "name": "Ranged Skills",
+      "localizationKey": "stat_ranged_skills",
+      "nativeMarketMenu": false,
+      "unit": "count",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 272,
+      "name": "to Orbital Skills",
+      "localizationKey": "stat_orbit_skills",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 273,
+      "name": "to Area of Effect Skills",
+      "localizationKey": "stat_aoe_skills",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 274,
+      "name": "to Projectile Skills",
+      "localizationKey": "stat_projectile_skills",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 275,
+      "name": "Self inflicted damage from attacking",
+      "localizationKey": "stat_self_strike_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 276,
+      "name": "Chance to inflict damage to self when attacking",
+      "localizationKey": "stat_self_strike_chance",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 277,
+      "name": "Self inflicted damage from casting",
+      "localizationKey": "stat_self_strike_cast_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 278,
+      "name": "Chance to inflict damage to self when casting",
+      "localizationKey": "stat_self_strike_cast_chance",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 279,
+      "name": "of Incoming Damage is taken over",
+      "localizationKey": "stat_damage_taken_over_01",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 279,
+        "kind": "quantity",
+        "detail": "Retained numeric quantity; its native scale is preserved."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 280,
+      "name": "Stat 280",
+      "localizationKey": "stat_id_280",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 281,
+      "name": "Light Radius",
+      "localizationKey": "light_radius",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 282,
+      "name": "Increased Experience Gain",
+      "localizationKey": "exp_gain",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 283,
+      "name": "Increased Experience Gain Below Level 100",
+      "localizationKey": "exp_gain_below",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 284,
+      "name": "Magic Find",
+      "localizationKey": "magic_find",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 285,
+      "name": "Magic Find per level",
+      "localizationKey": "magic_find_per_level",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 286,
+      "name": "Extra Gold from kills",
+      "localizationKey": "extra_gold",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 287,
+      "name": "Half Freeze Duration",
+      "localizationKey": "half_freeze_duration",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 288,
+      "name": "Cannot be Frozen",
+      "localizationKey": "cannot_be_frozen",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 289,
+      "name": "Poison Length Reduced",
+      "localizationKey": "poison_length_reduced",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 290,
+      "name": "Merchant prices",
+      "localizationKey": "merchant_prices",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 291,
+      "name": "Double Jump",
+      "localizationKey": "stat_double_jump",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 291,
+        "kind": "effect",
+        "detail": "Conditional effect presence; this is not a roll quantity."
+      },
+      "unresolvedMeaning": "encoded-flag-context"
+    },
+    {
+      "statId": 292,
+      "name": "Attacks can hit multiple enemies",
+      "localizationKey": "stat_aoe_attack",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 292,
+        "kind": "effect",
+        "detail": "Conditional effect presence; this is not a roll quantity."
+      },
+      "unresolvedMeaning": "encoded-flag-context"
+    },
+    {
+      "statId": 293,
+      "name": "Mirrors your other ring",
+      "localizationKey": "stat_copy_slot",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 293,
+        "kind": "effect",
+        "detail": "Conditional effect presence; this is not a roll quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 294,
+      "name": "Skill Movement Diminish decreased by",
+      "localizationKey": "stat_movement_diminish",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 295,
+      "name": "Stat 295",
+      "localizationKey": "stat_id_295",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 296,
+      "name": "Orbiting Relic Radius increased by",
+      "localizationKey": "stat_relic_orbit_radius",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 297,
+      "name": "to Orbiting Relic Amount",
+      "localizationKey": "stat_relic_orbit_amount",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 298,
+      "name": "to Orbiting Relic Damage",
+      "localizationKey": "stat_relic_orbit_damage_f",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 299,
+      "name": "Orbiting Relic Damage increased by",
+      "localizationKey": "stat_relic_orbit_damage_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 300,
+      "name": "Orbiting Relics execute monsters below",
+      "localizationKey": "stat_relic_orbit_execute",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 301,
+      "name": "to Orbiting Relic size",
+      "localizationKey": "stat_relic_orbit_size",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 302,
+      "name": "to Follower Relic Damage",
+      "localizationKey": "stat_relic_follower_damage_f",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 303,
+      "name": "Follower Relic Damage increased by",
+      "localizationKey": "stat_relic_follower_damage_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 304,
+      "name": "Follower Relic Attack Speed increased by",
+      "localizationKey": "stat_relic_follower_attack_speed",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 305,
+      "name": "to Follower Relic Projectiles",
+      "localizationKey": "stat_relic_follower_projectiles",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 307,
+      "name": "Non-Buff Proc Relic chance increased by",
+      "localizationKey": "stat_relic_proc_rate",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 308,
+      "name": "to Effectiveness of Non-Buff Proc Relics",
+      "localizationKey": "stat_relic_proc_effectiveness",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 309,
+      "name": "to Skill Relic Damage",
+      "localizationKey": "stat_relic_skill_damage_f",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 310,
+      "name": "Skill Relic Damage increased by",
+      "localizationKey": "stat_relic_skill_damage_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 311,
+      "name": "to Skill Relic Projectiles",
+      "localizationKey": "stat_relic_skill_projectiles",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 312,
+      "name": "Skill Relic Projectile Size increased by",
+      "localizationKey": "stat_relic_skill_size",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 313,
+      "name": "Additional Casts with Skill Relics",
+      "localizationKey": "stat_relic_skill_burst",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 314,
+      "name": "Skill relic cooldown increased by",
+      "localizationKey": "stat_relic_skill_cooldown_dec",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 315,
+      "name": "Stat 315",
+      "localizationKey": "stat_id_315",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 315,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 315)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 316,
+      "name": "Stat 316",
+      "localizationKey": "stat_id_316",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 316,
+        "kind": "quantity",
+        "caption": "Selected talent level (Stat 316)",
+        "detail": "Numeric level for the selected talent; identifier remains a separate field."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 319,
+      "name": "Stat 319",
+      "localizationKey": "stat_id_319",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 319,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 319)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 320,
+      "name": "Stat 320",
+      "localizationKey": "stat_id_320",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 320,
+        "kind": "quantity",
+        "caption": "Selected talent level (Stat 320)",
+        "detail": "Numeric level for the selected talent; identifier remains a separate field."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 321,
+      "name": "Stat 321",
+      "localizationKey": "stat_id_321",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 321,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 321)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 322,
+      "name": "Stat 322",
+      "localizationKey": "stat_id_322",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 322,
+        "kind": "quantity",
+        "caption": "Selected talent level (Stat 322)",
+        "detail": "Numeric level for the selected talent; identifier remains a separate field."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 323,
+      "name": "Stat 323",
+      "localizationKey": "stat_id_323",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 323,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 323)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 324,
+      "name": "Stat 324",
+      "localizationKey": "stat_id_324",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 324,
+        "kind": "quantity",
+        "caption": "Selected talent level (Stat 324)",
+        "detail": "Numeric level for the selected talent; identifier remains a separate field."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 325,
+      "name": "Stat 325",
+      "localizationKey": "stat_id_325",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 325,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 325)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 326,
+      "name": "Stat 326",
+      "localizationKey": "stat_id_326",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 326,
+        "kind": "quantity",
+        "caption": "Selected talent level (Stat 326)",
+        "detail": "Numeric level for the selected talent; identifier remains a separate field."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 327,
+      "name": "Summon Life %",
+      "localizationKey": "summon_life_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 328,
+      "name": "Summon Damage Reduction",
+      "localizationKey": "summon_reduction",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 329,
+      "name": "Summon Resistances",
+      "localizationKey": "summon_resists",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 330,
+      "name": "Summon Amount",
+      "localizationKey": "summon_amount",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 331,
+      "name": "Summon Skills",
+      "localizationKey": "summon_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 332,
+      "name": "Summon Damage %",
+      "localizationKey": "summon_damage_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 333,
+      "name": "Summon Attack Speed",
+      "localizationKey": "summon_attack_speed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 334,
+      "name": "Summon Movement Speed",
+      "localizationKey": "summon_movement_speed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 335,
+      "name": "Sentry Skills",
+      "localizationKey": "sentry_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 336,
+      "name": "Sentry Damage %",
+      "localizationKey": "sentry_damage_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 337,
+      "name": "Sentry Amount",
+      "localizationKey": "sentry_amount",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 338,
+      "name": "Sentry Attack Speed",
+      "localizationKey": "sentry_attack_speed",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 339,
+      "name": "Sentry Duration",
+      "localizationKey": "sentry_duration",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 340,
+      "name": "Guardian damage increased by",
+      "localizationKey": "stat_guardian_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 341,
+      "name": "Chance for Guardians to perform an additional attack",
+      "localizationKey": "stat_guardian_burst",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 342,
+      "name": "Guardian Attack Speed increased by",
+      "localizationKey": "stat_guardian_attack_speed",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 343,
+      "name": "Increased Guardian Attack Range",
+      "localizationKey": "stat_guardian_attack_range",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 344,
+      "name": "Increased Guardian Duration",
+      "localizationKey": "stat_guardian_duration",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 347,
+      "name": "Stat 347",
+      "localizationKey": "stat_id_347",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 347,
+        "kind": "collection",
+        "detail": "Collection of zones, not a numeric minimum."
+      },
+      "unresolvedMeaning": "zone-collection"
+    },
+    {
+      "statId": 348,
+      "name": "Codex Entries",
+      "localizationKey": "codex_entries",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 348,
+        "kind": "quantity",
+        "detail": "Retained numeric quantity; its native scale is preserved."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 349,
+      "name": "Stat 349",
+      "localizationKey": "stat_id_349",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 349,
+        "kind": "categorical",
+        "caption": "Dispatch category (Stat 349)",
+        "detail": "Categorical cases in the Codex path; exact category names remain unresolved."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 350,
+      "name": "Loot Amount increased by",
+      "localizationKey": "buff_loot_slots",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 351,
+      "name": "Rune Drop Chances Increased by",
+      "localizationKey": "buff_rune_chance",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 352,
+      "name": "Gold from monster kills increased by",
+      "localizationKey": "buff_gold_drops",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 353,
+      "name": "Heroic Item drop chances increased by",
+      "localizationKey": "buff_heroic_chance",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 354,
+      "name": "Angelic Item drop chances increased by",
+      "localizationKey": "buff_angelic_chance",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 355,
+      "name": "Movement Speed Increased by",
+      "localizationKey": "buff_movement_speed",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 356,
+      "name": "Attack Speed Increased by",
+      "localizationKey": "buff_attack_speed",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 357,
+      "name": "Cast Rate Increased by",
+      "localizationKey": "buff_cast_rate",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 358,
+      "name": "Attack Damage Increased by",
+      "localizationKey": "buff_attack_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 359,
+      "name": "Magic Skill Damage Increased by",
+      "localizationKey": "buff_skill_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 360,
+      "name": "Ancient monsters have a chance to drop a Relic when killed",
+      "localizationKey": "buff_ancient_relic",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 361,
+      "name": "Ancient monsters have a chance to summon a Treasure Goblin when killed",
+      "localizationKey": "buff_ancient_goblin",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 362,
+      "name": "Magic Find Increased by",
+      "localizationKey": "buff_magic_find",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 363,
+      "name": "Experience Gained Increased by",
+      "localizationKey": "buff_experience_gain",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 364,
+      "name": "All Recovery increased by",
+      "localizationKey": "buff_recovery",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 365,
+      "name": "Monsters have a chance to re-spawn as a Legion",
+      "localizationKey": "buff_enemy_miniboss",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 366,
+      "name": "Critical Strike Damage Increased by",
+      "localizationKey": "buff_critical_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 367,
+      "name": "Chance to spawn Ancient packs",
+      "localizationKey": "buff_ancient_pack",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 375,
+      "name": "Increases pack size by",
+      "localizationKey": "buff_density",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 376,
+      "name": "Stat 376",
+      "localizationKey": "stat_id_376",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 378,
+      "name": "Stat 378",
+      "localizationKey": "stat_id_378",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 384,
+      "name": "Stat 384",
+      "localizationKey": "stat_id_384",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 384,
+        "kind": "quantity",
+        "caption": "Mana recovery input (Stat 384)",
+        "detail": "Numeric flask recovery input; complete recovery calculation is not reconstructed."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 385,
+      "name": "Flask Mana Replenish %",
+      "localizationKey": "flask_mana_replenish_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 386,
+      "name": "Flask Instant Mana Replenish",
+      "localizationKey": "flask_mana_instant",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 387,
+      "name": "Stat 387",
+      "localizationKey": "stat_id_387",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 387,
+        "kind": "quantity",
+        "caption": "Life recovery input (Stat 387)",
+        "detail": "Numeric flask recovery input; complete recovery calculation is not reconstructed."
+      },
+      "unresolvedMeaning": "numeric-range-field-unbound-meaning"
+    },
+    {
+      "statId": 388,
+      "name": "Flask Life Replenish %",
+      "localizationKey": "flask_life_replenish_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 389,
+      "name": "Flask Instant Life Replenish",
+      "localizationKey": "flask_life_instant",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 390,
+      "name": "Effect Duration",
+      "localizationKey": "stat_flask_duration_time",
+      "nativeMarketMenu": false,
+      "unit": "seconds",
+      "role": {
+        "statId": 390,
+        "kind": "quantity",
+        "detail": "Flask effect duration in seconds."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 391,
+      "name": "Flask Duration",
+      "localizationKey": "flask_duration_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 393,
+      "name": "Flask Extra Stacks",
+      "localizationKey": "flask_stacks",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 394,
+      "name": "Flask Stacks Recovered Per Kill",
+      "localizationKey": "flask_stacks_kill",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 395,
+      "name": "Flask Stacks Recovered",
+      "localizationKey": "flask_stacks_regen",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 396,
+      "name": "Flask Cooldown",
+      "localizationKey": "flask_cooldown",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 411,
+      "name": "of Damage Taken Redirected to Octa",
+      "localizationKey": "stat_octaReflect",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 412,
+      "name": "Less damage dealt with skills that have a cooldown",
+      "localizationKey": "stat_cdr_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 413,
+      "name": "Attacks fire",
+      "localizationKey": "stat_extra_projectile_01",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 413,
+        "kind": "quantity",
+        "detail": "Retained numeric quantity; its native scale is preserved."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 414,
+      "name": "Projectiles chain",
+      "localizationKey": "stat_chaining_projectile",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 414,
+        "kind": "quantity",
+        "detail": "Retained numeric quantity; its native scale is preserved."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 415,
+      "name": "Projectiles fork on hit",
+      "localizationKey": "stat_forking_projectile",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 415,
+        "kind": "effect",
+        "detail": "Conditional effect presence; this is not a roll quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 416,
+      "name": "Projectiles Return to you",
+      "localizationKey": "stat_projectile_return",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 416,
+        "kind": "effect",
+        "detail": "Conditional effect presence; this is not a roll quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 417,
+      "name": "Projectile Size increased by",
+      "localizationKey": "stat_projectile_size",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 418,
+      "name": "Projectiles are fired in random directions",
+      "localizationKey": "stat_projectile_direction",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 418,
+        "kind": "effect",
+        "detail": "Conditional effect presence; this is not a roll quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 419,
+      "name": "Sub Skills",
+      "localizationKey": "sub_skills",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 420,
+      "name": "Stat 420",
+      "localizationKey": "stat_id_420",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 420,
+        "kind": "quantity",
+        "caption": "Sub-skill modifier (Stat 420)",
+        "detail": "Numeric modifier in the selected sub-skill context; no unit conversion is inferred."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 437,
+      "name": "Explosion AoE",
+      "localizationKey": "explosion_aoe",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 444,
+      "name": "Stat 444",
+      "localizationKey": "stat_id_444",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 444,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 444)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 445,
+      "name": "Stat 445",
+      "localizationKey": "stat_id_445",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 445,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 445)",
+        "talentFieldId": 444,
+        "detail": "Numeric modifier for the talent selected by field 444; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 448,
+      "name": "to Minimum Weapon Damage",
+      "localizationKey": "stats_min_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 450,
+      "name": "to Maximum Weapon Damage",
+      "localizationKey": "stats_max_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 451,
+      "name": "Maximum Weapon Damage Increased by",
+      "localizationKey": "stats_max_damage_p",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 462,
+      "name": "Stat 462",
+      "localizationKey": "stat_id_462",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 462,
+        "kind": "talent-identifier",
+        "caption": "Talent identifier (Stat 462)",
+        "detail": "Selects a talent identity; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 463,
+      "name": "Stat 463",
+      "localizationKey": "stat_id_463",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 463,
+        "kind": "quantity",
+        "caption": "Selected talent modifier (Stat 463)",
+        "talentFieldId": 462,
+        "detail": "Numeric modifier for the talent selected by field 462; class and table context remain separate."
+      },
+      "unresolvedMeaning": "runtime-composite-localized-value"
+    },
+    {
+      "statId": 464,
+      "name": "Stat 464",
+      "localizationKey": "stat_id_464",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": {
+        "statId": 464,
+        "kind": "class-identifier",
+        "caption": "Class identifier (Stat 464)",
+        "detail": "Categorical class selector; this is not a numeric quantity."
+      },
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 465,
+      "name": "Movement Speed Converted to Damage",
+      "localizationKey": "mspeed_converted_damage",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 467,
+      "name": "of your Cold Resistance is converted to Cold Skill Damage",
+      "localizationKey": "stat_cold_resistance_converted_cold_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 469,
+      "name": "of your Poison Resistance is converted to Poison Skill Damage",
+      "localizationKey": "stat_poison_resistance_converted_poison_damage",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 471,
+      "name": "Spell Area of Effect Radius increased by",
+      "localizationKey": "stat_aoe_spell_size",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 472,
+      "name": "Attack Area of Effect Radius increased by",
+      "localizationKey": "stat_aoe_attack_size",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 473,
+      "name": "Stat 473",
+      "localizationKey": "stat_id_473",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
+    },
+    {
+      "statId": 474,
+      "name": "Increased Damage Return",
+      "localizationKey": "damage_return_p",
+      "nativeMarketMenu": true,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    },
+    {
+      "statId": 475,
+      "name": "Chance to suppress incoming spell hits",
+      "localizationKey": "stat_spell_suppress",
+      "nativeMarketMenu": false,
+      "unit": "unknown",
+      "role": null,
+      "unresolvedMeaning": null
+    }
+  ],
+  "encodedFieldContexts": [
+    [
+      "unique:2:0:43",
+      291
+    ],
+    [
+      "unique:3:3:21",
+      291
+    ],
+    [
+      "unique:3:7:7",
+      291
+    ],
+    [
+      "runeword-repository:23",
+      292
+    ],
+    [
+      "runeword-repository:25",
+      292
+    ],
+    [
+      "runeword-repository:54",
+      292
+    ],
+    [
+      "runeword-repository:26",
+      292
+    ],
+    [
+      "runeword-repository:41",
+      292
+    ],
+    [
+      "runeword-repository:51",
+      292
+    ],
+    [
+      "unique:0:0:76",
+      292
+    ],
+    [
+      "unique:3:1:30",
+      292
+    ],
+    [
+      "unique:3:4:5",
+      292
+    ],
+    [
+      "unique:3:4:7",
+      292
+    ],
+    [
+      "unique:3:6:9",
+      292
+    ],
+    [
+      "unique:3:6:13",
+      292
+    ]
+  ],
+  "procFamilies": [
+    {
+      "eventKey": "when_kill",
+      "skillIdentifierId": 122,
+      "levelId": 123,
+      "chanceId": 124
+    },
+    {
+      "eventKey": "when_strike",
+      "skillIdentifierId": 116,
+      "levelId": 117,
+      "chanceId": 118
+    },
+    {
+      "eventKey": "when_spellhit",
+      "skillIdentifierId": 119,
+      "levelId": 120,
+      "chanceId": 121
+    },
+    {
+      "eventKey": "when_struck",
+      "skillIdentifierId": 185,
+      "levelId": 186,
+      "chanceId": 187
+    },
+    {
+      "eventKey": "when_blocking",
+      "skillIdentifierId": 188,
+      "levelId": 189,
+      "chanceId": 190
+    },
+    {
+      "eventKey": "when_casting",
+      "skillIdentifierId": 125,
+      "levelId": 126,
+      "chanceId": 127
+    },
+    {
+      "eventKey": "when_attacking",
+      "skillIdentifierId": 113,
+      "levelId": 114,
+      "chanceId": 115
+    }
+  ]
+}
