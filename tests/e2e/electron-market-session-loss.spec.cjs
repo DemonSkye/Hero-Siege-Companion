@@ -60,8 +60,9 @@ test("main/preload stop and resume cannot restore Ready without current evidence
   });
 });
 
-for (const order of ["account-first", "transient-first"]) {
-  test(`main/preload/UI recovers split-flow context with ${order} evidence and keeps the healthy source`, async () => {
+for (const { loss, order } of ["attributed", "unscoped"].flatMap(loss =>
+  ["account-first", "transient-first"].map(order => ({ loss, order })))) {
+  test(`main/preload/UI recovers split-flow context after ${loss} loss with ${order} evidence and keeps the healthy source`, async () => {
     await withCompanionApp({ marketTransport: true }, async ({ electronApp, page }) => {
       await page.evaluate(() => window.heroSiegeCompanion.startCapture());
       const transientFlow = { ...flow, localPort: 6000 };
@@ -74,10 +75,11 @@ for (const order of ["account-first", "transient-first"]) {
         globalThis.heroSiegeCompanionE2e.emitSessionContext([42], [payload]), { ...source, text: context });
       await emit(flow, account); await emit(transientFlow, transient);
       await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(true);
-      await electronApp.evaluate((_electron, affected) => globalThis.heroSiegeCompanionE2e.emitCaptureUpdate({
-        observationGap: true, observationGapFlow: { src: affected.localAddress, srcPort: affected.localPort,
-          dst: affected.remoteAddress, dstPort: affected.remotePort },
-      }), transientFlow);
+      await electronApp.evaluate((_electron, { affected, loss }) => globalThis.heroSiegeCompanionE2e.emitCaptureUpdate({
+        observationGap: true, ...(loss === "attributed" ? { observationGapFlow: {
+          src: affected.localAddress, srcPort: affected.localPort, dst: affected.remoteAddress, dstPort: affected.remotePort,
+        } } : {}),
+      }), { affected: transientFlow, loss });
       await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(false);
       const renewed = transient.replace("SYNTHETIC-session", "SYNTHETIC-new-session");
       if (order === "account-first") await emit(flow, account);

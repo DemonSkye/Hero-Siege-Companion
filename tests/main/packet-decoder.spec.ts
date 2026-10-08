@@ -19,6 +19,39 @@ describe("diagnostic TCP control segments", () => {
 });
 
 describe("TCP evidence loss notifications", () => {
+  test("keeps distinct first-observation order for repaired and following coalesced records", () => {
+    const buffers = new PacketBuffers();
+    const old = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=42\0");
+    const fresh = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=99\0");
+    buffers.push(parsedPayload(old.subarray(0, 9), { seq: 100 }));
+    buffers.push(parsedPayload(old.subarray(23), { seq: 123 }));
+    buffers.push(parsedPayload(fresh, { seq: 100 + old.length }));
+    const boundary = buffers.observationBoundary();
+    const completed = buffers.push(parsedPayload(old.subarray(9, 23), { seq: 109 }));
+    expect(completed).toHaveLength(2);
+    expect(completed.map(frame => frame.packet.observationSequence)).toEqual([1, boundary]);
+  });
+
+  test("a prefix arriving later cannot hide the older origin of an initially reordered record", () => {
+    const buffers = new PacketBuffers(), frame = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=42\0");
+    const prefix = frame.length - 6;
+    buffers.push(parsedPayload(frame.subarray(prefix), { seq: 100 + prefix }));
+    const [completed] = buffers.push(parsedPayload(frame.subarray(0, prefix), { seq: 100 }));
+    expect(completed.packet.observationSequence).toBe(1);
+  });
+
+  test("observation reset retains the wraparound byte fence until an explicit new TCP flow", () => {
+    const buffers = new PacketBuffers(), frame = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=42\0");
+    const start = 0xfffffff0, end = (start + frame.length) >>> 0;
+    buffers.push(parsedPayload(frame, { seq: start }));
+    buffers.discardObservation();
+    expect(buffers.push(parsedPayload(frame, { seq: start }))).toEqual([]);
+    expect(buffers.push(parsedPayload(frame, { seq: end }))).toHaveLength(1);
+    buffers.discardObservation();
+    buffers.discardFlow(parsedPayload(frame));
+    expect(buffers.push(parsedPayload(frame, { seq: 10 }))).toHaveLength(1);
+  });
+
   test("signals an unresolved sequence hole once, preserves retransmission recovery and detects the next hole", () => {
     const gap = vi.fn(), buffers = new PacketBuffers(gap), frame = apiFrame("\0\0mailbox/mailbox_check_new\0R\0account_id=42\0");
     expect(buffers.push(parsedPayload(frame.subarray(0, 9), { seq: 100 }))).toEqual([]);

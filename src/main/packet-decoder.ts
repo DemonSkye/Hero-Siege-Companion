@@ -9,12 +9,15 @@ export interface ParsedPayload {
   payloadLength: number;
   payload: Buffer;
   text: string;
+  /** Main-only order of the first observed bytes in this assembled record. */
+  observationSequence?: number;
 }
 
 export interface CompletedPayload {
   packet: ParsedPayload;
   text: string;
   observationOnly?: true;
+  sessionAlreadyObserved?: true;
 }
 
 const IPV4_PROTOCOL_TCP = 6;
@@ -32,17 +35,21 @@ const GENERIC_HEADER_BYTES = GENERIC_PREFIX_BYTES + 4;
 const MAX_LENGTH_PREFIXED_BODY_BYTES = 64 * 1024;
 
 type ApplicationFraming = "unknown" | "length-prefixed" | "legacy";
+interface ObservationRun { length: number; order: number }
 
 interface PendingSegment {
   packet: ParsedPayload;
   sequence: number;
   payload: Buffer;
+  observationRuns: ObservationRun[];
 }
 
 interface BufferedTcpStream {
   nextSequence: number;
   frameStartSequence: number;
   frameBuffer: Buffer;
+  observationRuns: ObservationRun[];
+  earlyObservations: Set<number>;
   framePacket: ParsedPayload;
   pendingCommandFrame: CompletedPayload | null;
   tentativeFrameSequence: number | null;
@@ -55,23 +62,38 @@ interface BufferedTcpStream {
 
 export class PacketBuffers {
   private readonly streams = new Map<string, BufferedTcpStream>();
+  private readonly discardedSequences = new Map<string, number>();
+  private observationSequence = 0;
 
-  constructor(private readonly onObservationGap: (packet: ParsedPayload) => void = () => undefined) {}
+  constructor(private readonly onObservationGap: (packet: ParsedPayload, boundary: number) => void = () => undefined) {}
 
   push(packet: ParsedPayload, now = Date.now()): CompletedPayload[] {
+    packet = { ...packet, observationSequence: ++this.observationSequence };
     const sourceKey = directionalFlowKey(packet);
-    const sequence = payloadSequence(packet);
+    let sequence = payloadSequence(packet);
     let stream = this.streams.get(sourceKey);
     if (stream && now - stream.lastSeenAt > MAX_STREAM_IDLE_MS) {
       this.streams.delete(sourceKey);
-      if (streamBufferedBytes(stream) > 0) this.onObservationGap(stream.framePacket);
+      if (streamBufferedBytes(stream) > 0) {
+        this.rememberDiscardedSequence(sourceKey, stream);
+        this.onObservationGap(stream.framePacket, this.observationSequence - 1);
+      }
       stream = undefined;
+    }
+    const discarded = this.discardedSequences.get(sourceKey);
+    if (discarded !== undefined && sequenceDelta(sequence, discarded) < 0) {
+      const overlap = -sequenceDelta(sequence, discarded);
+      if (overlap >= packet.payload.length) return [];
+      packet = { ...packet, seq: discarded, payload: packet.payload.subarray(overlap), payloadLength: packet.payload.length - overlap };
+      sequence = discarded;
     }
     if (!stream) {
       stream = {
         nextSequence: sequence,
         frameStartSequence: sequence,
         frameBuffer: Buffer.alloc(0),
+        observationRuns: [],
+        earlyObservations: new Set(),
         framePacket: packetAtSequence(packet, sequence),
         pendingCommandFrame: null,
         tentativeFrameSequence: null,
@@ -86,25 +108,59 @@ export class PacketBuffers {
     }
 
     stream.lastSeenAt = now;
-    this.acceptSegment(stream, { packet, sequence, payload: packet.payload });
+    this.acceptSegment(stream, { packet, sequence, payload: packet.payload,
+      observationRuns: [{ length: packet.payload.length, order: packet.observationSequence! }] });
     this.drainPendingSegments(stream);
     if (stream.pending.size === 0) stream.gapPending = false;
     const completed = drainApplicationFrames(stream, packet);
+    for (const frame of completed) {
+      if (stream.earlyObservations.delete(frame.packet.seq)) frame.sessionAlreadyObserved = true;
+    }
+    // A whole native API record beyond a capture hole can provide independent
+    // session evidence. Gameplay parsing still waits for ordered TCP reassembly.
+    completed.push(...observePendingApiRequests(stream));
     if (streamBufferedBytes(stream) > MAX_STREAM_BUFFER_BYTES || stream.pending.size > MAX_PENDING_SEGMENTS) {
       this.streams.delete(sourceKey);
-      this.onObservationGap(packet);
+      this.rememberDiscardedSequence(sourceKey, stream);
+      this.onObservationGap(packet, this.observationSequence - 1);
     }
     return completed;
   }
 
   clear(): void {
     this.streams.clear();
+    this.discardedSequences.clear();
   }
 
-  /** Discard both directions after known loss or a TCP connection boundary. */
+  observationBoundary(): number { return this.observationSequence; }
+
+  /** Forget unfinished evidence, retaining known byte boundaries on continuous TCP flows. */
+  discardObservation(flow?: Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">): void {
+    const keys = flow && new Set([directionalFlowKey(flow),
+      directionalFlowKey({ src: flow.dst, dst: flow.src, srcPort: flow.dstPort, dstPort: flow.srcPort })]);
+    for (const [key, stream] of this.streams) {
+      if (keys && !keys.has(key)) continue;
+      this.rememberDiscardedSequence(key, stream);
+      this.streams.delete(key);
+    }
+  }
+
+  private rememberDiscardedSequence(key: string, stream: BufferedTcpStream): void {
+    let end = stream.nextSequence;
+    for (const segment of stream.pending.values()) {
+      const next = addSequence(segment.sequence, segment.payload.length);
+      if (sequenceDelta(next, end) > 0) end = next;
+    }
+    const previous = this.discardedSequences.get(key);
+    if (previous === undefined || sequenceDelta(end, previous) > 0) this.discardedSequences.set(key, end);
+  }
+
+  /** A TCP tuple boundary, unlike observation loss, permits a new sequence space. */
   discardFlow(packet: Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">): void {
     this.streams.delete(directionalFlowKey(packet));
     this.streams.delete(directionalFlowKey({ src: packet.dst, dst: packet.src, srcPort: packet.dstPort, dstPort: packet.srcPort }));
+    this.discardedSequences.delete(directionalFlowKey(packet));
+    this.discardedSequences.delete(directionalFlowKey({ src: packet.dst, dst: packet.src, srcPort: packet.dstPort, dstPort: packet.srcPort }));
   }
 
   retainFlows(flows: readonly Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">[]): void {
@@ -113,8 +169,10 @@ export class PacketBuffers {
     for (const [key, stream] of this.streams) {
       if (active.has(key)) continue;
       this.streams.delete(key);
-      if (streamBufferedBytes(stream) > 0) this.onObservationGap(stream.framePacket);
+      if (streamBufferedBytes(stream) > 0) this.onObservationGap(stream.framePacket, this.observationSequence);
     }
+    // The connection inventory, rather than an evidence gap, establishes tuple removal.
+    for (const key of this.discardedSequences.keys()) if (!active.has(key)) this.discardedSequences.delete(key);
   }
 
   stats(): { streams: number; pendingSegments: number; bufferedBytes: number } {
@@ -139,12 +197,14 @@ export class PacketBuffers {
       if (startDelta < 0 && endDelta >= 0) {
         const prefixLength = Math.min(-startDelta, segment.payload.length);
         stream.frameBuffer = Buffer.concat([segment.payload.subarray(0, prefixLength), stream.frameBuffer]);
+        stream.observationRuns = [...sliceObservationRuns(segment.observationRuns, 0, prefixLength), ...stream.observationRuns];
         stream.frameStartSequence = segment.sequence;
         stream.framePacket = packetAtSequence(segment.packet, segment.sequence);
         acceptedSegment = {
           packet: segment.packet,
           sequence: addSequence(segment.sequence, prefixLength),
           payload: segment.payload.subarray(prefixLength),
+          observationRuns: sliceObservationRuns(segment.observationRuns, prefixLength),
         };
         if (acceptedSegment.payload.length === 0) return;
       }
@@ -154,11 +214,14 @@ export class PacketBuffers {
     if (delta > 0) {
       if (!stream.gapPending) {
         stream.gapPending = true;
-        this.onObservationGap(segment.packet);
+        this.onObservationGap(segment.packet, this.observationSequence - 1);
       }
       const existing = stream.pending.get(acceptedSegment.sequence);
       if (!existing || existing.payload.length < acceptedSegment.payload.length) {
-        stream.pending.set(acceptedSegment.sequence, acceptedSegment);
+        stream.pending.set(acceptedSegment.sequence, existing ? { ...acceptedSegment,
+          payload: Buffer.concat([existing.payload, acceptedSegment.payload.subarray(existing.payload.length)]),
+          observationRuns: [...existing.observationRuns, ...sliceObservationRuns(acceptedSegment.observationRuns, existing.payload.length)],
+        } : acceptedSegment);
       }
       return;
     }
@@ -171,6 +234,7 @@ export class PacketBuffers {
     }
     const payload = overlap === 0 ? acceptedSegment.payload : acceptedSegment.payload.subarray(overlap);
     stream.frameBuffer = Buffer.concat([stream.frameBuffer, payload]);
+    if (payload.length) stream.observationRuns = [...stream.observationRuns, ...sliceObservationRuns(acceptedSegment.observationRuns, overlap)];
     stream.nextSequence = addSequence(stream.nextSequence, payload.length);
   }
 
@@ -178,8 +242,9 @@ export class PacketBuffers {
     while (stream.pending.size > 0) {
       let candidate: PendingSegment | null = null;
       let candidateDelta = Number.NEGATIVE_INFINITY;
-      for (const segment of stream.pending.values()) {
+      for (const [key, segment] of stream.pending) {
         const delta = sequenceDelta(segment.sequence, stream.nextSequence);
+        if (delta <= 0 && -delta >= segment.payload.length) { stream.pending.delete(key); continue; }
         if (delta > 0 || -delta >= segment.payload.length || delta <= candidateDelta) continue;
         candidate = segment;
         candidateDelta = delta;
@@ -202,7 +267,10 @@ export class PacketBuffers {
       if (!oldestKey) return;
       const oldest = this.streams.get(oldestKey)!;
       this.streams.delete(oldestKey);
-      if (streamBufferedBytes(oldest) > 0) this.onObservationGap(oldest.framePacket);
+      if (streamBufferedBytes(oldest) > 0) {
+        this.rememberDiscardedSequence(oldestKey, oldest);
+        this.onObservationGap(oldest.framePacket, this.observationSequence - 1);
+      }
     }
   }
 }
@@ -361,12 +429,13 @@ function drainLengthPrefixedFrames(
     const rawFrame = stream.frameBuffer.subarray(0, candidate.frameLength);
     const body = rawFrame.subarray(candidate.headerLength);
     const text = decodeLengthPrefixedBody(body);
+    const framePacket = observedFramePacket(stream, candidate.frameLength);
     if (hasApplicationFrameStart(text)) {
-      completed.push(completedPayload(stream.framePacket, body, text));
+      completed.push(completedPayload(framePacket, body, text));
     } else if (candidate.headerLength === API_HEADER_BYTES && hasGameApiRequestEnvelope(body)) {
       // A framed API request need not be a known gameplay event. Let observers
       // inspect it without widening the loot/stats parser's accepted traffic.
-      completed.push({ ...completedPayload(stream.framePacket, body, text), observationOnly: true });
+      completed.push({ ...completedPayload(framePacket, body, text), observationOnly: true });
     }
     consumeFrameBytes(stream, candidate.frameLength);
   }
@@ -488,9 +557,82 @@ function discardFramePrefix(stream: BufferedTcpStream, byteLength: number): void
 
 function consumeFrameBytes(stream: BufferedTcpStream, byteLength: number): void {
   stream.frameBuffer = stream.frameBuffer.subarray(byteLength);
+  let remaining = byteLength;
+  while (remaining > 0 && stream.observationRuns.length) {
+    const run = stream.observationRuns[0];
+    if (run.length > remaining) { run.length -= remaining; break; }
+    remaining -= run.length;
+    stream.observationRuns.shift();
+  }
   stream.frameStartSequence = addSequence(stream.frameStartSequence, byteLength);
   stream.framePacket = packetAtSequence(stream.framePacket, stream.frameStartSequence);
   stream.allowInitialPrepend = false;
+}
+
+function observedFramePacket(stream: BufferedTcpStream, byteLength: number): ParsedPayload {
+  let remaining = byteLength, order = Number.POSITIVE_INFINITY;
+  for (const run of stream.observationRuns) {
+    if (remaining <= 0) break;
+    order = Math.min(order, run.order);
+    remaining -= run.length;
+  }
+  return { ...stream.framePacket, observationSequence: Number.isFinite(order) ? order : stream.framePacket.observationSequence };
+}
+
+function sliceObservationRuns(runs: readonly ObservationRun[], offset: number, length = Number.POSITIVE_INFINITY): ObservationRun[] {
+  const sliced: ObservationRun[] = [];
+  for (const run of runs) {
+    if (offset >= run.length) { offset -= run.length; continue; }
+    const bytes = Math.min(run.length - offset, length);
+    if (bytes <= 0) break;
+    sliced.push({ length: bytes, order: run.order });
+    length -= bytes;
+    offset = 0;
+  }
+  return sliced;
+}
+
+function observePendingApiRequests(stream: BufferedTcpStream): CompletedPayload[] {
+  const segments = [...stream.pending.values()].sort((left, right) =>
+    sequenceDelta(left.sequence, stream.nextSequence) - sequenceDelta(right.sequence, stream.nextSequence));
+  const completed: CompletedPayload[] = [];
+  for (let index = 0; index < segments.length; index++) {
+    const first = segments[index];
+    let bytes = first.payload, runs = first.observationRuns;
+    const boundaries = [0];
+    let end = addSequence(first.sequence, bytes.length);
+    while (index + 1 < segments.length && sequenceDelta(segments[index + 1].sequence, end) <= 0) {
+      const next = segments[++index], overlap = -sequenceDelta(next.sequence, end);
+      boundaries.push(sequenceDelta(next.sequence, first.sequence));
+      if (overlap >= next.payload.length) continue;
+      bytes = Buffer.concat([bytes, next.payload.subarray(overlap)]);
+      runs = [...runs, ...sliceObservationRuns(next.observationRuns, overlap)];
+      end = addSequence(end, next.payload.length - overlap);
+    }
+    // Check exact packet/application boundaries, never scan arbitrary body bytes.
+    let consumedThrough = 0;
+    for (const boundary of boundaries) {
+      if (boundary < consumedThrough) continue;
+      let offset = boundary;
+      while (offset < bytes.length) {
+        const candidate = lengthPrefixedFrameAt(bytes, offset);
+        if (candidate.kind !== "complete" || candidate.headerLength !== API_HEADER_BYTES) break;
+        const body = bytes.subarray(offset + candidate.headerLength, offset + candidate.frameLength);
+        if (!hasGameApiRequestEnvelope(body)) break;
+        const sequence = addSequence(first.sequence, offset);
+        if (!stream.earlyObservations.has(sequence)) {
+          const order = sliceObservationRuns(runs, offset, candidate.frameLength)
+            .reduce((earliest, run) => Math.min(earliest, run.order), Number.POSITIVE_INFINITY);
+          completed.push({ ...completedPayload({ ...packetAtSequence(first.packet, sequence), observationSequence: order },
+            body, decodeLengthPrefixedBody(body)), observationOnly: true });
+          stream.earlyObservations.add(sequence);
+        }
+        offset += candidate.frameLength;
+        consumedThrough = offset;
+      }
+    }
+  }
+  return completed;
 }
 
 function isSupportedFrameBodyLength(value: number): boolean {
@@ -546,35 +688,32 @@ function drainLegacyFrames(
 
   while (delimiterOffset !== -1) {
     const frame = stream.frameBuffer.subarray(0, delimiterOffset);
-    stream.frameBuffer = stream.frameBuffer.subarray(delimiterOffset + 1);
+    const framePacket = observedFramePacket(stream, delimiterOffset + 1);
     const text = decodeApplicationText(frame);
     if (isSplitQueryCommand(text)) {
-      stream.pendingCommandFrame = completedPayload(stream.framePacket, frame, text.trim());
+      stream.pendingCommandFrame = completedPayload(framePacket, frame, text.trim());
     } else if (stream.pendingCommandFrame && isSplitQueryBody(text)) {
       const command = stream.pendingCommandFrame;
       const queryText = text.trimStart();
       const combinedText = `${command.text} ${queryText}`;
       const combinedPayload = Buffer.concat([command.packet.payload, Buffer.from(" "), frame]);
-      if (hasApplicationFrameStart(combinedText)) completed.push(completedPayload(command.packet, combinedPayload, combinedText));
+      if (hasApplicationFrameStart(combinedText)) completed.push(completedPayload({ ...command.packet,
+        observationSequence: Math.min(command.packet.observationSequence!, framePacket.observationSequence!),
+      }, combinedPayload, combinedText));
       stream.pendingCommandFrame = null;
     } else {
       if (text.trim()) stream.pendingCommandFrame = null;
-      if (hasApplicationFrameStart(text)) completed.push(completedPayload(stream.framePacket, frame, text));
+      if (hasApplicationFrameStart(text)) completed.push(completedPayload(framePacket, frame, text));
     }
-    stream.frameStartSequence = addSequence(stream.frameStartSequence, delimiterOffset + 1);
-    stream.framePacket = packetAtSequence(stream.framePacket, stream.frameStartSequence);
-    stream.allowInitialPrepend = false;
+    consumeFrameBytes(stream, delimiterOffset + 1);
     delimiterOffset = stream.frameBuffer.indexOf(0);
   }
 
   if ((latestPacket.flags & TCP_FLAG_PSH) !== 0) {
     const text = decodeApplicationText(stream.frameBuffer);
     if (isCompleteStandaloneJson(text)) {
-      completed.push(completedPayload(stream.framePacket, stream.frameBuffer, text));
-      stream.frameStartSequence = addSequence(stream.frameStartSequence, stream.frameBuffer.length);
-      stream.framePacket = packetAtSequence(stream.framePacket, stream.frameStartSequence);
-      stream.frameBuffer = Buffer.alloc(0);
-      stream.allowInitialPrepend = false;
+      completed.push(completedPayload(observedFramePacket(stream, stream.frameBuffer.length), stream.frameBuffer, text));
+      consumeFrameBytes(stream, stream.frameBuffer.length);
     }
   }
 
@@ -696,7 +835,7 @@ export function getPayload(buffer: Buffer, nbytes: number, linkType: string): Pa
 }
 
 /** Main-only TCP lifecycle metadata; deliberately excludes payload bytes/text. */
-export type CapturedTcpLifecycle = Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort" | "flags">;
+export type CapturedTcpLifecycle = Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort" | "flags"> & { observationBoundary?: number };
 
 /** Header-only attribution for potentially lost TCP evidence; never admits payloads or lifecycle flags. */
 export function getTcpPacketEndpoints(

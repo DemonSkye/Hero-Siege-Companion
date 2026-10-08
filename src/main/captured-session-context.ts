@@ -25,6 +25,8 @@ export interface CapturedSessionPayload {
   observedAt?: number;
   localAddress?: string;
   localPort?: number;
+  /** Main-only reassembly origin, so late unfinished records cannot become new evidence. */
+  observationSequence?: number;
 }
 
 interface FieldEvidence {
@@ -36,6 +38,7 @@ interface FieldEvidence {
   localAddress?: string;
   localPort?: number;
   qualification?: MarketContextProvenance["accountQualification"];
+  observationSequence?: number;
 }
 
 /** Diagnostic comparisons only; different connections do not prove invalid values. */
@@ -90,7 +93,8 @@ export class CapturedSessionContextStore {
   private readonly records = new MarketRecordEvidenceStore();
   private observationInterrupted = false;
   private readonly retiredFlows = new Set<string>();
-  private readonly interruptedFlows = new Set<string>();
+  private pendingRecoveryBoundary = 0;
+  private rejectedObservationBoundary = 0;
   private activeFlows: Set<string | null> | null = null;
 
   constructor(
@@ -105,7 +109,7 @@ export class CapturedSessionContextStore {
     this.processSignature = signature;
     this.generation += 1;
     this.retiredFlows.clear();
-    this.interruptedFlows.clear();
+    this.pendingRecoveryBoundary = this.rejectedObservationBoundary = 0;
     this.activeFlows = null;
     this.observationInterrupted = false;
     this.records.clear();
@@ -114,6 +118,7 @@ export class CapturedSessionContextStore {
 
   observe(payload: CapturedSessionPayload): void {
     if (!this.processSignature || payload.direction !== "outbound") return;
+    if (payload.observationSequence !== undefined && payload.observationSequence <= this.rejectedObservationBoundary) return;
     const flow = payloadFlowKey(payload);
     if (flow && (this.retiredFlows.has(flow) || (this.activeFlows && !this.activeFlows.has(flow)))) return;
     for (const message of extractSessionContextMessages(payload.text)) {
@@ -121,6 +126,12 @@ export class CapturedSessionContextStore {
       this.observeMessage(payload, message);
     }
     this.qualifyCurrentAccount();
+    const unique = this.evidence.unique_account_id, crossregion = this.evidence.crossregion_identifier;
+    if (this.transientEndpoint(this.now()) && unique?.observationSequence !== undefined && crossregion?.observationSequence !== undefined
+      && Math.min(unique.observationSequence, crossregion.observationSequence) > this.pendingRecoveryBoundary) {
+      this.rejectedObservationBoundary = Math.max(this.rejectedObservationBoundary, this.pendingRecoveryBoundary);
+      this.pendingRecoveryBoundary = 0;
+    }
     if (isComplete(this.fields) && this.transientEndpoint(this.now())) this.observationInterrupted = false;
     this.notifyReadiness();
   }
@@ -132,13 +143,13 @@ export class CapturedSessionContextStore {
   }
   marketRecordSnapshot(): FrozenMarketRecordEvidence { return this.records.freeze(this.generation, this.now()); }
   /** Loss changes credential trust as well as diagnostic evidence. Public metadata survives. */
-  observeCaptureUpdate(update: Pick<CaptureUpdate, "observationGap" | "observationGapFlow" | "running" | "status" | "connections">): void {
+  observeCaptureUpdate(update: Pick<CaptureUpdate, "observationGap" | "observationGapFlow" | "observationBoundary" | "running" | "status" | "connections">): void {
     const interrupted = update.running === false || update.status === "error";
     if (update.observationGap || interrupted) {
       this.invalidateForObservationGap(!interrupted && update.observationGapFlow
-        ? [packetFlowKey(update.observationGapFlow)] : undefined);
+        ? [packetFlowKey(update.observationGapFlow)] : undefined, update.observationBoundary);
     }
-    if (update.connections) this.observeConnections(update.connections);
+    if (update.connections) this.observeConnections(update.connections, update.observationBoundary);
   }
 
   observeTcpLifecycle(packet: CapturedTcpLifecycle): void {
@@ -146,10 +157,10 @@ export class CapturedSessionContextStore {
     const key = packetFlowKey(packet);
     if ((packet.flags & 2) !== 0) this.retiredFlows.delete(key);
     if ((packet.flags & 5) !== 0) this.retiredFlows.add(key);
-    this.invalidateForObservationGap([key]);
+    this.invalidateForObservationGap([key], packet.observationBoundary);
   }
 
-  private observeConnections(connections: readonly CaptureConnection[]): void {
+  private observeConnections(connections: readonly CaptureConnection[], boundary = 0): void {
     const active = new Set(connections.map(connection => payloadFlowKey(connection)));
     this.activeFlows = active;
     // Absent flows are rejected by the current connection inventory, even during
@@ -160,21 +171,20 @@ export class CapturedSessionContextStore {
       const key = item && payloadFlowKey(item);
       return key && !active.has(key) ? [key] : [];
     });
-    if (interrupted.length) this.invalidateForObservationGap(interrupted);
+    if (interrupted.length) this.invalidateForObservationGap(interrupted, boundary);
   }
 
-  private invalidateForObservationGap(affectedFlows?: readonly string[]): void {
+  private invalidateForObservationGap(affectedFlows?: readonly string[], boundary = 0): void {
     this.records.clear(true);
     const sourceFlows = Object.values(this.evidence).map(item => payloadFlowKey(item));
     // Unknown attribution cannot establish continuity. A proved unrelated flow can.
     if (affectedFlows && sourceFlows.length && sourceFlows.every(key => key !== null
       && !affectedFlows.includes(key))) return;
     this.observationInterrupted = true;
-    // Clear credential trust for the whole context, but retire only interrupted
-    // sources on replacement. Healthy sources can supply fresh fields in either order.
-    for (const key of affectedFlows ?? sourceFlows) {
-      if (key) this.interruptedFlows.add(key);
-    }
+    // Evidence loss does not close a TCP flow. A gap can be repaired in place;
+    // replacement evidence instead excludes older unfinished records, not future traffic.
+    this.pendingRecoveryBoundary = Math.max(this.pendingRecoveryBoundary, boundary);
+    if (!affectedFlows) this.rejectedObservationBoundary = Math.max(this.rejectedObservationBoundary, boundary);
     this.clearContext("observation-gap", true);
   }
 
@@ -276,7 +286,7 @@ export class CapturedSessionContextStore {
     this.directory = null;
     this.processSignature = "";
     this.retiredFlows.clear();
-    this.interruptedFlows.clear();
+    this.pendingRecoveryBoundary = this.rejectedObservationBoundary = 0;
     this.activeFlows = null;
   }
 
@@ -317,20 +327,13 @@ export class CapturedSessionContextStore {
     const regionChanged = isRegionQualifiedAccount(candidates.account_id) && isRegionQualifiedAccount(current.account_id)
       && candidates.account_id !== current.account_id;
     const reset = Boolean(accountChanged || uniqueChanged || regionChanged);
-    const flow = payloadFlowKey(payload);
     if (reset) {
-      this.retireOtherFlows(flow, Object.values(this.evidence).map(item => payloadFlowKey(item)));
+      this.rejectOlderObservations(payload);
       this.clearContext("identity", true);
     }
-    if (candidates.unique_account_id && candidates.crossregion_identifier && flow) {
-      // A complete newly observed transient pair can replace an interrupted
-      // source. Its late reassembly must not revive the prior account/session.
-      this.retireOtherFlows(flow, this.interruptedFlows);
-      this.interruptedFlows.clear();
-      if (current.crossregion_identifier && candidates.crossregion_identifier !== current.crossregion_identifier) {
-        this.retireOtherFlows(flow, [this.evidence.unique_account_id, this.evidence.crossregion_identifier]
-          .map(item => item ? payloadFlowKey(item) : null));
-      }
+    if (candidates.crossregion_identifier && current.crossregion_identifier
+      && candidates.crossregion_identifier !== current.crossregion_identifier) {
+      this.rejectOlderObservations(payload);
     }
 
     if (message.fields.account_id && message.source !== "region-directory") {
@@ -379,6 +382,7 @@ export class CapturedSessionContextStore {
         source: message.source === "region-directory" ? previousEvidence?.source ?? message.source : message.source,
         localAddress: payload.localAddress,
         localPort: payload.localPort,
+        observationSequence: payload.observationSequence,
         qualification: field !== "account_id" ? undefined : retainedQualification ? previousEvidence?.qualification
           : isRegionQualifiedAccount(message.fields.account_id) && message.source !== "region-directory" ? "observed-prefix"
           : isRegionQualifiedAccount(value) ? "region-directory" : "unqualified",
@@ -418,9 +422,10 @@ export class CapturedSessionContextStore {
     this.notifyReadiness();
   }
 
-  private retireOtherFlows(current: string | null, flows: Iterable<string | null>): void {
-    if (!current) return;
-    for (const key of flows) if (key && key !== current) this.retiredFlows.add(key);
+  private rejectOlderObservations(payload: CapturedSessionPayload): void {
+    if (payload.observationSequence !== undefined) {
+      this.rejectedObservationBoundary = Math.max(this.rejectedObservationBoundary, payload.observationSequence - 1);
+    }
   }
 
   marketProvenance(): MarketContextProvenance {

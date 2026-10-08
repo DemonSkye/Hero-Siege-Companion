@@ -226,7 +226,7 @@ describe("CaptureService lifecycle", () => {
     expect(emittedConnections.every((item) => item.owningProcess === 123)).toBe(true);
     service.stop();
     expect(observeGameProcessIds).toHaveBeenLastCalledWith([], "capture-stopped");
-    expect(updates).toContainEqual({ observationGap: true });
+    expect(updates).toContainEqual(expect.objectContaining({ observationGap: true, observationBoundary: 0 }));
   });
 
   afterEach(() => {
@@ -372,8 +372,28 @@ describe("CaptureService lifecycle", () => {
       "tcp and host 10.0.0.2 + targets:203.0.113.10:6668,203.0.113.20:6600",
     );
     expect(mocks.closeCapture).toHaveBeenCalledTimes(1);
-    expect(updates).toContainEqual({ observationGap: true, observationGapSource: "gameplay-reconfigure" });
+    expect(updates).toContainEqual(expect.objectContaining({ observationGap: true, observationGapSource: "gameplay-reconfigure", observationBoundary: 0 }));
     service.stop();
+  });
+
+  test("closed native handle callbacks cannot contribute to the next observation epoch", async () => {
+    const service = new CaptureService(() => undefined);
+    const onPacket = vi.spyOn(service as unknown as { onPacket(bytes: number, truncated: boolean): void }, "onPacket")
+      .mockImplementation(() => undefined);
+    const first = connection(), second = connection({ remoteAddress: "203.0.113.20", localPort: 50001 });
+    mocks.getHeroSiegeNetworkState.mockResolvedValueOnce({ gameProcessIds: [123], antiCheatProcessIds: [], connections: [first] })
+      .mockResolvedValueOnce({ gameProcessIds: [123], antiCheatProcessIds: [], connections: [first, second] });
+    await service.start();
+    const oldCallback = mocks.openPacketCapture.mock.calls[0][3];
+    await (service as unknown as RefreshableCaptureService).refreshCaptureSafely("test");
+    const currentCallback = mocks.openPacketCapture.mock.calls[1][3];
+    oldCallback(100, false);
+    expect(onPacket).not.toHaveBeenCalled();
+    currentCallback(100, false);
+    expect(onPacket).toHaveBeenCalledOnce();
+    mocks.closeCapture.mockImplementationOnce(() => currentCallback(100, false));
+    service.stop();
+    expect(onPacket).toHaveBeenCalledOnce();
   });
 
   test("logs privacy-safe generation breadcrumbs and lifecycle counters across a reopen", async () => {
@@ -542,7 +562,7 @@ describe("CaptureService lifecycle", () => {
     internals.refreshCaptureFlows([connection()], Date.now()); const push = vi.spyOn(internals.packetBuffers, "push");
     internals.processPacket(capturedPacket.length, true); expect(observeTcpLifecycle).not.toHaveBeenCalled();
     internals.processPacket(capturedPacket.length, false);
-    expect(observeTcpLifecycle).toHaveBeenCalledWith({ src: "10.0.0.2", dst: "203.0.113.10", srcPort: 50000, dstPort: 26921, flags });
+    expect(observeTcpLifecycle).toHaveBeenCalledWith({ src: "10.0.0.2", dst: "203.0.113.10", srcPort: 50000, dstPort: 26921, flags, observationBoundary: 0 });
     expect(push).not.toHaveBeenCalled();
     capturedPacket.writeUInt16BE(50001, 20); internals.processPacket(capturedPacket.length, false);
     expect(observeTcpLifecycle).toHaveBeenCalledTimes(1);

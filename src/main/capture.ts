@@ -60,6 +60,8 @@ export interface CaptureUpdate {
   observationGapSource?: "gameplay-reconfigure";
   /** Main-only attribution; unrelated continuous flows can retain their context. */
   observationGapFlow?: Pick<ParsedPayload, "src" | "dst" | "srcPort" | "dstPort">;
+  /** Main-only reassembly evidence boundary; never an account/session value. */
+  observationBoundary?: number;
   connections?: CaptureConnection[];
   health?: Partial<CaptureHealth>;
   events?: ParsedEvent[];
@@ -137,9 +139,10 @@ export class CaptureService {
   private lastPacketAt = 0;
   private lastPayloadAt = 0;
   private lastEventAt = 0;
-  private readonly packetBuffers = new PacketBuffers(packet => {
+  private readonly packetBuffers = new PacketBuffers((packet, boundary) => {
     const { src, dst, srcPort, dstPort } = packet;
-    this.emit({ observationGap: true, observationGapFlow: { src, dst, srcPort, dstPort } });
+    this.emit({ observationGap: true, observationGapFlow: { src, dst, srcPort, dstPort },
+      observationBoundary: boundary });
   });
   private packetsSeen = 0;
   private payloadsAssembled = 0;
@@ -159,6 +162,7 @@ export class CaptureService {
   private satanicZoneRequestSequence = 0;
   private readonly endpointTrafficStats = new Map<string, EndpointTrafficStats>();
   private readonly captureFlowExpirations = new Map<string, number>();
+  private observedProcessSignature = "";
   private readonly retainedCaptureTargets = new Map<string, RetainedCaptureTarget>();
   private readonly pendingSatanicZoneRequests = new Map<number, PendingSatanicZoneRequest>();
   private readonly eventDeduplicator = new RecentEventDeduplicator();
@@ -322,7 +326,7 @@ export class CaptureService {
   }
 
   private resetPacketState(): void {
-    this.packetBuffers.clear();
+    this.packetBuffers.discardObservation();
     this.eventDeduplicator.clear();
     this.generatedDropCorrelator.clear();
     this.endpointTrafficStats.clear();
@@ -368,7 +372,7 @@ export class CaptureService {
     if (!this.captureRequested) return;
     const connections = currentNetworkState.connections;
     const publicConnections = gameOwnedConnections(currentNetworkState);
-    this.emit({ connections: publicConnections });
+    this.emit({ connections: publicConnections, observationBoundary: this.packetBuffers.observationBoundary() });
 
     if (currentNetworkState.gameProcessIds.length === 0) {
       this.captureRequested = false;
@@ -452,6 +456,14 @@ export class CaptureService {
   }
 
   private observeGameProcessIdsSafely(processIds: readonly number[], reason?: "capture-stopped"): void {
+    if (reason !== "capture-stopped") {
+      const signature = [...new Set(processIds.filter(id => Number.isSafeInteger(id) && id > 0))]
+        .sort((left, right) => left - right).join(",");
+      if (signature !== this.observedProcessSignature) {
+        this.observedProcessSignature = signature;
+        this.packetBuffers.clear(); // A proved process generation change permits new TCP sequence spaces.
+      }
+    }
     try {
       if (reason) this.observeGameProcessIds(processIds, reason);
       else this.observeGameProcessIds(processIds);
@@ -513,7 +525,9 @@ export class CaptureService {
 
     try {
       this.closeCapture("reopen");
-      const openedCapture = openPacketCapture(device, filter, this.buffer, (nbytes, truncated) => this.onPacket(nbytes, truncated));
+      const openedCapture = openPacketCapture(device, filter, this.buffer, (nbytes, truncated) => {
+        if (this.captureRequested && this.activeCaptureGeneration === generation) this.onPacket(nbytes, truncated);
+      });
       const linkType = openedCapture.linkType;
       this.cap = openedCapture.cap;
       this.activeCaptureGeneration = generation;
@@ -607,9 +621,10 @@ export class CaptureService {
     const endpoints = parsedPacket ?? getTcpPacketEndpoints(this.buffer, nbytes, this.activeLinkType);
     if (!endpoints || !this.isCaptureFlowPacket(endpoints)) return;
     if (!parsedPacket || truncated) {
-      this.packetBuffers.discardFlow(endpoints);
+      this.packetBuffers.discardObservation(endpoints);
       const { src, dst, srcPort, dstPort } = endpoints;
-      this.emit({ observationGap: true, observationGapFlow: { src, dst, srcPort, dstPort } });
+      this.emit({ observationGap: true, observationGapFlow: { src, dst, srcPort, dstPort },
+        observationBoundary: this.packetBuffers.observationBoundary() });
     }
     if (!parsedPacket) return;
     // A reused tuple's SYN belongs to the new stream, before any context payload.
@@ -641,7 +656,7 @@ export class CaptureService {
       const { packet, text: payloadText } = completedPayload;
       this.recordEndpointTraffic(packet, "payload");
       this.writeWidePayloadLog(packet, payloadText);
-      this.observeSessionPayloadSafely(packet, payloadText);
+      if (!completedPayload.sessionAlreadyObserved) this.observeSessionPayloadSafely(packet, payloadText);
       if (completedPayload.observationOnly) continue;
       if (!isLikelyParseablePayload(payloadText)) continue;
       if (payloadText.length > MAX_PARSE_PAYLOAD_CHARS) {
@@ -725,7 +740,8 @@ export class CaptureService {
     // Packet-entry logging preferences stay frozen if invalidation restores the
     // user's raw logging preference synchronously.
     const { src, dst, srcPort, dstPort, flags } = packet;
-    try { this.observeTcpLifecycle({ src, dst, srcPort, dstPort, flags }); }
+    try { this.observeTcpLifecycle({ src, dst, srcPort, dstPort, flags,
+      observationBoundary: this.packetBuffers.observationBoundary() }); }
     catch { /* Lifecycle observation must not interrupt normal capture. */ }
   }
 
@@ -740,6 +756,7 @@ export class CaptureService {
         localAddress: outbound ? packet.src : packet.dst,
         localPort: outbound ? packet.srcPort : packet.dstPort,
         observedAt: Date.now(),
+        observationSequence: packet.observationSequence,
       });
     } catch {
       // Session context observation must never interrupt ordinary capture.
@@ -869,9 +886,12 @@ export class CaptureService {
 
   private closeCapture(reason = "close"): void {
     if (!this.cap) return;
-    const reconfigure = ["reopen", "no-game-server-connections", "anti-cheat-waiting"].includes(reason);
-    this.emit({ observationGap: true, ...(reconfigure ? { observationGapSource: "gameplay-reconfigure" as const } : {}) });
     const generation = this.activeCaptureGeneration;
+    this.activeCaptureGeneration = null; // Reject any callback retained by the handle being closed.
+    const reconfigure = ["reopen", "no-game-server-connections", "anti-cheat-waiting"].includes(reason);
+    this.packetBuffers.discardObservation();
+    this.emit({ observationGap: true, observationBoundary: this.packetBuffers.observationBoundary(),
+      ...(reconfigure ? { observationGapSource: "gameplay-reconfigure" as const } : {}) });
     const targetCount = this.activeCaptureTargetCount;
     const connectionCount = this.activeCaptureConnectionCount;
     const closeStartedAt = Date.now();
