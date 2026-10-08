@@ -3,6 +3,7 @@ import { ITEM_TYPE_NAMES } from "../../../shared/constants";
 import { resolveMarketItemMask, type MarketItemIdentity, type MarketFilterCriteria, type MarketSearchRequest, type MarketSearchTarget } from "../../../shared/market-search";
 import { RUNEWORD_MARKET_DEFINITIONS, runewordMarketById, runewordMarketByLegacyKey } from "../../../shared/runeword-market-catalog";
 import { normalizeLookupText } from "./text";
+import type { SocketFilterAdjustment } from "../../../shared/item-socket-capacity";
 
 export interface MarketItemOption {
   key: string;
@@ -97,6 +98,8 @@ export interface SavedMarketItem {
   request: MarketSearchRequest | null;
   /** Durable filters independent of request encoding; optional for old entries. */
   criteria?: MarketFilterCriteria;
+  /** Explicit notice for automatically repaired legacy socket criteria. */
+  socketFilterAdjustment?: SocketFilterAdjustment;
 }
 
 /** Every legacy name survives, including unresolved and ambiguous identities. */

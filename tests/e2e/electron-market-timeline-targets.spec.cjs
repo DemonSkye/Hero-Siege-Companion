@@ -29,6 +29,10 @@ for (const specimen of [
     let workspace=session.page.locator(".market-workspace");
     await expect(workspace.locator(".market-chosen-item")).toContainText(specimen.label);
     expect(await attempts()).toBe(0);
+    if (specimen.label !== "Sharpshooter's Cloak") {
+      await expect(workspace.locator("#market-sockets")).toHaveCount(0);
+      await workspace.getByRole("button", { name: /Add optional socket filters/ }).click();
+    }
     await workspace.locator("#market-sockets").fill("4");
     await workspace.locator("#market-stat-query").fill("rune drop");
     await workspace.getByRole("button",{name:"Rune Drop Chances Increased by (experimental)",exact:true}).click();

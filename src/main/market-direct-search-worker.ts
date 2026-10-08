@@ -40,6 +40,7 @@ export function buildDirectMarketRequestBody(context: CompleteCapturedSessionCon
   form.set("filter_masks", JSON.stringify(request.itemMask === undefined ? [] : [request.itemMask]));
   if (request.runewordId !== undefined) form.set("filter_runeword", String(request.runewordId));
   if (request.minSockets !== undefined) form.set("filter_sockets_min", String(request.minSockets));
+  if (request.maxSockets !== undefined) form.set("filter_sockets_max", String(request.maxSockets));
   if (request.statFilters.length > 0) {
     const clauses = request.statFilters.map((filter) => ({
       statId: Number(filter.statId),

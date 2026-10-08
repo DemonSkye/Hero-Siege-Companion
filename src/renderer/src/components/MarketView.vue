@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { MARKET_SEARCH_MAX_STAT_FILTERS, MARKET_SEARCH_LISTING_LIMIT, marketStatOption, marketStatMinimumIssue, type MarketListing } from "../../../shared/market-search";
 import { marketStatFieldName, marketStatRole } from "../../../shared/market-stat-capabilities";
 import type { MarketReadiness } from "../../../shared/market-readiness";
@@ -10,6 +10,7 @@ import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 import { marketReadinessExplainsError } from "../lib/market-readiness-display";
 import MarketListingDetails from "./MarketListingDetails.vue";
 import { itemStatDefinition } from "../../../shared/item-stat-ranges";
+import { itemBaseSocketRange } from "../../../shared/item-socket-capacity";
 import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition, itemBaseStatMetadata } from "../../../shared/item-base-stat-catalog";
 import { marketBaseStatValue, marketTriggeredSkillDescription, marketTriggeredSkillStatIds } from "../lib/market-stat-display";
 
@@ -22,6 +23,8 @@ const props = defineProps<{
   item: { label: string; rarity: string } | null;
   itemKey: string | null;
   minSockets: number | null;
+  maxSockets?: number | null;
+  socketAdjustmentMessage?: string;
   statFilters: MarketStatFilterDraft[];
   phase: MarketSearchPhase;
   listings: MarketListing[];
@@ -50,6 +53,7 @@ const emit = defineEmits<{
   undo: [];
   retrySave: [];
   updateMinSockets: [value: number | null];
+  updateMaxSockets: [value: number | null];
   addStatFilter: [statId: number];
   updateStatFilter: [key: string, patch: { minimum: number | null }];
   removeStatFilter: [key: string];
@@ -73,8 +77,18 @@ const catalogStats = computed(() => catalogDefinition.value?.stats.filter(stat =
   || !marketTriggeredSkillStatIds(rollDefinition.value).includes(stat.statId)) ?? []);
 const showCatalog = computed(() => props.item !== null);
 const blockedFilters = computed(() => props.statFilters.filter(filter => filter.statId !== null && marketStatMinimumIssue(filter.statId, props.itemKey)));
+const socketBaseRange = computed(() => itemBaseSocketRange(props.itemKey));
+const optionalSocketsOpen = ref(false);
+watch(() => props.itemKey, () => { optionalSocketsOpen.value = false; });
+const hasSocketCriteria = computed(() => props.minSockets !== null || props.maxSockets != null);
+const showSocketControls = computed(() => socketBaseRange.value !== null || optionalSocketsOpen.value || hasSocketCriteria.value);
+function socketSummary(minimum?: number | null, maximum?: number | null): string {
+  if (minimum != null && maximum != null) return `${minimum}–${maximum} sockets`;
+  if (minimum != null) return `${minimum}+ sockets`;
+  return maximum != null ? `Up to ${maximum} sockets` : "Any sockets";
+}
 const summary = computed(() => [
-  props.minSockets === null ? "Any sockets" : `${props.minSockets}+ sockets`,
+  ...(showSocketControls.value ? [socketSummary(props.minSockets, props.maxSockets)] : []),
   ...props.statFilters.map((filter) => `${marketStatOption(filter.statId ?? -1)?.name ?? "Choose stat"} ≥ ${filter.minimum ?? "…"}`),
 ]);
 function numericValue(event: Event): number | null {
@@ -86,7 +100,7 @@ async function chooseItem(item: MarketItemOption): Promise<void> {
   itemPickerOpen.value = false;
   itemQuery.value = "";
   await nextTick();
-  document.getElementById("market-sockets")?.focus();
+  (document.getElementById("market-sockets") ?? document.getElementById("market-stat-query"))?.focus();
 }
 async function load(id: string): Promise<void> {
   emit("loadSaved", id);
@@ -94,7 +108,7 @@ async function load(id: string): Promise<void> {
   itemQuery.value = "";
   statQuery.value = "";
   await nextTick();
-  (props.item ? document.getElementById("market-sockets") : itemInput.value)?.focus();
+  (props.item ? document.getElementById("market-sockets") ?? document.getElementById("market-stat-query") : itemInput.value)?.focus();
 }
 async function newSearch(): Promise<void> {
   emit("newSearch");
@@ -129,7 +143,7 @@ function chooseStat(statId: number): void {
           <li v-for="entry in savedItems" :key="entry.id" :class="{ selected: editingId === entry.id }">
             <button class="market-saved-load" type="button" :aria-pressed="editingId === entry.id" @click="load(entry.id)">
               <strong>{{ entry.name || 'Untitled legacy entry' }}</strong>
-              <small>{{ entry.request || entry.criteria ? `${(entry.criteria ?? entry.request)?.minSockets ?? 'Any'} sockets · ${(entry.criteria ?? entry.request)?.statFilters.length} stat minimums` : 'Choose catalog item to repair' }}</small>
+              <small>{{ entry.request || entry.criteria ? `${socketSummary((entry.criteria ?? entry.request)?.minSockets, (entry.criteria ?? entry.request)?.maxSockets)} · ${(entry.criteria ?? entry.request)?.statFilters.length} stat minimums` : 'Choose catalog item to repair' }}</small>
             </button>
             <button class="icon-button ghost" type="button" :aria-label="`Delete saved item ${entry.name}`" @click="emit('deleteSaved', entry.id)">×</button>
           </li>
@@ -154,8 +168,16 @@ function chooseStat(statId: number): void {
           <div class="market-filter-layout" :class="{ 'has-catalog': showCatalog }">
           <fieldset :disabled="!item" aria-labelledby="market-filters-title">
             <h3 id="market-filters-title">Search filters</h3>
-            <label for="market-sockets">Minimum sockets</label>
-            <input id="market-sockets" :value="minSockets ?? ''" type="number" min="1" max="6" step="1" placeholder="Any" @input="emit('updateMinSockets', numericValue($event))" />
+            <button v-if="item && !socketBaseRange && !hasSocketCriteria" class="icon-button ghost" type="button" :aria-expanded="showSocketControls" aria-controls="market-socket-controls" @click="optionalSocketsOpen = !optionalSocketsOpen">{{ optionalSocketsOpen ? 'Hide optional socket filters' : 'Add optional socket filters' }} <small>Capacity unverified</small></button>
+            <div v-if="showSocketControls" id="market-socket-controls">
+              <div class="market-socket-bounds">
+                <label for="market-sockets">Minimum sockets<input id="market-sockets" :value="minSockets ?? ''" type="number" min="0" max="6" step="1" placeholder="Any" @input="emit('updateMinSockets', numericValue($event))" /></label>
+                <label for="market-sockets-max">Maximum sockets<input id="market-sockets-max" :value="maxSockets ?? ''" type="number" min="0" max="6" step="1" placeholder="Any" @input="emit('updateMaxSockets', numericValue($event))" /></label>
+              </div>
+              <p v-if="socketBaseRange" class="market-socket-hint">Base socket range: {{ socketBaseRange.minimum === socketBaseRange.maximum ? socketBaseRange.minimum : `${socketBaseRange.minimum}–${socketBaseRange.maximum}` }}. Final item capacity may differ.</p>
+              <p v-else class="market-socket-hint">Socket capacity is unverified for this item. Socket filters are optional.</p>
+              <p v-if="minSockets !== null && maxSockets != null && minSockets > maxSockets" class="market-search-error" role="status">Minimum sockets must be less than or equal to maximum sockets.</p>
+            </div>
             <div class="market-stat-list">
               <div v-for="filter in statFilters" :key="filter.key" class="market-stat-row">
                 <label :for="filter.key">{{ marketStatOption(filter.statId ?? -1)?.name }} minimum <small v-if="marketStatMinimumIssue(filter.statId ?? -1, itemKey)">Unsupported saved criterion</small></label>
@@ -184,6 +206,7 @@ function chooseStat(statId: number): void {
           </section>
           </div>
           <div v-if="item" class="market-filter-summary" aria-label="Active filters"><span v-for="text in summary" :key="text">{{ text }}</span></div>
+          <p v-if="socketAdjustmentMessage" role="status">{{ socketAdjustmentMessage }}</p>
           <p v-if="item && !canSave" role="status">Enter valid socket and stat minimums before saving or searching.</p>
           <p v-if="blockedFilters.length" class="market-search-error" role="status">These saved criteria are preserved, but cannot be sent as numeric minimums. Remove them to search.<span v-for="filter in blockedFilters" :key="filter.key"> {{ marketStatOption(filter.statId!)?.name }}: {{ marketStatMinimumIssue(filter.statId!, itemKey) }}</span></p>
           <div class="market-save-controls">

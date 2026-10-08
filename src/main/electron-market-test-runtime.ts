@@ -19,6 +19,7 @@ export class ElectronMarketTestRuntime {
     const body = buildDirectMarketRequestBody(context, request);
     const form = new URLSearchParams(body);
     this.lastFilters = Object.fromEntries(["filter_masks","filter_runeword","filter_sockets_min","stat_filter"].map(field=>[field,form.get(field)]));
+    if (form.has("filter_sockets_max")) this.lastFilters.filter_sockets_max = form.get("filter_sockets_max");
     const result = this.response ? inspectDirectMarketResponse(this.response.body, this.response.status) : directMarketFailure("worker");
     return { ...result, diagnostics: { ...result.diagnostics, contextRevision: context.revision,
       contextAgeMs: Math.max(0, Date.now() - context.updatedAt), requestContext: buildMarketRequestDiagnostics(context, body) } };

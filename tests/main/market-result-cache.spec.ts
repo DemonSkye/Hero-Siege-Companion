@@ -2,6 +2,15 @@ import { describe, expect, test } from "vitest";
 import { MarketResultCache } from "../../src/main/market-result-cache";
 
 describe("market result cache", () => {
+  test("maximum and explicit zero cannot reuse unbounded or different-range prices", () => {
+    const cache = new MarketResultCache(() => 1000);
+    const keys = [{}, { maxSockets: 4 }, { maxSockets: 6 }, { maxSockets: 0 }, { minSockets: 0, maxSockets: 0 }]
+      .map(bounds => cache.key("scope", { itemMask: 1073746020, ...bounds, statFilters: [] }));
+    expect(new Set(keys).size).toBe(5);
+    cache.set(keys[1], { listings: [{ price: 444 }] });
+    expect(cache.get(keys[1])).toEqual({ result: { listings: [{ price: 444 }] }, observedAt: 1000 });
+    for (const i of [0, 2, 3, 4]) expect(cache.get(keys[i])).toBeNull();
+  });
   test("different runewords and normal masks cannot share cached prices",()=>{
     const cache = new MarketResultCache(()=>1000);
     const first = cache.key("scope",{runewordId:1,statFilters:[]});

@@ -39,6 +39,55 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
   return match;
 }
 
+test("real Market editor exposes legacy constraints and base hints, clears sockets on item change and preserves stat filters on reopen", async () => {
+  window.localStorage.setItem(storageKey, JSON.stringify({ schemaVersion: 3, shoppingListItems: [], savedMarketItems: [
+    { id: "legacy-glove", name: "Legacy gloves", itemKey: "unique:4:0:0",
+      request: { itemMask: 1073758208, minSockets: 4, statFilters: [{ statId: 64, minimum: 8 }] } },
+  ] }));
+  const { api } = setup();
+  let wrapper = mount(App, { attachTo: document.body, global: { stubs } });
+  try {
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-saved-load").exists()).toBe(true));
+    await wrapper.get(".market-saved-load").trigger("click"); await flushPromises();
+    expect((wrapper.get("#market-sockets").element as HTMLInputElement).value).toBe("4");
+    expect(wrapper.get(".market-filter-summary").text()).toContain("4+ sockets");
+    expect(wrapper.text()).toContain("Socket capacity is unverified");
+    expect(document.activeElement?.id).toBe("market-sockets");
+    expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("8");
+    await wrapper.get("form.market-editor").trigger("submit"); await flushPromises();
+    expect(api.searchMarket).toHaveBeenCalledExactlyOnceWith({ itemMask: 1073758208, minSockets: 4, statFilters: [{ statId: 64, minimum: 8 }] });
+    await button(wrapper, "Change item").trigger("click");
+    await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");
+    await wrapper.get(".market-options button").trigger("click");
+    expect(wrapper.get("#market-sockets").attributes()).toMatchObject({ min: "0", max: "6", placeholder: "Any" });
+    expect(wrapper.get(".market-socket-hint").text()).toContain("Base socket range: 2–4");
+    await wrapper.get("#market-sockets").setValue("4");
+    await wrapper.get("#market-sockets-max").setValue("6");
+    await button(wrapper, "Change item").trigger("click");
+    await wrapper.get("#market-item-query").setValue("Zealot's Deathbringers");
+    await wrapper.get(".market-options button").trigger("click");
+    expect(wrapper.get("#market-sockets").attributes()).toMatchObject({ min: "0", max: "6" });
+    expect(wrapper.get(".market-socket-hint").text()).toContain("Base socket range: 1–2");
+    expect((wrapper.get("#market-sockets").element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get("#market-sockets-max").element as HTMLInputElement).value).toBe("");
+    expect(wrapper.text()).toContain("Socket range cleared");
+    expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("8");
+    await button(wrapper, "Save changes").trigger("click"); await flushPromises();
+    expect(JSON.parse(window.localStorage.getItem(storageKey)!).savedMarketItems[0]).toMatchObject({
+      itemKey: "unique:4:0:18", request: { itemMask: 1073758226, statFilters: [{ statId: 64, minimum: 8 }] },
+      criteria: { statFilters: [{ statId: 64, minimum: 8 }] },
+    });
+    wrapper.unmount(); wrapper = mount(App, { global: { stubs } });
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-saved-load").exists()).toBe(true));
+    await wrapper.get(".market-saved-load").trigger("click");
+    expect((wrapper.get("#market-sockets").element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get(".market-stat-row input").element as HTMLInputElement).value).toBe("8");
+    expect(api.searchMarket).toHaveBeenCalledTimes(1);
+  } finally { wrapper.unmount(); }
+});
+
 test.each(["before", "after"] as const)("Market tab shows recovery guidance once when region status arrives %s the failed request", async (order) => {
   const initial = companionState();
   initial.marketReadiness = { ...initial.marketReadiness, phase: "region-required", reason: "region_unprepared", regionQualified: false };

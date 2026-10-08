@@ -25,6 +25,7 @@ export class MarketResultCache {
       request.itemMask ?? null,
       request.runewordId ?? null,
       request.minSockets ?? null,
+      request.maxSockets ?? null,
       request.statFilters.map((filter) => [filter.statId, filter.minimum]),
     ]);
   }

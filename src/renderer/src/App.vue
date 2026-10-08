@@ -198,6 +198,8 @@ const {
 const {
   selectedItem: marketSearchItem,
   minSockets: marketSearchMinSockets,
+  maxSockets: marketSearchMaxSockets,
+  socketAdjustmentMessage: marketSearchSocketAdjustmentMessage,
   statFilters: marketSearchStatFilters,
   phase: marketSearchPhase,
   listings: marketSearchListings,
@@ -209,6 +211,7 @@ const {
   cooldownRemainingSeconds: marketSearchCooldownRemainingSeconds,
   canSearch: canSubmitMarketSearch,
   updateMinSockets: updateMarketSearchMinSockets,
+  updateMaxSockets: updateMarketSearchMaxSockets,
   addStatFilter: addMarketSearchStatFilter,
   updateStatFilter: updateMarketSearchStatFilter,
   removeStatFilter: removeMarketSearchStatFilter,
@@ -769,6 +772,8 @@ function toggleLog(log: LogEntry) {
           :item-key="marketItemKey"
         :readiness="state.marketReadiness"
         :min-sockets="marketSearchMinSockets"
+        :max-sockets="marketSearchMaxSockets"
+        :socket-adjustment-message="marketSearchSocketAdjustmentMessage"
         :stat-filters="marketSearchStatFilters"
         :phase="marketSearchPhase"
         :listings="marketSearchListings"
@@ -794,6 +799,7 @@ function toggleLog(log: LogEntry) {
         @undo="savedMarket.undoDelete"
         @retry-save="persistUiPreferences"
         @update-min-sockets="updateMarketSearchMinSockets"
+        @update-max-sockets="updateMarketSearchMaxSockets"
         @add-stat-filter="addMarketSearchStatFilter"
         @update-stat-filter="updateMarketSearchStatFilter"
         @remove-stat-filter="removeMarketSearchStatFilter"

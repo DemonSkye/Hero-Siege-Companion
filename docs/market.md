@@ -1,7 +1,7 @@
 # Market
 
 The Market tab replaces the Live shopping list with saved item searches. Choose a
-catalog item, add optional minimum sockets and stat minimums, then press Search.
+catalog item, add an optional socket range and stat minimums, then press Search.
 Save item and filters to keep the search locally. Loading a saved item fills the
 editor; it does not send a request. Save changes updates that entry, Save as new
 creates a separate entry, and Delete offers Undo.
@@ -62,6 +62,22 @@ Raw positional socket fields stay in the original message. Parsed pickup metadat
 does not infer capacity or occupancy from their presence. Minimum sockets remains
 an explicit user filter; static catalog ranges and verified listing rolls supply
 socket capacity independently.
+
+Socket bounds accept whole numbers from 0 to 6; Any leaves that bound unset.
+Minimum must not exceed maximum. Both native fields are optional and independent
+of stat clauses. A defined zero is sent as zero; fresh server matching and the
+native UI's zero/clear behavior remain unverified. The 418 definitions with a
+retained positive socket fact show both controls and a base-range hint. That hint
+does not establish final capacity, so it does not clamp the user to base bounds.
+Glove/charm exceptions retain their per-item facts. For the other 1,617 identities,
+socket capacity is unknown: optional controls start collapsed and open whenever
+a saved bound is present. Missing data is not labeled socketless. Changing the
+selected item clears both old socket bounds with a visible notice while preserving
+other stat drafts. Legacy bounds remain intact when valid, including unknown item
+capacity; malformed bounds are individually cleared, and reversed ranges clear
+both bounds. Repair notices survive reload until the entry is explicitly saved.
+Other stat criteria, names and identities remain intact. Maximum sockets also
+participates in the session result-cache key.
 
 The stat picker exposes 383 evidenced IDs: the original 167 native Market
 menu entries and 216 additional entries suffixed `(experimental)`. Exact names,

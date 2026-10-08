@@ -167,7 +167,7 @@ describe("market search shared boundary", () => {
     [{ itemMask: 1.5, statFilters: [] }, "invalid-item-mask"],
     [{ itemMask: 0 }, "invalid-stat-filters"],
     [{ itemMask: 0, statFilters: "none" }, "invalid-stat-filters"],
-    [{ itemMask: 0, minSockets: 0, statFilters: [] }, "invalid-min-sockets"],
+    [{ itemMask: 0, minSockets: -1, statFilters: [] }, "invalid-min-sockets"],
     [{ itemMask: 0, minSockets: 7, statFilters: [] }, "invalid-min-sockets"],
     [{ itemMask: 0, statFilters: [{ statId: 64, minimum: "8" }] }, "invalid-stat-filter"],
     [{ itemMask: 0, statFilters: [{ statId: 64, minimum: Number.NaN }] }, "invalid-stat-filter"],

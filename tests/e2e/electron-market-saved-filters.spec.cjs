@@ -91,7 +91,7 @@ test("saved Market uses the accepted price page through real IPC, clears stale p
     // rendered form permits the explicit search.
     await expect(workspace.getByRole("button", { name: "Search market", exact: true })).toBeEnabled();
     await session.electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(accepted.response.bodyBase64, "base64")]);
-    await workspace.locator("#market-sockets").press("Enter");
+    await workspace.getByRole("button", { name: "Search market", exact: true }).press("Enter");
     await expect(workspace.locator("tbody tr")).toHaveCount(20);
     const prices = await workspace.locator("tbody tr td:first-of-type").allTextContents();
     expect(prices).toEqual([

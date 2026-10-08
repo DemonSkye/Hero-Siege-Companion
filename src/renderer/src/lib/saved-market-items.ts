@@ -3,6 +3,7 @@ import { normalizeMarketFilterCriteria, normalizeMarketSearchRequest } from "../
 import { marketItemByKey, marketItemForTimelineItem, type MarketItemOption, type SavedMarketItem } from "./market-items";
 import type { useMarketSearchRuntime } from "./market-search-runtime";
 import type { ItemTimelineEntry } from "../../../shared/stats";
+import { normalizeSavedSocketRange, socketFilterAdjustmentMessage, type SocketFilterAdjustment } from "../../../shared/item-socket-capacity";
 
 /** Storage recognizes an identity independently of its current wire encoding. */
 type SavedMarketCatalogIdentity = { key: string; itemMask?: number | null; runewordId?: number };
@@ -20,21 +21,30 @@ export function normalizeSavedMarketItems(value: unknown,
     // Preserve old request-only criteria even when a newly proved semantic gap
     // prevents that criterion from being sent. Validate the target separately.
     const rawRequest = raw.request && typeof raw.request === "object" ? raw.request : {};
-    const oldCriteria = normalizeMarketFilterCriteria(rawRequest);
-    const normalized = normalizeMarketSearchRequest({ ...rawRequest, statFilters: [] });
+    // Socket repair must not make malformed/outdated socket values discard
+    // unrelated stat criteria. Validate those independently before item repair.
+    const oldCriteria = normalizeMarketFilterCriteria({ ...rawRequest, minSockets: undefined, maxSockets: undefined });
+    const normalized = normalizeMarketSearchRequest({ ...rawRequest, minSockets: undefined, maxSockets: undefined, statFilters: [] });
     const priorRequest = item && normalized.ok && (item.runewordId !== undefined
       ? normalized.request.runewordId === item.runewordId
       : normalized.request.itemMask === item.itemMask)
       && oldCriteria.ok ? { ...normalized.request, ...oldCriteria.criteria } : null;
-    const savedCriteria = normalizeMarketFilterCriteria(raw.criteria);
-    const criteria = item && savedCriteria.ok ? savedCriteria.criteria : priorRequest
-      ? { ...(priorRequest.minSockets === undefined ? {} : { minSockets: priorRequest.minSockets }), statFilters: priorRequest.statFilters } : null;
+    const savedCriteria = raw.criteria && typeof raw.criteria === "object"
+      ? normalizeMarketFilterCriteria({ ...raw.criteria, minSockets: undefined, maxSockets: undefined }) : null;
+    const recovered = item && savedCriteria?.ok ? savedCriteria.criteria : priorRequest
+      ? { statFilters: priorRequest.statFilters } : null;
+    const socketSource = savedCriteria?.ok ? raw.criteria : rawRequest;
+    const sockets = normalizeSavedSocketRange(socketSource.minSockets, socketSource.maxSockets);
+    const criteria = recovered ? { ...recovered, ...(sockets.minSockets === undefined ? {} : { minSockets: sockets.minSockets }),
+      ...(sockets.maxSockets === undefined ? {} : { maxSockets: sockets.maxSockets }) } : null;
+    const adjustment: SocketFilterAdjustment | undefined = sockets.adjustment
+      ?? (["order", "invalid"].includes(raw.socketFilterAdjustment) ? raw.socketFilterAdjustment : undefined);
     const prepared = item && criteria ? normalizeMarketSearchRequest({
       ...(item.runewordId === undefined ? {itemMask:item.itemMask} : {runewordId:item.runewordId}),...criteria,
     }) : null;
     const request = prepared?.ok ? prepared.request : null;
     return [{ id, name: raw.name, itemKey: request || criteria ? item!.key : null, request,
-      ...(criteria ? { criteria } : {}) }];
+      ...(criteria ? { criteria } : {}), ...(criteria && adjustment ? { socketFilterAdjustment: adjustment } : {}) }];
   });
 }
 
@@ -51,7 +61,7 @@ export function useSavedMarketItems(
   function selectItem(item: MarketItemOption): void {
     itemKey.value = item.key;
     if (!editingId.value) savedName.value = item.name;
-    search.openMarketCatalogDraft({ label: item.name, rarity: item.typeLabel }, item.itemMask, { statFilters: [] }, item.runewordId ?? null);
+    search.changeMarketCatalogItem({ label: item.name, rarity: item.typeLabel }, item.itemMask, item.runewordId ?? null);
     message.value = item.availabilityNotice ?? item.searchUnavailable ?? "";
   }
 
@@ -83,6 +93,7 @@ export function useSavedMarketItems(
     if (item && (entry.request || entry.criteria)) {
       search.openMarketCatalogDraft({ label: item.name, rarity: item.typeLabel }, item.itemMask, entry.criteria ?? entry.request!, item.runewordId ?? null);
       message.value = item.availabilityNotice ?? item.searchUnavailable ?? "Filters loaded. Press Search when you are ready.";
+      if (entry.socketFilterAdjustment) message.value += ` ${socketFilterAdjustmentMessage(entry.socketFilterAdjustment)}`;
     } else {
       search.closeMarketSearch();
       message.value = "This saved name needs a catalog item. Choose an item, then save the repaired entry.";

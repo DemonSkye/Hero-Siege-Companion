@@ -36,6 +36,7 @@ export interface MarketStatFilter {
 
 export interface MarketFilterCriteria {
   minSockets?: number;
+  maxSockets?: number;
   statFilters: MarketStatFilter[];
 }
 export type MarketSearchTarget =
@@ -126,7 +127,7 @@ function itemBaseStatMetadataIsNative(statId: number): boolean {
   return ITEM_BASE_STAT_CATALOG.stats.find(stat => stat.statId === statId)?.nativeMarketMenu === true;
 }
 
-function itemKeyForSearchTarget(target: MarketSearchTarget): string {
+export function marketItemKeyForSearchTarget(target: MarketSearchTarget): string {
   if (target.runewordId !== undefined) return `runeword-repository:${target.runewordId}`;
   const mask = target.itemMask;
   const repository = Math.floor(mask / MARKET_MASK_REPOSITORY_FACTOR) === 1 ? "unique" : "normal";
@@ -187,6 +188,8 @@ export type MarketSearchRequestRejectionReason =
   | "invalid-runeword-id"
   | "mixed-item-target"
   | "invalid-min-sockets"
+  | "invalid-max-sockets"
+  | "invalid-socket-range"
   | "invalid-stat-filters"
   | "too-many-stat-filters"
   | "invalid-stat-filter"
@@ -210,7 +213,7 @@ export function normalizeMarketSearchRequest(value: unknown): MarketSearchReques
     target = {itemMask:value.itemMask};
   }
   const filters = normalizeMarketFilterCriteria(value);
-  if (filters.ok && filters.criteria.statFilters.some(filter => marketStatMinimumIssue(filter.statId, itemKeyForSearchTarget(target)))) {
+  if (filters.ok && filters.criteria.statFilters.some(filter => marketStatMinimumIssue(filter.statId, marketItemKeyForSearchTarget(target)))) {
     return { ok: false, reason: "unsupported-stat-minimum" };
   }
   return filters.ok ? { ok: true, request: { ...target, ...filters.criteria } } : filters;
@@ -248,13 +251,20 @@ export function normalizeMarketFilterCriteria(value: unknown):
 
   if (
     value.minSockets !== undefined
-    && !isIntegerInRange(value.minSockets, 1, MARKET_SEARCH_MAX_SOCKETS)
+    && !isIntegerInRange(value.minSockets, 0, MARKET_SEARCH_MAX_SOCKETS)
   ) {
     return { ok: false, reason: "invalid-min-sockets" };
   }
 
   const criteria: MarketFilterCriteria = { statFilters };
   if (value.minSockets !== undefined) criteria.minSockets = value.minSockets;
+  if (value.maxSockets !== undefined) {
+    if (!isIntegerInRange(value.maxSockets, 0, MARKET_SEARCH_MAX_SOCKETS)) return { ok: false, reason: "invalid-max-sockets" };
+    criteria.maxSockets = value.maxSockets;
+  }
+  if (criteria.minSockets !== undefined && criteria.maxSockets !== undefined && criteria.minSockets > criteria.maxSockets) {
+    return { ok: false, reason: "invalid-socket-range" };
+  }
   return { ok: true, criteria };
 }
 

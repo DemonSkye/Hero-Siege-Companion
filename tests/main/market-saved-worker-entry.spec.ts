@@ -77,6 +77,26 @@ test("production worker dispatch constructs observed filters and posts a bounded
   expect(result.response).toEqual({ ok: true, result: { listings: [{ price: 200_000, unitPrice: 100_000 }, { price: 500_000 }, { price: 900_000 }], totalMatches: 3, returnedCount: 3 } });
 });
 
+test.each([
+  [{ minSockets: 2, maxSockets: 4 }, "2", "4"],
+  [{ maxSockets: 4 }, null, "4"],
+  [{ minSockets: 0, maxSockets: 0 }, "0", "0"],
+  [{}, null, null],
+] as const)("actual worker serializes socket bounds %j independently of minimum-stat clauses", async (bounds, minimum, maximum) => {
+  const { form, result } = await runWorker("cap", undefined, { itemMask: 1073746020, ...bounds, statFilters: [{ statId: 64, minimum: 8 }] });
+  expect(result.response.ok).toBe(true);
+  expect(form.get("filter_sockets_min")).toBe(minimum);
+  expect(form.get("filter_sockets_max")).toBe(maximum);
+  expect(Buffer.from(form.get("stat_filter")!, "base64").toString("utf8")).toBe('[{"statId":64,"filter":2,"statValue":8}]');
+  expect(form.get("scroll_page")).toBe("0");
+});
+
+test.each([{ maxSockets: 7 }, { minSockets: 5, maxSockets: 4 }])("actual worker rejects socket range %j before transport", async bounds => {
+  const { result, form } = await runWorker("blocked", undefined, { itemMask: 1073746020, ...bounds, statFilters: [] });
+  expect(result.response.ok).toBe(false);
+  expect(form.toString()).toBe("");
+});
+
 test.each([undefined, 6])("minimum sockets %s is explicit and independent of native slot fields", async minimum => {
   // Invented socket contents in a reconstructed compact shape. Presence of six
   // fields does not supply a capacity or an implicit filter to the request.
