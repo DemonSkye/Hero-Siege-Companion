@@ -280,8 +280,11 @@ export function marketStatSuggestions(query: string, excludedStatIds: readonly n
   if (normalizedQuery.length < 3) return [];
 
   const excluded = new Set(excludedStatIds);
+  const numericQuery = /^(?:stat\s+)?(\d+)$/.exec(normalizedQuery);
   return MARKET_STAT_OPTIONS
-    .filter((option) => !excluded.has(option.statId) && normalizeLookupText(option.name).includes(normalizedQuery))
+    .filter((option) => !excluded.has(option.statId) && (numericQuery
+      ? option.statId === Number(numericQuery[1])
+      : normalizeLookupText(option.name).includes(normalizedQuery)))
     .slice(0, MARKET_STAT_SUGGESTION_LIMIT);
 }
 

@@ -203,6 +203,14 @@ describe("market search runtime", () => {
     expect(marketStatSuggestions("damage", [])).toHaveLength(MARKET_STAT_SUGGESTION_LIMIT);
   });
 
+  test("stat ID lookup survives exact labels and qualified role captions", () => {
+    expect(marketStatSuggestions("Stat 291").map(option => option.statId)).toEqual([291]);
+    expect(marketStatSuggestions("390").map(option => option.statId)).toEqual([390]);
+    expect(marketStatSuggestions("Stat 21").map(option => option.statId)).toEqual([21]);
+    expect(marketStatSuggestions("Stat 291", [291])).toEqual([]);
+    expect(marketStatSuggestions("Stat 999999")).toEqual([]);
+  });
+
   test.each([
     [
       "template_unavailable",

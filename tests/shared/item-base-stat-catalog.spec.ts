@@ -5,6 +5,7 @@ import { ITEM_STAT_DEFINITIONS } from "../../src/shared/item-stat-ranges";
 import { normalizeMarketSearchRequest, normalizeMarketFilterCriteria, marketStatMinimumIssue } from "../../src/shared/market-search";
 import { marketBaseStatValue } from "../../src/renderer/src/lib/market-stat-display";
 import { EXPECTED_GROUNDED_MARKET_STAT_IDS } from "../fixtures/market-grounded-stat-ids";
+import { EXPECTED_NO_GENERIC_MINIMUM_IDS_V8 } from "../fixtures/market-stat-roles-v8";
 
 test("every retained item identity has an explicit versioned static definition", () => {
   const identities = [...activeItemCatalog.artifact.definitions, ...activeItemCatalog.artifact.missing];
@@ -66,11 +67,12 @@ test("Witch's Wand's later range replaces its earlier range", () => {
 });
 
 test("every grounded stat is durable, with only proved incompatible semantics restricting numeric requests", () => {
-  expect(ITEM_BASE_STAT_CATALOG.stats).toHaveLength(381);
-  expect(ITEM_BASE_STAT_CATALOG.stats.map(stat => stat.statId)).toEqual([...EXPECTED_GROUNDED_MARKET_STAT_IDS]);
-  for (const statId of EXPECTED_GROUNDED_MARKET_STAT_IDS) {
+  const expectedIds = [...EXPECTED_GROUNDED_MARKET_STAT_IDS,119,121].sort((a,b)=>a-b);
+  expect(ITEM_BASE_STAT_CATALOG.stats).toHaveLength(383);
+  expect(ITEM_BASE_STAT_CATALOG.stats.map(stat => stat.statId)).toEqual(expectedIds);
+  for (const statId of expectedIds) {
     // Literal socket/identifier/encoded-only/collection IDs from retained evidence.
-    const blocked = [20,185,291,292,347].includes(statId);
+    const blocked = (EXPECTED_NO_GENERIC_MINIMUM_IDS_V8 as readonly number[]).includes(statId);
     expect(normalizeMarketFilterCriteria({statFilters:[{statId,minimum:2.5}]}).ok).toBe(true);
     if (blocked) {
       expect(normalizeMarketSearchRequest({itemMask:1073746020,statFilters:[{statId,minimum:2.5}]})).toEqual({ok:false,reason:"unsupported-stat-minimum"});

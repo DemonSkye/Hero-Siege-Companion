@@ -14,8 +14,8 @@ import {
 
 describe("market search shared boundary", () => {
   test("preserves 167 native options and labels all grounded extra IDs experimental", () => {
-    expect(MARKET_STAT_OPTIONS).toHaveLength(381);
-    expect(new Set(MARKET_STAT_OPTIONS.map((option) => option.statId)).size).toBe(381);
+    expect(MARKET_STAT_OPTIONS).toHaveLength(383);
+    expect(new Set(MARKET_STAT_OPTIONS.map((option) => option.statId)).size).toBe(383);
     const native = MARKET_STAT_OPTIONS.filter(option => !option.experimental);
     expect(native).toHaveLength(167);
     expect(new Set(native.map((option) => option.localizationKey)).size).toBe(167);

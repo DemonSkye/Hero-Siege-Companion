@@ -194,7 +194,7 @@ test("metadata saved criteria remain durable and visibly block numeric search un
     let workspace=session.page.locator(".market-workspace");
     await workspace.locator(".market-saved-load").filter({hasText:"Preserved metadata"}).click();
     await expect(workspace).toContainText("These saved criteria are preserved, but cannot be sent as numeric minimums.");
-    await expect(workspace).toContainText("Skill identifier metadata cannot be searched as a roll minimum.");
+    await expect(workspace).toContainText("Talent identity needs an exact selector, not a greater-than minimum.");
     await expect(workspace.getByRole("button",{name:"Save changes",exact:true})).toBeEnabled();
     await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
     await session.page.evaluate(()=>window.heroSiegeCompanion.startCapture());
@@ -208,12 +208,12 @@ test("metadata saved criteria remain durable and visibly block numeric search un
     const preserved=(await getStoredUiPreferences(session.page)).savedMarketItems[0];
     expect(preserved).toMatchObject({id:"metadata",itemKey:"unique:1:0:100",request:null,
       criteria:{minSockets:4,statFilters:[{statId:185,minimum:103},{statId:271,minimum:10}]}});
-    await workspace.getByRole("button",{name:"Remove Triggered skill identifier (experimental)",exact:true}).click();
-    await workspace.locator("#market-stat-query").fill("Skill parameter");
-    const parameter=workspace.locator(".market-options button").filter({hasText:"Skill parameter 186"});
+    await workspace.getByRole("button",{name:"Remove Talent identifier when struck (Stat 185) (experimental)",exact:true}).click();
+    await workspace.locator("#market-stat-query").fill("Stat 186");
+    const parameter=workspace.locator(".market-options button").filter({hasText:"Talent level when struck (Stat 186)"});
     await expect(parameter).toBeEnabled();
     await parameter.click();
-    await workspace.getByLabel("Skill parameter 186 (experimental) minimum",{exact:true}).fill("20");
+    await workspace.getByLabel("Talent level when struck (Stat 186) (experimental) minimum",{exact:true}).fill("20");
     await workspace.locator("#market-stat-query").fill("");
     await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();
     await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
@@ -229,7 +229,7 @@ test("metadata saved criteria remain durable and visibly block numeric search un
     await session.page.getByRole("tab",{name:"Market",exact:true}).click();workspace=session.page.locator(".market-workspace");
     await workspace.locator(".market-saved-load").filter({hasText:"Preserved metadata"}).click();
     await expect(workspace.locator(".market-stat-row")).toHaveCount(2);
-    await expect(workspace.getByLabel("Skill parameter 186 (experimental) minimum",{exact:true})).toHaveValue("20");
+    await expect(workspace.getByLabel("Talent level when struck (Stat 186) (experimental) minimum",{exact:true})).toHaveValue("20");
     await expect(workspace.getByLabel("Ranged Skills (experimental) minimum",{exact:true})).toHaveValue("10");
     expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
   }finally{if(session)await closeCompanionApp(session);cleanupUserDataDir(userDataDir);}

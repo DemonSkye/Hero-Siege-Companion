@@ -86,7 +86,7 @@ test("production worker serializes grounded experimental IDs once and retains ch
   expect(result.response).toMatchObject({ok:false,errorCode:"checksum_rejected"});
 });
 
-test.each([20,185,347,291,292])("production worker rejects incompatible stat%i without opening transport",async statId=>{
+test.each([20,185,347,291,292,21,116,119,205,102,221,349])("production worker rejects incompatible stat%i without opening transport",async statId=>{
   const {result,form}=await runWorker("blocked",[{statId,minimum:1}]);
   expect(result.response.ok).toBe(false);
   expect([...form.keys()]).toEqual([]);
@@ -96,11 +96,12 @@ test("production worker serializes approved experimental numeric fields with unk
   const {result,form}=await runWorker("empty",[
     {statId:22,minimum:6},{statId:23,minimum:1.75},{statId:117,minimum:12},{statId:203,minimum:2},
     {statId:98,minimum:1},{statId:186,minimum:20},{statId:187,minimum:20},{statId:299,minimum:1},{statId:10,minimum:1},
+    {statId:121,minimum:2.5},{statId:390,minimum:5},
   ]);
   expect(JSON.parse(Buffer.from(form.get("stat_filter")!,"base64").toString("utf8"))).toEqual([
     {statId:10,filter:2,statValue:1},{statId:22,filter:2,statValue:6},{statId:23,filter:2,statValue:1.75},
-    {statId:98,filter:2,statValue:1},{statId:117,filter:2,statValue:12},{statId:186,filter:2,statValue:20},
-    {statId:187,filter:2,statValue:20},{statId:203,filter:2,statValue:2},{statId:299,filter:2,statValue:1},
+    {statId:98,filter:2,statValue:1},{statId:117,filter:2,statValue:12},{statId:121,filter:2,statValue:2.5},{statId:186,filter:2,statValue:20},
+    {statId:187,filter:2,statValue:20},{statId:203,filter:2,statValue:2},{statId:299,filter:2,statValue:1},{statId:390,filter:2,statValue:5},
   ]);
   expect(form.get("scroll_page")).toBe("0");
   expect(result.response).toEqual({ok:true,result:{listings:[],totalMatches:0,returnedCount:0}});

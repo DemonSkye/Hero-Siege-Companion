@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import { MARKET_SEARCH_MAX_STAT_FILTERS, MARKET_SEARCH_LISTING_LIMIT, marketStatOption, marketStatMinimumIssue, type MarketListing } from "../../../shared/market-search";
+import { marketStatFieldName, marketStatRole } from "../../../shared/market-stat-capabilities";
 import type { MarketReadiness } from "../../../shared/market-readiness";
 import { marketItemSuggestions, type MarketItemOption, type SavedMarketItem } from "../lib/market-items";
 import { marketStatSuggestions, type MarketSearchPhase, type MarketStatFilterDraft } from "../lib/market-search-runtime";
@@ -162,7 +163,7 @@ function chooseStat(statId: number): void {
             </div>
             <label for="market-stat-query">Add stat minimum</label>
             <input id="market-stat-query" v-model="statQuery" type="search" :disabled="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS" placeholder="Type at least 3 characters" autocomplete="off" @keydown.enter.prevent="statSuggestions[0] && chooseStat(statSuggestions[0].statId)" />
-            <ul v-if="statSuggestions.length" class="market-options" aria-label="Stat suggestions"><li v-for="option in statSuggestions" :key="option.statId"><button type="button" :disabled="Boolean(marketStatMinimumIssue(option.statId, itemKey))" @click="chooseStat(option.statId)">{{ option.name }}<small v-if="marketStatMinimumIssue(option.statId, itemKey)">{{ marketStatMinimumIssue(option.statId, itemKey) }}</small></button></li></ul>
+            <ul v-if="statSuggestions.length" class="market-options" aria-label="Stat suggestions"><li v-for="option in statSuggestions" :key="option.statId"><button type="button" :disabled="Boolean(marketStatMinimumIssue(option.statId, itemKey))" @click="chooseStat(option.statId)">{{ option.name }}<small v-if="marketStatMinimumIssue(option.statId, itemKey)">{{ marketStatMinimumIssue(option.statId, itemKey) }}</small><small v-else-if="option.description">{{ option.description }}</small></button></li></ul>
             <p v-else-if="statQuery.trim().length >= 3">No additional supported stats match.</p>
             <p v-if="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS">All {{ MARKET_SEARCH_MAX_STAT_FILTERS }} stat slots are in use. Remove one to add another.</p>
           </fieldset>
@@ -170,7 +171,7 @@ function chooseStat(statId: number): void {
             <header class="market-stat-card-heading"><h3 id="market-ranges-title">{{ item?.label }}</h3><small>{{ item?.rarity }} · Base stat ranges</small></header>
             <dl v-if="catalogStats.length" class="market-range-list">
               <div v-for="stat in catalogStats" :key="stat.statId">
-                <dt>{{ itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}` }}</dt>
+                <dt :title="marketStatRole(stat.statId)?.detail">{{ marketStatFieldName(stat.statId, itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}`) }}</dt>
                 <dd>[{{ marketBaseStatValue(stat, itemKey) }}]</dd>
               </div>
             </dl>

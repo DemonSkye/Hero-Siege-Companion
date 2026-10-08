@@ -1,4 +1,4 @@
-export type ItemBaseStatUnit = "percent" | "flat" | "count" | "unknown";
+export type ItemBaseStatUnit = "percent" | "flat" | "count" | "seconds" | "unknown";
 export interface ItemBaseNumericValue {
   kind: "scalar" | "range" | "series";
   minimum: number;

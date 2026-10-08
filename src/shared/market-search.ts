@@ -1,7 +1,7 @@
 import { MARKET_STAT_CATALOG_BUILD_24868792_DATA } from "./data/market-stat-catalog-build-24868792";
 import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition } from "./item-base-stat-catalog";
 import { runewordMarketById } from "./runeword-market-catalog";
-import { unresolvedMarketStatMeaning } from "./market-stat-capabilities";
+import { marketStatFieldName, marketStatRole, marketStatRoleMinimumIssue } from "./market-stat-capabilities";
 import { resolveItemDefinition } from "./item-catalog";
 import { sanitizeMarketListingItem, type MarketListingItem } from "./market-listing-item";
 
@@ -26,6 +26,7 @@ export interface MarketStatOption {
   name: string;
   /** Grounded numeric ID outside the retained native Market menu. */
   experimental?: true;
+  description?: string;
 }
 
 export interface MarketStatFilter {
@@ -92,7 +93,8 @@ export const MARKET_STAT_OPTIONS: readonly MarketStatOption[] = Object.freeze(
       Object.freeze({ statId, localizationKey, name })),
     ...ITEM_BASE_STAT_CATALOG.stats.filter(stat => !stat.nativeMarketMenu).map(stat =>
       Object.freeze({ statId: stat.statId, localizationKey: stat.localizationKey,
-        name: `${stat.name} (experimental)`, experimental: true as const })),
+        name: `${marketStatFieldName(stat.statId, stat.name)} (experimental)`,
+        description: marketStatRole(stat.statId)?.detail, experimental: true as const })),
   ].sort((left, right) => left.name.localeCompare(right.name)),
 );
 
@@ -108,10 +110,12 @@ export function marketStatOption(statId: number): MarketStatOption | null {
 export function marketStatMinimumIssue(statId: number, itemKey: string | null = null): string | null {
   if (!marketStatOption(statId)) return "Unknown stat ID.";
   if (statId === 20) return "Use Minimum sockets above; sockets have a separate native control.";
-  if (statId === 185) return "Skill identifier metadata cannot be searched as a roll minimum.";
-  if (statId === 347) return "Zone collections cannot be searched as numeric minimums.";
-  const meaning = unresolvedMarketStatMeaning(statId);
-  if (meaning === "encoded-flag-context") return "Retained uses of this field are encoded values, not scalar roll minima.";
+  // Preserve proved native controls, including native ID 202 even though v8
+  // also proves its use as a selected-talent identifier in another context.
+  if (!itemBaseStatMetadataIsNative(statId)) {
+    const roleIssue = marketStatRoleMinimumIssue(statId);
+    if (roleIssue) return roleIssue;
+  }
   const stat = itemBaseStatDefinition(itemKey)?.stats.find(value => value.statId === statId);
   if (!itemBaseStatMetadataIsNative(statId) && stat?.kind === "series") {
     return "This item's value is a table, not a scalar roll minimum.";

@@ -56,45 +56,48 @@ reused, still displays only its lowest two cards.
 Matching relies on the server. Unsupported game filter operators are not exposed.
 No automated purchase, polling, alert or pagination runs from saved entries.
 
-The stat picker exposes 381 evidenced IDs: the original 167 native Market
-menu entries and 214 additional entries suffixed `(experimental)`. Missing English
-labels remain `Stat N`. These are grounded keys from the retained native menu,
-label bindings and constructor setters; they are not a complete game enum or
-proof that the server honors every numeric clause. Minimum sockets keeps its
-separate native field. Skill identifier 185, encoded-only fields 291/292 and zone
-collection 347 are discoverable but disabled as numeric minimums. Unknown labels,
-unproved shapes or unproved server matching do not block an approved experimental
-numeric clause. Proc parameters 186/187 retain their contextual names and can use
-numeric minimums in scalar/range contexts. Off-menu fields that are tables on the selected item are
-also disabled. Mixed scalar/table IDs retain their distinct per-item shapes;
-tables are never flattened into a minimum. Native menu controls remain available.
+The stat picker exposes 383 evidenced IDs: the original 167 native Market
+menu entries and 216 additional entries suffixed `(experimental)`. Exact names,
+qualified role captions and unresolved `Stat N` names stay distinct. Search by
+name or `Stat N` to find an ID after a label changes. These are grounded keys from
+the retained native menu, text bindings, tooltip controls and constructor setters;
+they are not a complete game enum or proof that the server honors every clause.
+Unknown labels, unproved shapes or unproved server matching do not block an
+approved experimental numeric clause. Off-menu fields that are tables on the
+selected item are disabled only in that item context. Mixed scalar/table IDs
+retain their distinct shapes; tables are never flattened into a minimum.
+Native menu controls remain available, including Singular Skills (202), whose
+separate selected-talent use does not remove its original native minimum control.
 Saved unsupported criteria remain editable and durable, show actionable guidance,
 and block dispatch until removed. Shape validation for storage stays separate from
 wire validation in renderer, main and the actual builder. Arbitrary IDs remain rejected.
 Six exact English item-stat joins add physical damage taken as Cold/Fire/Arcane/
 Lightning, Flask Skill Haste and Increased Experience Gain Below Level 100.
 Character-attribute IDs are a different namespace and are not joined.
-The validated v6 tooltip bindings add 115 exact English fragments, including
+The validated tooltip bindings add 115 exact English fragments, including
 Loot Amount increased by, Rune Drop Chances Increased by and Maximum Weapon
-Damage Increased by. The catalog now has 297 readable labels and 84 unresolved
-English names, which remain `Stat N`. Fragments, experimental suffixes and
-numeric/table formatting stay distinct; a readable label does not turn a known
-identifier, encoded field or collection into a scalar roll.
-The v7 residual classification distinguishes 42 fixed numeric fields and 18
-numeric ranges with unresolved meaning, six table-containing fields, eight
-runtime-composed labels, two encoded-only fields, one zone collection
-and seven fields without retained constructor uses. These 84 fields remain
-discoverable reference data and durable saved criteria. Numeric fields with
-unknown meanings use their experimental fallbacks; composed labels do not make
-their numeric values composite. Mixed table/scalar IDs are restricted only for
-the selected table context. Seven IDs without constructor values and three
-label-bound IDs without base values remain experimental numeric clauses, with
-their shape/matching unverified. In total, 376 IDs permit a generic numeric
-minimum before selected-item table restrictions: 167 native and 209 experimental.
-Four IDs have known incompatible semantics; sockets use the separate control.
-This does not classify the residual fields as reserved or as 84 missing
-player-visible labels. Proven encoded contexts for 291/292 display
-as encoded fields rather than treating their scalar projections as roll bounds.
+Damage Increased by. Frozen v8 evidence adds 13 exact names and resolves roles
+for 69 of the preceding 84 meaning gaps. Catalog metadata has 310 exact or
+previously scoped names and 73 numeric fallbacks; role captions are separate
+from native names. Fifteen meanings remain unresolved and experimental: 0, 1,
+2, 10, 11, 12, 13, 14, 15, 24, 280, 295, 376, 378 and 473. Absence of a name
+does not establish absence of a player-visible label or a reserved field.
+
+The seven proc families distinguish talent identifiers from numeric levels and
+chances. Cloak fields 117 (12–20) and 118 (3–6), for example, remain numeric
+minimums; 116 selects the talent. Chance scales remain unchanged. Flask Effect
+Duration (390) displays seconds; mana/life recovery fields have qualified input
+captions rather than a claim to reconstruct the complete calculation.
+In total, 345 IDs permit a generic minimum before selected-item table restrictions:
+167 native and 178 experimental. The 38 exclusions comprise 19 experimental
+talent identifiers, eight class identifiers, seven effect-presence fields, one
+conditional marker, one categorical dispatch field, one zone collection and the
+separate socket control. Exact-identity and presence wire controls are unproved;
+the UI explains the incompatible role without inventing operators. Conditional
+effects and markers do not display numeric roll bounds. Retained encoded contexts
+remain identified as encoded. The 99 additional table restrictions across 97
+items preserve their item context, while the 79 native controls on table-valued
+definitions remain available.
 
 Catalog base ranges sit beside the filters on wide layouts and above the saved
 name on narrow layouts. The compact bordered card shows static base definitions
@@ -148,6 +151,8 @@ last. Loading/saving filters still never fetches results.
   and extraction receipts remain private workspace evidence.
 - `shared/market-search.ts`: native and experimental stat discovery, separate
   durable/wire validation, proven normal/unique masks and exclusive native targets.
+- `shared/market-stat-capabilities.ts` and its versioned role data: qualified
+  field semantics, unsupported role controls and selected-item encoded contexts.
 - `shared/runeword-market-catalog.ts`: versioned native selector permutation and
   reversible legacy-key aliases; no invented masks.
 - `components/MarketListingDetails.vue`: variant/roll display with honest unknown
@@ -179,4 +184,9 @@ through StatsEngine, preload, Timeline, LiveView and App into saveable normal an
 native runeword targets, explicit IPC searches, cooldown and process restart.
 It does not establish native packet runeword classification; that producer path
 remains a separate compatibility boundary. The v6 label fixture preserves all
-115 literal joins without production imports and retains the 15 restrictions.
+115 literal joins without production imports. Independent v8 fixtures keep the
+seven proc tuples, 13 exact labels, class/talent roles, 15 remaining meaning gaps
+and 38 current exclusions literal. Actual worker-entry checks compare serialized
+numeric clauses with independent expected values. The v8 Electron journey keeps
+an older unsupported talent criterion durable across restart, then repairs it
+into an explicit Cloak quantity search through real preload/main wiring.

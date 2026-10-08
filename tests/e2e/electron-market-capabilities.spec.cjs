@@ -16,8 +16,8 @@ test("unresolved encoded criteria survive actual save/restart and block IPC unti
     await session.page.reload();await session.page.getByRole("tab",{name:"Market",exact:true}).click();
     let workspace=session.page.locator(".market-workspace");
     await workspace.locator(".market-saved-load").filter({hasText:"Old Ravager fields"}).click();
-    await expect(workspace.locator(".market-range-list > div").filter({hasText:"Stat 292"})).toContainText("Encoded field; meaning unverified");
-    await expect(workspace).toContainText("Retained uses of this field are encoded values, not scalar roll minima.");
+    await expect(workspace.locator(".market-range-list > div").filter({hasText:"Attacks can hit multiple enemies"})).toContainText("Conditional effect (encoded)");
+    await expect(workspace).toContainText("This is an effect-presence field, not a numeric roll.");
     await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
     const criteria={statFilters:[{statId:271,minimum:10},{statId:292,minimum:1}]};
     await expect.poll(async()=>(await getStoredUiPreferences(session.page)).savedMarketItems[0]).toMatchObject({
@@ -39,9 +39,9 @@ test("unresolved encoded criteria survive actual save/restart and block IPC unti
     await workspace.locator("#market-stat-query").fill("Stat 203");
     await expect(workspace.locator('ul[aria-label="Stat suggestions"] button')).toBeEnabled();
     await workspace.locator('ul[aria-label="Stat suggestions"] button').click();
-    await workspace.getByLabel("Stat 203 (experimental) minimum",{exact:true}).fill("2");
+    await workspace.getByLabel("Selected talent modifier (Stat 203) (experimental) minimum",{exact:true}).fill("2");
     await workspace.locator("#market-stat-query").fill("");
-    await workspace.getByRole("button",{name:"Remove Stat 292 (experimental)",exact:true}).click();
+    await workspace.getByRole("button",{name:"Remove Attacks can hit multiple enemies (experimental)",exact:true}).click();
     await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
     await expect.poll(async()=>(await getStoredUiPreferences(session.page)).savedMarketItems[0].request).toEqual({
       runewordId:23,statFilters:[{statId:203,minimum:2},{statId:271,minimum:10}],

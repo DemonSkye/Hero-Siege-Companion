@@ -1,15 +1,20 @@
 import type { ItemStatDefinition } from "../../../shared/item-stat-ranges";
 import { itemBaseStatMetadata, type ItemBaseNumericValue, type ItemBaseStat } from "../../../shared/item-base-stat-catalog";
-import { marketDefinitionHasEncodedField } from "../../../shared/market-stat-capabilities";
+import { marketDefinitionHasEncodedField, marketStatRole } from "../../../shared/market-stat-capabilities";
 
 export function marketBaseStatValue(stat: ItemBaseStat, itemKey: string | null = null): string {
-  if (marketDefinitionHasEncodedField(itemKey, stat.statId)) return "Encoded field; meaning unverified";
+  const role = marketStatRole(stat.statId);
+  if (marketDefinitionHasEncodedField(itemKey, stat.statId)) return role?.kind === "effect" ? "Conditional effect (encoded)" : "Encoded field; meaning unverified";
   if (stat.kind === "dynamic") return stat.description;
-  const unit = itemBaseStatMetadata(stat.statId)?.unit === "percent" ? "%" : "";
+  if (stat.kind !== "series" && role?.kind === "effect") return "Conditional effect";
+  if (stat.kind !== "series" && role?.kind === "marker") return "Conditional marker";
+  const metadataUnit = itemBaseStatMetadata(stat.statId)?.unit;
+  const unit = metadataUnit === "percent" ? "%" : metadataUnit === "seconds" ? " s" : "";
   const format = (value: ItemBaseNumericValue) => value.kind === "series"
     ? `Table: ${(value.values ?? []).join(", ")}`
     : value.minimum === value.maximum ? `${value.minimum}${unit}` : `${value.minimum}${unit}–${value.maximum}${unit}`;
-  return format(stat);
+  const value = format(stat);
+  return ["class-identifier","talent-identifier","categorical"].includes(role?.kind ?? "") ? `Identifier: ${value}` : value;
 }
 
 /** Proc mappings are scoped to a definition with a paired tooltip oracle. */

@@ -11,7 +11,7 @@ test("all 115 validated native item-stat joins retain their exact English fragme
     expect(itemBaseStatMetadata(statId)).toMatchObject({statId,localizationKey,name:english,nativeMarketMenu:false});
     expect(marketStatOption(statId)).toMatchObject({statId,localizationKey,name:`${english} (experimental)`,experimental:true});
   }
-  expect(ITEM_BASE_STAT_CATALOG.stats.filter(stat=>stat.name.startsWith("Stat "))).toHaveLength(84);
+  expect(ITEM_BASE_STAT_CATALOG.stats.filter(stat=>stat.name.startsWith("Stat "))).toHaveLength(73);
   expect(itemBaseStatMetadata(384)?.name).toBe("Stat 384");
   expect(itemBaseStatMetadata(387)?.name).toBe("Stat 387");
 });
