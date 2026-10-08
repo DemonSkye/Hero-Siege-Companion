@@ -14,7 +14,7 @@ import {
 import { CaptureDiagnosticsController } from "./capture-diagnostics-controller";
 import { diagnosticCapturePreferences } from "./satanic-zone-diagnostic-runtime";
 import { configureElectronE2eApp, installElectronE2eMainHooks, isElectronE2eTestMode } from "./electron-test-mode";
-import { showOpenDialogWithParent } from "./electron-dialogs";
+import { showOpenDialogWithParent, showMessageBoxWithParent, setProtectedExportFiles } from "./electron-dialogs";
 import { GameCaptureCoordinator } from "./game-capture-coordinator";
 import { GameExecutable } from "./game-executable";
 import { CapturedSessionContextStore } from "./captured-session-context";
@@ -137,7 +137,18 @@ const gameCaptureCoordinator = new GameCaptureCoordinator({
   writeAppLog,
   launchExecutable: authorized => gameExecutable.launch(authorized),
 });
-const gameExecutable = new GameExecutable(() => preferencesPath ? path.join(path.dirname(preferencesPath), "game-executable.json") : "");
+const gameExecutable = new GameExecutable(
+  () => preferencesPath ? path.join(path.dirname(preferencesPath), "game-executable.json") : "",
+  async filePath => (await showMessageBoxWithParent(currentWindow(), {
+    type: "warning", title: "Hero Siege executable changed", message: "The selected game executable has changed.",
+    detail: `Approve this file only if you intentionally updated this installation.\n\n${filePath}`,
+    buttons: ["Cancel", "Approve changed file"], defaultId: 0, cancelId: 0, noLink: true,
+  })).response === 1,
+);
+setProtectedExportFiles(() => {
+  const selected = gameExecutable.selectedPath();
+  return selected ? [selected] : [];
+});
 
 if (process.platform === "win32") app.setAppUserModelId("com.herosiege.companion");
 configureElectronE2eApp(app);

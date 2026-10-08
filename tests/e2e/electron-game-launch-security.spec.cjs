@@ -118,3 +118,40 @@ test("approved standalone selection and the Browse UI survive a real Companion p
     cleanupUserDataDir(userDataDir);
   }
 });
+
+test("native changed-file confirmation defaults to Cancel and approves only the same stable retained file", async () => {
+  await withCompanionApp({ gameRunning: false }, async ({ electronApp, page }) => {
+    const paths = await installLaunchStubs(electronApp);
+    await page.evaluate(() => window.heroSiegeCompanion.chooseGameExecutable());
+    const original = await electronApp.evaluate(({ app, dialog }) => {
+      const fs = process.getBuiltinModule("node:fs"), path = process.getBuiltinModule("node:path");
+      global.__launchSecurity.approval = path.join(app.getPath("userData"), "game-executable.json");
+      global.__launchSecurity.prompts = [];
+      dialog.showMessageBox = async (...args) => {
+        global.__launchSecurity.prompts.push(args.at(-1));
+        if (global.__launchSecurity.changeDuringDialog) fs.appendFileSync(global.__launchSecurity.selected, "changed while confirming");
+        return { response: global.__launchSecurity.response ?? 0, checkboxChecked: false };
+      };
+      fs.appendFileSync(global.__launchSecurity.selected, "intentional synthetic update");
+      return fs.readFileSync(global.__launchSecurity.approval, "utf8");
+    });
+    await page.evaluate(() => window.heroSiegeCompanion.launchGameOrCapture({ launchThroughSteam: false }));
+    expect(await dispatches(electronApp)).toEqual([]);
+    expect(await electronApp.evaluate(() => process.getBuiltinModule("node:fs").readFileSync(global.__launchSecurity.approval, "utf8"))).toBe(original);
+    const prompt = await electronApp.evaluate(() => global.__launchSecurity.prompts[0]);
+    expect(prompt).toMatchObject({ buttons: ["Cancel", "Approve changed file"], defaultId: 0, cancelId: 0 });
+    expect(prompt.detail).toContain(paths.selected);
+    await electronApp.evaluate(() => { global.__launchSecurity.response = 1; });
+    await page.evaluate(() => window.heroSiegeCompanion.launchGameOrCapture({ launchThroughSteam: false }));
+    expect(await dispatches(electronApp)).toHaveLength(1);
+    const approved = await electronApp.evaluate(() => {
+      const fs = process.getBuiltinModule("node:fs");
+      const record = fs.readFileSync(global.__launchSecurity.approval, "utf8");
+      fs.appendFileSync(global.__launchSecurity.selected, "second update"); global.__launchSecurity.changeDuringDialog = true;
+      return record;
+    });
+    await page.evaluate(() => window.heroSiegeCompanion.launchGameOrCapture({ launchThroughSteam: false }));
+    expect(await dispatches(electronApp)).toHaveLength(1);
+    expect(await electronApp.evaluate(() => process.getBuiltinModule("node:fs").readFileSync(global.__launchSecurity.approval, "utf8"))).toBe(approved);
+  });
+});

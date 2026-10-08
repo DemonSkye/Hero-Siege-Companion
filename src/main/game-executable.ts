@@ -12,7 +12,9 @@ interface ApprovedExecutable {
 // A native dialog grants consent for this exact local file. Neither a familiar
 // filename nor renderer preferences establish executable identity or consent.
 export class GameExecutable {
-  constructor(private readonly storagePath: () => string) {}
+  private updateConfirmationPending = false;
+  constructor(private readonly storagePath: () => string,
+    private readonly confirmChangedFile?: (filePath: string) => Promise<boolean>) {}
 
   selectedPath(): string | null {
     return this.load()?.path ?? null;
@@ -31,10 +33,11 @@ export class GameExecutable {
   async launch(authorized: () => boolean): Promise<void> {
     const approved = this.load();
     if (!approved) throw new Error("Choose the Hero Siege executable with Browse in Settings first.");
-    const current = await inspectExecutable(approved.path);
-    if (current.path !== approved.path || current.sha256 !== approved.sha256) {
+    let current = await inspectExecutable(approved.path);
+    if (current.path !== approved.path) {
       throw new Error("The selected executable changed. Use Browse in Settings to approve it again.");
     }
+    if (current.sha256 !== approved.sha256) current = await this.approveChangedFile(approved, current, authorized);
     if (!authorized()) throw new Error("Game launch cancelled.");
     await new Promise<void>((resolve, reject) => {
       const child = spawn(current.path, [], {
@@ -43,6 +46,24 @@ export class GameExecutable {
       child.once("error", () => reject(new Error("Could not start the selected Hero Siege executable.")));
       child.once("spawn", () => { child.unref(); resolve(); });
     });
+  }
+
+  private async approveChangedFile(previous: ApprovedExecutable, candidate: ApprovedExecutable,
+    authorized: () => boolean): Promise<ApprovedExecutable> {
+    if (!this.confirmChangedFile) throw new Error("The selected executable changed. Use Browse in Settings to approve it again.");
+    if (this.updateConfirmationPending || !authorized()) throw new Error("Game launch cancelled.");
+    this.updateConfirmationPending = true;
+    try {
+      if (!await this.confirmChangedFile(previous.path) || !authorized()) throw new Error("Game launch cancelled.");
+      const current = await inspectExecutable(previous.path);
+      const stillApproved = this.load();
+      if (current.path !== candidate.path || current.sha256 !== candidate.sha256
+        || stillApproved?.path !== previous.path || stillApproved.sha256 !== previous.sha256 || !authorized()) {
+        throw new Error("The selected executable changed again. Try Launch Game again or use Browse in Settings.");
+      }
+      fs.writeFileSync(this.storagePath(), JSON.stringify(current), { encoding: "utf8", mode: 0o600 });
+      return current;
+    } finally { this.updateConfirmationPending = false; }
   }
 
   private load(): ApprovedExecutable | null {

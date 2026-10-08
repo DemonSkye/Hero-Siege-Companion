@@ -22,6 +22,7 @@ async function installLaunchStubs(electronApp) {
       queueMicrotask(() => child.emit("spawn")); return child;
     };
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
+    dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
     global.__launchSecurity = { calls, selected, arbitrary };
     return { selected, arbitrary };
   });

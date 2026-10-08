@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { GameExecutable } from "../../src/main/game-executable";
 const processMock = vi.hoisted(() => ({ spawn: vi.fn() }));
@@ -77,5 +78,56 @@ describe("main-owned native executable approval", () => {
     fs.writeFileSync(f.storage, JSON.stringify({ schemaVersion: 1, path: other, sha256: "invalid" }));
     expect(f.owner.selectedPath()).toBe(null);
     expect(processMock.spawn).not.toHaveBeenCalled();
+  });
+
+  test("native confirmation of changed bytes retains the path, refreshes approval and survives restart", async () => {
+    const f = fixture(), confirm = vi.fn(async () => true);
+    const owner = new GameExecutable(() => f.storage, confirm);
+    await owner.approveNativeSelection(f.selected, () => true);
+    fs.appendFileSync(f.selected, "intentional synthetic update");
+    await owner.launch(() => true);
+    expect(confirm).toHaveBeenCalledWith(fs.realpathSync(f.selected));
+    expect(JSON.parse(fs.readFileSync(f.storage, "utf8")).sha256)
+      .toBe(createHash("sha256").update(fs.readFileSync(f.selected)).digest("hex"));
+    await new GameExecutable(() => f.storage).launch(() => true);
+    expect(confirm).toHaveBeenCalledTimes(1); expect(processMock.spawn).toHaveBeenCalledTimes(2);
+  });
+  test.each(["cancel", "content change", "authorization loss", "selection change"])
+    ("native confirmation preserves old approval and blocks dispatch after %s", async reason => {
+      const f = fixture(); let authorized = true;
+      const confirm = vi.fn(async () => {
+        if (reason === "content change") fs.appendFileSync(f.selected, "another change during dialog");
+        if (reason === "authorization loss") authorized = false;
+        if (reason === "selection change") fs.writeFileSync(f.storage, "changed by another selection");
+        return reason !== "cancel";
+      });
+      const owner = new GameExecutable(() => f.storage, confirm);
+      await owner.approveNativeSelection(f.selected, () => true);
+      const original = fs.readFileSync(f.storage, "utf8");
+      fs.appendFileSync(f.selected, "updated bytes before dialog");
+      await expect(owner.launch(() => authorized)).rejects.toThrow();
+      expect(fs.readFileSync(f.storage, "utf8")).toBe(reason === "selection change" ? "changed by another selection" : original);
+      expect(processMock.spawn).not.toHaveBeenCalled();
+    });
+  test("retargeted canonical paths do not receive the native update-confirmation shortcut", async () => {
+    const f = fixture(), confirm = vi.fn(async () => true), owner = new GameExecutable(() => f.storage, confirm);
+    await owner.approveNativeSelection(f.selected, () => true);
+    const other = path.join(f.directory, "another.exe"); fs.copyFileSync(f.selected, other);
+    vi.spyOn(fs.promises, "realpath").mockResolvedValue(other);
+    await expect(owner.launch(() => true)).rejects.toThrow("Browse");
+    expect(confirm).not.toHaveBeenCalled(); expect(processMock.spawn).not.toHaveBeenCalled();
+  });
+  test("a pending changed-file dialog rejects another launch without another prompt", async () => {
+    const f = fixture(); let answer!: (allow: boolean) => void;
+    const confirm = vi.fn(() => new Promise<boolean>(resolve => { answer = resolve; }));
+    const owner = new GameExecutable(() => f.storage, confirm);
+    await owner.approveNativeSelection(f.selected, () => true); fs.appendFileSync(f.selected, "updated bytes");
+    const first = owner.launch(() => true);
+    // Attach the rejection handler before resolving the pending native answer.
+    const cancelled = expect(first).rejects.toThrow("cancelled");
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    await expect(owner.launch(() => true)).rejects.toThrow("cancelled");
+    answer(false); await cancelled;
+    expect(confirm).toHaveBeenCalledTimes(1); expect(processMock.spawn).not.toHaveBeenCalled();
   });
 });
