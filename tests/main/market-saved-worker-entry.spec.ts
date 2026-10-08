@@ -86,7 +86,7 @@ test("production worker serializes grounded experimental IDs once and retains ch
   expect(result.response).toMatchObject({ok:false,errorCode:"checksum_rejected"});
 });
 
-test.each([20,185,186,187,347,10])("production worker rejects non-scalar stat%i without opening transport",async statId=>{
+test.each([20,185,186,187,347,10,291,292,203,22])("production worker rejects unsupported stat%i without opening transport",async statId=>{
   const {result,form}=await runWorker("blocked",[{statId,minimum:1}]);
   expect(result.response.ok).toBe(false);
   expect([...form.keys()]).toEqual([]);

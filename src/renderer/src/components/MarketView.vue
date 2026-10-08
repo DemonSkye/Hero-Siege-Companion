@@ -171,7 +171,7 @@ function chooseStat(statId: number): void {
             <dl v-if="catalogStats.length" class="market-range-list">
               <div v-for="stat in catalogStats" :key="stat.statId">
                 <dt>{{ itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}` }}</dt>
-                <dd>[{{ marketBaseStatValue(stat) }}]</dd>
+                <dd>[{{ marketBaseStatValue(stat, itemKey) }}]</dd>
               </div>
             </dl>
             <p v-else class="empty-copy">No fixed base stat values retained for this definition.</p>

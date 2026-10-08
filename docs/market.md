@@ -76,6 +76,15 @@ Damage Increased by. The catalog now has 297 readable labels and 84 unresolved
 English names, which remain `Stat N`. Fragments, experimental suffixes and
 numeric/table formatting stay distinct; a readable label does not promote a
 metadata or unresolved value shape into a scalar minimum.
+The v7 residual classification distinguishes 42 fixed numeric fields and 18
+numeric ranges with unresolved meaning, six table-containing fields, eight
+runtime-composed localized values, two encoded contexts, one zone collection
+and seven fields without retained constructor uses. These 84 fields remain
+discoverable reference data and durable saved criteria, but are disabled in the
+ordinary minimum picker. Together with the seven other restricted IDs, 91 IDs
+cannot be sent as stat minimums. This does not classify them as reserved or as
+84 missing player-visible labels. Proven encoded contexts for 291/292 display
+as encoded fields rather than treating their scalar projections as roll bounds.
 
 Catalog base ranges sit beside the filters on wide layouts and above the saved
 name on narrow layouts. The compact bordered card shows static base definitions

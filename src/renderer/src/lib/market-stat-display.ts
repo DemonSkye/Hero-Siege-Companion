@@ -1,7 +1,9 @@
 import type { ItemStatDefinition } from "../../../shared/item-stat-ranges";
 import { itemBaseStatMetadata, type ItemBaseNumericValue, type ItemBaseStat } from "../../../shared/item-base-stat-catalog";
+import { marketDefinitionHasEncodedField } from "../../../shared/market-stat-capabilities";
 
-export function marketBaseStatValue(stat: ItemBaseStat): string {
+export function marketBaseStatValue(stat: ItemBaseStat, itemKey: string | null = null): string {
+  if (marketDefinitionHasEncodedField(itemKey, stat.statId)) return "Encoded field; meaning unverified";
   if (stat.kind === "dynamic") return stat.description;
   const unit = itemBaseStatMetadata(stat.statId)?.unit === "percent" ? "%" : "";
   const format = (value: ItemBaseNumericValue) => value.kind === "series"

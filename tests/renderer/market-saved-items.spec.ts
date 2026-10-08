@@ -9,6 +9,24 @@ import { installMemoryPreferencesStorage } from "../fixtures/market";
 
 beforeEach(installMemoryPreferencesStorage);
 
+test("v7 meaning restrictions preserve older scalar, composed and encoded minimum criteria through reload and repair",async()=>{
+  const criteria={statFilters:[{statId:23,minimum:1.75},{statId:203,minimum:2},{statId:292,minimum:1}]};
+  const entries=ref<SavedMarketItem[]>(normalizeSavedMarketItems([{id:"v7-old",name:"Old exploratory fields",itemKey:"normal:0:0:0",
+    request:{itemMask:0,...criteria}}]));
+  expect(entries.value[0]).toEqual({id:"v7-old",name:"Old exploratory fields",itemKey:"normal:0:0:0",request:null,criteria});
+  const searchMarket=vi.fn(async()=>({ok:true as const,result:{listings:[]}}));
+  const search=useMarketSearchRuntime({searchMarket,now:ref(1000),readiness:ref(companionState().marketReadiness)});
+  const saved=useSavedMarketItems(entries,search);saved.loadSaved("v7-old");
+  expect(search.draftValid.value).toBe(true);expect(search.canSearch.value).toBe(false);
+  expect(saved.saveDraft()).toBe(true);
+  expect(savePreferences(normalizePreferences({...defaultPreferences,savedMarketItems:entries.value}))).toBe(true);
+  expect(loadPreferences().savedMarketItems).toEqual(entries.value);
+  await search.searchMarket();expect(searchMarket).not.toHaveBeenCalled();
+  for (const filter of [...search.statFilters.value]) search.removeStatFilter(filter.key);
+  expect(saved.saveDraft()).toBe(true);await search.searchMarket();
+  expect(searchMarket).toHaveBeenCalledExactlyOnceWith({itemMask:0,statFilters:[]});
+});
+
 test.each([
   ["Cap","normal",0,0,0,"normal:0:0:0",{itemMask:0}],
   ["Sharpshooter's Cloak","unique",1,100,0,"unique:1:0:100",{itemMask:1073746020}],

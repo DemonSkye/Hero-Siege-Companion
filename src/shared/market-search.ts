@@ -1,6 +1,7 @@
 import { MARKET_STAT_CATALOG_BUILD_24868792_DATA } from "./data/market-stat-catalog-build-24868792";
 import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition } from "./item-base-stat-catalog";
 import { runewordMarketById } from "./runeword-market-catalog";
+import { unresolvedMarketStatMeaning } from "./market-stat-capabilities";
 import { resolveItemDefinition } from "./item-catalog";
 import { sanitizeMarketListingItem, type MarketListingItem } from "./market-listing-item";
 
@@ -111,6 +112,10 @@ export function marketStatMinimumIssue(statId: number, itemKey: string | null = 
   if (statId === 186 || statId === 187) return "Proc parameter meaning is verified only for Bob's Piece of Plywood; minimum matching is unproved.";
   if (statId === 347) return "Zone collections cannot be searched as numeric minimums.";
   if (UNKNOWN_VALUE_SHAPE_IDS.has(statId)) return "Value shape is unresolved; a scalar minimum is not supported.";
+  const meaning = unresolvedMarketStatMeaning(statId);
+  if (meaning === "encoded-flag-context") return "This field has encoded contexts; scalar minimum support is unproved.";
+  if (meaning === "runtime-composite-localized-value") return "This field is composed with runtime text; a universal scalar minimum is unproved.";
+  if (meaning !== null) return "This retained field's meaning is unresolved; numeric minimum support is unproved.";
   const stat = itemBaseStatDefinition(itemKey)?.stats.find(value => value.statId === statId);
   if (!itemBaseStatMetadataIsNative(statId) && stat?.kind === "series") {
     return "This item's value is a table, not a scalar roll minimum.";
