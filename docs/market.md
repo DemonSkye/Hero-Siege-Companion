@@ -6,6 +6,14 @@ Save item and filters to keep the search locally. Loading a saved item fills the
 editor; it does not send a request. Save changes updates that entry, Save as new
 creates a separate entry, and Delete offers Undo.
 
+The dropped-item Timeline Market action opens the same saveable catalog target
+as the picker. Normal/unique drops keep their mask and drop display; runeword
+Timeline IDs are interpreted as native repository IDs and open the canonical
+runeword definition. Legacy constructor-case aliases apply to saved storage only.
+Opening a Timeline item clears old prices, starts a fresh draft, and preserves
+existing saved entries, pending-search guards and cooldown. It never fetches
+prices until Search is pressed. Unknown targets have no fallback mask.
+
 Existing shopping-list names migrate on first load. Names without one supported
 catalog identity remain visible: load the entry, choose its item, and save the
 repair. Original shopping-list strings remain in preferences as a rollback archive.
@@ -62,6 +70,12 @@ wire validation in renderer, main and the actual builder. Arbitrary IDs remain r
 Six exact English item-stat joins add physical damage taken as Cold/Fire/Arcane/
 Lightning, Flask Skill Haste and Increased Experience Gain Below Level 100.
 Character-attribute IDs are a different namespace and are not joined.
+The validated v6 tooltip bindings add 115 exact English fragments, including
+Loot Amount increased by, Rune Drop Chances Increased by and Maximum Weapon
+Damage Increased by. The catalog now has 297 readable labels and 84 unresolved
+English names, which remain `Stat N`. Fragments, experimental suffixes and
+numeric/table formatting stay distinct; a readable label does not promote a
+metadata or unresolved value shape into a scalar minimum.
 
 Catalog base ranges sit beside the filters on wide layouts and above the saved
 name on narrow layouts. The compact bordered card shows static base definitions
@@ -90,7 +104,7 @@ last. Loading/saving filters still never fetches results.
 
 ## Owners and verification
 
-- `lib/market-items.ts`: supported catalog selection and reversible legacy migration.
+- `lib/market-items.ts`: common picker/Timeline target resolution and reversible legacy migration.
 - `lib/saved-market-items.ts`: saved request validation, load/edit/save/delete/undo.
 - `lib/preferences.ts` and `lib/app-preferences.ts`: schema 3 local/backup durability.
 - `lib/market-search-runtime.ts`: shared draft validation, explicit search, cooldown,
@@ -141,3 +155,9 @@ categories, later-setter regressions and distinct table/dynamic states.
 imports. Real-App and Electron checks cover offline cloak ranges, experimental
 filter saving/search, all 100 native selectors, old pending runeword criteria,
 metadata rejection before transport, repair, persistence and restart.
+`electron-market-timeline-targets.spec.cjs` carries reconstructed parsed drops
+through StatsEngine, preload, Timeline, LiveView and App into saveable normal and
+native runeword targets, explicit IPC searches, cooldown and process restart.
+It does not establish native packet runeword classification; that producer path
+remains a separate compatibility boundary. The v6 label fixture preserves all
+115 literal joins without production imports and retains the 15 restrictions.

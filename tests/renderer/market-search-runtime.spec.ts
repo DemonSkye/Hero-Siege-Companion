@@ -9,10 +9,12 @@ import {
 import {
   MARKET_STAT_SUGGESTION_LIMIT,
   marketStatSuggestions,
+  canSearchMarketForTimelineItem,
   useMarketSearchRuntime as createMarketSearchRuntime,
   type MarketSearchRuntimeOptions,
 } from "../../src/renderer/src/lib/market-search-runtime";
 import { companionState, itemTimelineEntry } from "./fixtures";
+import { EXPECTED_RUNEWORD_REPOSITORY_IDS } from "../fixtures/runeword-market-permutation";
 
 function useMarketSearchRuntime(options: Omit<MarketSearchRuntimeOptions, "readiness">) {
   return createMarketSearchRuntime({ ...options, readiness: ref(companionState().marketReadiness) });
@@ -20,6 +22,65 @@ function useMarketSearchRuntime(options: Omit<MarketSearchRuntimeOptions, "readi
 
 
 describe("market search runtime", () => {
+  test("all 100 native Timeline IDs use the same catalog targets without interpreting them as legacy cases",()=>{
+    const searchMarket=vi.fn(),runtime=useMarketSearchRuntime({searchMarket,now:ref(1000)});
+    for (const id of EXPECTED_RUNEWORD_REPOSITORY_IDS) {
+      const item=itemTimelineEntry({repository:"runeword",id,type:3,weaponType:0,label:"Name is not the lookup key"});
+      expect(canSearchMarketForTimelineItem(item)).toBe(true);
+      expect(runtime.openMarketSearch(item)).toBe(true);
+      expect(runtime.draftRequest.value).toEqual({runewordId:id,statFilters:[]});
+    }
+    expect(searchMarket).not.toHaveBeenCalled();
+  });
+
+  test("Timeline target changes discard stale replies while retaining the pending guard and cooldown",async()=>{
+    let settle!: (response:MarketSearchResponse)=>void;
+    const searchMarket=vi.fn().mockImplementationOnce(()=>new Promise<MarketSearchResponse>(resolve=>{settle=resolve;}))
+      .mockResolvedValue({ok:true,result:{listings:[{price:123}]}});
+    const now=ref(1000),runtime=useMarketSearchRuntime({searchMarket,now});
+    runtime.openMarketSearch(itemTimelineEntry({repository:"runeword",type:3,id:81,weaponType:0}));
+    const pending=runtime.searchMarket();
+    expect(searchMarket).toHaveBeenCalledExactlyOnceWith({runewordId:81,statFilters:[]});
+    runtime.openMarketSearch(itemTimelineEntry({repository:"normal",type:0,id:0,weaponType:0,label:"Cap"}));
+    await runtime.searchMarket();expect(searchMarket).toHaveBeenCalledOnce();
+    settle({ok:true,result:{listings:[{price:999}]},nextAllowedSearchAt:16000});await pending;
+    expect(runtime.phase.value).toBe("idle");expect(runtime.listings.value).toEqual([]);
+    now.value=15000;await runtime.searchMarket();expect(searchMarket).toHaveBeenCalledOnce();
+    now.value=16000;await runtime.searchMarket();
+    expect(searchMarket.mock.calls[1]).toEqual([{itemMask:0,statFilters:[]}]);
+    runtime.openMarketSearch(itemTimelineEntry({repository:"runeword",type:11,id:86,weaponType:0}));
+    expect(runtime.listings.value).toEqual([]);
+    await runtime.searchMarket();expect(searchMarket.mock.calls[2]).toEqual([{runewordId:86,statFilters:[]}]);
+  });
+
+  test.each([0,-1,101,1.5])("unsupported native Timeline runeword ID %s has no shortcut or fallback mask",id=>{
+    const runtime=useMarketSearchRuntime({searchMarket:vi.fn(),now:ref(1000)});
+    runtime.openMarketSearch(itemTimelineEntry());runtime.updateMinSockets(4);
+    const draft=runtime.draftRequest.value;
+    const invalid=itemTimelineEntry({repository:"runeword",type:3,id,weaponType:0,label:"Grief"});
+    expect(canSearchMarketForTimelineItem(invalid)).toBe(false);
+    expect(runtime.openMarketSearch(invalid)).toBe(false);
+    expect(runtime.draftRequest.value).toEqual(draft);
+  });
+
+  test.each([
+    ["Grief",81,3,0],
+    ["Codex of the Card Collector",86,11,0],
+  ] as const)("Timeline native runeword %s opens an explicit selector draft", async(label,id,type,weaponType)=>{
+    // Reconstructed Timeline identity. ID is the native repository ID, not an
+    // internal constructor case or a value inferred from the display label.
+    const item=itemTimelineEntry({repository:"runeword",id,type,weaponType,label:"Legacy display label"});
+    const searchMarket=vi.fn().mockResolvedValue({ok:true,result:{listings:[]}});
+    const runtime=useMarketSearchRuntime({searchMarket,now:ref(1000)});
+    expect(canSearchMarketForTimelineItem(item)).toBe(true);
+    expect(runtime.openMarketSearch(item)).toBe(true);
+    expect(runtime.draftRequest.value).toEqual({runewordId:id,statFilters:[]});
+    expect(runtime.selectedItem.value?.label).toBe(label);
+    expect(searchMarket).not.toHaveBeenCalled();
+    await runtime.searchMarket();
+    expect(searchMarket).toHaveBeenCalledExactlyOnceWith({runewordId:id,statFilters:[]});
+  });
+
   test("builds a comparable-item request and keeps returned prices sorted", async () => {
     const item = itemTimelineEntry();
     const mask = resolveMarketItemMask({

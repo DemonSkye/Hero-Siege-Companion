@@ -1,7 +1,7 @@
 import { activeItemCatalog } from "../../../shared/item-catalog";
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
-import { resolveMarketItemMask, type MarketFilterCriteria, type MarketSearchRequest, type MarketSearchTarget } from "../../../shared/market-search";
-import { RUNEWORD_MARKET_DEFINITIONS, runewordMarketByLegacyKey } from "../../../shared/runeword-market-catalog";
+import { resolveMarketItemMask, type MarketItemIdentity, type MarketFilterCriteria, type MarketSearchRequest, type MarketSearchTarget } from "../../../shared/market-search";
+import { RUNEWORD_MARKET_DEFINITIONS, runewordMarketById, runewordMarketByLegacyKey } from "../../../shared/runeword-market-catalog";
 import { normalizeLookupText } from "./text";
 
 export interface MarketItemOption {
@@ -54,6 +54,7 @@ export const MARKET_ITEM_OPTIONS: readonly MarketItemOption[] = activeItemCatalo
   }))).sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
 
 const byKey = new Map(MARKET_ITEM_OPTIONS.map((item) => [item.key, item]));
+const byMask = new Map(MARKET_ITEM_OPTIONS.flatMap(item => item.itemMask === null ? [] : [[item.itemMask, item] as const]));
 export function marketItemByKey(key: string | null): MarketItemOption | null {
   return key === null ? null : byKey.get(runewordMarketByLegacyKey(key)?.itemKey ?? key) ?? null;
 }
@@ -61,6 +62,16 @@ export function marketItemByKey(key: string | null): MarketItemOption | null {
 export function marketTargetForItem(item: Pick<MarketItemOption,"itemMask"|"runewordId">): MarketSearchTarget | null {
   return item.runewordId !== undefined ? {runewordId:item.runewordId}
     : item.itemMask !== null ? {itemMask:item.itemMask} : null;
+}
+
+/** Timeline IDs are native repository IDs; legacy-case aliases are storage-only. */
+export function marketItemForTimelineItem(identity: MarketItemIdentity): MarketItemOption | null {
+  if (identity.repository === "runeword") {
+    const definition = runewordMarketById(identity.id);
+    return definition ? marketItemByKey(definition.itemKey) : null;
+  }
+  const mask = resolveMarketItemMask(identity);
+  return mask.ok ? byMask.get(mask.itemMask) ?? null : null;
 }
 
 export function marketItemsForName(name: string): MarketItemOption[] {

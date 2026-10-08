@@ -6,7 +6,6 @@ import {
   marketStatMinimumIssue,
   normalizeMarketSearchRequest,
   normalizeMarketFilterCriteria,
-  resolveMarketItemMask,
   sanitizeMarketSearchResult,
   type MarketListing,
   type MarketFilterCriteria,
@@ -18,6 +17,7 @@ import type { ItemTimelineEntry } from "../../../shared/stats";
 import type { MarketReadiness } from "../../../shared/market-readiness";
 import { normalizeLookupText } from "./text";
 import { MARKET_REGION_UNCONFIRMED_DETAIL } from "./market-readiness-display";
+import { marketItemForTimelineItem, marketTargetForItem } from "./market-items";
 
 export type MarketSearchPhase = "idle" | "searching" | "success" | "error";
 export const MARKET_STAT_SUGGESTION_LIMIT = 12;
@@ -93,9 +93,13 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   ));
 
   function openMarketSearch(item: ItemTimelineEntry): boolean {
-    const resolution = marketItemMaskForTimelineItem(item);
-    if (!resolution.ok) return false;
-    return openMarketDraft(item, { itemMask: resolution.itemMask, statFilters: [] });
+    const option = marketItemForTimelineItem(item);
+    const target = option && marketTargetForItem(option);
+    if (!option || !target) return false;
+    // Older Timeline labels can still use internal-case catalog names. Keep the
+    // Market selection honest by using the native runeword definition's name.
+    const displayItem = item.repository === "runeword" ? { label: option.name, rarity: option.typeLabel } : item;
+    return openMarketDraft(displayItem, { ...target, statFilters: [] });
   }
 
   function openMarketDraft(item: Pick<ItemTimelineEntry, "label" | "rarity">, request: MarketSearchRequest): boolean {
@@ -282,14 +286,6 @@ export function marketStatSuggestions(query: string, excludedStatIds: readonly n
 }
 
 export function canSearchMarketForTimelineItem(item: ItemTimelineEntry): boolean {
-  return marketItemMaskForTimelineItem(item).ok;
-}
-
-function marketItemMaskForTimelineItem(item: ItemTimelineEntry) {
-  return resolveMarketItemMask({
-    repository: item.repository,
-    type: item.type,
-    id: item.id,
-    weaponType: item.weaponType,
-  });
+  const option = marketItemForTimelineItem(item);
+  return Boolean(option && marketTargetForItem(option));
 }

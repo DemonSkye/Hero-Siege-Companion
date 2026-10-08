@@ -1,7 +1,8 @@
 import { ref, type Ref } from "vue";
 import { normalizeMarketFilterCriteria, normalizeMarketSearchRequest } from "../../../shared/market-search";
-import { marketItemByKey, type MarketItemOption, type SavedMarketItem } from "./market-items";
+import { marketItemByKey, marketItemForTimelineItem, type MarketItemOption, type SavedMarketItem } from "./market-items";
 import type { useMarketSearchRuntime } from "./market-search-runtime";
+import type { ItemTimelineEntry } from "../../../shared/stats";
 
 /** Storage recognizes an identity independently of its current wire encoding. */
 type SavedMarketCatalogIdentity = { key: string; itemMask?: number | null; runewordId?: number };
@@ -62,6 +63,16 @@ export function useSavedMarketItems(
     search.closeMarketSearch();
   }
 
+  function openTimelineItem(item: ItemTimelineEntry): boolean {
+    const option = marketItemForTimelineItem(item);
+    if (!option || !search.openMarketSearch(item)) return false;
+    editingId.value = null;
+    itemKey.value = option.key;
+    savedName.value = search.selectedItem.value!.label;
+    message.value = option.availabilityNotice ?? "";
+    return true;
+  }
+
   function loadSaved(id: string): void {
     const entry = entries.value.find((candidate) => candidate.id === id);
     if (!entry) return;
@@ -118,5 +129,5 @@ export function useSavedMarketItems(
     message.value = "Saved item restored.";
   }
 
-  return { editingId, itemKey, savedName, message, deleted, selectItem, newSearch, loadSaved, saveDraft, deleteSaved, undoDelete };
+  return { editingId, itemKey, savedName, message, deleted, selectItem, newSearch, openTimelineItem, loadSaved, saveDraft, deleteSaved, undoDelete };
 }

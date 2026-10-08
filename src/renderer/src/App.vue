@@ -20,7 +20,6 @@ import { createItemResearchExportPayload } from "./lib/item-research";
 import { useLiveRunHistory } from "./lib/live-run-history";
 import { useMarketSearchRuntime } from "./lib/market-search-runtime";
 import { useSavedMarketItems } from "./lib/saved-market-items";
-import { MARKET_ITEM_OPTIONS } from "./lib/market-items";
 import type { ItemTimelineEntry } from "../../shared/stats";
 import { useAppPreferences } from "./lib/app-preferences";
 import {
@@ -151,11 +150,7 @@ const savedMarket = useSavedMarketItems(savedMarketItems, marketSearch);
 const { editingId: marketEditingId, itemKey: marketItemKey, savedName: marketSavedName,
   message: marketSavedMessage, deleted: marketDeleted } = savedMarket;
 function openMarketFromDrop(item: ItemTimelineEntry): void {
-  savedMarket.newSearch();
-  if (!marketSearch.openMarketSearch(item)) return;
-  const option = MARKET_ITEM_OPTIONS.find((candidate) => candidate.itemMask === marketSearch.draftRequest.value?.itemMask);
-  marketItemKey.value = option?.key ?? null;
-  marketSavedName.value = item.label;
+  if (!savedMarket.openTimelineItem(item)) return;
   activeTab.value = "market";
   void nextTick(() => document.getElementById("market-sockets")?.focus());
 }

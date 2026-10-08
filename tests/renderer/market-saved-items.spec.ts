@@ -1,13 +1,46 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { ref } from "vue";
-import { MARKET_ITEM_OPTIONS, migrateShoppingList, marketItemsForName, marketItemSuggestions, type SavedMarketItem } from "../../src/renderer/src/lib/market-items";
+import { MARKET_ITEM_OPTIONS, migrateShoppingList, marketItemsForName, marketItemSuggestions, marketItemByKey, type SavedMarketItem } from "../../src/renderer/src/lib/market-items";
 import { normalizeSavedMarketItems, useSavedMarketItems } from "../../src/renderer/src/lib/saved-market-items";
 import { useMarketSearchRuntime } from "../../src/renderer/src/lib/market-search-runtime";
 import { createConfigurationExportPayload, defaultPreferences, importConfigurationPayload, loadPreferences, normalizePreferences, savePreferences } from "../../src/renderer/src/lib/preferences";
-import { companionState } from "./fixtures";
+import { companionState, itemTimelineEntry } from "./fixtures";
 import { installMemoryPreferencesStorage } from "../fixtures/market";
 
 beforeEach(installMemoryPreferencesStorage);
+
+test.each([
+  ["Cap","normal",0,0,0,"normal:0:0:0",{itemMask:0}],
+  ["Sharpshooter's Cloak","unique",1,100,0,"unique:1:0:100",{itemMask:1073746020}],
+  ["Grief","runeword",3,81,0,"runeword-repository:81",{runewordId:81}],
+  ["Codex of the Card Collector","runeword",11,86,0,"runeword-repository:86",{runewordId:86}],
+] as const)("Timeline and picker routes save and explicitly search the same target for %s",async(label,repository,type,id,weaponType,key,target)=>{
+  for (const route of ["timeline","picker"]) {
+    const searchMarket=vi.fn(async()=>({ok:true as const,result:{listings:[]}}));
+    const search=useMarketSearchRuntime({searchMarket,now:ref(1000),readiness:ref(companionState().marketReadiness)});
+    const previous=normalizeSavedMarketItems([{id:"previous",name:"Preserved filters",itemKey:"unique:1:0:100",request:null,
+      criteria:{statFilters:[{statId:185,minimum:103}]}}]);
+    const entries=ref<SavedMarketItem[]>(previous),saved=useSavedMarketItems(entries,search);
+    saved.loadSaved("previous");
+    if (route==="timeline") expect(saved.openTimelineItem(itemTimelineEntry({repository,type,id,weaponType,label}))).toBe(true);
+    else {saved.newSearch();saved.selectItem(marketItemByKey(key)!);}
+    expect(saved.editingId.value).toBeNull();
+    expect(saved.itemKey.value).toBe(key);
+    search.updateMinSockets(4);search.addStatFilter(271);
+    search.updateStatFilter(search.statFilters.value[0].key,{minimum:10});
+    expect(saved.saveDraft()).toBe(true);
+    expect(entries.value[0]).toEqual(previous[0]);
+    expect(entries.value[1]).toMatchObject({name:label,itemKey:key,request:{...target,minSockets:4,statFilters:[{statId:271,minimum:10}]},
+      criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}});
+    expect(searchMarket).not.toHaveBeenCalled();
+    expect(savePreferences(normalizePreferences({...defaultPreferences,savedMarketItems:entries.value}))).toBe(true);
+    expect(loadPreferences().savedMarketItems).toEqual(entries.value);
+    saved.newSearch();saved.loadSaved(entries.value[1].id);
+    expect(searchMarket).not.toHaveBeenCalled();
+    await search.searchMarket();
+    expect(searchMarket).toHaveBeenCalledExactlyOnceWith({...target,minSockets:4,statFilters:[{statId:271,minimum:10}]});
+  }
+});
 
 test("exact short item names rank before broad substring matches", () => {
   expect(marketItemSuggestions("ol")[0]).toMatchObject({name:"Ol",key:"normal:15:0:1"});
