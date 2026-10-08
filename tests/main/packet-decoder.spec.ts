@@ -185,6 +185,15 @@ function lengthPrefixedFrame(bodyValue: string | Buffer, token: string): Buffer 
 }
 
 describe("packet decoder", () => {
+  test("keeps frame signal detection linear on long undelimited word runs", () => {
+    const run = "a".repeat(256 * 1024);
+    const startedAt = performance.now();
+    expect(new PacketBuffers().push(parsedPayload(run))).toEqual([]);
+    expect(isLikelyParseablePayload(run)).toBe(false);
+    expect(performance.now() - startedAt).toBeLessThan(2_000);
+    expect(isLikelyParseablePayload(`${run}/b`)).toBe(true);
+  });
+
   test.each(["RAW", "ETHERNET", "NULL", "LINKTYPE_LINUX_SLL"])("attributes shortened %s packets from captured headers only", (linkType) => {
     const packet = tcpPacket("CANARY_INCOMPLETE_PAYLOAD", linkType);
     const capturedLength = packet.length - 1;

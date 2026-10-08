@@ -33,6 +33,8 @@ const API_HEADER_BYTES = API_TOKEN_BYTES + 4;
 const GENERIC_PREFIX_BYTES = 4;
 const GENERIC_HEADER_BYTES = GENERIC_PREFIX_BYTES + 4;
 const MAX_LENGTH_PREFIXED_BODY_BYTES = 64 * 1024;
+const MAX_SIGNAL_START = 96;
+const MAX_SIGNAL_LENGTH = 512;
 
 type ApplicationFraming = "unknown" | "length-prefixed" | "legacy";
 interface ObservationRun { length: number; order: number }
@@ -58,6 +60,7 @@ interface BufferedTcpStream {
   pending: Map<number, PendingSegment>;
   lastSeenAt: number;
   gapPending: boolean;
+  pendingChanged: boolean;
 }
 
 export class PacketBuffers {
@@ -102,6 +105,7 @@ export class PacketBuffers {
         pending: new Map(),
         lastSeenAt: now,
         gapPending: false,
+        pendingChanged: false,
       };
       this.streams.set(sourceKey, stream);
       this.pruneStreams();
@@ -222,6 +226,7 @@ export class PacketBuffers {
           payload: Buffer.concat([existing.payload, acceptedSegment.payload.subarray(existing.payload.length)]),
           observationRuns: [...existing.observationRuns, ...sliceObservationRuns(acceptedSegment.observationRuns, existing.payload.length)],
         } : acceptedSegment);
+        stream.pendingChanged = true;
       }
       return;
     }
@@ -593,22 +598,26 @@ function sliceObservationRuns(runs: readonly ObservationRun[], offset: number, l
 }
 
 function observePendingApiRequests(stream: BufferedTcpStream): CompletedPayload[] {
+  // Unchanged pending bytes were already scanned; earlyObservations dedupes the rest.
+  if (!stream.pendingChanged) return [];
+  stream.pendingChanged = false;
   const segments = [...stream.pending.values()].sort((left, right) =>
     sequenceDelta(left.sequence, stream.nextSequence) - sequenceDelta(right.sequence, stream.nextSequence));
   const completed: CompletedPayload[] = [];
   for (let index = 0; index < segments.length; index++) {
     const first = segments[index];
-    let bytes = first.payload, runs = first.observationRuns;
+    const parts = [first.payload], runs = [...first.observationRuns];
     const boundaries = [0];
-    let end = addSequence(first.sequence, bytes.length);
+    let end = addSequence(first.sequence, first.payload.length);
     while (index + 1 < segments.length && sequenceDelta(segments[index + 1].sequence, end) <= 0) {
       const next = segments[++index], overlap = -sequenceDelta(next.sequence, end);
       boundaries.push(sequenceDelta(next.sequence, first.sequence));
       if (overlap >= next.payload.length) continue;
-      bytes = Buffer.concat([bytes, next.payload.subarray(overlap)]);
-      runs = [...runs, ...sliceObservationRuns(next.observationRuns, overlap)];
+      parts.push(next.payload.subarray(overlap));
+      runs.push(...sliceObservationRuns(next.observationRuns, overlap));
       end = addSequence(end, next.payload.length - overlap);
     }
+    const bytes = parts.length === 1 ? parts[0] : Buffer.concat(parts);
     // Check exact packet/application boundaries, never scan arbitrary body bytes.
     let consumedThrough = 0;
     for (const boundary of boundaries) {
@@ -754,8 +763,9 @@ function isSplitQueryBody(text: string): boolean {
 
 function hasApplicationFrameStart(text: string): boolean {
   if (!text) return false;
-  const signal = text.match(/(?:[a-z][a-z0-9_]*(?:\/[a-z0-9_]+)+(?:\s+[A-Z])?\s+[a-z0-9_]+=|\bsatanic_zone_get[A-Z]?|\bsave\b|\[INV\])/i);
-  if (signal && (signal.index ?? Number.POSITIVE_INFINITY) <= 96) return true;
+  // Signals must start near the frame head; bounding the scan keeps long word runs linear.
+  const signal = text.slice(0, MAX_SIGNAL_START + MAX_SIGNAL_LENGTH).match(/(?:[a-z][a-z0-9_]*(?:\/[a-z0-9_]+)+(?:\s+[A-Z])?\s+[a-z0-9_]+=|\bsatanic_zone_get[A-Z]?|\bsave\b|\[INV\])/i);
+  if (signal && (signal.index ?? Number.POSITIVE_INFINITY) <= MAX_SIGNAL_START) return true;
   if (looksLikeSpecialProtocol(text)) return true;
 
   const jsonStart = firstJsonStart(text);
@@ -924,7 +934,7 @@ export function isLikelyParseablePayload(text: string): boolean {
   if (text.length === 0) return false;
   if (hasGameTextSignal(text)) return true;
   if (printableRatio(text) < 0.6) return false;
-  return /(?:[a-zA-Z0-9_]+\/[a-zA-Z0-9_]+|[a-zA-Z0-9_]+=|\{["\w]|\[[{\w"])/.test(text) || looksLikeSpecialProtocol(text);
+  return /(?:\w\/\w|\w=|\{["\w]|\[[{\w"])/.test(text) || looksLikeSpecialProtocol(text);
 }
 
 export function looksLikeSpecialProtocol(text: string): boolean {
