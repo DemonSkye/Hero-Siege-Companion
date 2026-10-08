@@ -50,7 +50,6 @@ export interface UiPreferences {
   timelineType: string;
   shoppingListItems: string[];
   savedMarketItems: SavedMarketItem[];
-  gameExecutablePath: string;
   launchThroughSteam: boolean;
   themeId: ThemeId;
   compactThemeId: ThemeId;
@@ -129,7 +128,6 @@ export const defaultPreferences: UiPreferences = {
   timelineType: "all",
   shoppingListItems: DEFAULT_SHOPPING_LIST,
   savedMarketItems: migrateShoppingList(DEFAULT_SHOPPING_LIST),
-  gameExecutablePath: "",
   launchThroughSteam: true,
   themeId: DEFAULT_THEME_ID,
   compactThemeId: DEFAULT_THEME_ID,
@@ -191,7 +189,6 @@ export function serializeDurablePreferences(value: Partial<UiPreferences>): stri
     timelineType: preferences.timelineType,
     shoppingListItems: preferences.shoppingListItems,
     savedMarketItems: preferences.savedMarketItems,
-    gameExecutablePath: preferences.gameExecutablePath,
     launchThroughSteam: preferences.launchThroughSteam,
     themeId: preferences.themeId,
     compactThemeId: preferences.compactThemeId,
@@ -232,7 +229,6 @@ export function createConfigurationExportPayload(
     timelineType: preferences.timelineType,
     shoppingListItems: preferences.shoppingListItems,
     savedMarketItems: preferences.savedMarketItems,
-    gameExecutablePath: preferences.gameExecutablePath,
     launchThroughSteam: preferences.launchThroughSteam,
     themeId: preferences.themeId,
     compactThemeId: preferences.compactThemeId,
@@ -315,7 +311,7 @@ export function createConfigurationImportPreview(rawPayload: string | unknown): 
     + THEME_IDS.filter((themeId) => themeHasCustomization(themeId, accents, tokens, compactTextures, compactFills)).length;
   return {
     sourceVersion: identity.sourceVersion,
-    settings: ["launchThroughSteam", "gameExecutablePath", "themeId", "compactThemeId"]
+    settings: ["launchThroughSteam", "themeId", "compactThemeId"]
       .filter((key) => Object.prototype.hasOwnProperty.call(rawUiPreferences, key)).length,
     filterGroups: Array.isArray(rawUiPreferences.itemFilterGroups) ? rawUiPreferences.itemFilterGroups.length : 0,
     sounds: Array.isArray(rawUiPreferences.customItemFilterSounds) ? rawUiPreferences.customItemFilterSounds.length : 0,
@@ -348,7 +344,6 @@ const RESTORABLE_PREFERENCE_KEYS: Array<keyof UiPreferences> = [
   "timelineType",
   "shoppingListItems",
   "savedMarketItems",
-  "gameExecutablePath",
   "launchThroughSteam",
   "themeId",
   "compactThemeId",
@@ -426,7 +421,6 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     shoppingListItems,
     savedMarketItems: value.savedMarketItems === undefined
       ? migrateShoppingList(shoppingListItems) : normalizeSavedMarketItems(value.savedMarketItems),
-    gameExecutablePath: typeof value.gameExecutablePath === "string" ? value.gameExecutablePath : defaultPreferences.gameExecutablePath,
     launchThroughSteam: value.launchThroughSteam === undefined ? defaultPreferences.launchThroughSteam : Boolean(value.launchThroughSteam),
     themeId,
     compactThemeId,
@@ -506,7 +500,6 @@ const BARE_LEGACY_PREFERENCE_KEYS: Array<keyof UiPreferences> = [
   "hideMaterials",
   "timelineType",
   "shoppingListItems",
-  "gameExecutablePath",
   "launchThroughSteam",
   "themeId",
   "compactThemeId",

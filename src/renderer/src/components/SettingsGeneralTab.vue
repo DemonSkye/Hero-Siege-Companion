@@ -1,6 +1,8 @@
 <script setup lang="ts">
 const launchThroughSteam = defineModel<boolean>("launchThroughSteam", { required: true });
-const gameExecutablePath = defineModel<string>("gameExecutablePath", { required: true });
+defineProps<{
+  gameExecutablePath: string;
+}>();
 
 defineEmits<{
   chooseGameExecutable: [];

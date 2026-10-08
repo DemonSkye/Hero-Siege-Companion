@@ -33,7 +33,6 @@ describe("full configuration backups", () => {
       {
         ...defaultPreferences,
         launchThroughSteam: false,
-        gameExecutablePath: "C:/Games/Hero Siege/Hero_Siege.exe",
         hiddenDashboardPanels: ["live-log"],
         hideUnfilteredTimelineItems: true,
         postRunReport: {
@@ -68,6 +67,7 @@ describe("full configuration backups", () => {
       postRunReport: expect.objectContaining({ exactTrackedItems: ["Ruby Ore", "Heavy Gloves"] }),
     });
     expect(payload.uiPreferences).not.toHaveProperty("itemResearchEntries");
+    expect(payload.uiPreferences).not.toHaveProperty("gameExecutablePath");
     expect(payload).not.toHaveProperty("runArchivePreferences");
     expect(payload).not.toHaveProperty("capturePreferences");
 
@@ -174,6 +174,26 @@ describe("full configuration backups", () => {
     expect(restored.customItemFilterSounds).not.toEqual(expect.arrayContaining(currentSounds));
   });
 
+  test("drops a legacy game executable path from imported backups and never re-exports it", () => {
+    const backup = {
+      app: "hero-siege-companion",
+      kind: "backup",
+      version: 2,
+      uiPreferences: {
+        schemaVersion: 2,
+        launchThroughSteam: false,
+        gameExecutablePath: "C:/Users/Someone/Games/Hero Siege/Hero_Siege.exe",
+      },
+    };
+
+    expect(createConfigurationImportPreview(backup)).toMatchObject({ settings: 1 });
+    const restored = importConfigurationPayload(backup, normalizePreferences(defaultPreferences)).uiPreferences;
+    expect(restored.launchThroughSteam).toBe(false);
+    expect(restored).not.toHaveProperty("gameExecutablePath");
+    expect(createConfigurationExportPayload(restored).uiPreferences).not.toHaveProperty("gameExecutablePath");
+    expect(JSON.parse(serializeDurablePreferences(restored))).not.toHaveProperty("gameExecutablePath");
+  });
+
   test("accepts only the current backup identity plus the two documented legacy shapes", () => {
     const current = normalizePreferences(defaultPreferences);
     const currentBackup = {
@@ -251,10 +271,12 @@ describe("full configuration backups", () => {
       developerItemResearchEnabled: true,
       unknownItemAudioPrompt: true,
       launchThroughSteam: false,
+      gameExecutablePath: "C:/Games/Hero Siege/Hero_Siege.exe",
       itemResearchEntries: legacyResearch,
     }));
 
     const migrated = loadPreferences();
+    expect(migrated).not.toHaveProperty("gameExecutablePath");
     savePreferences(migrated);
     const saved = JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}") as Record<string, unknown>;
 
@@ -268,6 +290,7 @@ describe("full configuration backups", () => {
       "lockCompactLocation",
       "developerItemResearchEnabled",
       "unknownItemAudioPrompt",
+      "gameExecutablePath",
     ]) {
       expect(saved).not.toHaveProperty(retiredKey);
     }

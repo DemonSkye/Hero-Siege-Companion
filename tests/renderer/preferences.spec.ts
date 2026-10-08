@@ -112,7 +112,6 @@ describe("renderer preferences persistence", () => {
       hideUnfilteredTimelineItems: preferences.hideUnfilteredTimelineItems,
       timelineType: preferences.timelineType,
       savedMarketItems: preferences.savedMarketItems,
-      gameExecutablePath: preferences.gameExecutablePath,
       launchThroughSteam: preferences.launchThroughSteam,
       themeId: preferences.themeId,
       compactThemeId: preferences.compactThemeId,
@@ -139,7 +138,6 @@ describe("renderer preferences persistence", () => {
 
     expect(preferences.preferenceWatchSources).not.toContain(preferences.logLimit);
     expect(preferences.preferenceWatchSources).not.toContain(preferences.showCaptureDetails);
-    expect(preferences.preferenceWatchSources).toContain(preferences.gameExecutablePath);
     expect(preferences.preferenceWatchSources).toContain(preferences.launchThroughSteam);
     expect(watchedRefs.size).toBe(preferences.preferenceWatchSources.length);
     expect(preferences.preferenceWatchSources).toHaveLength(Object.values(persistedPreferenceRefs).length);
@@ -231,7 +229,7 @@ describe("renderer preferences persistence", () => {
     expect(preferences).not.toHaveProperty("marketSearchEnabled");
     expect(preferences.shoppingListItems).toEqual(["Copper Ore", "Copper Ore", "", "Ruby"]);
     expect(preferences.savedMarketItems.map((entry) => entry.name)).toEqual(["Copper Ore", "Copper Ore", "", "Ruby"]);
-    expect(preferences.gameExecutablePath).toBe("");
+    expect(preferences).not.toHaveProperty("gameExecutablePath");
     expect(preferences.launchThroughSteam).toBe(false);
     expect(preferences.themeId).toBe(defaultPreferences.themeId);
     expect(preferences.compactThemeId).toBe("cyberpunk");

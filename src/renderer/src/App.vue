@@ -106,7 +106,6 @@ const {
   hideUnfilteredTimelineItems,
   timelineType,
   savedMarketItems,
-  gameExecutablePath,
   launchThroughSteam,
   themeId,
   compactThemeId,
@@ -334,7 +333,6 @@ onMounted(async () => {
   applyUiPreferences(loadPreferences());
   preferencesLoaded = true;
   approvedGameExecutablePath.value = await window.heroSiegeCompanion.getGameExecutable() ?? "";
-  gameExecutablePath.value = approvedGameExecutablePath.value;
   await syncWindowMode();
   state.value = await window.heroSiegeCompanion.getState();
   stateHydrated.value = true;
@@ -514,7 +512,6 @@ async function chooseGameExecutable() {
     const selected = await window.heroSiegeCompanion.chooseGameExecutable();
     if (selected) {
       approvedGameExecutablePath.value = selected;
-      gameExecutablePath.value = selected;
     }
   } catch {
     showToast("Could not select the game executable. Browse for a local Windows game .exe.");

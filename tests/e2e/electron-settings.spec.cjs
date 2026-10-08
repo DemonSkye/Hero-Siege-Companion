@@ -197,7 +197,6 @@ async function configureDurableSettings({ electronApp, page }) {
   await settings.getByLabel("Compact theme").selectOption("cyberpunk");
 
   await expect.poll(async () => await getStoredUiPreferences(page)).toMatchObject({
-    gameExecutablePath: STANDALONE_EXECUTABLE,
     launchThroughSteam: false,
     themeId: "light",
     compactThemeId: "cyberpunk",
@@ -239,7 +238,6 @@ async function assertDurableSettings({ electronApp, page }, { reopened }) {
   const storedPreferences = await getStoredUiPreferences(page);
   expect(storedPreferences).toMatchObject({
     schemaVersion: 3,
-    gameExecutablePath: STANDALONE_EXECUTABLE,
     launchThroughSteam: false,
     compactThemeId: "cyberpunk",
     compactThemeMatchesApp: false,
@@ -251,6 +249,7 @@ async function assertDurableSettings({ electronApp, page }, { reopened }) {
   expect(storedPreferences).not.toHaveProperty("showCaptureDetails");
   expect(storedPreferences).not.toHaveProperty("developerItemResearchEnabled");
   expect(storedPreferences).not.toHaveProperty("unknownItemAudioPrompt");
+  expect(storedPreferences).not.toHaveProperty("gameExecutablePath");
 
   if (!reopened) return;
 

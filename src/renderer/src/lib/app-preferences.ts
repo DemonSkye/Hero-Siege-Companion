@@ -33,7 +33,6 @@ export function useAppPreferences() {
   const timelineType = ref(initial.timelineType);
   const savedMarketItems = ref(initial.savedMarketItems);
   let legacyShoppingListItems = initial.shoppingListItems;
-  const gameExecutablePath = ref(initial.gameExecutablePath);
   const launchThroughSteam = ref(initial.launchThroughSteam);
   const themeId = ref(initial.themeId);
   const compactThemeId = ref(initial.compactThemeId);
@@ -65,7 +64,6 @@ export function useAppPreferences() {
     hideUnfilteredTimelineItems,
     timelineType,
     savedMarketItems,
-    gameExecutablePath,
     launchThroughSteam,
     themeId,
     compactThemeId,
@@ -99,7 +97,6 @@ export function useAppPreferences() {
       timelineType: timelineType.value,
       shoppingListItems,
       savedMarketItems: savedMarketItems.value,
-      gameExecutablePath: gameExecutablePath.value,
       launchThroughSteam: launchThroughSteam.value,
       themeId: themeId.value,
       compactThemeId: compactThemeId.value,
@@ -135,7 +132,6 @@ export function useAppPreferences() {
     timelineType.value = next.timelineType;
     savedMarketItems.value = next.savedMarketItems;
     legacyShoppingListItems = [...next.shoppingListItems];
-    gameExecutablePath.value = next.gameExecutablePath;
     launchThroughSteam.value = next.launchThroughSteam;
     themeId.value = next.themeId;
     compactThemeId.value = next.compactThemeId;
@@ -172,7 +168,6 @@ export function useAppPreferences() {
     hideUnfilteredTimelineItems,
     timelineType,
     savedMarketItems,
-    gameExecutablePath,
     launchThroughSteam,
     themeId,
     compactThemeId,

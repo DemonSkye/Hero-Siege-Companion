@@ -107,15 +107,17 @@ describe("App orchestration", () => {
       expect(api.importConfiguration).toHaveBeenCalledWith();
       expect(api.installConfigurationSounds).not.toHaveBeenCalled();
       expect(wrapper.get('[data-test="approved-game-path"]').text()).toBe(approvedGamePath);
-      expect(wrapper.get('[data-test="backup-preview"]').text()).toBe("2 settings / 1 sounds");
+      expect(wrapper.get('[data-test="backup-preview"]').text()).toBe("1 settings / 1 sounds");
 
       await wrapper.get('[data-test="confirm-backup"]').trigger("click");
       await flushPromises();
       expect(api.installConfigurationSounds).toHaveBeenCalledWith(selectedSource);
-      expect(JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}")).toMatchObject({
+      const stored = JSON.parse(window.localStorage.getItem("hero-siege-companion:preferences:v1") ?? "{}");
+      expect(stored).toMatchObject({
         launchThroughSteam: false,
         customItemFilterSounds: [expect.objectContaining({ src: "file:///managed/alert.wav" })],
       });
+      expect(stored).not.toHaveProperty("gameExecutablePath");
       expect(wrapper.find('[data-test="backup-preview"]').exists()).toBe(false);
       expect(wrapper.get('[data-test="approved-game-path"]').text()).toBe(approvedGamePath);
       expect(api.chooseGameExecutable).not.toHaveBeenCalled();

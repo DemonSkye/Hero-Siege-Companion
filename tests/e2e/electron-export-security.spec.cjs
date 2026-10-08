@@ -120,3 +120,25 @@ test("Save protects an externally selected game and app code while all ordinary 
     });
   } finally { fs.rmSync(external, { recursive: true, force: true }); }
 });
+
+test("renderer-initiated browser downloads are cancelled before any file is written", async () => {
+  await withCompanionApp({ gameRunning: false }, async ({ electronApp, page }) => {
+    await electronApp.evaluate(({ session }) => {
+      global.__downloads = [];
+      session.defaultSession.on("will-download", (event, item) => {
+        global.__downloads.push({ prevented: event.defaultPrevented, name: item.getFilename() });
+      });
+    });
+    await page.evaluate(() => {
+      const anchor = document.createElement("a");
+      anchor.href = URL.createObjectURL(new Blob(["{}"], { type: "application/json" }));
+      anchor.download = "game-executable.json";
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+    });
+    await expect.poll(() => electronApp.evaluate(() => global.__downloads)).toEqual([
+      { prevented: true, name: "game-executable.json" },
+    ]);
+  });
+});

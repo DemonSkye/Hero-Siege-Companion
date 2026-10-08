@@ -41,7 +41,8 @@ This confirmation does not authenticate an update or its publisher.
 
 All renderer-facing Save exports use `electron-dialogs.ts` and its centralized
 `export-destination.ts` guard. Native Save consent permits an export; it cannot
-write approval records, preferences, other Companion userData or application code,
+write approval records, preferences, other Companion userData, the application
+install directory or code,
 the running app executable, or the selected game executable. Checks include raw
 and canonical containment with path-segment boundaries, Windows case folding,
 nearest existing ancestors for new files and junction aliases. Existing hard-linked
@@ -50,6 +51,8 @@ Windows device/namespace paths, alternate streams and ambiguous trailing-dot/spa
 components are rejected. Ordinary external exports, including overwriting a
 regular unlinked file, remain supported. Save/CSV/research/support/soundpack routes
 share this guard; export content is never a native executable approval capability.
+Browser downloads (`<a download>`, blob/data URLs) are cancelled in `will-download`,
+so renderer-chosen bytes cannot reach disk outside these guarded routes.
 
 These boundaries cannot defeat another local process with
 the user's filesystem privileges: such a process can alter the approval file or

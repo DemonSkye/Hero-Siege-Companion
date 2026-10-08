@@ -15,10 +15,11 @@ export function showOpenDialogWithParent(parentWindow: BrowserWindow | null, opt
 export async function showSaveDialogWithParent(parentWindow: BrowserWindow | null, options: SaveDialogOptions) {
   const result = await (parentWindow ? dialog.showSaveDialog(parentWindow, options) : dialog.showSaveDialog(options));
   if (result.canceled || !result.filePath) return result;
-  const appPath = app.getAppPath();
+  const exePath = app.getPath("exe");
+  // The install directory holds runtime DLLs/paks beside the exe, not only resources.
   return { ...result, filePath: safeExportDestination(result.filePath, {
-    roots: [app.getPath("userData"), app.isPackaged ? path.dirname(appPath) : appPath, process.resourcesPath],
-    files: [app.getPath("exe"), ...protectedExportFiles()],
+    roots: [app.getPath("userData"), app.getAppPath(), path.dirname(exePath), process.resourcesPath],
+    files: [exePath, ...protectedExportFiles()],
   }) };
 }
 

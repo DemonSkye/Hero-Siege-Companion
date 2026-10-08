@@ -1,4 +1,4 @@
-import { app, clipboard, crashReporter, ipcMain, shell } from "electron";
+import { app, clipboard, crashReporter, ipcMain, session, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { createAppDiagnostics, type AppDiagnostics } from "./app-diagnostics";
@@ -436,26 +436,33 @@ function resumeRun(): void {
   addLog("info", "Run resumed.");
 }
 
-ipcMain.handle(IPC_CHANNELS.stateGet, () => {
+// Every channel serves only the trusted renderer main frame, not child frames or other contents.
+function handleTrusted(channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!windowManager?.isTrustedIpcSender(event)) throw new Error("IPC request is not authorized.");
+    return listener(event, ...args);
+  });
+}
+
+handleTrusted(IPC_CHANNELS.stateGet, () => {
   applyPendingCaptureEvents();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.captureStart, async () => {
+handleTrusted(IPC_CHANNELS.captureStart, async () => {
   gameCaptureCoordinator.setCaptureEnabled(true);
   gameCaptureCoordinator.clearLaunchCaptureTimer();
   await satanicZoneRefreshProvider?.preparePassively();
   if (gameCaptureCoordinator.captureEnabled) await captureService?.start();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.gameLaunchOrCapture, async (event, options: unknown, ...extra: unknown[]) => {
-  requireGameSender(event);
+handleTrusted(IPC_CHANNELS.gameLaunchOrCapture, async (event, options: unknown, ...extra: unknown[]) => {
   if (extra.length || !options || typeof options !== "object" || Array.isArray(options)
     || Object.keys(options).length !== 1 || Object.keys(options)[0] !== "launchThroughSteam" || !("launchThroughSteam" in options)
     || typeof options.launchThroughSteam !== "boolean") throw new Error("Invalid game launch request.");
   return gameCaptureCoordinator.launchOrCapture({ launchThroughSteam: options.launchThroughSteam },
     () => windowManager?.isTrustedIpcSender(event) === true);
 });
-ipcMain.handle(IPC_CHANNELS.captureStop, () => {
+handleTrusted(IPC_CHANNELS.captureStop, () => {
   gameCaptureCoordinator.setCaptureEnabled(false);
   satanicZoneRefreshProvider?.suspend();
   gameCaptureCoordinator.clearLaunchCaptureTimer();
@@ -464,7 +471,7 @@ ipcMain.handle(IPC_CHANNELS.captureStop, () => {
   captureService?.stop();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.statsReset, () => {
+handleTrusted(IPC_CHANNELS.statsReset, () => {
   applyPendingCaptureEvents();
   const archived = archiveCurrentRun("reset");
   satanicZoneController?.resetObservation();
@@ -478,7 +485,7 @@ ipcMain.handle(IPC_CHANNELS.statsReset, () => {
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
+handleTrusted(IPC_CHANNELS.satanicZoneRefresh, async () => {
   if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   if (!state.satanicZone.refreshEnabled) {
     const result = await satanicZoneController?.refreshNow();
@@ -500,24 +507,24 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneRefresh, async () => {
   publishStateNow();
   return state;
 });
-ipcMain.handle(
+handleTrusted(
   IPC_CHANNELS.marketSearch,
   async (_event, request: unknown): Promise<MarketSearchResponse> => {
     return await handleMarketSearchRequest(request, directMarketSearchProvider);
   },
 );
-ipcMain.handle(IPC_CHANNELS.runPause, () => {
+handleTrusted(IPC_CHANNELS.runPause, () => {
   applyPendingCaptureEvents();
   pauseRun("manual");
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.runResume, () => {
+handleTrusted(IPC_CHANNELS.runResume, () => {
   resumeRun();
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.pastRunsSetTags, (_event, runId: string, tags: unknown) => {
+handleTrusted(IPC_CHANNELS.pastRunsSetTags, (_event, runId: string, tags: unknown) => {
   const normalizedRunId = String(runId ?? "");
   const nextTags = normalizePastRunTags(tags);
   if (!normalizedRunId || !state.pastRuns.some((run) => run.id === normalizedRunId)) return state;
@@ -528,7 +535,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsSetTags, (_event, runId: string, tags: unkno
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.pastRunsDelete, (_event, runId: string) => {
+handleTrusted(IPC_CHANNELS.pastRunsDelete, (_event, runId: string) => {
   const normalizedRunId = String(runId ?? "");
   if (!normalizedRunId) return state;
 
@@ -542,7 +549,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsDelete, (_event, runId: string) => {
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.pastRunsDeleteAll, () => {
+handleTrusted(IPC_CHANNELS.pastRunsDeleteAll, () => {
   if (!state.pastRuns.length) return state;
 
   state.pastRuns = [];
@@ -552,7 +559,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsDeleteAll, () => {
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, enabled: unknown) => {
+handleTrusted(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, enabled: unknown) => {
   if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   const preferences = normalizeSatanicZoneRefreshPreferences({ enabled });
   saveSatanicZoneRefreshPreferences(preferencesPath, preferences, writeAppLog);
@@ -573,7 +580,7 @@ ipcMain.handle(IPC_CHANNELS.preferencesSetSatanicZoneRefresh, async (_event, ena
   publishState();
   return state;
 });
-ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown) => {
+handleTrusted(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown) => {
   if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   const requested = enabled === true && state.satanicZone.refreshEnabled;
   if (requested && satanicZoneLoginCache?.snapshot().enabled) return state;
@@ -582,12 +589,12 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheSet, (_event, enabled: unknown)
   if (!saved) state.satanicZoneLoginCache = { enabled: false, unlocked: false, status: "storage_error" };
   publishStateNow(); return state;
 });
-ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheUnlock, async (_event, passphrase: unknown) => {
+handleTrusted(IPC_CHANNELS.satanicZoneLoginCacheUnlock, async (_event, passphrase: unknown) => {
   if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   if (typeof passphrase === "string" && await satanicZoneLoginCache?.unlock(passphrase)) satanicZoneRefreshProvider?.rememberCurrent();
   publishStateNow(); return state;
 });
-ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheAutomatic, async (_event, passphrase: unknown) => {
+handleTrusted(IPC_CHANNELS.satanicZoneLoginCacheAutomatic, async (_event, passphrase: unknown) => {
   if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   if (state.satanicZone.refreshEnabled && satanicZoneLoginCache && typeof passphrase === "string") {
     if (!satanicZoneLoginCache.snapshot().enabled) {
@@ -604,11 +611,11 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheAutomatic, async (_event, passp
   }
   publishStateNow(); return state;
 });
-ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheLock, () => {
+handleTrusted(IPC_CHANNELS.satanicZoneLoginCacheLock, () => {
   if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   satanicZoneLoginCache?.lock(); publishStateNow(); return state;
 });
-ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheClear, () => {
+handleTrusted(IPC_CHANNELS.satanicZoneLoginCacheClear, () => {
   if (!ACTIVE_SATANIC_ZONE_REFRESH_ENABLED) return state;
   const saved = saveSatanicZoneLoginCacheEnabled(preferencesPath, false);
   satanicZoneLoginCache?.configure(false);
@@ -617,7 +624,7 @@ ipcMain.handle(IPC_CHANNELS.satanicZoneLoginCacheClear, () => {
   if (!saved && state.satanicZoneLoginCache?.status !== "clear_failed") state.satanicZoneLoginCache = { enabled: false, unlocked: false, status: "storage_error" };
   publishStateNow(); return state;
 });
-ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string, options?: ConfigurationExportOptions) => {
+handleTrusted(IPC_CHANNELS.configurationExport, async (_event, json: string, options?: ConfigurationExportOptions) => {
   const contents = embedConfigurationSoundData(String(json ?? ""), app.getPath("userData"));
   const exportOptions = normalizeConfigurationExportOptions(options);
   const exported = await saveJsonFileWithDialog(currentWindow(), {
@@ -628,7 +635,7 @@ ipcMain.handle(IPC_CHANNELS.configurationExport, async (_event, json: string, op
   if (exported) addLog("success", "Configuration exported.");
   return exported;
 });
-ipcMain.handle(IPC_CHANNELS.configurationImport, async () => {
+handleTrusted(IPC_CHANNELS.configurationImport, async () => {
   const contents = await readJsonFileWithDialog(currentWindow(), {
     title: "Restore Hero Siege Companion backup",
     maxBytes: MAX_CONFIGURATION_IMPORT_BYTES,
@@ -637,14 +644,14 @@ ipcMain.handle(IPC_CHANNELS.configurationImport, async () => {
   if (contents) addLog("info", "Configuration selected for import.");
   return contents;
 });
-ipcMain.handle(IPC_CHANNELS.configurationInstallSounds, (_event, json: string) => {
+handleTrusted(IPC_CHANNELS.configurationInstallSounds, (_event, json: string) => {
   const contents = String(json ?? "");
   if (Buffer.byteLength(contents, "utf8") > MAX_CONFIGURATION_IMPORT_BYTES) {
     throw new Error("Configuration file is too large.");
   }
   return installEmbeddedConfigurationSounds(contents, app.getPath("userData"));
 });
-ipcMain.handle(IPC_CHANNELS.itemResearchExport, async (_event, json: string) => {
+handleTrusted(IPC_CHANNELS.itemResearchExport, async (_event, json: string) => {
   const exported = await saveJsonFileWithDialog(currentWindow(), {
     title: "Export Hero Siege item research JSON",
     defaultPath: "hero-siege-item-research.json",
@@ -653,7 +660,7 @@ ipcMain.handle(IPC_CHANNELS.itemResearchExport, async (_event, json: string) => 
   if (exported) addLog("success", "Item research JSON exported.");
   return exported;
 });
-ipcMain.handle(IPC_CHANNELS.soundsImport, async () => {
+handleTrusted(IPC_CHANNELS.soundsImport, async () => {
   const options = {
     title: "Import loot alert sounds",
     properties: ["openFile", "multiSelections"],
@@ -671,13 +678,13 @@ ipcMain.handle(IPC_CHANNELS.soundsImport, async () => {
   return imported;
 });
 
-ipcMain.handle(IPC_CHANNELS.soundsExport, async (_event, sounds = []) => {
+handleTrusted(IPC_CHANNELS.soundsExport, async (_event, sounds = []) => {
   const result = await exportLootSoundPackWithDialog(currentWindow(), Array.isArray(sounds) ? sounds : [], app.getPath("userData"));
   if (result.exported) addLog("success", `Soundpack ZIP exported with ${result.includedFiles.length} sound${result.includedFiles.length === 1 ? "" : "s"}.`);
   return result;
 });
 
-ipcMain.handle(IPC_CHANNELS.soundsRemove, async (_event, src?: string) => {
+handleTrusted(IPC_CHANNELS.soundsRemove, async (_event, src?: string) => {
   try {
     if (typeof src !== "string" || !removeImportedLootSound(src, app.getPath("userData"))) return false;
     addLog("info", "Custom loot sound removed.");
@@ -688,7 +695,7 @@ ipcMain.handle(IPC_CHANNELS.soundsRemove, async (_event, src?: string) => {
   }
 });
 
-ipcMain.handle(IPC_CHANNELS.pastRunsExportJson, async (_event, json: string) => {
+handleTrusted(IPC_CHANNELS.pastRunsExportJson, async (_event, json: string) => {
   const exported = await saveJsonFileWithDialog(currentWindow(), {
     title: "Export Hero Siege past runs JSON",
     defaultPath: "hero-siege-past-runs.json",
@@ -698,7 +705,7 @@ ipcMain.handle(IPC_CHANNELS.pastRunsExportJson, async (_event, json: string) => 
   return exported;
 });
 
-ipcMain.handle(IPC_CHANNELS.pastRunsExportCsv, async (_event, csv: string) => {
+handleTrusted(IPC_CHANNELS.pastRunsExportCsv, async (_event, csv: string) => {
   const exported = await saveTextFileWithDialog(currentWindow(), {
     title: "Export Hero Siege past runs CSV",
     defaultPath: "hero-siege-past-runs.csv",
@@ -712,40 +719,40 @@ ipcMain.handle(IPC_CHANNELS.pastRunsExportCsv, async (_event, csv: string) => {
   return exported;
 });
 
-ipcMain.handle(IPC_CHANNELS.windowMinimize, () => {
+handleTrusted(IPC_CHANNELS.windowMinimize, () => {
   windowManager?.minimize();
 });
-ipcMain.handle(IPC_CHANNELS.windowToggleMaximize, () => {
+handleTrusted(IPC_CHANNELS.windowToggleMaximize, () => {
   windowManager?.toggleMaximize();
 });
-ipcMain.handle(IPC_CHANNELS.windowClose, () => {
+handleTrusted(IPC_CHANNELS.windowClose, () => {
   satanicZoneRefreshProvider?.dispose();
   windowManager?.close();
 });
-ipcMain.handle(IPC_CHANNELS.windowSetAlwaysOnTop, (_event, enabled: boolean) => {
+handleTrusted(IPC_CHANNELS.windowSetAlwaysOnTop, (_event, enabled: boolean) => {
   windowManager?.setAlwaysOnTop(Boolean(enabled));
 });
-ipcMain.handle(IPC_CHANNELS.windowSetCompactMode, (_event, enabled: boolean) => {
+handleTrusted(IPC_CHANNELS.windowSetCompactMode, (_event, enabled: boolean) => {
   windowManager?.setCompactMode(Boolean(enabled));
 });
-ipcMain.handle(IPC_CHANNELS.windowResetBounds, () => {
+handleTrusted(IPC_CHANNELS.windowResetBounds, () => {
   windowManager?.resetWindowBounds();
 });
-ipcMain.handle(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
+handleTrusted(IPC_CHANNELS.clipboardWriteText, (_event, value: string) => {
   clipboard.writeText(String(value));
 });
-ipcMain.handle(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData"), app.getVersion()));
-ipcMain.handle(IPC_CHANNELS.marketPrivateDiagnosticGet, () => marketPrivateDiagnostic?.snapshot() ?? { phase: "off" });
-ipcMain.handle(IPC_CHANNELS.marketPrivateDiagnosticSet, (_event, enabled: boolean) => marketPrivateDiagnostic?.setEnabled(enabled === true) ?? { phase: "off" });
-ipcMain.handle(IPC_CHANNELS.marketPrivateDiagnosticOpen, async () => {
+handleTrusted(IPC_CHANNELS.supportGetDiagnosticsInfo, () => getSupportDiagnosticsInfo(app.getPath("userData"), app.getVersion()));
+handleTrusted(IPC_CHANNELS.marketPrivateDiagnosticGet, () => marketPrivateDiagnostic?.snapshot() ?? { phase: "off" });
+handleTrusted(IPC_CHANNELS.marketPrivateDiagnosticSet, (_event, enabled: boolean) => marketPrivateDiagnostic?.setEnabled(enabled === true) ?? { phase: "off" });
+handleTrusted(IPC_CHANNELS.marketPrivateDiagnosticOpen, async () => {
   if (!marketPrivateDiagnostic || !fs.existsSync(marketPrivateDiagnostic.directory)) return false;
   try { return !(await shell.openPath(marketPrivateDiagnostic.directory)); } catch { return false; }
 });
-ipcMain.handle(IPC_CHANNELS.supportOpenLogsDirectory, openSupportLogsDirectory);
-ipcMain.handle(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
+handleTrusted(IPC_CHANNELS.supportOpenLogsDirectory, openSupportLogsDirectory);
+handleTrusted(IPC_CHANNELS.supportSaveDiagnostics, async (_event, diagnosticsSummary: string): Promise<SupportDiagnosticsSaveResult> =>
   saveSupportDiagnostics(String(diagnosticsSummary ?? "")),
 );
-ipcMain.handle(
+handleTrusted(
   IPC_CHANNELS.supportSetDiagnosticsMode,
   (_event, level: CaptureDiagnosticsLevel, mode: CaptureDiagnosticsMode) => {
     if ((level !== "enhanced" && level !== "deep") || (mode !== "off" && mode !== "manual" && mode !== "timed")) {
@@ -756,29 +763,22 @@ ipcMain.handle(
     return state;
   },
 );
-ipcMain.handle(IPC_CHANNELS.updatesCheck, async () => {
+handleTrusted(IPC_CHANNELS.updatesCheck, async () => {
   if (isElectronE2eTestMode()) return null;
   return checkForReleaseUpdate(app.getVersion(), (error) => writeAppLog("release-check-error", { error: error.message }));
 });
-ipcMain.handle(IPC_CHANNELS.updatesOpenRelease, async (_event, url?: string) => {
+handleTrusted(IPC_CHANNELS.updatesOpenRelease, async (_event, url?: string) => {
   const target = typeof url === "string" && /^https:\/\/github\.com\/DemonSkye\/Hero-Siege-Companion\/releases(?:\/|$)/i.test(url)
     ? url
     : GITHUB_RELEASES_URL;
   await shell.openExternal(target);
 });
-ipcMain.handle(IPC_CHANNELS.docsOpenNpcapGuide, async () => {
+handleTrusted(IPC_CHANNELS.docsOpenNpcapGuide, async () => {
   await shell.openExternal(GITHUB_NPCAP_GUIDE_URL);
 });
-function requireGameSender(event: Electron.IpcMainInvokeEvent): void {
-  if (!windowManager?.isTrustedIpcSender(event)) throw new Error("Game launch request is not authorized.");
-}
-ipcMain.handle(IPC_CHANNELS.gameGetExecutable, event => {
-  requireGameSender(event);
-  return gameExecutable.selectedPath();
-});
+handleTrusted(IPC_CHANNELS.gameGetExecutable, () => gameExecutable.selectedPath());
 let gameSelectionPending = false;
-ipcMain.handle(IPC_CHANNELS.gameChooseExecutable, async (event, ...extra: unknown[]) => {
-  requireGameSender(event);
+handleTrusted(IPC_CHANNELS.gameChooseExecutable, async (event, ...extra: unknown[]) => {
   if (extra.length || gameSelectionPending) throw new Error("Game executable selection is unavailable.");
   gameSelectionPending = true;
   try {
@@ -853,6 +853,11 @@ app.whenReady().then(async () => {
       pendingCaptureEvents: pendingCaptureEvents.length,
       mainWindow: currentWindow(),
     }),
+  });
+  // Browser downloads would write renderer-chosen bytes outside the guarded Save routes.
+  session.defaultSession.on("will-download", (event, item) => {
+    event.preventDefault();
+    writeAppLog("renderer-download-blocked", { mimeType: item.getMimeType() });
   });
   logPreviousAppSession();
   startAppSessionHeartbeat();

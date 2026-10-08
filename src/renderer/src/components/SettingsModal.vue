@@ -29,6 +29,7 @@ type SettingsDialogKind = "sz-learn-more" | "deep" | "restore" | "factory-reset"
 
 const props = withDefaults(defineProps<{
   themeOptions: readonly ThemeOption[];
+  gameExecutablePath: string;
   legacyThemeAvailable?: boolean;
   legacyCompactThemeAvailable?: boolean;
   captureDiagnostics: CaptureDiagnosticsState;
@@ -84,7 +85,6 @@ const emit = defineEmits<{
 }>();
 
 const launchThroughSteam = defineModel<boolean>("launchThroughSteam", { required: true });
-const gameExecutablePath = defineModel<string>("gameExecutablePath", { required: true });
 const themeId = defineModel<ThemeId>("themeId", { required: true });
 const compactThemeId = defineModel<ThemeId>("compactThemeId", { required: true });
 const themeCustomMode = defineModel<boolean>("themeCustomMode", { required: true });
@@ -276,7 +276,7 @@ function saveStatusLabel(): string {
           <SettingsGeneralTab
             v-if="activeSettingsSection === 'app'"
             v-model:launch-through-steam="launchThroughSteam"
-            v-model:game-executable-path="gameExecutablePath"
+            :game-executable-path="gameExecutablePath"
             @choose-game-executable="$emit('chooseGameExecutable')"
           />
           <SettingsAppearanceTab
