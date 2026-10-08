@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { CapturedSessionContextStore } from "../../src/main/captured-session-context";
 import { MarketRegionDirectory } from "../../src/main/market-region-directory";
+import { SESSION_CONTEXT_FIELDS } from "../../src/main/session-context-fields";
 
 const endpoint = { remoteAddress: "203.0.113.10", remotePort: 6668 };
 
@@ -18,6 +19,18 @@ function savePayload(overrides: Record<string, string> = {}): string {
 }
 
 describe("captured session context", () => {
+  test("connection lifecycle and capture loss before any evidence keep the collection guidance", () => {
+    const store = new CapturedSessionContextStore(undefined, () => 1_000);
+    store.observeGameProcessIds([123]);
+    const before = store.marketReadiness();
+    store.observeTcpLifecycle({ src: "10.0.0.2", srcPort: 5000, dst: endpoint.remoteAddress, dstPort: endpoint.remotePort, flags: 2 });
+    store.observeCaptureUpdate({ observationGap: true, observationBoundary: 3 });
+    expect(store.marketReadiness()).toEqual(before);
+    expect(before).toMatchObject({ reason: "missing_fields" });
+    store.observe({ text: savePayload(), direction: "outbound", ...endpoint, observedAt: 1_000, observationSequence: 3 });
+    expect(store.marketReadiness().missingFields).toEqual([...SESSION_CONTEXT_FIELDS]);
+  });
+
   test("promotes structurally observed API fields to coherent Market and SZ snapshots", () => {
     const store = new CapturedSessionContextStore(undefined, () => 1_000);
     store.observeGameProcessIds([123]);

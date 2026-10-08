@@ -180,11 +180,13 @@ export class CapturedSessionContextStore {
     // Unknown attribution cannot establish continuity. A proved unrelated flow can.
     if (affectedFlows && sourceFlows.length && sourceFlows.every(key => key !== null
       && !affectedFlows.includes(key))) return;
-    this.observationInterrupted = true;
     // Evidence loss does not close a TCP flow. A gap can be repaired in place;
     // replacement evidence instead excludes older unfinished records, not future traffic.
     this.pendingRecoveryBoundary = Math.max(this.pendingRecoveryBoundary, boundary);
     if (!affectedFlows) this.rejectedObservationBoundary = Math.max(this.rejectedObservationBoundary, boundary);
+    // With no evidence yet, nothing was lost; keep the collection guidance visible.
+    if (!sourceFlows.length) return;
+    this.observationInterrupted = true;
     this.clearContext("observation-gap", true);
   }
 

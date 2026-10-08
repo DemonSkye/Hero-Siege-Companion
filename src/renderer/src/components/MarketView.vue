@@ -81,6 +81,7 @@ watch(() => props.itemKey, () => { optionalSocketsOpen.value = false; statQuery.
 const hasSocketCriteria = computed(() => props.minSockets !== null || props.maxSockets != null);
 const showSocketControls = computed(() => socketBaseRange.value !== null || optionalSocketsOpen.value || hasSocketCriteria.value);
 function socketSummary(minimum?: number | null, maximum?: number | null): string {
+  if (Number.isNaN(minimum) || Number.isNaN(maximum)) return "Invalid sockets";
   if (minimum != null && maximum != null) return `${minimum}–${maximum} sockets`;
   if (minimum != null) return `${minimum}+ sockets`;
   return maximum != null ? `Up to ${maximum} sockets` : "Any sockets";
