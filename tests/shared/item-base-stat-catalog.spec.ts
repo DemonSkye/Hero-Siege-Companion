@@ -5,7 +5,6 @@ import { ITEM_STAT_DEFINITIONS } from "../../src/shared/item-stat-ranges";
 import { normalizeMarketSearchRequest, normalizeMarketFilterCriteria, marketStatMinimumIssue } from "../../src/shared/market-search";
 import { marketBaseStatValue } from "../../src/renderer/src/lib/market-stat-display";
 import { EXPECTED_GROUNDED_MARKET_STAT_IDS } from "../fixtures/market-grounded-stat-ids";
-import { EXPECTED_UNRESOLVED_MARKET_STAT_IDS_V7 } from "../fixtures/market-stat-meaning-gaps-v7";
 
 test("every retained item identity has an explicit versioned static definition", () => {
   const identities = [...activeItemCatalog.artifact.definitions, ...activeItemCatalog.artifact.missing];
@@ -66,12 +65,12 @@ test("Witch's Wand's later range replaces its earlier range", () => {
   expect(marketBaseStatValue(stat)).toBe("75\u2013125");
 });
 
-test("every grounded stat is durable, but metadata and unresolved shapes cannot become scalar requests", () => {
+test("every grounded stat is durable, with only proved incompatible semantics restricting numeric requests", () => {
   expect(ITEM_BASE_STAT_CATALOG.stats).toHaveLength(381);
   expect(ITEM_BASE_STAT_CATALOG.stats.map(stat => stat.statId)).toEqual([...EXPECTED_GROUNDED_MARKET_STAT_IDS]);
   for (const statId of EXPECTED_GROUNDED_MARKET_STAT_IDS) {
-    // Independent frozen v5 classification, not derived from production logic.
-    const blocked = new Set<number>([...EXPECTED_UNRESOLVED_MARKET_STAT_IDS_V7,20,98,100,185,186,187,299]).has(statId);
+    // Literal socket/identifier/encoded-only/collection IDs from retained evidence.
+    const blocked = [20,185,291,292,347].includes(statId);
     expect(normalizeMarketFilterCriteria({statFilters:[{statId,minimum:2.5}]}).ok).toBe(true);
     if (blocked) {
       expect(normalizeMarketSearchRequest({itemMask:1073746020,statFilters:[{statId,minimum:2.5}]})).toEqual({ok:false,reason:"unsupported-stat-minimum"});

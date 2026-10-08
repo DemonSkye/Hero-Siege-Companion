@@ -9,7 +9,7 @@ import { installMemoryPreferencesStorage } from "../fixtures/market";
 
 beforeEach(installMemoryPreferencesStorage);
 
-test("v7 meaning restrictions preserve older scalar, composed and encoded minimum criteria through reload and repair",async()=>{
+test("encoded restriction preserves numeric and contextual saved criteria through reload and explicit repair",async()=>{
   const criteria={statFilters:[{statId:23,minimum:1.75},{statId:203,minimum:2},{statId:292,minimum:1}]};
   const entries=ref<SavedMarketItem[]>(normalizeSavedMarketItems([{id:"v7-old",name:"Old exploratory fields",itemKey:"normal:0:0:0",
     request:{itemMask:0,...criteria}}]));
@@ -22,9 +22,23 @@ test("v7 meaning restrictions preserve older scalar, composed and encoded minimu
   expect(savePreferences(normalizePreferences({...defaultPreferences,savedMarketItems:entries.value}))).toBe(true);
   expect(loadPreferences().savedMarketItems).toEqual(entries.value);
   await search.searchMarket();expect(searchMarket).not.toHaveBeenCalled();
-  for (const filter of [...search.statFilters.value]) search.removeStatFilter(filter.key);
+  search.removeStatFilter(search.statFilters.value.find(filter=>filter.statId===292)!.key);
   expect(saved.saveDraft()).toBe(true);await search.searchMarket();
-  expect(searchMarket).toHaveBeenCalledExactlyOnceWith({itemMask:0,statFilters:[]});
+  expect(searchMarket).toHaveBeenCalledExactlyOnceWith({itemMask:0,statFilters:[{statId:23,minimum:1.75},{statId:203,minimum:2}]});
+});
+
+test("a v7 criteria-only record is searchable after capability correction without losing filters or implicit requests",()=>{
+  const criteria={statFilters:[{statId:10,minimum:1},{statId:22,minimum:6},{statId:203,minimum:2}]};
+  const entries=ref<SavedMarketItem[]>(normalizeSavedMarketItems([{id:"v7-gated",name:"Experimental numeric",itemKey:"normal:0:0:0",request:null,criteria}]));
+  const searchMarket=vi.fn();
+  const search=useMarketSearchRuntime({searchMarket,now:ref(1000),readiness:ref(companionState().marketReadiness)});
+  const saved=useSavedMarketItems(entries,search);saved.loadSaved("v7-gated");
+  expect(search.draftRequest.value).toEqual({itemMask:0,...criteria});
+  expect(search.canSearch.value).toBe(true);
+  expect(saved.saveDraft()).toBe(true);
+  expect(savePreferences(normalizePreferences({...defaultPreferences,savedMarketItems:entries.value}))).toBe(true);
+  expect(loadPreferences().savedMarketItems[0]).toMatchObject({id:"v7-gated",request:{itemMask:0,...criteria},criteria});
+  expect(searchMarket).not.toHaveBeenCalled();
 });
 
 test.each([

@@ -102,20 +102,16 @@ export function marketStatOption(statId: number): MarketStatOption | null {
   return MARKET_STAT_OPTIONS_BY_ID.get(statId) ?? null;
 }
 
-// Frozen labels-v5 classification (SHA256 d91c8cfe8322850e00c63465a783a99c3039d5116e43214d62cd605551aff558).
-// Discovery and durable criteria include these IDs; scalar wire clauses do not.
-const UNKNOWN_VALUE_SHAPE_IDS = new Set([10, 11, 12, 13, 14, 15, 98, 100, 120, 299]);
+// Experimental numeric clauses are owner-approved even when a label, value
+// shape or backend match is unproved. Only proved incompatible semantics gate
+// dispatch; per-item tables must not disable scalar uses of the same numeric ID.
 export function marketStatMinimumIssue(statId: number, itemKey: string | null = null): string | null {
   if (!marketStatOption(statId)) return "Unknown stat ID.";
   if (statId === 20) return "Use Minimum sockets above; sockets have a separate native control.";
   if (statId === 185) return "Skill identifier metadata cannot be searched as a roll minimum.";
-  if (statId === 186 || statId === 187) return "Proc parameter meaning is verified only for Bob's Piece of Plywood; minimum matching is unproved.";
   if (statId === 347) return "Zone collections cannot be searched as numeric minimums.";
-  if (UNKNOWN_VALUE_SHAPE_IDS.has(statId)) return "Value shape is unresolved; a scalar minimum is not supported.";
   const meaning = unresolvedMarketStatMeaning(statId);
-  if (meaning === "encoded-flag-context") return "This field has encoded contexts; scalar minimum support is unproved.";
-  if (meaning === "runtime-composite-localized-value") return "This field is composed with runtime text; a universal scalar minimum is unproved.";
-  if (meaning !== null) return "This retained field's meaning is unresolved; numeric minimum support is unproved.";
+  if (meaning === "encoded-flag-context") return "Retained uses of this field are encoded values, not scalar roll minima.";
   const stat = itemBaseStatDefinition(itemKey)?.stats.find(value => value.statId === statId);
   if (!itemBaseStatMetadataIsNative(statId) && stat?.kind === "series") {
     return "This item's value is a table, not a scalar roll minimum.";

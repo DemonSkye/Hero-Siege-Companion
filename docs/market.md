@@ -13,6 +13,8 @@ runeword definition. Legacy constructor-case aliases apply to saved storage only
 Opening a Timeline item clears old prices, starts a fresh draft, and preserves
 existing saved entries, pending-search guards and cooldown. It never fetches
 prices until Search is pressed. Unknown targets have no fallback mask.
+This route starts from already-classified drops. Native compact-packet runeword
+classification is not established by the reconstructed Timeline event tests.
 
 Existing shopping-list names migrate on first load. Names without one supported
 catalog identity remain visible: load the entry, choose its item, and save the
@@ -59,9 +61,11 @@ menu entries and 214 additional entries suffixed `(experimental)`. Missing Engli
 labels remain `Stat N`. These are grounded keys from the retained native menu,
 label bindings and constructor setters; they are not a complete game enum or
 proof that the server honors every numeric clause. Minimum sockets keeps its
-separate native field. Skill identifier 185, contextual proc parameters 186/187,
-zone collection 347 and ten unresolved value shapes are discoverable but disabled
-as numeric minimums. Off-menu fields that are tables on the selected item are
+separate native field. Skill identifier 185, encoded-only fields 291/292 and zone
+collection 347 are discoverable but disabled as numeric minimums. Unknown labels,
+unproved shapes or unproved server matching do not block an approved experimental
+numeric clause. Proc parameters 186/187 retain their contextual names and can use
+numeric minimums in scalar/range contexts. Off-menu fields that are tables on the selected item are
 also disabled. Mixed scalar/table IDs retain their distinct per-item shapes;
 tables are never flattened into a minimum. Native menu controls remain available.
 Saved unsupported criteria remain editable and durable, show actionable guidance,
@@ -74,16 +78,22 @@ The validated v6 tooltip bindings add 115 exact English fragments, including
 Loot Amount increased by, Rune Drop Chances Increased by and Maximum Weapon
 Damage Increased by. The catalog now has 297 readable labels and 84 unresolved
 English names, which remain `Stat N`. Fragments, experimental suffixes and
-numeric/table formatting stay distinct; a readable label does not promote a
-metadata or unresolved value shape into a scalar minimum.
+numeric/table formatting stay distinct; a readable label does not turn a known
+identifier, encoded field or collection into a scalar roll.
 The v7 residual classification distinguishes 42 fixed numeric fields and 18
 numeric ranges with unresolved meaning, six table-containing fields, eight
-runtime-composed localized values, two encoded contexts, one zone collection
+runtime-composed labels, two encoded-only fields, one zone collection
 and seven fields without retained constructor uses. These 84 fields remain
-discoverable reference data and durable saved criteria, but are disabled in the
-ordinary minimum picker. Together with the seven other restricted IDs, 91 IDs
-cannot be sent as stat minimums. This does not classify them as reserved or as
-84 missing player-visible labels. Proven encoded contexts for 291/292 display
+discoverable reference data and durable saved criteria. Numeric fields with
+unknown meanings use their experimental fallbacks; composed labels do not make
+their numeric values composite. Mixed table/scalar IDs are restricted only for
+the selected table context. Seven IDs without constructor values and three
+label-bound IDs without base values remain experimental numeric clauses, with
+their shape/matching unverified. In total, 376 IDs permit a generic numeric
+minimum before selected-item table restrictions: 167 native and 209 experimental.
+Four IDs have known incompatible semantics; sockets use the separate control.
+This does not classify the residual fields as reserved or as 84 missing
+player-visible labels. Proven encoded contexts for 291/292 display
 as encoded fields rather than treating their scalar projections as roll bounds.
 
 Catalog base ranges sit beside the filters on wide layouts and above the saved

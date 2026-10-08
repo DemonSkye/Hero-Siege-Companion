@@ -210,9 +210,10 @@ test("metadata saved criteria remain durable and visibly block numeric search un
       criteria:{minSockets:4,statFilters:[{statId:185,minimum:103},{statId:271,minimum:10}]}});
     await workspace.getByRole("button",{name:"Remove Triggered skill identifier (experimental)",exact:true}).click();
     await workspace.locator("#market-stat-query").fill("Skill parameter");
-    const unsupported=workspace.locator(".market-options button").filter({hasText:"Skill parameter 186"});
-    await expect(unsupported).toBeDisabled();
-    await expect(unsupported).toContainText("meaning is verified only for Bob's Piece of Plywood");
+    const parameter=workspace.locator(".market-options button").filter({hasText:"Skill parameter 186"});
+    await expect(parameter).toBeEnabled();
+    await parameter.click();
+    await workspace.getByLabel("Skill parameter 186 (experimental) minimum",{exact:true}).fill("20");
     await workspace.locator("#market-stat-query").fill("");
     await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();
     await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
@@ -221,13 +222,15 @@ test("metadata saved criteria remain durable and visibly block numeric search un
     await workspace.getByRole("button",{name:"Search market",exact:true}).click();
     await expect(workspace.locator(".market-results")).toContainText("No matching price listings were returned");
     expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestLastFilters())).toEqual({
-      filter_masks:"[1073746020]",filter_runeword:null,filter_sockets_min:"4",stat_filter:"W3sic3RhdElkIjoyNzEsImZpbHRlciI6Miwic3RhdFZhbHVlIjoxMH1d",
+      filter_masks:"[1073746020]",filter_runeword:null,filter_sockets_min:"4",
+      stat_filter:Buffer.from('[{"statId":186,"filter":2,"statValue":20},{"statId":271,"filter":2,"statValue":10}]').toString("base64"),
     });
     await closeCompanionApp(session);session=await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
     await session.page.getByRole("tab",{name:"Market",exact:true}).click();workspace=session.page.locator(".market-workspace");
     await workspace.locator(".market-saved-load").filter({hasText:"Preserved metadata"}).click();
-    await expect(workspace.locator(".market-stat-row")).toHaveCount(1);
-    await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
+    await expect(workspace.locator(".market-stat-row")).toHaveCount(2);
+    await expect(workspace.getByLabel("Skill parameter 186 (experimental) minimum",{exact:true})).toHaveValue("20");
+    await expect(workspace.getByLabel("Ranged Skills (experimental) minimum",{exact:true})).toHaveValue("10");
     expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
   }finally{if(session)await closeCompanionApp(session);cleanupUserDataDir(userDataDir);}
 });
