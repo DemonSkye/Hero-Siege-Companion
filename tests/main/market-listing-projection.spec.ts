@@ -6,6 +6,7 @@ import { inspectDirectMarketResponse } from "../../src/main/market-direct-respon
 import { handleMarketSearchRequest } from "../../src/main/market-search-handler";
 import { MarketResultCache } from "../../src/main/market-result-cache";
 import { sanitizeMarketSearchResult } from "../../src/shared/market-search";
+import { itemStatDefinition } from "../../src/shared/item-stat-ranges";
 
 test.each(fixture.specimens)("reconstructs $name against separately observed tooltip values", specimen => {
   const result = projectMarketListingItem(specimen.row.item_data, specimen.row.fingerprint);
@@ -17,11 +18,16 @@ test.each(fixture.specimens)("reconstructs $name against separately observed too
   expect(changed?.stats).not.toEqual(result?.stats);
 });
 
-test("Tiny Planet has only its reconstructed duration roll, with recalled-value rather than screenshot provenance", () => {
+test("Tiny Planet keeps grounded ranges but withholds rolls lacking an independent tooltip oracle", () => {
   const item = projectMarketListingItem({ c: 1, b: 92, j: 0, d: 1, e: 11, w: 1, a: 618478963 }, "SYNTHETIC-0-0-10");
-  expect(item).toEqual({ itemKey: "unique:10:0:92", identified: true, stats: [{ statId: 266, value: 22 }] });
-  // The equipment-context Orbital Gravity set bonus is not an item roll.
-  expect(item?.stats).toHaveLength(1);
+  expect(item).toEqual({ itemKey: "unique:10:0:92", identified: true, statsReason: "unverified-definition" });
+  // A cached/forged projection cannot promote the recalled 22% value at IPC.
+  const result = sanitizeMarketSearchResult({ listings: [{ price: 1,
+    item: { itemKey: "unique:10:0:92", identified: true, stats: [{ statId: 266, value: 22 }] } }] });
+  expect(result.listings[0].item).toEqual(item);
+  expect(itemStatDefinition("unique:10:0:92")?.stats).toEqual([{
+    statId: 266, name: "Increased Orbital Projectile Duration", minimum: 15, maximum: 25, kind: "range", unit: "percent",
+  }]);
 });
 
 test("does not reveal unidentified rolls or guess modified, corrupt or unsupported items", () => {

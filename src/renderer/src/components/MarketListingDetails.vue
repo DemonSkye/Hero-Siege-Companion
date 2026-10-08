@@ -4,16 +4,20 @@ import type { MarketListingItem } from "../../../shared/market-listing-item";
 import { itemStatDefinition } from "../../../shared/item-stat-ranges";
 import { lookupKnownItemRarity } from "../../../shared/item-rarity";
 import { marketItemByKey } from "../lib/market-items";
+import { marketTriggeredSkillDescription, marketTriggeredSkillStatIds } from "../lib/market-stat-display";
 
 const props = defineProps<{ item?: MarketListingItem }>();
 const option = computed(() => marketItemByKey(props.item?.itemKey ?? null));
 const rarity = computed(() => lookupKnownItemRarity(0, option.value?.name));
 const definition = computed(() => itemStatDefinition(props.item?.itemKey ?? null));
-const stats = computed(() => props.item?.stats?.map(stat => ({ ...stat,
+const triggeredSkill = computed(() => marketTriggeredSkillDescription(definition.value, props.item?.stats ?? []));
+const stats = computed(() => props.item?.stats?.filter(stat => !triggeredSkill.value
+  || !marketTriggeredSkillStatIds(definition.value).includes(stat.statId)).map(stat => ({ ...stat,
   range: definition.value?.stats.find(range => range.statId === stat.statId),
 })) ?? []);
 const unknown = computed(() => props.item?.statsReason === "unidentified" ? "Unidentified — rolls hidden"
   : props.item?.statsReason === "unsupported-variant" ? "Stats unknown for this variant"
+  : props.item?.statsReason === "unverified-definition" ? "Listing rolls are not verified for this item"
   : "Stats unknown for this item");
 </script>
 
@@ -26,6 +30,7 @@ const unknown = computed(() => props.item?.statsReason === "unidentified" ? "Uni
       <ul class="market-listing-stats">
         <li v-for="stat in stats" :key="stat.statId"><span>{{ stat.range?.name ?? `Unknown stat ${stat.statId}` }}</span><strong>{{ stat.value }}{{ stat.range?.unit === 'percent' ? '%' : '' }}</strong></li>
       </ul>
+      <small v-if="triggeredSkill" class="market-triggered-skill">{{ triggeredSkill }}</small>
     </template>
     <small v-else>{{ unknown }}</small>
   </div>

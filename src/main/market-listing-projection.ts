@@ -24,7 +24,7 @@ export function projectMarketListingItem(itemData: unknown, fingerprint: unknown
   const itemKey = `${key.repository}:${key.type}:${key.weaponType}:${key.gameId}`;
   const item: MarketListingItem = { itemKey, identified: raw.c === 0 || raw.w === 1 };
   const definition = itemStatDefinition(itemKey);
-  if (item.identified && definition) {
+  if (item.identified && definition?.verifiedListingRolls) {
     // Scope exact checked flags and fail closed on additions: upgrades,
     // corruption, subskills, random affixes and socket contents are untranslated.
     const allowed = new Set(["a", "b", "c", "d", "e", "j", "m", "w", "sh"]);

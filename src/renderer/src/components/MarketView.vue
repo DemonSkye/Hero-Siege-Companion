@@ -9,6 +9,7 @@ import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 import MarketListingDetails from "./MarketListingDetails.vue";
 import { itemStatDefinition } from "../../../shared/item-stat-ranges";
 import { lookupKnownItemRarity } from "../../../shared/item-rarity";
+import { marketTriggeredSkillDescription, marketTriggeredSkillStatIds } from "../lib/market-stat-display";
 
 // Unit prices can be fractional. Preserve significant digits, including small
 // nonzero prices, while using the same default locale as other app numbers.
@@ -61,7 +62,11 @@ const itemSuggestions = computed(() => marketItemSuggestions(itemQuery.value));
 const statSuggestions = computed(() => marketStatSuggestions(statQuery.value,
   props.statFilters.flatMap((filter) => filter.statId === null ? [] : [filter.statId])));
 const savedItems = computed(() => props.savedItems.filter((entry) => entry.name.toLowerCase().includes(savedQuery.value.trim().toLowerCase())));
-const catalogStats = computed(() => itemStatDefinition(props.itemKey)?.stats ?? []);
+const catalogDefinition = computed(() => itemStatDefinition(props.itemKey));
+const catalogSkill = computed(() => marketTriggeredSkillDescription(catalogDefinition.value,
+  catalogDefinition.value?.stats.map(stat => ({ statId: stat.statId, value: stat.minimum })) ?? []));
+const catalogStats = computed(() => catalogDefinition.value?.stats.filter(stat => !catalogSkill.value
+  || !marketTriggeredSkillStatIds(catalogDefinition.value).includes(stat.statId)) ?? []);
 const showCatalog = computed(() => ["Satanic", "Set", "Heroic", "Angelic"].includes(lookupKnownItemRarity(0, props.item?.label) ?? ""));
 const summary = computed(() => [
   props.minSockets === null ? "Any sockets" : `${props.minSockets}+ sockets`,
@@ -168,6 +173,7 @@ function chooseStat(statId: number): void {
               </div>
             </dl>
             <p v-else class="empty-copy">Catalog ranges are not available for this item yet.</p>
+            <p v-if="catalogSkill" class="market-triggered-skill">{{ catalogSkill }}</p>
             <small v-if="catalogStats.length">Unmodified base item · ranges do not imply filter support.</small>
           </section>
           </div>

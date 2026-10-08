@@ -1,7 +1,7 @@
 import { resolveItemDefinition } from "./item-catalog";
 import { itemStatDefinition } from "./item-stat-ranges";
 
-export type MarketListingStatsReason = "unsupported-definition" | "unsupported-variant" | "unidentified";
+export type MarketListingStatsReason = "unsupported-definition" | "unverified-definition" | "unsupported-variant" | "unidentified";
 export interface MarketListingItem {
   itemKey: string;
   identified: boolean;
@@ -23,7 +23,7 @@ export function sanitizeMarketListingItem(value: unknown): MarketListingItem | n
   const definition = itemStatDefinition(raw.itemKey);
   // Treat unknown/malformed stat projections as unavailable. Never silently
   // drop one bad roll and label the remaining subset a reconstructed item.
-  if (raw.identified && definition && Array.isArray(raw.stats) && raw.stats.length === definition.stats.length) {
+  if (raw.identified && definition?.verifiedListingRolls && Array.isArray(raw.stats) && raw.stats.length === definition.stats.length) {
     const seen = new Set<number>();
     const stats: NonNullable<MarketListingItem["stats"]> = [];
     for (const candidate of raw.stats) {
@@ -36,6 +36,7 @@ export function sanitizeMarketListingItem(value: unknown): MarketListingItem | n
     }
     if (stats.length === definition.stats.length) { result.stats = stats; return result; }
   }
-  result.statsReason = !raw.identified ? "unidentified" : !definition ? "unsupported-definition" : "unsupported-variant";
+  result.statsReason = !raw.identified ? "unidentified" : !definition ? "unsupported-definition"
+    : !definition.verifiedListingRolls ? "unverified-definition" : "unsupported-variant";
   return result;
 }

@@ -248,6 +248,46 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
   } finally { wrapper.unmount(); }
 });
 
+test.each([
+  { name: "Tiny Planet", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-10",
+    item_data: { c: 1, b: 92, j: 0, d: 1, e: 11, w: 1, a: 618478963 } },
+    catalog: "Increased Orbital Projectile Duration15%–25%", listing: "Listing rolls are not verified for this item" },
+  { name: "Bob's Piece of Plywood", row: listingFixture.specimens[1].row,
+    catalog: "10% Chance when Struck: Chainsaw Massacre (Level 40)", listing: "10% Chance when Struck: Chainsaw Massacre (Level 40)" },
+])("$name presents grounded catalog data and independently verified listing information", async specimen => {
+  const { api } = setup();
+  const body = Buffer.from(JSON.stringify({ status: 1, itemCount: 1,
+    items: deflateSync(Buffer.from(JSON.stringify([specimen.row]))).toString("base64") }));
+  api.searchMarket.mockImplementation(request => handleMarketSearchRequest(request, {
+    search: async () => inspectDirectMarketResponse(body, 200).response,
+  } as never));
+  const wrapper = mount(App, { global: { stubs } });
+  try {
+    await flushPromises();
+    await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    await wrapper.get("#market-item-query").setValue(specimen.name);
+    await wrapper.get(".market-options button").trigger("click");
+    expect(wrapper.get(".market-catalog-ranges").text()).toContain(specimen.catalog);
+    expect(wrapper.get(".market-catalog-ranges").text()).not.toContain("Catalog ranges are not available");
+    await wrapper.get("form.market-editor").trigger("submit");
+    await flushPromises();
+    const listing = wrapper.get(".market-listing-details");
+    expect(listing.text()).toContain(specimen.listing);
+    expect(wrapper.text()).not.toMatch(/Triggered skill ID|Unknown stat 18[67]|Triggered skill103/);
+    if (specimen.name === "Tiny Planet") {
+      expect(listing.text()).not.toMatch(/Actual listing rolls|22%/);
+      expect(listing.findAll(".market-listing-stats li")).toHaveLength(0);
+    } else {
+      expect(listing.text()).toContain("Actual listing rolls");
+      expect(listing.text()).toContain("Strength27");
+      expect(listing.findAll(".market-listing-stats li")).toHaveLength(7);
+      // The observed tooltip's attack-damage/rating details are not reconstructed.
+      expect(wrapper.text()).not.toMatch(/176%|200%/);
+    }
+  } finally { wrapper.unmount(); }
+});
+
 test("local save failures retain the editable entry and expose retry without searching", async () => {
   const { api } = setup();
   const wrapper = mount(App, { global: { stubs } });
