@@ -52,6 +52,17 @@ function button(wrapper: VueWrapper, label: string) {
 }
 
 describe("settings ledger", () => {
+  test("nonempty Features remains registered and legacy deep links reveal its enabled controls", async () => {
+    const wrapper = mount(SettingsModal, { props: settingsProps({ initialTab: "capture" }) });
+    try {
+      await nextTick();
+      expect(wrapper.get('[data-settings-section="features"]').attributes("aria-current")).toBe("page");
+      expect(wrapper.get("#settings-section-features").text()).toContain("Enable SZ Refresh");
+      expect(wrapper.find("#settings-section-app").exists()).toBe(false);
+      expect(wrapper.emitted("update:satanicZoneRefreshEnabled")).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
+
   test("offers the private Market recorder without a hidden access preference", async () => {
     const wrapper = mount(SettingsModal, { props: settingsProps({ initialTab: "support" }) });
     expect(wrapper.text()).toContain("Private Market request");

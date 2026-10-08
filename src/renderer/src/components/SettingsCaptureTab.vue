@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SatanicZoneLoginCacheSettings from "./SatanicZoneLoginCacheSettings.vue";
-import { ACTIVE_SATANIC_ZONE_REFRESH_ENABLED } from "../../../shared/release-features";
+import { FEATURE_SETTINGS_VISIBILITY } from "../lib/feature-settings";
 defineProps<{
   satanicZoneRefreshEnabled: boolean;
   satanicZoneLoginCache?: import("../../../shared/satanic-zone-login-cache").SatanicZoneLoginCacheState;
@@ -15,11 +15,11 @@ defineEmits<{
 <template>
   <div class="settings-ledger-panel-heading">
     <h2>Features</h2>
-    <p v-if="ACTIVE_SATANIC_ZONE_REFRESH_ENABLED">Optional capabilities that change how the companion connects to Hero Siege.</p>
+    <p v-if="FEATURE_SETTINGS_VISIBILITY.satanicZoneRefresh">Optional capabilities that change how the companion connects to Hero Siege.</p>
     <p v-else>Satanic Zone updates are observed from normal game traffic. Manual Refresh is temporarily unavailable.</p>
   </div>
 
-  <section v-if="ACTIVE_SATANIC_ZONE_REFRESH_ENABLED" class="settings-ledger-section settings-feature-section" aria-labelledby="settings-sz-refresh-title">
+  <section v-if="FEATURE_SETTINGS_VISIBILITY.satanicZoneRefresh" class="settings-ledger-section settings-feature-section" aria-labelledby="settings-sz-refresh-title">
     <div class="settings-feature-heading">
       <div>
         <h3 id="settings-sz-refresh-title">Satanic Zone Refresh</h3>

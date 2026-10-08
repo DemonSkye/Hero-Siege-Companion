@@ -202,9 +202,12 @@ async function configureDurableSettings({ electronApp, page }) {
   });
   await expect(settings.getByRole("status")).toHaveText("Saved");
 
-  await settings.getByRole("button", { name: "Features", exact: true }).click();
+  await expect(settings.getByRole("button", { name: "Features", exact: true })).toHaveCount(0);
+  await expect(settings.locator("#settings-section-features")).toHaveCount(0);
+  await settings.getByRole("button", { name: "Appearance", exact: true }).press("ArrowRight");
+  await expect(settings.getByRole("button", { name: "Help & Support", exact: true })).toBeFocused();
+  await expect(settings.locator("#settings-section-support")).toBeVisible();
   await expect(settings.getByRole("checkbox", { name: /Enable SZ Refresh/ })).toHaveCount(0);
-  await expect(settings).toContainText("Manual Refresh is temporarily unavailable.");
   expect((await getRendererState(page)).satanicZone.refreshEnabled).toBe(false);
 
   await settings.getByRole("button", { name: "Close settings" }).click();
@@ -260,9 +263,9 @@ async function assertDurableSettings({ electronApp, page }, { reopened }) {
   await expect(settings.getByLabel("App theme")).toHaveValue("light");
   await expect(settings.getByLabel("Compact theme")).toHaveValue("cyberpunk");
 
-  await settings.getByRole("button", { name: "Features", exact: true }).click();
+  await expect(settings.getByRole("button", { name: "Features", exact: true })).toHaveCount(0);
+  await expect(settings.locator("#settings-section-features")).toHaveCount(0);
   await expect(settings.getByRole("checkbox", { name: /Enable SZ Refresh/ })).toHaveCount(0);
-  await expect(settings).toContainText("Manual Refresh is temporarily unavailable.");
 }
 
 async function launchAndUseSettings(callback) {

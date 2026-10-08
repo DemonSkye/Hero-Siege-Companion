@@ -39,7 +39,9 @@ for (const profile of ["fresh", "saved-on", "automatic-cache"]) {
         expect((await getRendererState(session.page)).satanicZone).toMatchObject({ refreshEnabled: false, refreshAvailable: false });
         expect(await attempts()).toBe(0);
         await session.page.getByRole("button", { name: "Settings", exact: true }).click();
-        await session.page.getByRole("button", { name: "Features", exact: true }).click();
+        await expect(session.page.getByRole("button", { name: "Features", exact: true })).toHaveCount(0);
+        await expect(session.page.locator("#settings-section-features")).toHaveCount(0);
+        await expect(session.page.locator("#settings-section-app")).toBeVisible();
         await expect(session.page.getByRole("checkbox", { name: /SZ Refresh|Remember sign-in/ })).toHaveCount(0);
         await expect(session.page.getByLabel("Companion passphrase", { exact: true })).toHaveCount(0);
         await session.page.getByRole("button", { name: "Close settings" }).click();

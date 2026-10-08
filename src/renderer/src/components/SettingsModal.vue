@@ -11,6 +11,7 @@ import type { ConfigurationImportPreview } from "../lib/preferences";
 import type { ThemeId } from "../lib/themes";
 import type { WhatsNewRelease } from "../lib/whats-new";
 import { useModalFocus } from "../lib/modal-focus";
+import { HAS_VISIBLE_FEATURE_SETTINGS } from "../lib/feature-settings";
 import SettingsActionDialog from "./SettingsActionDialog.vue";
 import SettingsAppearanceTab from "./SettingsAppearanceTab.vue";
 import SettingsCaptureTab from "./SettingsCaptureTab.vue";
@@ -98,6 +99,7 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; group: "set
   { id: "support", label: "Help & Support", group: "resources" },
   { id: "developers", label: "Developers", group: "resources" },
 ];
+const VISIBLE_SETTINGS_SECTIONS = SETTINGS_SECTIONS.filter(section => section.id !== "features" || HAS_VISIBLE_FEATURE_SETTINGS);
 const activeSettingsSection = ref<SettingsSection>(normalizeSettingsSection(props.initialTab));
 const settingsDialog = ref<HTMLElement | null>(null);
 const nestedDialog = ref<SettingsDialogKind | null>(props.backupPreview ? "restore" : null);
@@ -108,14 +110,18 @@ const { handleModalFocusKeydown } = useModalFocus(settingsDialog);
 watch(() => props.initialTab, (tab) => {
   const normalized = normalizeSettingsSection(tab);
   if (activeSettingsSection.value !== normalized) activeSettingsSection.value = normalized;
-});
+  if (requestedSettingsSection(tab) !== normalized) {
+    emit("settingsTabChange", normalized);
+    if (settingsDialog.value?.contains(document.activeElement)) focusSettingsSection(normalized);
+  }
+}, { immediate: true });
 
 watch(() => props.backupPreview, (preview) => {
   if (preview) nestedDialog.value = "restore";
   else if (nestedDialog.value === "restore") nestedDialog.value = null;
 });
 
-function normalizeSettingsSection(value: string | undefined): SettingsSection {
+function requestedSettingsSection(value: string | undefined): SettingsSection {
   if (value === "appearance" || value === "features" || value === "support" || value === "developers" || value === "app") return value;
   if (value === "capture") return "features";
   if (value === "config") return "developers";
@@ -123,19 +129,29 @@ function normalizeSettingsSection(value: string | undefined): SettingsSection {
   return "app";
 }
 
+function normalizeSettingsSection(value: string | undefined): SettingsSection {
+  const requested = requestedSettingsSection(value);
+  return VISIBLE_SETTINGS_SECTIONS.some(section => section.id === requested) ? requested : "app";
+}
+
 function selectSettingsSection(section: SettingsSection) {
-  if (activeSettingsSection.value === section) return;
-  activeSettingsSection.value = section;
-  emit("settingsTabChange", section);
+  const normalized = normalizeSettingsSection(section);
+  if (activeSettingsSection.value === normalized) return;
+  activeSettingsSection.value = normalized;
+  emit("settingsTabChange", normalized);
+}
+
+function focusSettingsSection(section: SettingsSection) {
+  void nextTick(() => settingsDialog.value?.querySelector<HTMLButtonElement>(`[data-settings-section="${section}"]`)?.focus());
 }
 
 function handleNavigationKeydown(event: KeyboardEvent) {
-  const currentIndex = SETTINGS_SECTIONS.findIndex((section) => section.id === activeSettingsSection.value);
-  const lastIndex = SETTINGS_SECTIONS.length - 1;
+  const currentIndex = VISIBLE_SETTINGS_SECTIONS.findIndex((section) => section.id === activeSettingsSection.value);
+  const lastIndex = VISIBLE_SETTINGS_SECTIONS.length - 1;
   const nextIndex = event.key === "ArrowDown" || event.key === "ArrowRight"
-    ? (currentIndex + 1) % SETTINGS_SECTIONS.length
+    ? (currentIndex + 1) % VISIBLE_SETTINGS_SECTIONS.length
     : event.key === "ArrowUp" || event.key === "ArrowLeft"
-      ? (currentIndex + lastIndex) % SETTINGS_SECTIONS.length
+      ? (currentIndex + lastIndex) % VISIBLE_SETTINGS_SECTIONS.length
       : event.key === "Home"
         ? 0
         : event.key === "End"
@@ -143,9 +159,9 @@ function handleNavigationKeydown(event: KeyboardEvent) {
           : -1;
   if (nextIndex < 0) return;
   event.preventDefault();
-  const nextSection = SETTINGS_SECTIONS[nextIndex];
+  const nextSection = VISIBLE_SETTINGS_SECTIONS[nextIndex];
   selectSettingsSection(nextSection.id);
-  void nextTick(() => document.querySelector<HTMLButtonElement>(`[data-settings-section="${nextSection.id}"]`)?.focus());
+  focusSettingsSection(nextSection.id);
 }
 
 function requestSatanicZoneRefreshChange(enabled: boolean) {
@@ -230,7 +246,7 @@ function saveStatusLabel(): string {
         <nav class="settings-ledger-nav" aria-label="Preferences and resources" @keydown="handleNavigationKeydown">
           <span class="settings-ledger-nav-label">Settings</span>
           <button
-            v-for="section in SETTINGS_SECTIONS.filter((candidate) => candidate.group === 'settings')"
+            v-for="section in VISIBLE_SETTINGS_SECTIONS.filter((candidate) => candidate.group === 'settings')"
             :key="section.id"
             :data-settings-section="section.id"
             type="button"
@@ -239,7 +255,7 @@ function saveStatusLabel(): string {
           >{{ section.label }}</button>
           <span class="settings-ledger-nav-label resources">Resources</span>
           <button
-            v-for="section in SETTINGS_SECTIONS.filter((candidate) => candidate.group === 'resources')"
+            v-for="section in VISIBLE_SETTINGS_SECTIONS.filter((candidate) => candidate.group === 'resources')"
             :key="section.id"
             :data-settings-section="section.id"
             type="button"
@@ -276,7 +292,7 @@ function saveStatusLabel(): string {
             @reset-themes="$emit('resetThemes')"
           />
           <SettingsCaptureTab
-            v-else-if="activeSettingsSection === 'features'"
+            v-else-if="activeSettingsSection === 'features' && HAS_VISIBLE_FEATURE_SETTINGS"
             :satanic-zone-refresh-enabled="satanicZoneRefreshEnabled"
             :satanic-zone-login-cache="satanicZoneLoginCache"
             @request-satanic-zone-refresh-change="requestSatanicZoneRefreshChange"
