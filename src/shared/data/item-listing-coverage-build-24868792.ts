@@ -1,6 +1,6 @@
 // Generated constructor coverage; raw bodies, addresses and compact data stay private.
+// Audited unique-glove LoadTierStats(0,4) adds only nonrandom 431/432; no ordinary overwrite or draw.
 export const ITEM_LISTING_CONSTRUCTOR_GAPS: Readonly<Record<string, "tier-helper" | "constructor-helper">> = {
-  "unique:4:0": "tier-helper",
   "unique:8:0": "tier-helper",
   "unique:3:16": "tier-helper",
   "unique:3:10": "tier-helper",

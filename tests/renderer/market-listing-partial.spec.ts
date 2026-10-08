@@ -50,23 +50,30 @@ async function workerToUi(body: Buffer) {
   return result;
 }
 
-test("compressed response uses real worker, sanitization and renderer for known and helper-blocked items", async () => {
+test("compressed response uses real worker, sanitization and renderer for glove rolls and guarded modifiers", async () => {
   const rows = [
     { price: 1, fingerprint: "SYNTHETIC-0-0-3", item_data: { a: 1000, b: 0, c: 1, j: 17, d: 1, e: 11, w: 1 } },
     { price: 2, fingerprint: "SYNTHETIC-0-0-4", item_data: { a: 1000, b: 62, c: 1, d: 24, e: 11, w: 1, sh: "CANARY" }, seller_name: "CANARY" },
+    { price: 3, fingerprint: "SYNTHETIC-0-0-4", item_data: { a: 1000, b: 62, c: 1, d: 24, e: 11, w: 1, p: 1 }, seller_name: "CANARY" },
   ];
-  const body = Buffer.from(JSON.stringify({ status: 1, itemCount: 2, items: deflateSync(Buffer.from(JSON.stringify(rows))).toString("base64") }));
+  const body = Buffer.from(JSON.stringify({ status: 1, itemCount: 3, items: deflateSync(Buffer.from(JSON.stringify(rows))).toString("base64") }));
   const result = await workerToUi(body);
-  expect(result.returnedCount).toBe(2);
+  expect(result.returnedCount).toBe(3);
   expect(result.listings[0].item?.stats).toContainEqual({ statId: 23, value: 1.25 });
-  expect(result.listings[1].item?.unknownStats).toHaveLength(9);
+  expect(result.listings[1].item?.stats).toContainEqual({ statId: 31, value: 0.5 });
+  expect(result.listings[2].item?.unknownStats).toHaveLength(9);
   for (const listing of result.listings) {
     const wrapper = mount(MarketListingDetails, { props: { item: listing.item } });
     try {
       if (listing.price === 1) expect(wrapper.text()).toContain("1.25");
-      else {
+      else if (listing.price === 2) {
+        expect(wrapper.text()).toContain("Reconstructed listing stats (experimental)");
+        expect(wrapper.text()).toContain("Enhanced Damage per level0.5%");
+        expect(wrapper.findAll(".market-listing-stats li")).toHaveLength(9);
+        expect(wrapper.find(".market-listing-unavailable").exists()).toBe(false);
+      } else {
         expect(wrapper.text()).toContain("9 fields unavailable");
-        expect(wrapper.text()).toContain("Tier effects unavailable");
+        expect(wrapper.text()).toContain("Modifier effects unavailable");
         expect(wrapper.text()).not.toContain("0.5");
       }
     } finally { wrapper.unmount(); }
@@ -89,14 +96,24 @@ test.skipIf(!process.env.HSC_PRIVATE_MARKET_REPLAY)("original 101-record page cr
   const result = await workerToUi(body);
   expect(result.returnedCount).toBe(101);
   expect(result.listings).toHaveLength(20);
+  let known = 0;
   for (const listing of result.listings) {
     const wrapper = mount(MarketListingDetails, { props: { item: listing.item } });
     try {
       expect(listing.item?.itemKey === "unique:4:0:62").toBe(true);
-      expect(listing.item?.stats === undefined).toBe(true);
-      expect(wrapper.text().includes("Tier effects unavailable") || wrapper.text().includes("Unidentified")).toBe(true);
+      if (listing.item?.stats?.length) {
+        known++;
+        expect(listing.item.stats.length === 9 && listing.item.stats.some(stat => stat.statId === 31 && stat.value === 0.5)).toBe(true);
+        expect(wrapper.text().includes("Reconstructed listing stats (experimental)") && wrapper.text().includes("Enhanced Damage per level0.5%")).toBe(true);
+        expect(!wrapper.text().includes("Tier effects unavailable")).toBe(true);
+      } else expect(wrapper.text().includes("Modifier effects unavailable") || wrapper.text().includes("Unidentified")).toBe(true);
       // Use booleans so a failure cannot print an original compact record.
       expect(!/fingerprint|item_data|"a":|"sh":|seller/.test(wrapper.html())).toBe(true);
     } finally { wrapper.unmount(); }
   }
+  // Independently counted retained page with unchanged price ordering/cap:
+  // 14 eligible, one modified and five unidentified among the 20 shown rows.
+  expect(known).toBe(14);
+  expect(result.listings.filter(listing => listing.item?.statsReason === "unsupported-variant")).toHaveLength(1);
+  expect(result.listings.filter(listing => listing.item?.statsReason === "unidentified")).toHaveLength(5);
 });

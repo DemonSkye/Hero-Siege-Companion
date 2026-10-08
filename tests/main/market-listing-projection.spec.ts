@@ -46,7 +46,9 @@ test("does not reveal unidentified rolls or guess modified, corrupt or unsupport
     expect(projectMarketListingItem({ ...row.item_data, ...patch }, row.fingerprint)?.stats).toEqual(projectMarketListingItem(row.item_data, row.fingerprint)?.stats);
   const captured = projectMarketListingItem(fixture.capturedRows[0].item_data, fixture.capturedRows[0].fingerprint);
   expect(captured?.itemKey).toBe("unique:4:0:62");
-  expect(captured).not.toHaveProperty("stats");
+  expect(captured).toHaveProperty("statsExperimental", true);
+  expect(captured?.stats).toHaveLength(9);
+  expect(captured?.stats).toContainEqual({ statId: 31, value: 0.5 });
   expect(projectMarketListingItem("invalid-json", row.fingerprint)).toBeNull();
   expect(projectMarketListingItem(row.item_data, "no-type-proof")).toBeNull();
   expect(projectMarketListingItem({ ...row.item_data, b: 4095 }, row.fingerprint)).toBeNull();

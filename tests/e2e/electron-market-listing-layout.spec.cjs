@@ -184,9 +184,12 @@ for (const specimen of [
     catalog: "Stat 23[1.25]", listing: "Stat 231.25", numeric: true },
   { name: "Death Knight's Gauntlets", slug: "tier-glove", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-4",
     item_data: { c: 1, b: 62, d: 24, e: 11, w: 1, a: 1000 } },
-    catalog: "Enhanced Damage per level[0.5%]", listing: "Listing stats unavailable", helper: true },
+    catalog: "Enhanced Damage per level[0.5%]", listing: "Enhanced Damage per level0.5%", numeric: true },
+  { name: "Death Knight's Gauntlets", slug: "modified-glove", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-4",
+    item_data: { c: 1, b: 62, d: 24, e: 11, w: 1, a: 1000, p: 1 } },
+    catalog: "Enhanced Damage per level[0.5%]", listing: "Stats unknown for this variant", modifier: true },
 ]) {
-  test(`${specimen.name} preserves constructor confidence through main and preload`, async () => {
+  test(`${specimen.name} (${specimen.slug}) preserves constructor confidence through main and preload`, async () => {
     const session = await launchCompanionApp({ marketTransport: true });
     try {
       await resize(session, 1380, 1000);
@@ -209,12 +212,12 @@ for (const specimen of [
       await expect(listing).toContainText(specimen.listing);
       await expect(workspace).not.toContainText(/Triggered skill ID|Unknown stat 18[67]/);
       if (specimen.numeric) await expect(listing).toContainText("Reconstructed listing stats (experimental)");
-      else if (specimen.helper) {
+      else if (specimen.modifier) {
         await expect(listing.locator("summary")).toHaveText("9 fields unavailable");
         await expect(listing.locator("details")).not.toHaveAttribute("open");
         await listing.locator("summary").click();
         await expect(listing.locator(".market-listing-stats li")).toHaveCount(9);
-        await expect(listing).toContainText("Tier effects unavailable");
+        await expect(listing).toContainText("Modifier effects unavailable");
         await expect(listing).not.toContainText("0.5");
       } else await expect(listing).toContainText("Strength27");
       await workspace.locator(".market-results").scrollIntoViewIfNeeded();

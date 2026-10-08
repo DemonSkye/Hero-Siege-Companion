@@ -410,7 +410,8 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
     expect(shield.text()).toContain("Actual listing rolls");
     expect(shield.findAll("li").find(row => row.text().startsWith("Mana439"))?.text()).toBe("Mana439");
     expect(shield.text()).toContain("Enhanced Defense124%");
-    expect(wrapper.findAll(".market-listing-item")[0].text()).toContain("Listing stats unavailable");
+    expect(wrapper.findAll(".market-listing-item")[0].text()).toContain("Reconstructed listing stats (experimental)");
+    expect(wrapper.findAll(".market-listing-item")[0].text()).toContain("Enhanced Damage per level0.5%");
     const results = wrapper.get(".market-results");
     expect(results.find("caption").exists()).toBe(false);
     expect(results.get(".market-results-footer").text()).toContain("Fetched at");

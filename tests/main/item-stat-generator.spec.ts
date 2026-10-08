@@ -57,13 +57,40 @@ test.each([-1, NaN, 2 ** 32])("rejects invalid generation input without coercion
   expect(() => generateConstructorStats(seed, [])).toThrow("Invalid item seed");
 });
 
-test("unmapped common glove helper cannot be bypassed by a plausible forged base-stat projection", () => {
-  const stats = generateConstructorStats(1, itemBaseStatDefinition("unique:4:0:62")!.stats).stats;
-  const projected = sanitizeMarketListingItem({ itemKey: "unique:4:0:62", identified: true, stats, a: 1, sh: "CANARY" });
+test.each([0, 1])("audited glove Tier metadata Boolean %s consumes no draw or ordinary field", boolean => {
+  // run-52 resolves the helper writes to 431=definition.b, then 432=Boolean.
+  // Both are DontRandomStats entries; (0,4) cannot execute its stat-292 write.
+  const fields = itemBaseStatDefinition("unique:4:0:62")!.stats;
+  const generated = generateConstructorStats(1000, [...fields,
+    { statId: 431, kind: "scalar", minimum: 62, maximum: 62 },
+    { statId: 432, kind: "scalar", minimum: boolean, maximum: boolean },
+  ]);
+  const expected = { 29: 94, 31: 0.5, 72: 19, 73: 21, 93: 10, 94: 35, 154: 61, 173: 21, 294: 20 };
+  expect(Object.fromEntries(generated.stats.map(stat => [stat.statId, stat.value]))).toEqual(expected);
+  expect(generated.draws).toBe(14);
+  expect(generated.unknownStats).toEqual([{ statId: 431, reason: "native-stat-case" }, { statId: 432, reason: "native-stat-case" }]);
+  const projected = projectMarketListingItem({ a: 1000, b: 62, c: 1, d: 24, e: 11, w: 1 }, "SYNTHETIC-0-0-4")!;
+  expect(Object.fromEntries(projected.stats!.map(stat => [stat.statId, stat.value]))).toEqual(expected);
+  expect(projected).toMatchObject({ itemKey: "unique:4:0:62", identified: true, statsExperimental: true });
+  expect(projected.unknownStats).toBeUndefined();
+  expect(projected.stats).toHaveLength(9);
+  expect(JSON.stringify(projected)).not.toMatch(/"statId":43[12]|seed|fingerprint/);
+});
+
+test("the resolved glove helper does not admit another family's unaudited helper", () => {
+  const key = "unique:5:0:65";
+  const stats = itemBaseStatDefinition(key)!.stats.map(stat => ({ statId: stat.statId, value: stat.minimum }));
+  const projected = sanitizeMarketListingItem({ itemKey: key, identified: true, stats, a: 1, sh: "CANARY" });
   expect(projected?.stats).toBeUndefined();
-  expect(projected?.unknownStats).toHaveLength(9);
   expect(new Set(projected?.unknownStats?.map(stat => stat.reason))).toEqual(new Set(["tier-helper"]));
   expect(JSON.stringify(projected)).not.toMatch(/CANARY|"a"|"sh"/);
+});
+
+test.each([{ p: 1 }, { r: 1 }, { q: 0 }, { aa: 0 }, { ab: 1 }, { m: -1 }])("glove admission preserves unsupported modifier guards: %j", patch => {
+  const projected = projectMarketListingItem({ a: 1000, b: 62, c: 1, d: 24, e: 11, w: 1, ...patch }, "SYNTHETIC-0-0-4");
+  expect(projected?.stats).toBeUndefined();
+  expect(projected?.unknownStats).toHaveLength(9);
+  expect(new Set(projected?.unknownStats?.map(stat => stat.reason))).toEqual(new Set(["modifier"]));
 });
 
 test("known constructors expand generically without per-specimen or authentication admission", () => {
