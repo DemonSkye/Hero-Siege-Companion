@@ -5,601 +5,501 @@
     [
       1,
       "runeword:3:0:0",
-      "Breath of the Damned",
       null
     ],
     [
       81,
       "runeword:3:0:1",
-      "Grief",
       null
     ],
     [
       22,
       "runeword:3:0:2",
-      "Perdition",
       null
     ],
     [
       23,
       "runeword:3:0:3",
-      "Ravager",
       null
     ],
     [
       25,
       "runeword:3:0:4",
-      "Judge",
       null
     ],
     [
       29,
       "runeword:3:0:5",
-      "Inner Fire",
       null
     ],
     [
       28,
       "runeword:3:0:6",
-      "Kogarasumaru",
       null
     ],
     [
       33,
       "runeword:3:0:7",
-      "Mjolner",
       null
     ],
     [
       35,
       "runeword:3:0:8",
-      "Ascendancy",
       null
     ],
     [
       56,
       "runeword:3:0:9",
-      "Aurora's Might",
       null
     ],
     [
       46,
       "runeword:3:0:10",
-      "Atonement",
       null
     ],
     [
       54,
       "runeword:3:0:11",
-      "Martyr",
       null
     ],
     [
       48,
       "runeword:3:0:12",
-      "Divinity",
       null
     ],
     [
       58,
       "runeword:3:0:13",
-      "Brutality",
       null
     ],
     [
       53,
       "runeword:3:0:14",
-      "Torment",
       null
     ],
     [
       99,
       "runeword:3:0:15",
-      "Lone Mystic",
       null
     ],
     [
       57,
       "runeword:3:0:16",
-      "Brilliance",
       null
     ],
     [
       49,
       "runeword:3:0:17",
-      "Flowing Sands",
       null
     ],
     [
       36,
       "runeword:3:0:18",
-      "Sovereignty",
       null
     ],
     [
       21,
       "runeword:3:0:19",
-      "Preacher",
       null
     ],
     [
       24,
       "runeword:3:0:20",
-      "Catastrophe",
       null
     ],
     [
       26,
       "runeword:3:0:21",
-      "Will of Thanos",
       null
     ],
     [
       27,
       "runeword:3:0:22",
-      "Revelation",
       null
     ],
     [
       2,
       "runeword:3:0:23",
-      "Windstride",
       null
     ],
     [
       3,
       "runeword:3:0:24",
-      "Potency",
       null
     ],
     [
       4,
       "runeword:3:0:25",
-      "Sleight",
       null
     ],
     [
       40,
       "runeword:3:0:26",
-      "True Aim",
       null
     ],
     [
       39,
       "runeword:3:0:27",
-      "Arcanum",
       null
     ],
     [
       42,
       "runeword:3:0:28",
-      "Epilogue",
       null
     ],
     [
       50,
       "runeword:3:0:29",
-      "Deus Ex Machina",
       null
     ],
     [
       38,
       "runeword:3:0:30",
-      "Carnage",
       null
     ],
     [
       30,
       "runeword:3:0:31",
-      "Big Joe",
       null
     ],
     [
       41,
       "runeword:3:0:32",
-      "Harvester",
       null
     ],
     [
       44,
       "runeword:3:0:33",
-      "Conquest",
       null
     ],
     [
       31,
       "runeword:3:0:34",
-      "Valkyrie",
       null
     ],
     [
       51,
       "runeword:3:0:35",
-      "Malice",
       null
     ],
     [
       37,
       "runeword:3:0:36",
-      "Virulence",
       null
     ],
     [
       43,
       "runeword:3:0:37",
-      "Trapped Vessel",
       null
     ],
     [
       64,
       "runeword:3:0:38",
-      "Hydrangea",
       null
     ],
     [
       65,
       "runeword:3:0:39",
-      "Disaster",
       null
     ],
     [
       67,
       "runeword:3:0:40",
-      "Celestus",
       null
     ],
     [
       89,
       "runeword:3:0:41",
-      "Feral",
       null
     ],
     [
       52,
       "runeword:3:0:42",
-      "Skysong",
       null
     ],
     [
       11,
       "runeword:3:0:43",
-      "Fortress",
       null
     ],
     [
       12,
       "runeword:3:0:44",
-      "Bristle",
       null
     ],
     [
       13,
       "runeword:3:0:45",
-      "Force",
       null
     ],
     [
       15,
       "runeword:3:0:46",
-      "Shroud of Elements",
       null
     ],
     [
       14,
       "runeword:3:0:47",
-      "Mystify",
       null
     ],
     [
       16,
       "runeword:3:0:48",
-      "Mayhem",
       null
     ],
     [
       20,
       "runeword:3:0:49",
-      "Gladstone Goose's Jacket",
       null
     ],
     [
       32,
       "runeword:3:0:50",
-      "Shroud of Enigma",
       null
     ],
     [
       68,
       "runeword:3:0:51",
-      "Shadow",
       null
     ],
     [
       70,
       "runeword:3:0:52",
-      "Angul Auxana",
       null
     ],
     [
       71,
       "runeword:3:0:53",
-      "Toxicarcus",
       null
     ],
     [
       72,
       "runeword:3:0:54",
-      "Freljord",
       null
     ],
     [
       73,
       "runeword:3:0:55",
-      "Moltening",
       null
     ],
     [
       74,
       "runeword:3:0:56",
-      "Astropos",
       null
     ],
     [
       83,
       "runeword:3:0:57",
-      "Babylon's Fall",
       null
     ],
     [
       97,
       "runeword:3:0:58",
-      "Fog",
       null
     ],
     [
       100,
       "runeword:3:0:59",
-      "Ent's Blessing",
       null
     ],
     [
       18,
       "runeword:3:0:60",
-      "Rainbow",
       null
     ],
     [
       7,
       "runeword:3:0:61",
-      "Thinking Cap",
       null
     ],
     [
       8,
       "runeword:3:0:62",
-      "Lightforge",
       null
     ],
     [
       9,
       "runeword:3:0:63",
-      "Scholar",
       null
     ],
     [
       10,
       "runeword:3:0:64",
-      "Flesh Ripper",
       null
     ],
     [
       60,
       "runeword:3:0:65",
-      "Nirvana",
       null
     ],
     [
       61,
       "runeword:3:0:66",
-      "Legionnaire",
       null
     ],
     [
       69,
       "runeword:3:0:67",
-      "Delirium Tremens",
       0
     ],
     [
       79,
       "runeword:3:0:68",
-      "Blitzkrieg",
       null
     ],
     [
       80,
       "runeword:3:0:69",
-      "Curse",
       null
     ],
     [
       82,
       "runeword:3:0:70",
-      "Crown of The Antichrist",
       null
     ],
     [
       90,
       "runeword:3:0:71",
-      "Chimera",
       null
     ],
     [
       98,
       "runeword:3:0:72",
-      "Desert's Wrath",
       null
     ],
     [
       19,
       "runeword:3:0:73",
-      "Havoc",
       null
     ],
     [
       5,
       "runeword:3:0:74",
-      "Shelter",
       null
     ],
     [
       6,
       "runeword:3:0:75",
-      "Mirage",
       null
     ],
     [
       34,
       "runeword:3:0:76",
-      "Arcane Bastion",
       null
     ],
     [
       45,
       "runeword:3:0:77",
-      "Divine Contemplation",
       null
     ],
     [
       62,
       "runeword:3:0:78",
-      "Crematorium's Pledge",
       null
     ],
     [
       63,
       "runeword:3:0:79",
-      "Bubonic Plague's Pledge",
       null
     ],
     [
       66,
       "runeword:3:0:80",
-      "Justice",
       null
     ],
     [
       77,
       "runeword:3:0:81",
-      "Lost Dimension",
       null
     ],
     [
       84,
       "runeword:3:0:82",
-      "Colossus",
       null
     ],
     [
       17,
       "runeword:3:0:83",
-      "Quickstep",
       2
     ],
     [
       47,
       "runeword:3:0:84",
-      "Ghost",
       null
     ],
     [
       55,
       "runeword:3:0:85",
-      "Paradox",
       null
     ],
     [
       59,
       "runeword:3:0:86",
-      "Ninja Tabi",
       null
     ],
     [
       75,
       "runeword:3:0:87",
-      "Etherwalk",
       null
     ],
     [
       76,
       "runeword:3:0:88",
-      "Crushfleet",
       null
     ],
     [
       78,
       "runeword:3:0:89",
-      "Sonicstep",
       null
     ],
     [
       85,
       "runeword:3:0:90",
-      "Flowing Agony",
       null
     ],
     [
       91,
       "runeword:3:0:91",
-      "Grimwalkers",
       null
     ],
     [
       92,
       "runeword:3:0:92",
-      "Violence",
       null
     ],
     [
       86,
       "runeword:3:0:93",
-      "Codex of the Card Collector",
       11
     ],
     [
       87,
       "runeword:3:0:94",
-      "Codex of Relic Feast",
       11
     ],
     [
       88,
       "runeword:3:0:95",
-      "Spelunker",
       11
     ],
     [
       93,
       "runeword:3:0:96",
-      "Codex of Experience",
       11
     ],
     [
       94,
       "runeword:3:0:97",
-      "Codex of Rift",
       11
     ],
     [
       95,
       "runeword:3:0:98",
-      "Codex of Chaos",
       11
     ],
     [
       96,
       "runeword:3:0:99",
-      "Codex of Broken Friendship",
       11
     ]
   ]

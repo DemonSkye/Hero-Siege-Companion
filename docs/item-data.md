@@ -12,7 +12,7 @@ decoder read these same facts. There is no second hand-maintained catalog.
 | `constructor-stats.json` | Ordered scalar, range, table and dynamic constructor values keyed by item identity |
 | `item-stats.json` | One shared numeric stat-ID catalog: labels, units, native menu membership, qualified roles, meaning gaps, encoded contexts and proc families |
 | `rarities.json` | Inherited normalized-name classification and its distinct provenance |
-| `runewords.json` | External runeword repository IDs mapped to legacy constructor keys; tuples are `[externalId, legacyKey, name, itemTypeOrNull]` |
+| `runewords.json` | External runeword repository IDs mapped to legacy constructor keys; tuples are `[externalId, legacyKey, itemTypeOrNull]`. Names derive from `identities.json`. |
 | `listing-coverage.json` | Existing constructor helper gaps and optional-generation guards |
 
 `item-stats.ts` exports `ItemStats` and `itemStat(id)`. Numeric `statId` is the
@@ -55,7 +55,22 @@ Normal and unique keys are `repository:type:weaponType:gameId`; the serialized
 same-name entries or normal and unique definitions. For runewords, `catalogKey`
 retains the legacy constructor ordinal while `itemKey` is
 `runeword-repository:externalId`. These numeric domains are permuted, not
-interchangeable. Keep both keys and the binding table.
+interchangeable. Keep both keys and the binding table. The view's `type`,
+`weaponType` and `gameId` always retain the **legacy catalog coordinates**;
+runewords remain type 3/subtype 0 even for a helmet, boots or a Codex.
+The separate `itemType` carries the resolved binding type for runewords: 0 for
+Delirium Tremens, 2 for Quickstep and 11 for seven entries including Spelunker.
+The other 91 runeword `itemType` values are explicitly `null`. For normal and
+unique entries, `itemType` equals `type`. Never substitute `itemType` into a
+legacy catalog key or assume null means type 3.
+
+`identities.json` owns all canonical item names, including every runeword name.
+To correct a runeword name, edit its identity's `name` once. The grouped view,
+Market selector and compatibility tuple derive that same name on the next build
+or export. `runewords.json` owns only the ID permutation and nullable item type;
+it has no separately editable label. Validation requires each binding to refer
+to a named runeword identity. Intentional corrections still need evidence and
+an updated reviewed semantic pin; generated outputs are not name sources.
 
 `base` means the **normal repository**, including materials, socketables and
 seeded base equipment. It is not a claim about a rolled item's quality/tier.

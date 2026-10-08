@@ -5,6 +5,10 @@ import { runewordMarketByLegacyKey } from "./runeword-market-catalog";
 
 export type ItemGroup = "base" | "satanic" | "set" | "heroic" | "angelic" | "unholy" | "runeword" | "unknown";
 export interface ReusableItem extends ItemCatalogKey {
+  /** Legacy catalog coordinate; runeword identities always use type 3. */
+  type: number;
+  /** Resolved item type; runewords use the nullable external binding fact. */
+  itemType: number | null;
   itemKey: string;
   /** Original catalog key, including the legacy runeword constructor ordinal. */
   catalogKey: string;
@@ -40,6 +44,7 @@ for (const definition of [...artifact.definitions, ...artifact.missing, ...artif
     : rarity && rarity !== "Runeword" ? rarity.toLowerCase() as ItemGroup : "unknown";
   const item: ReusableItem = {
     repository: definition.repository, type: definition.type,
+    itemType: definition.repository === "runeword" ? runeword?.itemType ?? null : definition.type,
     weaponType: definition.weaponType, gameId: definition.gameId,
     itemKey: runeword?.itemKey ?? catalogKey, catalogKey, name,
     nameKind: name === null ? "unavailable" : seeded ? "base" : "fixed",

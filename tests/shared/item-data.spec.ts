@@ -121,5 +121,5 @@ test("schema rejects wrong shapes, mixed value types and unrecognized properties
   expect(validateItemDataShape(data).join("\n")).toMatch(/additional properties/);
   expect(validateItemDataShape(data).join("\n")).toMatch(/must be number/);
   expect(validateItemDataShape(data).join("\n")).toMatch(/allowed values/);
-  expect(validateItemDataShape(data).join("\n")).toMatch(/more than 4/);
+  expect(validateItemDataShape(data).join("\n")).toMatch(/more than 3/);
 });

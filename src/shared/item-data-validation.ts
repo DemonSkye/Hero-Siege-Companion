@@ -96,9 +96,13 @@ export function validateItemData(sources: typeof ITEM_DATA_SOURCES = ITEM_DATA_S
   unique(words.bindings.map(([external]) => external as number), "Runeword external IDs");
   unique(words.bindings.map(([, legacy]) => legacy as string), "Runeword legacy keys");
   check(legacyKeys.filter(key => key.startsWith("runeword:")).length === words.bindings.length, "Runeword coverage mismatch");
-  for (const [external, legacy, name, type] of words.bindings) {
-    check(typeof external === "number" && id(external) && typeof legacy === "string" && legacyKeys.includes(legacy)
-      && typeof name === "string" && name.length > 0 && (type === null || typeof type === "number" && id(type)), "Invalid runeword binding");
+  const runewordIdentities = new Map(sources.identities.definitions
+    .filter(item => item.repository === "runeword" && item.identityMode === "runeword")
+    .map(item => [catalogKey(item), item]));
+  for (const [external, legacy, type] of words.bindings) {
+    check(typeof external === "number" && id(external) && typeof legacy === "string"
+      && Boolean(runewordIdentities.get(legacy)?.name)
+      && (type === null || typeof type === "number" && id(type)), "Invalid runeword binding");
   }
   for (const [key, statId] of stats.encodedFieldContexts) {
     check(typeof key === "string" && itemSet.has(key) && typeof statId === "number" && statIds.has(statId)
