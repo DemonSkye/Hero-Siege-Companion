@@ -2,6 +2,16 @@ import { describe, expect, test } from "vitest";
 import { MarketResultCache } from "../../src/main/market-result-cache";
 
 describe("market result cache", () => {
+  test("different runewords and normal masks cannot share cached prices",()=>{
+    const cache = new MarketResultCache(()=>1000);
+    const first = cache.key("scope",{runewordId:1,statFilters:[]});
+    const grief = cache.key("scope",{runewordId:81,statFilters:[]});
+    const normal = cache.key("scope",{itemMask:1,statFilters:[]});
+    expect(new Set([first,grief,normal]).size).toBe(3);
+    cache.set(first,{listings:[{price:100}]});
+    expect(cache.get(grief)).toBeNull();
+    expect(cache.get(normal)).toBeNull();
+  });
   test("keys by session scope and normalized filters, stores only sanitized results, and retains observation time", () => {
     let now = 1_000;
     const cache = new MarketResultCache(() => now);

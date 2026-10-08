@@ -1,5 +1,6 @@
 import { MARKET_STAT_CATALOG_BUILD_24868792_DATA } from "./data/market-stat-catalog-build-24868792";
-import { ITEM_BASE_STAT_CATALOG } from "./item-base-stat-catalog";
+import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition } from "./item-base-stat-catalog";
+import { runewordMarketById } from "./runeword-market-catalog";
 import { resolveItemDefinition } from "./item-catalog";
 import { sanitizeMarketListingItem, type MarketListingItem } from "./market-listing-item";
 
@@ -35,7 +36,10 @@ export interface MarketFilterCriteria {
   minSockets?: number;
   statFilters: MarketStatFilter[];
 }
-export interface MarketSearchRequest extends MarketFilterCriteria { itemMask: number; }
+export type MarketSearchTarget =
+  | { itemMask: number; runewordId?: never }
+  | { runewordId: number; itemMask?: never };
+export type MarketSearchRequest = MarketFilterCriteria & MarketSearchTarget;
 
 export interface MarketListing {
   price: number;
@@ -97,9 +101,39 @@ export function marketStatOption(statId: number): MarketStatOption | null {
   return MARKET_STAT_OPTIONS_BY_ID.get(statId) ?? null;
 }
 
+// Frozen labels-v5 classification (SHA256 d91c8cfe8322850e00c63465a783a99c3039d5116e43214d62cd605551aff558).
+// Discovery and durable criteria include these IDs; scalar wire clauses do not.
+const UNKNOWN_VALUE_SHAPE_IDS = new Set([10, 11, 12, 13, 14, 15, 98, 100, 120, 299]);
+export function marketStatMinimumIssue(statId: number, itemKey: string | null = null): string | null {
+  if (!marketStatOption(statId)) return "Unknown stat ID.";
+  if (statId === 20) return "Use Minimum sockets above; sockets have a separate native control.";
+  if (statId === 185) return "Skill identifier metadata cannot be searched as a roll minimum.";
+  if (statId === 186 || statId === 187) return "Proc parameter meaning is verified only for Bob's Piece of Plywood; minimum matching is unproved.";
+  if (statId === 347) return "Zone collections cannot be searched as numeric minimums.";
+  if (UNKNOWN_VALUE_SHAPE_IDS.has(statId)) return "Value shape is unresolved; a scalar minimum is not supported.";
+  const stat = itemBaseStatDefinition(itemKey)?.stats.find(value => value.statId === statId);
+  if (!itemBaseStatMetadataIsNative(statId) && stat?.kind === "series") {
+    return "This item's value is a table, not a scalar roll minimum.";
+  }
+  return null;
+}
+function itemBaseStatMetadataIsNative(statId: number): boolean {
+  return ITEM_BASE_STAT_CATALOG.stats.find(stat => stat.statId === statId)?.nativeMarketMenu === true;
+}
+
+function itemKeyForSearchTarget(target: MarketSearchTarget): string {
+  if (target.runewordId !== undefined) return `runeword-repository:${target.runewordId}`;
+  const mask = target.itemMask;
+  const repository = Math.floor(mask / MARKET_MASK_REPOSITORY_FACTOR) === 1 ? "unique" : "normal";
+  const weaponType = Math.floor(mask % MARKET_MASK_REPOSITORY_FACTOR / MARKET_MASK_WEAPON_TYPE_FACTOR);
+  const type = Math.floor(mask % MARKET_MASK_WEAPON_TYPE_FACTOR / MARKET_MASK_ITEM_TYPE_FACTOR);
+  const id = mask % MARKET_MASK_ITEM_TYPE_FACTOR;
+  return `${repository}:${type}:${weaponType}:${id}`;
+}
+
 export type MarketItemMaskRejectionReason =
   | "unknown-repository"
-  | "runeword-unproven"
+  | "runeword-requires-selector"
   | "invalid-identity"
   | "unclassified-identity"
   | "out-of-range-identity"
@@ -111,7 +145,7 @@ export type MarketItemMaskResolution =
 
 export function resolveMarketItemMask(identity: MarketItemIdentity): MarketItemMaskResolution {
   if (identity?.repository === "unknown") return { ok: false, reason: "unknown-repository" };
-  if (identity?.repository === "runeword") return { ok: false, reason: "runeword-unproven" };
+  if (identity?.repository === "runeword") return { ok: false, reason: "runeword-requires-selector" };
   if (identity?.repository !== "normal" && identity?.repository !== "unique") {
     return { ok: false, reason: "unknown-repository" };
   }
@@ -145,11 +179,14 @@ export function resolveMarketItemMask(identity: MarketItemIdentity): MarketItemM
 export type MarketSearchRequestRejectionReason =
   | "invalid-request"
   | "invalid-item-mask"
+  | "invalid-runeword-id"
+  | "mixed-item-target"
   | "invalid-min-sockets"
   | "invalid-stat-filters"
   | "too-many-stat-filters"
   | "invalid-stat-filter"
   | "unknown-stat-id"
+  | "unsupported-stat-minimum"
   | "duplicate-stat-id";
 
 export type MarketSearchRequestNormalization =
@@ -158,11 +195,20 @@ export type MarketSearchRequestNormalization =
 
 export function normalizeMarketSearchRequest(value: unknown): MarketSearchRequestNormalization {
   if (!isRecord(value)) return { ok: false, reason: "invalid-request" };
-  if (!isIntegerInRange(value.itemMask, 0, MARKET_MASK_MAX_VALUE)) {
-    return { ok: false, reason: "invalid-item-mask" };
+  if (value.itemMask !== undefined && value.runewordId !== undefined) return { ok:false,reason:"mixed-item-target" };
+  let target: MarketSearchTarget;
+  if (value.runewordId !== undefined) {
+    if (!isSafeInteger(value.runewordId) || !runewordMarketById(value.runewordId)) return {ok:false,reason:"invalid-runeword-id"};
+    target = {runewordId:value.runewordId};
+  } else {
+    if (!isIntegerInRange(value.itemMask, 0, MARKET_MASK_MAX_VALUE)) return { ok: false, reason: "invalid-item-mask" };
+    target = {itemMask:value.itemMask};
   }
   const filters = normalizeMarketFilterCriteria(value);
-  return filters.ok ? { ok: true, request: { itemMask: value.itemMask, ...filters.criteria } } : filters;
+  if (filters.ok && filters.criteria.statFilters.some(filter => marketStatMinimumIssue(filter.statId, itemKeyForSearchTarget(target)))) {
+    return { ok: false, reason: "unsupported-stat-minimum" };
+  }
+  return filters.ok ? { ok: true, request: { ...target, ...filters.criteria } } : filters;
 }
 
 export function normalizeMarketFilterCriteria(value: unknown):

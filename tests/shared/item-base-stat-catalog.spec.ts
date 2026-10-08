@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { activeItemCatalog } from "../../src/shared/item-catalog";
 import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition } from "../../src/shared/item-base-stat-catalog";
 import { ITEM_STAT_DEFINITIONS } from "../../src/shared/item-stat-ranges";
-import { normalizeMarketSearchRequest } from "../../src/shared/market-search";
+import { normalizeMarketSearchRequest, normalizeMarketFilterCriteria, marketStatMinimumIssue } from "../../src/shared/market-search";
 import { marketBaseStatValue } from "../../src/renderer/src/lib/market-stat-display";
 import { EXPECTED_GROUNDED_MARKET_STAT_IDS } from "../fixtures/market-grounded-stat-ids";
 
@@ -65,13 +65,33 @@ test("Witch's Wand's later range replaces its earlier range", () => {
   expect(marketBaseStatValue(stat)).toBe("75\u2013125");
 });
 
-test("every grounded catalog stat is accepted by shared request validation, but arbitrary IDs are rejected", () => {
+test("every grounded stat is durable, but metadata and unresolved shapes cannot become scalar requests", () => {
   expect(ITEM_BASE_STAT_CATALOG.stats).toHaveLength(381);
   expect(ITEM_BASE_STAT_CATALOG.stats.map(stat => stat.statId)).toEqual([...EXPECTED_GROUNDED_MARKET_STAT_IDS]);
   for (const statId of EXPECTED_GROUNDED_MARKET_STAT_IDS) {
+    // Independent frozen v5 classification, not derived from production logic.
+    const blocked = [10,11,12,13,14,15,20,98,100,120,185,186,187,299,347].includes(statId);
+    expect(normalizeMarketFilterCriteria({statFilters:[{statId,minimum:2.5}]}).ok).toBe(true);
+    if (blocked) {
+      expect(normalizeMarketSearchRequest({itemMask:1073746020,statFilters:[{statId,minimum:2.5}]})).toEqual({ok:false,reason:"unsupported-stat-minimum"});
+      continue;
+    }
     expect(normalizeMarketSearchRequest({itemMask:1073746020,statFilters:[{statId,minimum:2.5}]})).toEqual({
       ok:true,request:{itemMask:1073746020,statFilters:[{statId,minimum:2.5}]},
     });
   }
   expect(normalizeMarketSearchRequest({itemMask:1073746020,statFilters:[{statId:999999,minimum:1}]})).toEqual({ok:false,reason:"unknown-stat-id"});
+});
+
+test("experimental table fields are blocked for the selected definition while scalar and native controls remain distinct", () => {
+  // Stat 35 is a series on Whip but a scalar on other definitions. Native stat
+  // 25 has table uses too: its retained native minimum control remains valid.
+  expect(marketStatMinimumIssue(35,"normal:16:0:23")).toMatch(/table/);
+  expect(normalizeMarketSearchRequest({itemMask:65559,statFilters:[{statId:35,minimum:1}]})).toEqual({ok:false,reason:"unsupported-stat-minimum"});
+  expect(marketStatMinimumIssue(35,"unique:1:0:100")).toBeNull();
+  expect(marketStatMinimumIssue(25)).toBeNull();
+  expect(marketStatMinimumIssue(20)).toMatch(/Minimum sockets/);
+  expect(normalizeMarketSearchRequest({itemMask:65538,minSockets:4,statFilters:[]})).toMatchObject({ok:true});
+  expect(ITEM_BASE_STAT_CATALOG.stats.find(s=>s.statId===186)?.name).toBe("Skill parameter 186");
+  expect(ITEM_BASE_STAT_CATALOG.stats.find(s=>s.statId===187)?.name).toBe("Skill parameter 187");
 });

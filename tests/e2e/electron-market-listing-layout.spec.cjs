@@ -217,7 +217,7 @@ for (const specimen of [
   });
 }
 
-test("offline catalog cards, experimental search and pending runeword filters survive Electron restart", async () => {
+test("offline catalog cards, experimental search and native runeword filters survive Electron restart", async () => {
   const userDataDir = createUserDataDir();
   let session;
   const count = () => session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount());
@@ -270,16 +270,16 @@ test("offline catalog cards, experimental search and pending runeword filters su
     await workspace.getByRole("button",{name:"New search",exact:true}).click();
     await choose("Breath of the Damned");
     await expect(workspace.locator(".market-catalog-ranges")).toContainText("[730\u2013880]");
-    await expect(workspace).toContainText("Runeword search encoding is not verified yet");
+    await expect(workspace).not.toContainText("Runeword search encoding is not verified yet");
     await workspace.locator("#market-stat-query").fill("ranged");
     await workspace.locator("#market-stat-query").press("Enter");
     await workspace.locator(".market-stat-row input").fill("6");
     await workspace.locator("#market-saved-name").fill("Pending runeword");
     await workspace.getByRole("button",{name:"Save item and filters",exact:true}).click();
     await expect(workspace.locator('.market-editor button[type="submit"]')).toBeDisabled();
-    await expect(workspace).toContainText("Runeword search encoding is not verified yet");
+    await expect(workspace).not.toContainText("Runeword search encoding is not verified yet");
     await expect.poll(async () => (await getStoredUiPreferences(session.page)).savedMarketItems?.find(x=>x.name==="Pending runeword"))
-      .toMatchObject({itemKey:"runeword:3:0:0",request:null,criteria:{statFilters:[{statId:271,minimum:6}]}});
+      .toMatchObject({itemKey:"runeword-repository:1",request:{runewordId:1,statFilters:[{statId:271,minimum:6}]},criteria:{statFilters:[{statId:271,minimum:6}]}});
     expect(await count()).toBe(1);
     await closeCompanionApp(session);
     session = await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
@@ -287,12 +287,24 @@ test("offline catalog cards, experimental search and pending runeword filters su
     workspace = session.page.locator(".market-workspace");
     await workspace.locator(".market-saved-load").filter({hasText:"Pending runeword"}).click();
     await expect(workspace.locator(".market-stat-row input")).toHaveValue("6");
-    await expect(workspace).toContainText("Runeword search encoding is not verified yet");
+    await expect(workspace).not.toContainText("Runeword search encoding is not verified yet");
     await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeDisabled();
+    await session.page.evaluate(()=>window.heroSiegeCompanion.startCapture());
+    await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.emitSessionContext([123],[{
+      text:"api account_id=7-424242&unique_account_id=SYNTHETIC_ID&crossregion_identifier=SYNTHETIC_SESSION&season=11&hardcore=0&beta=0",
+      direction:"outbound",remoteAddress:"203.0.113.42",remotePort:26921,
+    }]));
+    await session.electronApp.evaluate((_electron,value)=>globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200,value),[...body]);
+    await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();
+    await workspace.getByRole("button",{name:"Search market",exact:true}).click();
+    await expect(workspace.locator(".market-results")).toContainText("No matching price listings were returned");
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestLastFilters())).toEqual({
+      filter_masks:"[]",filter_runeword:"1",filter_sockets_min:null,stat_filter:"W3sic3RhdElkIjoyNzEsImZpbHRlciI6Miwic3RhdFZhbHVlIjo2fV0=",
+    });
     await workspace.locator(".market-saved-load").filter({hasText:"Ranged cloak"}).click();
     await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
     await expect(workspace.locator(".market-range-list > div")).toHaveCount(14);
-    expect(await count()).toBe(0);
+    expect(await count()).toBe(1);
   } finally {
     if (session) await closeCompanionApp(session);
     cleanupUserDataDir(userDataDir);

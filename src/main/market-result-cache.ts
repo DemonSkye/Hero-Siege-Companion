@@ -22,7 +22,8 @@ export class MarketResultCache {
   key(scopeKey: string, request: MarketSearchRequest): string {
     return JSON.stringify([
       scopeKey,
-      request.itemMask,
+      request.itemMask ?? null,
+      request.runewordId ?? null,
       request.minSockets ?? null,
       request.statFilters.map((filter) => [filter.statId, filter.minimum]),
     ]);

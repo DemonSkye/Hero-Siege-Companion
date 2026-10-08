@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { marketContextFixture, marketSearchFixture } from "../fixtures/market";
 import type { DirectMarketWorkerResult } from "../../src/main/market-direct-response";
 import listingFixture from "../fixtures/market-listing-items.json";
+import type {MarketSearchRequest} from "../../src/shared/market-search";
 
 afterEach(() => {
   vi.resetModules();
@@ -11,7 +12,7 @@ afterEach(() => {
   vi.doUnmock("node:worker_threads");
 });
 
-async function runWorker(mode: string, statFilters?: {statId:number;minimum:number}[]) {
+async function runWorker(mode: string, statFilters?: {statId:number;minimum:number}[], requestOverride?: MarketSearchRequest) {
   let posted!: (value: DirectMarketWorkerResult) => void;
   const completion = new Promise<DirectMarketWorkerResult>((resolve) => { posted = resolve; });
   const postMessage = vi.fn((value: DirectMarketWorkerResult | { type: string }) => {
@@ -49,14 +50,15 @@ async function runWorker(mode: string, statFilters?: {statId:number;minimum:numb
   });
   vi.doMock("node:worker_threads", () => {
     const thread = { parentPort: { postMessage }, workerData: { context: marketContextFixture,
-      request: statFilters ? {...marketSearchFixture,statFilters} : mode === "items" ? { itemMask: 1073766438, minSockets: 4, statFilters: [{ statId: 60, minimum: 400 }] } : marketSearchFixture } };
+      request: requestOverride ?? (statFilters ? {...marketSearchFixture,statFilters} : mode === "items" ? { itemMask: 1073766438, minSockets: 4, statFilters: [{ statId: 60, minimum: 400 }] } : marketSearchFixture) } };
     return { ...thread, default: thread };
   });
   vi.doMock("node:https", () => ({ default: { request: httpsRequest } }));
   await import("../../src/main/market-direct-search-worker");
   const result = await completion;
   expect(postMessage.mock.calls.filter(([value]) => !("type" in value))).toHaveLength(1);
-  expect(httpsRequest).toHaveBeenCalledOnce();
+  if (mode === "blocked") expect(httpsRequest).not.toHaveBeenCalled();
+  else expect(httpsRequest).toHaveBeenCalledOnce();
   expect(JSON.stringify(result)).not.toMatch(/CANARY|seller|fingerprint|item_data|account_id|crossregion/);
   return { result, form: new URLSearchParams(postedBody), request, httpsRequest };
 }
@@ -74,13 +76,42 @@ test("production worker dispatch constructs observed filters and posts a bounded
 });
 
 test("production worker serializes grounded experimental IDs once and retains checksum rejection", async () => {
-  const filters = [{statId:271,minimum:10},{statId:185,minimum:103}];
+  const filters = [{statId:271,minimum:10},{statId:283,minimum:99}];
   const {result,form} = await runWorker("checksum",filters);
   expect(form.get("filter_masks")).toBe("[1073746020]");
   expect(form.get("scroll_page")).toBe("0");
   expect(JSON.parse(Buffer.from(form.get("stat_filter")!,"base64").toString("utf8"))).toEqual([
-    {statId:271,filter:2,statValue:10},{statId:185,filter:2,statValue:103},
+    {statId:271,filter:2,statValue:10},{statId:283,filter:2,statValue:99},
   ]);
+  expect(result.response).toMatchObject({ok:false,errorCode:"checksum_rejected"});
+});
+
+test.each([20,185,186,187,347,10])("production worker rejects non-scalar stat%i without opening transport",async statId=>{
+  const {result,form}=await runWorker("blocked",[{statId,minimum:1}]);
+  expect(result.response.ok).toBe(false);
+  expect([...form.keys()]).toEqual([]);
+});
+
+test.each([1,81,86])("production worker sends native selector%i with no normal mask",async runewordId=>{
+  const {result,form} = await runWorker("empty",undefined,{runewordId,minSockets:4,statFilters:[{statId:271,minimum:10}]});
+  expect(form.get("filter_runeword")).toBe(String(runewordId));
+  expect(form.get("filter_masks")).toBe("[]");
+  expect(form.get("filter_sockets_min")).toBe("4");
+  expect(form.get("scroll_page")).toBe("0");
+  expect(form.get("stat_filter")).toBe("W3sic3RhdElkIjoyNzEsImZpbHRlciI6Miwic3RhdFZhbHVlIjoxMH1d");
+  expect(result.response).toEqual({ok:true,result:{listings:[],totalMatches:0,returnedCount:0}});
+});
+
+test("normal worker requests omit the selector after clearing or switching away",async()=>{
+  const {form}=await runWorker("success");
+  expect(form.has("filter_runeword")).toBe(false);
+  expect(form.get("filter_masks")).toBe("[1073746020]");
+});
+
+test("runeword checksum rejection stays explicit without leaking selection/authentication",async()=>{
+  const {result,form}=await runWorker("checksum",undefined,{runewordId:81,statFilters:[]});
+  expect(form.get("filter_masks")).toBe("[]");
+  expect(form.get("filter_runeword")).toBe("81");
   expect(result.response).toMatchObject({ok:false,errorCode:"checksum_rejected"});
 });
 

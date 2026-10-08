@@ -3,7 +3,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { classifyDirectMarketNetworkError, directMarketFailure, inspectDirectMarketResponse,
   type DirectMarketPrivateProgress, type DirectMarketWorkerProgress, type DirectMarketWorkerResult } from "./market-direct-response";
 export { reduceDirectMarketResponse } from "./market-direct-response";
-import type { MarketSearchRequest } from "../shared/market-search";
+import { normalizeMarketSearchRequest, type MarketSearchRequest } from "../shared/market-search";
 import { buildMarketFetchItemsChecksum } from "./market-checksum";
 import { buildMarketFetchItemsMultipass, MARKET_FETCH_ITEMS_API_SCRIPT } from "./market-multipass";
 import type { CompleteCapturedSessionContext } from "./captured-session-context";
@@ -22,6 +22,9 @@ export interface DirectMarketWorkerData {
 }
 
 export function buildDirectMarketRequestBody(context: CompleteCapturedSessionContext, request: MarketSearchRequest): string {
+  const normalized = normalizeMarketSearchRequest(request);
+  if (!normalized.ok) throw new Error(`Invalid Market search: ${normalized.reason}`);
+  request = normalized.request;
   const form = new URLSearchParams();
   for (const field of [
     "account_id", "unique_account_id", "crossregion_identifier", "season",
@@ -34,7 +37,8 @@ export function buildDirectMarketRequestBody(context: CompleteCapturedSessionCon
   form.set("scroll_page", "0");
   form.set("page_id", "99999999");
   form.set("get_highest_id", "1");
-  form.set("filter_masks", JSON.stringify([request.itemMask]));
+  form.set("filter_masks", JSON.stringify(request.itemMask === undefined ? [] : [request.itemMask]));
+  if (request.runewordId !== undefined) form.set("filter_runeword", String(request.runewordId));
   if (request.minSockets !== undefined) form.set("filter_sockets_min", String(request.minSockets));
   if (request.statFilters.length > 0) {
     const clauses = request.statFilters.map((filter) => ({

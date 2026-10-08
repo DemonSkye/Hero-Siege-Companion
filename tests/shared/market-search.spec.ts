@@ -102,7 +102,7 @@ describe("market search shared boundary", () => {
       type: 3,
       id: 0,
       weaponType: 0,
-    })).toEqual({ ok: false, reason: "runeword-unproven" });
+    })).toEqual({ ok: false, reason: "runeword-requires-selector" });
     expect(resolveMarketItemMask({
       repository: "unique",
       type: 1,

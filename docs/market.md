@@ -14,11 +14,16 @@ Backups include saved filters; older backups migrate their shopping-list names.
 Saving failures show a retry action while the draft stays open.
 
 All 2,035 retained identities are discoverable: 956 normal, 979 unique and
-100 runewords. The 24 untranslated normal/unique names use their localization
-key with `(experimental)` rather than a guessed English name. Their masks are
-grounded. Runeword names and filters can be saved, loaded and edited, but searching
-is disabled while the native `filter_runeword` selector binding is unresolved.
-Their saved criteria stay separate from a request so no invented mask is sent.
+100 runewords. Of the 24 formerly unnamed identities, 23 are constructor
+`deprecated` placeholders and remain labeled deprecated; the other retains the
+exact untranslated key `w_throwing_darkmoon_deck`. Current availability is unverified.
+Runewords use the proved `filter_runeword` repository IDs 1–100, with an empty
+normal/unique mask list. The old 0–99 constructor cases map through a permutation,
+not a +1 offset. Codex entries keep their native IDs and type. Clearing or choosing
+a normal item omits the optional runeword field; neither 0 nor -1 is sent.
+Old runeword keys migrate through aliases to an explicit repository-ID namespace,
+preserving saved names and criteria. This native construction evidence does not
+prove present server matching or current-build parity.
 Saved criteria are durable independently of the current encoder for every known
 item. Older request-only entries recover their criteria from a validated request.
 Loading prefers those criteria and lets the current encoder construct the draft;
@@ -41,13 +46,22 @@ reused, still displays only its lowest two cards.
 Matching relies on the server. Unsupported game filter operators are not exposed.
 No automated purchase, polling, alert or pagination runs from saved entries.
 
-The stat picker accepts 381 evidenced numeric IDs: the original 167 native Market
+The stat picker exposes 381 evidenced IDs: the original 167 native Market
 menu entries and 214 additional entries suffixed `(experimental)`. Missing English
 labels remain `Stat N`. These are grounded keys from the retained native menu,
 label bindings and constructor setters; they are not a complete game enum or
 proof that the server honors every numeric clause. Minimum sockets keeps its
-separate native field. Shared validation and the real request builder accept
-these IDs consistently; arbitrary IDs remain rejected.
+separate native field. Skill identifier 185, contextual proc parameters 186/187,
+zone collection 347 and ten unresolved value shapes are discoverable but disabled
+as numeric minimums. Off-menu fields that are tables on the selected item are
+also disabled. Mixed scalar/table IDs retain their distinct per-item shapes;
+tables are never flattened into a minimum. Native menu controls remain available.
+Saved unsupported criteria remain editable and durable, show actionable guidance,
+and block dispatch until removed. Shape validation for storage stays separate from
+wire validation in renderer, main and the actual builder. Arbitrary IDs remain rejected.
+Six exact English item-stat joins add physical damage taken as Cold/Fire/Arcane/
+Lightning, Flask Skill Haste and Increased Experience Gain Below Level 100.
+Character-attribute IDs are a different namespace and are not joined.
 
 Catalog base ranges sit beside the filters on wide layouts and above the saved
 name on narrow layouts. The compact bordered card shows static base definitions
@@ -99,8 +113,10 @@ last. Loading/saving filters still never fetches results.
 - `shared/item-base-stat-catalog.ts` and its versioned data: sanitized static
   constructor facts, separate from listing reconstruction. Raw source, operands
   and extraction receipts remain private workspace evidence.
-- `shared/market-search.ts`: native and experimental stat options, shared criteria
-  validation, and proven normal/unique masks. Runeword encoding stays unresolved.
+- `shared/market-search.ts`: native and experimental stat discovery, separate
+  durable/wire validation, proven normal/unique masks and exclusive native targets.
+- `shared/runeword-market-catalog.ts`: versioned native selector permutation and
+  reversible legacy-key aliases; no invented masks.
 - `components/MarketListingDetails.vue`: variant/roll display with honest unknown
   and unidentified states.
 
@@ -123,4 +139,5 @@ independent of the reconstruction code.
 categories, later-setter regressions and distinct table/dynamic states.
 `market-grounded-stat-ids.ts` freezes the expected ID set without production
 imports. Real-App and Electron checks cover offline cloak ranges, experimental
-filter saving/search, pending runeword criteria, persistence and restart.
+filter saving/search, all 100 native selectors, old pending runeword criteria,
+metadata rejection before transport, repair, persistence and restart.

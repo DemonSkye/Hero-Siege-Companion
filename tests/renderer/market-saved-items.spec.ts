@@ -15,19 +15,56 @@ test("exact short item names rank before broad substring matches", () => {
   expect(marketItemSuggestions("Short Sword")[0]).toMatchObject({name:"Short Sword",key:"normal:3:1:0"});
 });
 
-test("all retained identities are discoverable, while unproved runeword selectors never become masks", () => {
+test("all retained identities are discoverable, and native runeword selectors never become masks", () => {
   expect(MARKET_ITEM_OPTIONS).toHaveLength(2035);
   expect(MARKET_ITEM_OPTIONS.filter(item => item.itemMask !== null)).toHaveLength(1935);
   expect(MARKET_ITEM_OPTIONS.filter(item => item.repository === "runeword")).toHaveLength(100);
   expect(MARKET_ITEM_OPTIONS.filter(item => item.experimental)).toHaveLength(24);
   expect(new Set(MARKET_ITEM_OPTIONS.map(item => item.key)).size).toBe(2035);
   expect(marketItemsForName("Codex of the Card Collector")[0]).toMatchObject({
-    key:"runeword:3:0:93",itemMask:null,typeLabel:"Codex · Runeword",
+    key:"runeword-repository:86",itemMask:null,runewordId:86,typeLabel:"Codex · Runeword",
   });
+  expect(marketItemsForName("Spelunker")[0]).toMatchObject({runewordId:88,typeLabel:"Consumable · Runeword"});
 });
 
-test("runeword filters survive save, reload, backup and undo while encoding remains blocked", async () => {
-  const searchMarket = vi.fn();
+test("deprecated and untranslated identities retain their keys and expose honest availability", () => {
+  const deprecated = MARKET_ITEM_OPTIONS.filter(item => item.name.startsWith("deprecated · definition"));
+  expect(deprecated).toHaveLength(23);
+  expect(deprecated.map(item=>item.key).sort()).toEqual(Array.from({length:23},(_,id)=>`unique:11:0:${id}`).sort());
+  expect(deprecated.every(item=>item.availabilityNotice?.includes("Deprecated definition"))).toBe(true);
+  const deck = MARKET_ITEM_OPTIONS.find(item=>item.key==="unique:3:16:13")!;
+  expect(deck).toMatchObject({name:"w_throwing_darkmoon_deck (experimental)",itemMask:1140862989});
+  const persisted=normalizeSavedMarketItems([{id:"legacy-placeholder",name:"Old item name",itemKey:"unique:11:0:3",request:{itemMask:1073786883,statFilters:[]}}]);
+  expect(persisted[0]).toMatchObject({id:"legacy-placeholder",name:"Old item name",itemKey:"unique:11:0:3"});
+});
+
+test("new semantic gaps preserve request-only saved filters through storage, restart and repair without implicit search", async()=>{
+  const searchMarket=vi.fn(async()=>({ok:true as const,result:{listings:[]}}));
+  const readiness=ref(companionState().marketReadiness);readiness.value.canSearch=true;
+  const search=useMarketSearchRuntime({searchMarket,readiness,now:ref(1000)});
+  const criteria={minSockets:4,statFilters:[{statId:185,minimum:103},{statId:271,minimum:10}]};
+  const normalized=normalizeSavedMarketItems([{id:"old",name:"Saved metadata",itemKey:"unique:1:0:100",request:{itemMask:1073746020,...criteria}}]);
+  expect(normalized).toEqual([{id:"old",name:"Saved metadata",itemKey:"unique:1:0:100",request:null,criteria}]);
+  const entries=ref<SavedMarketItem[]>(normalized),saved=useSavedMarketItems(entries,search);
+  saved.loadSaved("old");
+  expect(search.draftCriteria.value).toEqual(criteria);
+  expect(search.draftValid.value).toBe(true);
+  expect(search.canSearch.value).toBe(false);
+  expect(saved.saveDraft()).toBe(true);
+  const prefs=normalizePreferences({...defaultPreferences,savedMarketItems:entries.value});
+  expect(savePreferences(prefs)).toBe(true);
+  expect(loadPreferences().savedMarketItems).toEqual(normalized);
+  expect(importConfigurationPayload(createConfigurationExportPayload(prefs),defaultPreferences).uiPreferences.savedMarketItems).toEqual(normalized);
+  saved.deleteSaved("old");saved.undoDelete();saved.newSearch();saved.loadSaved("old");
+  await search.searchMarket();expect(searchMarket).not.toHaveBeenCalled();
+  search.removeStatFilter(search.statFilters.value[0].key);
+  expect(saved.saveDraft()).toBe(true);
+  await search.searchMarket();
+  expect(searchMarket).toHaveBeenCalledExactlyOnceWith({itemMask:1073746020,minSockets:4,statFilters:[{statId:271,minimum:10}]});
+});
+
+test("runeword filters survive save, reload, backup and undo and search only explicitly", async () => {
+  const searchMarket = vi.fn(async()=>({ok:true as const,result:{listings:[]}}));
   const readiness = ref(companionState().marketReadiness);
   readiness.value.canSearch = true;
   const search = useMarketSearchRuntime({searchMarket,now:ref(1000),readiness});
@@ -38,11 +75,9 @@ test("runeword filters survive save, reload, backup and undo while encoding rema
   search.addStatFilter(271);
   search.updateStatFilter(search.statFilters.value[0].key,{minimum:10});
   expect(saved.saveDraft()).toBe(true);
-  expect(saved.message.value).toContain("Runeword search encoding is not verified");
-  expect(entries.value[0]).toMatchObject({itemKey:"runeword:3:0:93",request:null,criteria:{statFilters:[{statId:271,minimum:10}]}});
+  expect(entries.value[0]).toMatchObject({itemKey:"runeword-repository:86",request:{runewordId:86,statFilters:[{statId:271,minimum:10}]},criteria:{statFilters:[{statId:271,minimum:10}]}});
   expect(search.draftValid.value).toBe(true);
-  expect(search.canSearch.value).toBe(false);
-  await search.searchMarket();
+  expect(search.canSearch.value).toBe(true);
   expect(searchMarket).not.toHaveBeenCalled();
   const prefs = normalizePreferences({...defaultPreferences,savedMarketItems:entries.value});
   expect(savePreferences(prefs)).toBe(true);
@@ -51,44 +86,65 @@ test("runeword filters survive save, reload, backup and undo while encoding rema
   expect(importConfigurationPayload(createConfigurationExportPayload(loaded),defaultPreferences).uiPreferences.savedMarketItems).toEqual(entries.value);
   saved.deleteSaved("legacy-0"); saved.undoDelete(); saved.newSearch(); saved.loadSaved("legacy-0");
   expect(search.draftCriteria.value).toEqual({statFilters:[{statId:271,minimum:10}]});
-  expect(saved.message.value).toContain("Runeword search encoding is not verified");
+  expect(searchMarket).not.toHaveBeenCalled();
+  await search.searchMarket();
+  expect(searchMarket).toHaveBeenCalledExactlyOnceWith({runewordId:86,statFilters:[{statId:271,minimum:10}]});
+});
+
+test("pending runeword criteria survive actual native-selector promotion and durable reload", () => {
+  const searchMarket = vi.fn();
+  const search = useMarketSearchRuntime({searchMarket,now:ref(1000),readiness:ref(companionState().marketReadiness)});
+  // Reconstructed old c02/ab8 schema3 record, where Grief's key used case1.
+  const persisted = [{id:"pending-grief",name:"Grief",itemKey:"runeword:3:0:1",request:null,
+    criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}}];
+  const promoted = normalizeSavedMarketItems(persisted);
+  const entries = ref<SavedMarketItem[]>(promoted);
+  const saved = useSavedMarketItems(entries,search);
+  expect(promoted[0]).toMatchObject({id:"pending-grief",name:"Grief",itemKey:"runeword-repository:81",
+    request:{runewordId:81,minSockets:4,statFilters:[{statId:271,minimum:10}]},
+    criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}});
+  expect(promoted[0].request).not.toHaveProperty("itemMask");
+  saved.loadSaved("pending-grief");
+  expect(search.draftRequest.value).toEqual({runewordId:81,minSockets:4,statFilters:[{statId:271,minimum:10}]});
+  expect(saved.saveDraft()).toBe(true);
+  const prefs=normalizePreferences({...defaultPreferences,savedMarketItems:entries.value});
+  expect(savePreferences(prefs)).toBe(true);
+  expect(loadPreferences().savedMarketItems).toEqual(promoted);
+  expect(normalizeSavedMarketItems(loadPreferences().savedMarketItems)).toEqual(promoted);
+  expect(importConfigurationPayload(createConfigurationExportPayload(prefs),defaultPreferences).uiPreferences.savedMarketItems).toEqual(promoted);
   expect(searchMarket).not.toHaveBeenCalled();
 });
 
-test("pending runeword criteria survive promotion to an identity with a separate native selector", () => {
-  const searchMarket = vi.fn();
-  const search = useMarketSearchRuntime({searchMarket,now:ref(1000),readiness:ref(companionState().marketReadiness)});
-  const entries = ref<SavedMarketItem[]>([]);
-  const saved = useSavedMarketItems(entries,search);
+test("switching runeword to normal and clearing drops selectors and stale in-flight results", async()=>{
+  let finish!: (value:{ok:true;result:{listings:{price:number}[]}})=>void;
+  const searchMarket=vi.fn(()=>new Promise<{ok:true;result:{listings:{price:number}[]}}>(resolve=>{finish=resolve;}));
+  const readiness=ref(companionState().marketReadiness);readiness.value.canSearch=true;
+  const runtime=useMarketSearchRuntime({searchMarket,readiness,now:ref(1000)});
+  const saved=useSavedMarketItems(ref([]),runtime);
   saved.selectItem(marketItemsForName("Grief")[0]);
-  search.updateMinSockets(4);
-  search.addStatFilter(271);
-  search.updateStatFilter(search.statFilters.value[0].key,{minimum:10});
-  expect(saved.saveDraft()).toBe(true);
-  const persisted = JSON.parse(JSON.stringify(entries.value));
-  expect(persisted[0]).toMatchObject({itemKey:"runeword:3:0:1",request:null,
-    criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}});
-
-  // Research v4 proves Grief's repository/selector ID81. This models a future
-  // catalog migration/encoder boundary, not enabled product search. No mask is
-  // supplied: runewords use filter_runeword independently of filter_masks.
-  const promotedIdentity = {key:"runeword-repository:81",filterRuneword:81};
-  const promoted = normalizeSavedMarketItems(persisted,key=>key==="runeword:3:0:1" ? promotedIdentity : null);
-  expect(promoted[0]).toMatchObject({id:persisted[0].id,name:"Grief",itemKey:"runeword-repository:81",request:null,
-    criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}});
-  expect(promoted[0]).not.toHaveProperty("itemMask");
-  // A subsequent encoder receives the original saved values after promotion.
-  expect({filter_runeword:promotedIdentity.filterRuneword,...promoted[0].criteria}).toEqual({
-    filter_runeword:81,minSockets:4,statFilters:[{statId:271,minimum:10}],
-  });
-  expect(searchMarket).not.toHaveBeenCalled();
+  expect(runtime.draftRequest.value).toEqual({runewordId:81,statFilters:[]});
+  const pending=runtime.searchMarket();
+  expect(searchMarket).toHaveBeenCalledExactlyOnceWith({runewordId:81,statFilters:[]});
+  saved.selectItem(marketItemsForName("Sharpshooter's Cloak")[0]);
+  expect(runtime.draftRequest.value).toEqual({itemMask:1073746020,statFilters:[]});
+  await runtime.searchMarket();expect(searchMarket).toHaveBeenCalledTimes(1);
+  finish({ok:true,result:{listings:[{price:999}]}});await pending;
+  expect(runtime.listings.value).toEqual([]);
+  expect(runtime.phase.value).toBe("idle");
+  saved.selectItem(marketItemsForName("Grief")[0]);
+  readiness.value={...readiness.value,contextVersion:2};
+  expect(runtime.listings.value).toEqual([]);
+  saved.newSearch();expect(runtime.draftRequest.value).toBeNull();
+  saved.selectItem(marketItemsForName("Short Sword")[0]);
+  expect(runtime.draftRequest.value).toEqual({itemMask:4206592,statFilters:[]});
+  expect(runtime.draftRequest.value).not.toHaveProperty("runewordId");
 });
 
 test("ready items retain criteria without a stored request and prefer them over stale encoded filters", () => {
   const criteria = {minSockets:4,statFilters:[{statId:271,minimum:10}]};
   const raw = {id:"future",name:"Cloak",itemKey:"unique:1:0:100",request:null,criteria};
   const entries = ref(normalizeSavedMarketItems([raw]));
-  expect(entries.value[0]).toEqual(raw);
+  expect(entries.value[0]).toEqual({...raw,request:{itemMask:1073746020,...criteria}});
   const searchMarket = vi.fn();
   const readiness = ref(companionState().marketReadiness);
   readiness.value.canSearch = true;
@@ -168,7 +224,7 @@ test("saved filters validate identities and values at load, stay editable offlin
   const preferences = normalizePreferences({ ...defaultPreferences, savedMarketItems: entries.value });
   expect(savePreferences(preferences)).toBe(true);
   expect(loadPreferences().savedMarketItems).toEqual(entries.value);
-  expect(normalizeSavedMarketItems([{ ...entries.value[0], request: { itemMask: 1, statFilters: [] } }])[0].request).toBeNull();
+  expect(normalizeSavedMarketItems([{ ...entries.value[0], request: { itemMask: 1, statFilters: [] } }])[0].request).toEqual({itemMask:1073746020,minSockets:3,statFilters:[{statId:64,minimum:9}]});
 });
 
 test("unresolved migrated names can be repaired in place without searching", () => {

@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const accepted = require("../fixtures/market-accepted-transformed.json");
+const { deflateSync } = require("node:zlib");
 const {
   createUserDataDir, cleanupUserDataDir, launchCompanionApp, closeCompanionApp,
   getStoredUiPreferences, getRendererState,
@@ -121,4 +122,112 @@ test("saved Market uses the accepted price page through real IPC, clears stale p
     if (session) await closeCompanionApp(session);
     cleanupUserDataDir(userDataDir);
   }
+});
+
+test("old pending runewords migrate through the native permutation and retain criteria across real restart",async()=>{
+  const userDataDir=createUserDataDir();let session;
+  try{
+    session=await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
+    // Reconstructed old schema3 pending entries from the prior candidate. No
+    // credentials or live response are used. Internal cases1/93 become IDs81/86.
+    await session.page.evaluate(()=>localStorage.setItem("hero-siege-companion:preferences:v1",JSON.stringify({
+      schemaVersion:3,shoppingListItems:["Grief","Codex of the Card Collector"],savedMarketItems:[
+        {id:"old-grief",name:"My Grief search",itemKey:"runeword:3:0:1",request:null,criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]}},
+        {id:"old-codex",name:"My Codex search",itemKey:"runeword:3:0:93",request:null,criteria:{statFilters:[]}},
+      ],
+    })));
+    await session.page.reload();await session.page.getByRole("tab",{name:"Market",exact:true}).click();
+    let workspace=session.page.locator(".market-workspace");
+    await workspace.locator(".market-saved-load").filter({hasText:"My Grief search"}).click();
+    await expect(workspace.locator(".market-chosen-item")).toContainText("Grief");
+    await expect(workspace.locator("#market-sockets")).toHaveValue("4");
+    await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
+    await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
+    await expect.poll(async()=>(await getStoredUiPreferences(session.page)).savedMarketItems?.[0]).toMatchObject({
+      id:"old-grief",name:"My Grief search",itemKey:"runeword-repository:81",
+      request:{runewordId:81,minSockets:4,statFilters:[{statId:271,minimum:10}]},criteria:{minSockets:4,statFilters:[{statId:271,minimum:10}]},
+    });
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
+    await session.page.evaluate(()=>window.heroSiegeCompanion.startCapture());
+    await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.emitSessionContext([123],[{
+      text:"api account_id=7-424242&unique_account_id=SYNTHETIC_ID&crossregion_identifier=SYNTHETIC_SESSION&season=11&hardcore=0&beta=0",
+      direction:"outbound",remoteAddress:"203.0.113.42",remotePort:26921,
+    }]));
+    // Existing accepted gloves response is a plumbing control, not proof that
+    // a server matches Grief. Production construction/reduction is retained.
+    await session.electronApp.evaluate((_electron,bytes)=>globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200,bytes),[...Buffer.from(accepted.response.bodyBase64,"base64")]);
+    await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();
+    await workspace.getByRole("button",{name:"Search market",exact:true}).click();
+    await expect(workspace.locator("tbody tr")).toHaveCount(20);
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestLastFilters())).toEqual({
+      filter_masks:"[]",filter_runeword:"81",filter_sockets_min:"4",stat_filter:"W3sic3RhdElkIjoyNzEsImZpbHRlciI6Miwic3RhdFZhbHVlIjoxMH1d",
+    });
+    await workspace.locator(".market-saved-load").filter({hasText:"My Codex search"}).click();
+    await expect(workspace.locator(".market-chosen-item")).toContainText("Codex of the Card Collector");
+    await expect(workspace.locator("tbody tr")).toHaveCount(0);
+    await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
+    expect((await getStoredUiPreferences(session.page)).savedMarketItems[1]).toMatchObject({
+      id:"old-codex",itemKey:"runeword-repository:86",request:{runewordId:86,statFilters:[]},criteria:{statFilters:[]},
+    });
+    await closeCompanionApp(session);session=await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
+    await session.page.getByRole("tab",{name:"Market",exact:true}).click();workspace=session.page.locator(".market-workspace");
+    await workspace.locator(".market-saved-load").filter({hasText:"My Grief search"}).click();
+    await expect(workspace.locator("#market-sockets")).toHaveValue("4");
+    await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
+    await expect(workspace.locator("tbody tr")).toHaveCount(0);
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
+    const prefs=await getStoredUiPreferences(session.page);
+    expect(prefs.shoppingListItems).toEqual(["Grief","Codex of the Card Collector"]);
+    expect(JSON.stringify(prefs)).not.toMatch(/SYNTHETIC|checksum|multipass|seller/);
+  }finally{if(session)await closeCompanionApp(session);cleanupUserDataDir(userDataDir);}
+});
+
+test("metadata saved criteria remain durable and visibly block numeric search until repaired",async()=>{
+  const userDataDir=createUserDataDir();let session;
+  try{
+    session=await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
+    await session.page.evaluate(()=>localStorage.setItem("hero-siege-companion:preferences:v1",JSON.stringify({schemaVersion:3,
+      shoppingListItems:["Sharpshooter's Cloak"],savedMarketItems:[{id:"metadata",name:"Preserved metadata",
+        itemKey:"unique:1:0:100",request:{itemMask:1073746020,minSockets:4,statFilters:[{statId:185,minimum:103},{statId:271,minimum:10}]}}],
+    })));
+    await session.page.reload();await session.page.getByRole("tab",{name:"Market",exact:true}).click();
+    let workspace=session.page.locator(".market-workspace");
+    await workspace.locator(".market-saved-load").filter({hasText:"Preserved metadata"}).click();
+    await expect(workspace).toContainText("These saved criteria are preserved, but cannot be sent as numeric minimums.");
+    await expect(workspace).toContainText("Skill identifier metadata cannot be searched as a roll minimum.");
+    await expect(workspace.getByRole("button",{name:"Save changes",exact:true})).toBeEnabled();
+    await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
+    await session.page.evaluate(()=>window.heroSiegeCompanion.startCapture());
+    await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.emitSessionContext([123],[{
+      text:"api account_id=7-424242&unique_account_id=SYNTHETIC_ID&crossregion_identifier=SYNTHETIC_SESSION&season=11&hardcore=0&beta=0",
+      direction:"outbound",remoteAddress:"203.0.113.42",remotePort:26921,
+    }]));
+    await expect.poll(async()=>(await getRendererState(session.page)).marketReadiness.canSearch).toBe(true);
+    await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeDisabled();
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
+    const preserved=(await getStoredUiPreferences(session.page)).savedMarketItems[0];
+    expect(preserved).toMatchObject({id:"metadata",itemKey:"unique:1:0:100",request:null,
+      criteria:{minSockets:4,statFilters:[{statId:185,minimum:103},{statId:271,minimum:10}]}});
+    await workspace.getByRole("button",{name:"Remove Triggered skill identifier (experimental)",exact:true}).click();
+    await workspace.locator("#market-stat-query").fill("Skill parameter");
+    const unsupported=workspace.locator(".market-options button").filter({hasText:"Skill parameter 186"});
+    await expect(unsupported).toBeDisabled();
+    await expect(unsupported).toContainText("meaning is verified only for Bob's Piece of Plywood");
+    await workspace.locator("#market-stat-query").fill("");
+    await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();
+    await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
+    const body=Buffer.from(JSON.stringify({status:1,itemCount:0,items:deflateSync(Buffer.from("[]")).toString("base64")}));
+    await session.electronApp.evaluate((_electron,bytes)=>globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200,bytes),[...body]);
+    await workspace.getByRole("button",{name:"Search market",exact:true}).click();
+    await expect(workspace.locator(".market-results")).toContainText("No matching price listings were returned");
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestLastFilters())).toEqual({
+      filter_masks:"[1073746020]",filter_runeword:null,filter_sockets_min:"4",stat_filter:"W3sic3RhdElkIjoyNzEsImZpbHRlciI6Miwic3RhdFZhbHVlIjoxMH1d",
+    });
+    await closeCompanionApp(session);session=await launchCompanionApp({userDataDir,marketTransport:true,gameRunning:false});
+    await session.page.getByRole("tab",{name:"Market",exact:true}).click();workspace=session.page.locator(".market-workspace");
+    await workspace.locator(".market-saved-load").filter({hasText:"Preserved metadata"}).click();
+    await expect(workspace.locator(".market-stat-row")).toHaveCount(1);
+    await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
+    expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
+  }finally{if(session)await closeCompanionApp(session);cleanupUserDataDir(userDataDir);}
 });

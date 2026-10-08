@@ -3,6 +3,7 @@ import {
   MARKET_SEARCH_MAX_STAT_FILTERS,
   MARKET_STAT_OPTIONS,
   marketStatOption,
+  marketStatMinimumIssue,
   normalizeMarketSearchRequest,
   normalizeMarketFilterCriteria,
   resolveMarketItemMask,
@@ -47,6 +48,7 @@ const MARKET_SEARCH_FAILURE_MESSAGES: Record<MarketSearchErrorCode, string> = {
 export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   const selectedItem = ref<Pick<ItemTimelineEntry, "label" | "rarity"> | null>(null);
   const selectedItemMask = ref<number | null>(null);
+  const selectedRunewordId = ref<number | null>(null);
   const minSockets = ref<number | null>(null);
   const statFilters = ref<MarketStatFilterDraft[]>([]);
   const phase = ref<MarketSearchPhase>("idle");
@@ -69,8 +71,14 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     });
     return normalized.ok ? normalized.criteria : null;
   });
-  const draftRequest = computed<MarketSearchRequest | null>(() => selectedItemMask.value === null || !draftCriteria.value
-    ? null : { itemMask: selectedItemMask.value, ...draftCriteria.value });
+  const draftTarget = computed(() => selectedRunewordId.value !== null ? {runewordId:selectedRunewordId.value}
+      : selectedItemMask.value !== null ? {itemMask:selectedItemMask.value} : null
+  );
+  const draftRequest = computed<MarketSearchRequest | null>(() => {
+    if (!draftCriteria.value || !draftTarget.value) return null;
+    const normalized = normalizeMarketSearchRequest({...draftTarget.value,...draftCriteria.value});
+    return normalized.ok ? normalized.request : null;
+  });
   const draftValid = computed(() => draftCriteria.value !== null);
 
   const cooldownRemainingSeconds = computed(() => Math.max(
@@ -93,17 +101,20 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   function openMarketDraft(item: Pick<ItemTimelineEntry, "label" | "rarity">, request: MarketSearchRequest): boolean {
     const normalized = normalizeMarketSearchRequest(request);
     if (!normalized.ok) return false;
-    return openMarketCatalogDraft(item, normalized.request.itemMask, normalized.request);
+    return openMarketCatalogDraft(item, normalized.request.itemMask ?? null, normalized.request, normalized.request.runewordId ?? null);
   }
 
   function openMarketCatalogDraft(item: Pick<ItemTimelineEntry, "label" | "rarity">,
-    itemMask: number | null, criteria: MarketFilterCriteria): boolean {
+    itemMask: number | null, criteria: MarketFilterCriteria, runewordId: number | null = null): boolean {
     const normalized = normalizeMarketFilterCriteria(criteria);
     if (!normalized.ok) return false;
-    if (itemMask !== null && !normalizeMarketSearchRequest({ itemMask, ...normalized.criteria }).ok) return false;
+    if ((itemMask !== null || runewordId !== null) && !normalizeMarketSearchRequest({
+      ...(itemMask===null ? {} : {itemMask}),...(runewordId===null ? {} : {runewordId}),statFilters:[],
+    }).ok) return false;
     requestGeneration += 1;
     selectedItem.value = item;
     selectedItemMask.value = itemMask;
+    selectedRunewordId.value = runewordId;
     minSockets.value = normalized.criteria.minSockets ?? null;
     statFilters.value = normalized.criteria.statFilters.map((filter) => ({
       key: `market-stat-${nextStatFilterKey++}`, ...filter,
@@ -116,6 +127,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
     requestGeneration += 1;
     selectedItem.value = null;
     selectedItemMask.value = null;
+    selectedRunewordId.value = null;
     minSockets.value = null;
     statFilters.value = [];
     resetResult();
@@ -129,6 +141,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   function addStatFilter(statId: number): void {
     if (statFilters.value.length >= MARKET_SEARCH_MAX_STAT_FILTERS) return;
     if (!marketStatOption(statId) || statFilters.value.some((filter) => filter.statId === statId)) return;
+    if (marketStatMinimumIssue(statId)) return;
     statFilters.value = [
       ...statFilters.value,
       { key: `market-stat-${nextStatFilterKey++}`, statId, minimum: null },
@@ -147,16 +160,9 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   }
 
   async function searchMarket(): Promise<void> {
-    if (!canSearch.value || selectedItemMask.value === null) return;
+    if (!canSearch.value) return;
 
-    const normalized = normalizeMarketSearchRequest({
-      itemMask: selectedItemMask.value,
-      ...(minSockets.value === null ? {} : { minSockets: minSockets.value }),
-      statFilters: statFilters.value.map((filter) => ({
-        statId: filter.statId as number,
-        minimum: filter.minimum as number,
-      })),
-    });
+    const normalized = normalizeMarketSearchRequest(draftRequest.value);
     if (!normalized.ok) {
       phase.value = "error";
       errorMessage.value = "Choose valid market filters before searching.";
@@ -238,6 +244,7 @@ export function useMarketSearchRuntime(options: MarketSearchRuntimeOptions) {
   return {
     selectedItem,
     draftRequest,
+    draftTarget,
     draftCriteria,
     draftValid,
     minSockets,

@@ -941,6 +941,7 @@ app.whenReady().then(async () => {
   updateCrashReportCaptureContext();
   installElectronE2eMainHooks({
     getMarketTestAttemptCount: () => marketTestRuntime?.attemptCount ?? 0,
+    getMarketTestLastFilters: () => marketTestRuntime?.getLastFilters() ?? null,
     setMarketTestResponse: (status, body) => marketTestRuntime?.setResponse(status, body),
     getSatanicZoneTestAttemptCount: () => satanicZoneTestRuntime?.attemptCount ?? 0,
     setSatanicZoneTestNetwork: network => satanicZoneTestRuntime?.setNetwork(network),
