@@ -5,6 +5,8 @@ import { marketContextFixture, marketSearchFixture } from "../fixtures/market";
 import type { DirectMarketWorkerResult } from "../../src/main/market-direct-response";
 import listingFixture from "../fixtures/market-listing-items.json";
 import type {MarketSearchRequest} from "../../src/shared/market-search";
+import { resolveMarketItemMask } from "../../src/shared/market-search";
+import { messageToEvents } from "../../src/shared/parser";
 
 afterEach(() => {
   vi.resetModules();
@@ -73,6 +75,22 @@ test("production worker dispatch constructs observed filters and posts a bounded
   });
   expect(JSON.parse(Buffer.from(form.get("stat_filter")!, "base64").toString("utf8"))).toEqual([{ statId: 64, filter: 2, statValue: 8 }]);
   expect(result.response).toEqual({ ok: true, result: { listings: [{ price: 200_000, unitPrice: 100_000 }, { price: 500_000 }, { price: 900_000 }], totalMatches: 3, returnedCount: 3 } });
+});
+
+test.each([undefined, 6])("minimum sockets %s is explicit and independent of native slot fields", async minimum => {
+  // Invented socket contents in a reconstructed compact shape. Presence of six
+  // fields does not supply a capacity or an implicit filter to the request.
+  const [event] = messageToEvents({ addedItemObject: { c: 1, b: 100, type: 1, a: 123, d: 1,
+    s1: null, s2: 0, s3: "", s4: { b: 123 }, s5: { b: 456 }, s6: "INVENTED_ENCODED_SOCKET" } });
+  const item = event.value;
+  const target = resolveMarketItemMask({ repository: item.repository, type: item.type, id: item.id, weaponType: item.weaponType });
+  expect(target).toEqual({ ok: true, itemMask: 1073746020 });
+  if (!target.ok) throw new Error(target.reason);
+  const { result, form } = await runWorker("empty", undefined, { itemMask: target.itemMask, statFilters: [],
+    ...(minimum === undefined ? {} : { minSockets: minimum }) });
+  expect(form.get("filter_sockets_min")).toBe(minimum === undefined ? null : "6");
+  expect(form.get("filter_masks")).toBe("[1073746020]");
+  expect(result.response).toEqual({ ok: true, result: { listings: [], totalMatches: 0, returnedCount: 0 } });
 });
 
 test("production worker serializes grounded experimental IDs once and retains checksum rejection", async () => {

@@ -96,7 +96,6 @@ export interface AddedItemObject {
   weaponType: number;
   marketId: number;
   mfDrop: number;
-  sockets: number;
   account: string;
 }
 
@@ -561,7 +560,8 @@ function parseAddedItemObject(
   options: { source: AddedItemObject["source"]; trustNamedIdentity: boolean },
 ): AddedItemObject {
   const rarity = getMessageField(item, ["rarity", "itemRarity", "item_rarity", "d"], 0) as string | number;
-  const sockets = [1, 2, 3, 4, 5, 6].filter((slot) => getMessageField(item, [`socket_${slot}`], undefined) !== undefined).length;
+  // Positional socket fields remain in the raw message; their presence proves
+  // neither socket capacity nor occupancy, so parsed metadata claims neither.
   const explicitName = String(getMessageField(item, ITEM_NAME_FIELDS, "")).trim();
   const fingerprintType = parseFingerprintType(fingerprint);
   const hasFingerprintType = fingerprintType !== null;
@@ -720,7 +720,6 @@ function parseAddedItemObject(
     weaponType,
     marketId: intMessageField(item, ["market_id", "marketId"]),
     mfDrop: intMessageField(item, ["mf_drop", "mfDrop", "m"]),
-    sockets,
     account: String(getMessageField(item, ["account", "accountId", "account_id"], "")),
   };
 }

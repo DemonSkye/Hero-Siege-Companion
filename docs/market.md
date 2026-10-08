@@ -58,6 +58,11 @@ reused, still displays only its lowest two cards.
 Matching relies on the server. Unsupported game filter operators are not exposed.
 No automated purchase, polling, alert or pagination runs from saved entries.
 
+Raw positional socket fields stay in the original message. Parsed pickup metadata
+does not infer capacity or occupancy from their presence. Minimum sockets remains
+an explicit user filter; static catalog ranges and verified listing rolls supply
+socket capacity independently.
+
 The stat picker exposes 383 evidenced IDs: the original 167 native Market
 menu entries and 216 additional entries suffixed `(experimental)`. Exact names,
 qualified role captions and unresolved `Stat N` names stay distinct. Search by

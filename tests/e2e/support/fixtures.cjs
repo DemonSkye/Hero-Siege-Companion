@@ -47,7 +47,6 @@ function e2eCaptureEvents() {
         weaponType: 1,
         marketId: 0,
         mfDrop: 1,
-        sockets: 0,
         account: "E2E Captured",
       },
       raw: {},

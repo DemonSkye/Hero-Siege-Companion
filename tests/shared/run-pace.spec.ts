@@ -229,7 +229,6 @@ function itemEvent(
       weaponType: 0,
       marketId: 0,
       mfDrop: 0,
-      sockets: 0,
       account: "Test Hero",
     },
   };
