@@ -1,6 +1,8 @@
 import { resolveItemDefinition } from "../shared/item-catalog";
-import { itemStatDefinition } from "../shared/item-stat-ranges";
+import { itemListingDefinition } from "../shared/item-listing-definition";
 import { sanitizeMarketListingItem, type MarketListingItem } from "../shared/market-listing-item";
+import { generateConstructorStats } from "./item-stat-generator";
+import { marketStatRole } from "../shared/market-stat-capabilities";
 
 /** Compact records stay in main. Fingerprint is read only for its type suffix. */
 export function projectMarketListingItem(itemData: unknown, fingerprint: unknown): MarketListingItem | null {
@@ -23,27 +25,27 @@ export function projectMarketListingItem(itemData: unknown, fingerprint: unknown
   const key = resolution.key;
   const itemKey = `${key.repository}:${key.type}:${key.weaponType}:${key.gameId}`;
   const item: MarketListingItem = { itemKey, identified: raw.c === 0 || raw.w === 1 };
-  const definition = itemStatDefinition(itemKey);
-  if (item.identified && definition?.verifiedListingRolls) {
-    // Scope exact checked flags and fail closed on additions: upgrades,
-    // corruption, subskills, random affixes and socket contents are untranslated.
-    const allowed = new Set(["a", "b", "c", "d", "e", "j", "m", "w", "sh"]);
-    const supported = Object.keys(raw).every(field => allowed.has(field))
-      && raw.d === definition.flags.d && raw.e === definition.flags.e
-      && raw.m === definition.flags.m && (raw.j ?? 0) === 0
-      && typeof raw.a === "number" && Number.isSafeInteger(raw.a) && raw.a >= 0 && raw.a <= 0x7fff_ffff;
-    if (supported) {
-      let state = raw.a as number;
-      const draw = () => { state = ((1789570533 * state + 465707) % 2147483648) & 1073741823; return state; };
-      const roll = (minimum: number, maximum: number) => minimum + Math.floor((Math.floor(maximum - minimum) + .99999) * (draw() / 1073741823));
-      const stats = [...definition.stats].sort((left, right) => String(left.statId) < String(right.statId) ? -1 : 1)
-        .filter(stat => stat.statId !== 20)
-        .map(stat => ({ statId: stat.statId, value: stat.kind === "scalar" ? stat.minimum : roll(stat.minimum, stat.maximum) }));
-      // Eight native preparation draws precede the late socket-capacity roll.
-      for (let index = 0; index < 8; index++) draw();
-      const sockets = definition.stats.find(stat => stat.statId === 20);
-      if (sockets) stats.push({ statId: 20, value: roll(sockets.minimum, sockets.maximum) });
-      item.stats = stats;
+  const definition = itemListingDefinition(itemKey);
+  if (item.identified && definition) {
+    const unavailable = (reason: NonNullable<MarketListingItem["unknownStats"]>[number]["reason"]) => {
+      item.unknownStats = definition.stats.map(stat => ({ statId: stat.statId, reason }));
+    };
+    const seedValid = typeof raw.a === "number" && Number.isSafeInteger(raw.a) && raw.a >= 0 && raw.a <= 0x7fff_ffff;
+    const allowed = new Set(["a", "b", "c", "d", "e", "j", "m", "w", "sh", "r", "p"]);
+    const flagsValid = [raw.d, raw.e, raw.m].every(value => value === undefined
+      || typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 0x7fff_ffff);
+    const modifiers = Object.keys(raw).some(field => !allowed.has(field))
+      || raw.r !== undefined && raw.r !== 0 || raw.p !== undefined && raw.p !== 0;
+    if (!seedValid) unavailable("invalid-seed");
+    else if (definition.helperGap) unavailable(definition.helperGap);
+    // LoadCommonItems and additional affix catalogs remain untranslated.
+    else if (!flagsValid || modifiers || raw.c === 0 || definition.optionalGeneration) unavailable("modifier");
+    else {
+      const generated = generateConstructorStats(raw.a as number, definition.stats, { incomplete: !definition.complete,
+        latePhaseUnknown: definition.stats.some(stat => ["talent-identifier", "class-identifier"].includes(marketStatRole(stat.statId)?.kind ?? "")),
+      });
+      item.stats = generated.stats;
+      item.unknownStats = generated.unknownStats;
     }
   }
   return sanitizeMarketListingItem(item);

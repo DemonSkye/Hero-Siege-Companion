@@ -19,7 +19,8 @@ const procFamilies = [
 ] as const;
 
 /** Presentation only: never changes numeric search identities or seed inputs. */
-export function marketCatalogStatRows(stats: readonly ItemBaseStat[], itemKey: string | null): MarketCatalogStatRow[] {
+export function marketCatalogStatRows(stats: readonly ItemBaseStat[], itemKey: string | null,
+  display: "catalog" | "listing" = "catalog"): MarketCatalogStatRow[] {
   const consumed = new Set<number>();
   const rows: MarketCatalogStatRow[] = [];
   const byId = new Map(stats.map(stat => [stat.statId, stat]));
@@ -59,7 +60,8 @@ export function marketCatalogStatRows(stats: readonly ItemBaseStat[], itemKey: s
     }
     rows.push({ key: stat.statId,
       label: role?.kind === "talent-identifier" ? "Selected talent" : marketStatFieldName(stat.statId, itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}`),
-      value: role?.kind === "talent-identifier" ? "Talent name unavailable" : `[${plainValue(stat)}]`, detail: role?.detail });
+      value: role?.kind === "talent-identifier" ? "Talent name unavailable"
+        : display === "catalog" ? `[${plainValue(stat)}]` : plainValue(stat), detail: role?.detail });
   }
   return rows.sort((left, right) => stats.findIndex(stat => stat.statId === left.key) - stats.findIndex(stat => stat.statId === right.key));
 }

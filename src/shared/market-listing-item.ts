@@ -1,14 +1,21 @@
 import { resolveItemDefinition } from "./item-catalog";
 import { itemStatDefinition } from "./item-stat-ranges";
+import { constructorProjectionGaps, itemListingDefinition, validConstructorStatValue } from "./item-listing-definition";
 
-export type MarketListingStatsReason = "unsupported-definition" | "unverified-definition" | "unsupported-variant" | "unidentified";
+export type MarketListingStatsReason = "unsupported-definition" | "unverified-definition" | "unsupported-variant" | "unidentified" | "constructor-helper";
+export type MarketListingStatReason = "constructor-value" | "prior-draw" | "native-stat-case" | "modifier"
+  | "tier-helper" | "constructor-helper" | "invalid-seed" | "invalid-projection" | "not-reconstructed";
 export interface MarketListingItem {
   itemKey: string;
   identified: boolean;
-  /** Only verified unmodified constructors; never the compact seed or hash. */
+  /** Safe constructor expansion; compact seeds, hashes and flags stay in main. */
   stats?: { statId: number; value: number }[];
+  unknownStats?: { statId: number; reason: MarketListingStatReason }[];
+  statsExperimental?: boolean;
   statsReason?: MarketListingStatsReason;
 }
+const reasons = new Set<MarketListingStatReason>(["constructor-value", "prior-draw", "native-stat-case", "modifier",
+  "tier-helper", "constructor-helper", "invalid-seed", "invalid-projection", "not-reconstructed"]);
 
 export function sanitizeMarketListingItem(value: unknown): MarketListingItem | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -20,23 +27,33 @@ export function sanitizeMarketListingItem(value: unknown): MarketListingItem | n
   if (resolveItemDefinition({ repository: repository as "normal" | "unique",
     type: Number(type), weaponType: Number(weaponType), gameId: Number(gameId) }).status !== "resolved") return null;
   const result: MarketListingItem = { itemKey: raw.itemKey, identified: raw.identified };
-  const definition = itemStatDefinition(raw.itemKey);
-  // Treat unknown/malformed stat projections as unavailable. Never silently
-  // drop one bad roll and label the remaining subset a reconstructed item.
-  if (raw.identified && definition?.verifiedListingRolls && Array.isArray(raw.stats) && raw.stats.length === definition.stats.length) {
-    const seen = new Set<number>();
-    const stats: NonNullable<MarketListingItem["stats"]> = [];
-    for (const candidate of raw.stats) {
-      if (!candidate || typeof candidate !== "object") break;
-      const range = definition.stats.find(stat => stat.statId === candidate.statId);
-      if (!range || seen.has(candidate.statId) || typeof candidate.value !== "number"
-        || !Number.isSafeInteger(candidate.value) || candidate.value < range.minimum || candidate.value > range.maximum) break;
-      seen.add(candidate.statId);
-      stats.push({ statId: candidate.statId, value: candidate.value });
+  // Identification remains presentation policy, never a PRNG input.
+  if (!raw.identified) return { ...result, statsReason: "unidentified" };
+  const definition = itemListingDefinition(raw.itemKey);
+  if (!definition) return { ...result, statsReason: "unsupported-definition" };
+  const stats: NonNullable<MarketListingItem["stats"]> = [];
+  const unknown: NonNullable<MarketListingItem["unknownStats"]> = [];
+  const candidates = Array.isArray(raw.stats) ? raw.stats.slice(0, 1024) : [];
+  const unavailable = Array.isArray(raw.unknownStats) ? raw.unknownStats.slice(0, 1024) : [];
+  const constructorGaps = constructorProjectionGaps(definition.stats, definition.complete);
+  for (const field of definition.stats) {
+    const matches = candidates.filter(candidate => candidate && typeof candidate === "object" && candidate.statId === field.statId);
+    const gaps = unavailable.filter(candidate => candidate && typeof candidate === "object" && candidate.statId === field.statId);
+    let reason: MarketListingStatReason | null = definition.helperGap
+      ?? (raw.itemKey.startsWith("normal:") || definition.optionalGeneration ? "modifier" : constructorGaps.get(field.statId) ?? null);
+    if (!reason && gaps.length === 1 && reasons.has(gaps[0].reason)) reason = gaps[0].reason;
+    if (!reason && matches.length === 1 && gaps.length === 0 && validConstructorStatValue(field, matches[0].value)) {
+      stats.push({ statId: field.statId, value: matches[0].value });
+      continue;
     }
-    if (stats.length === definition.stats.length) { result.stats = stats; return result; }
+    unknown.push({ statId: field.statId, reason: reason ?? (matches.length || gaps.length ? "invalid-projection" : "not-reconstructed") });
   }
-  result.statsReason = !raw.identified ? "unidentified" : !definition ? "unsupported-definition"
-    : !definition.verifiedListingRolls ? "unverified-definition" : "unsupported-variant";
+  if (stats.length) {
+    result.stats = stats;
+    if (!itemStatDefinition(raw.itemKey)?.verifiedListingRolls) result.statsExperimental = true;
+  }
+  if (unknown.length) result.unknownStats = unknown;
+  if (!stats.length) result.statsReason = definition.helperGap ? "constructor-helper"
+    : unknown.some(stat => ["modifier", "invalid-seed", "invalid-projection"].includes(stat.reason)) ? "unsupported-variant" : "unsupported-definition";
   return result;
 }

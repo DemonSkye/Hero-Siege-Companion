@@ -176,11 +176,17 @@ test("Market listing rolls, responsive alignment and saved state compose through
 for (const specimen of [
   { name: "Tiny Planet", slug: "tiny-planet", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-10",
     item_data: { c: 1, b: 92, j: 0, d: 1, e: 11, w: 1, a: 618478963 } },
-    catalog: "Increased Orbital Projectile Duration[15%–25%]", listing: "Listing rolls are not verified for this item" },
+    catalog: "Increased Orbital Projectile Duration[15%\u201325%]", listing: "Increased Orbital Projectile Duration22%", numeric: true },
   { name: "Bob's Piece of Plywood", slug: "bobs-plywood", row: fixture.specimens[1].row,
     catalog: "10% Chance when Struck: Chainsaw Massacre (Level 40)", listing: "10% Chance when Struck: Chainsaw Massacre (Level 40)" },
+  { name: "Lemon", slug: "lemon", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-3",
+    item_data: { c: 1, b: 0, j: 17, d: 1, e: 11, w: 1, a: 1000 } },
+    catalog: "Stat 23[1.25]", listing: "Stat 231.25", numeric: true },
+  { name: "Death Knight's Gauntlets", slug: "tier-glove", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-4",
+    item_data: { c: 1, b: 62, d: 24, e: 11, w: 1, a: 1000 } },
+    catalog: "Enhanced Damage per level[0.5%]", listing: "Listing stats unavailable", helper: true },
 ]) {
-  test(`${specimen.name} preserves its verified display scope through main and preload`, async () => {
+  test(`${specimen.name} preserves constructor confidence through main and preload`, async () => {
     const session = await launchCompanionApp({ marketTransport: true });
     try {
       await resize(session, 1380, 1000);
@@ -202,15 +208,25 @@ for (const specimen of [
       const listing = workspace.locator(".market-listing-details");
       await expect(listing).toContainText(specimen.listing);
       await expect(workspace).not.toContainText(/Triggered skill ID|Unknown stat 18[67]/);
-      if (specimen.slug === "tiny-planet") await expect(listing).not.toContainText(/Actual listing rolls|22%/);
-      else await expect(listing).toContainText("Strength27");
+      if (specimen.numeric) await expect(listing).toContainText("Reconstructed listing stats (experimental)");
+      else if (specimen.helper) {
+        await expect(listing.locator("summary")).toHaveText("9 fields unavailable");
+        await expect(listing.locator("details")).not.toHaveAttribute("open");
+        await listing.locator("summary").click();
+        await expect(listing.locator(".market-listing-stats li")).toHaveCount(9);
+        await expect(listing).toContainText("Tier effects unavailable");
+        await expect(listing).not.toContainText("0.5");
+      } else await expect(listing).toContainText("Strength27");
       await workspace.locator(".market-results").scrollIntoViewIfNeeded();
       await capture(session, `market-${specimen.slug}-wide-results`);
       await resize(session, 560, 1000);
       await workspace.locator(".market-results").scrollIntoViewIfNeeded();
       const name = `market-${specimen.slug}-narrow-results`;
       const bytes = await capture(session, name);
-      await expectPaintedText(session, listing.getByText(specimen.listing, { exact: true }), bytes, name);
+      const painted = specimen.numeric
+        ? listing.locator(".market-listing-stats li").filter({ hasText: specimen.listing })
+        : listing.getByText(specimen.listing, { exact: true });
+      await expectPaintedText(session, painted, bytes, name);
       expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
     } finally {
       await closeCompanionApp(session);

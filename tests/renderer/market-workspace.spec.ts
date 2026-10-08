@@ -410,7 +410,7 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
     expect(shield.text()).toContain("Actual listing rolls");
     expect(shield.findAll("li").find(row => row.text().startsWith("Mana439"))?.text()).toBe("Mana439");
     expect(shield.text()).toContain("Enhanced Defense124%");
-    expect(wrapper.findAll(".market-listing-item")[0].text()).toContain("Stats unknown for this item");
+    expect(wrapper.findAll(".market-listing-item")[0].text()).toContain("Listing stats unavailable");
     const results = wrapper.get(".market-results");
     expect(results.find("caption").exists()).toBe(false);
     expect(results.get(".market-results-footer").text()).toContain("Fetched at");
@@ -431,7 +431,7 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
 test.each([
   { name: "Tiny Planet", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-10",
     item_data: { c: 1, b: 92, j: 0, d: 1, e: 11, w: 1, a: 618478963 } },
-    catalog: "Increased Orbital Projectile Duration[15%–25%]", listing: "Listing rolls are not verified for this item" },
+    catalog: "Increased Orbital Projectile Duration[15%–25%]", listing: "Increased Orbital Projectile Duration22%" },
   { name: "Bob's Piece of Plywood", row: listingFixture.specimens[1].row,
     catalog: "10% Chance when Struck: Chainsaw Massacre (Level 40)", listing: "10% Chance when Struck: Chainsaw Massacre (Level 40)" },
 ])("$name presents grounded catalog data and independently verified listing information", async specimen => {
@@ -456,8 +456,8 @@ test.each([
     expect(listing.text()).toContain(specimen.listing);
     expect(wrapper.text()).not.toMatch(/Triggered skill ID|Unknown stat 18[67]|Triggered skill103/);
     if (specimen.name === "Tiny Planet") {
-      expect(listing.text()).not.toMatch(/Actual listing rolls|22%/);
-      expect(listing.findAll(".market-listing-stats li")).toHaveLength(0);
+      expect(listing.text()).toContain("Reconstructed listing stats (experimental)");
+      expect(listing.findAll(".market-listing-stats li")).toHaveLength(1);
     } else {
       expect(listing.text()).toContain("Actual listing rolls");
       expect(listing.text()).toContain("Strength27");

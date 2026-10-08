@@ -18,12 +18,12 @@ test.each(fixture.specimens)("reconstructs $name against separately observed too
   expect(changed?.stats).not.toEqual(result?.stats);
 });
 
-test("Tiny Planet keeps grounded ranges but withholds rolls lacking an independent tooltip oracle", () => {
+test("Tiny Planet expands retained constructor facts with explicit experimental confidence", () => {
   const item = projectMarketListingItem({ c: 1, b: 92, j: 0, d: 1, e: 11, w: 1, a: 618478963 }, "SYNTHETIC-0-0-10");
-  expect(item).toEqual({ itemKey: "unique:10:0:92", identified: true, statsReason: "unverified-definition" });
-  // A cached/forged projection cannot promote the recalled 22% value at IPC.
+  expect(item).toEqual({ itemKey: "unique:10:0:92", identified: true, stats: [{ statId: 266, value: 22 }], statsExperimental: true });
+  // Sanitization derives experimental confidence rather than trusting a cache flag.
   const result = sanitizeMarketSearchResult({ listings: [{ price: 1,
-    item: { itemKey: "unique:10:0:92", identified: true, stats: [{ statId: 266, value: 22 }] } }] });
+    item: { itemKey: "unique:10:0:92", identified: true, statsExperimental: false, stats: [{ statId: 266, value: 22 }] } }] });
   expect(result.listings[0].item).toEqual(item);
   expect(itemStatDefinition("unique:10:0:92")?.stats).toEqual([{
     statId: 266, name: "Increased Orbital Projectile Duration", minimum: 15, maximum: 25, kind: "range", unit: "percent",
@@ -35,12 +35,15 @@ test("does not reveal unidentified rolls or guess modified, corrupt or unsupport
   expect(projectMarketListingItem({ ...row.item_data, w: 0 }, row.fingerprint)).toEqual({
     itemKey: "unique:6:0:38", identified: false, statsReason: "unidentified",
   });
-  for (const patch of [{ q: 1 }, { zz: { sockets: 6 } }, { s1: {} }, { m: 0 }, { d: 5 }, { e: 10 },
-    { a: -1 }, { a: NaN }, { a: 2 ** 32 }, { j: 1 }, { unknownModifier: 0 }]) {
-    expect(projectMarketListingItem({ ...row.item_data, ...patch }, row.fingerprint)).toEqual({
-      itemKey: "unique:6:0:38", identified: true, statsReason: "unsupported-variant",
-    });
+  for (const patch of [{ q: 1 }, { zz: { sockets: 6 } }, { s1: {} }, { p: 1 }, { r: 1 },
+    { a: -1 }, { a: NaN }, { a: 2 ** 32 }, { unknownModifier: 0 }]) {
+    const projected = projectMarketListingItem({ ...row.item_data, ...patch }, row.fingerprint);
+    expect(projected).toMatchObject({ itemKey: "unique:6:0:38", identified: true, statsReason: "unsupported-variant" });
+    expect(projected?.stats).toBeUndefined();
+    expect(projected?.unknownStats).toHaveLength(9);
   }
+  for (const patch of [{ m: 0 }, { d: 5 }, { e: 10 }, { j: 1 }, { p: 0, r: 0 }])
+    expect(projectMarketListingItem({ ...row.item_data, ...patch }, row.fingerprint)?.stats).toEqual(projectMarketListingItem(row.item_data, row.fingerprint)?.stats);
   const captured = projectMarketListingItem(fixture.capturedRows[0].item_data, fixture.capturedRows[0].fingerprint);
   expect(captured?.itemKey).toBe("unique:4:0:62");
   expect(captured).not.toHaveProperty("stats");
@@ -73,7 +76,7 @@ test("compressed response, IPC allowlist and cache retain rolls without retainin
   expect(cache.get("fixture")?.result.listings[0].item?.stats?.[0].value).not.toBe(999);
 });
 
-test("malformed or partial IPC stat arrays cannot become plausible reconstructed rolls", () => {
+test("malformed or partial IPC fields remain explicitly unknown without discarding independent valid fields", () => {
   const { row } = fixture.specimens[0];
   const item = projectMarketListingItem(row.item_data, row.fingerprint)!;
   const malformed = [item.stats!.slice(1), [...item.stats!, item.stats![0]],
@@ -82,6 +85,11 @@ test("malformed or partial IPC stat arrays cannot become plausible reconstructed
   ];
   for (const stats of malformed) {
     const result = sanitizeMarketSearchResult({ listings: [{ price: 1, item: { ...item, stats, seller: "CANARY" } }] });
-    expect(result.listings[0].item).toEqual({ itemKey: "unique:6:0:38", identified: true, statsReason: "unsupported-variant" });
+    const projected = result.listings[0].item!;
+    expect(projected.stats).toHaveLength(8);
+    expect(projected.unknownStats).toEqual([{ statId: item.stats![0].statId,
+      reason: stats.length === 8 ? "not-reconstructed" : "invalid-projection" }]);
+    expect(projected.stats).not.toContainEqual(item.stats![0]);
+    expect(JSON.stringify(projected)).not.toContain("CANARY");
   }
 });

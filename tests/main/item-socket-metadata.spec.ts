@@ -81,7 +81,9 @@ test("independent catalog and verified listing capacity remain separate from raw
   // of the reconstruction implementation, whose seed remains in the fixture.
   const { row } = listingFixture.specimens[0];
   expect(projectMarketListingItem(row.item_data, row.fingerprint)?.stats?.find(stat => stat.statId === 20)?.value).toBe(4);
-  expect(projectMarketListingItem({ ...row.item_data, s1: { b: 123 } }, row.fingerprint)).toEqual({
+  expect(projectMarketListingItem({ ...row.item_data, s1: { b: 123 } }, row.fingerprint)).toMatchObject({
     itemKey: "unique:6:0:38", identified: true, statsReason: "unsupported-variant",
   });
+  expect(projectMarketListingItem({ ...row.item_data, s1: { b: 123 } }, row.fingerprint)?.unknownStats)
+    .toContainEqual({ statId: 20, reason: "modifier" });
 });

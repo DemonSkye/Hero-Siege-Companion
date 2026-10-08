@@ -208,5 +208,6 @@ test("actual worker entry preserves observed item rolls through the request/resp
   expect(result.response.result.listings.map(listing => listing.price)).toEqual([4000, 6000, 7000, 25000]);
   const projected = result.response.result.listings[3].item!;
   expect(Object.fromEntries(projected.stats!.map(stat => [stat.statId, stat.value]))).toEqual(listingFixture.specimens[0].expectedStats);
-  expect(result.response.result.listings[0].item).toEqual({ itemKey: "unique:4:0:62", identified: true, statsReason: "unsupported-definition" });
+  expect(result.response.result.listings[0].item).toMatchObject({ itemKey: "unique:4:0:62", identified: true, statsReason: "constructor-helper" });
+  expect(result.response.result.listings[0].item?.unknownStats).toHaveLength(9);
 });
