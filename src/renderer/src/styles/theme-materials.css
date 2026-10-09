@@ -99,7 +99,7 @@
 :root[data-theme] .compact-zone-tray {
   background:
     linear-gradient(180deg, rgb(var(--foreground-sheen-rgb) / calc(var(--foreground-sheen-alpha) * var(--foreground-sheen-scale))), transparent 72%),
-    var(--foreground-surface);
+    var(--surface);
   backdrop-filter: blur(var(--foreground-backdrop-blur)) saturate(var(--foreground-backdrop-saturation));
 }
 
@@ -116,7 +116,7 @@
 :root[data-theme] .aggregate-top-list div,
 :root[data-theme] .timeline-row,
 :root[data-theme] .log {
-  background: var(--foreground-surface-cell);
+  background: var(--surface-cell);
 }
 
 :root[data-theme] input,
@@ -131,7 +131,7 @@
 :root[data-theme] .item-filter-editor-grid input[type="number"],
 :root[data-theme] .item-filter-editor-grid select,
 :root[data-theme] .item-filter-specific-row select {
-  background: var(--foreground-input-bg);
+  background: var(--input-bg);
 }
 
 :root[data-theme] .compact-run-cover::before,

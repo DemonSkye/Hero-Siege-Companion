@@ -1,0 +1,23 @@
+/* Geometry is shared by all six themes. Color remains in the public theme tokens. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --control-height: 38px;
+  --control-height-small: 32px;
+  --type-caption: 12px;
+  --type-label: 13px;
+  --type-body: 14px;
+  --type-section: 18px;
+  --type-title: 26px;
+  --line-body: 1.5;
+  --focus-ring: var(--user-accent);
+  --status-danger-border: color-mix(in srgb, var(--danger) 42%, var(--border));
+  --elevation-panel: 0 6px 20px var(--shadow);
+  --elevation-dialog: 0 24px 64px var(--shadow);
+}

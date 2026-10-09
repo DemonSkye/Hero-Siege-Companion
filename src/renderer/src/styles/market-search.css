@@ -1,8 +1,10 @@
 .market-readiness {
   margin-bottom: 10px;
   padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-cell);
+  color: var(--app-text);
 }
 
 .market-readiness-label {
@@ -38,15 +40,16 @@
 .timeline-market-button {
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid rgba(224, 176, 83, 0.4);
-  border-radius: 7px;
-  background: rgba(224, 176, 83, 0.11);
-  color: #f0cc84;
+  border: 1px solid color-mix(in srgb, var(--accent-warm) 42%, var(--border));
+  border-radius: var(--radius-control);
+  background: var(--accent-warm-bg);
+  color: var(--accent-warm);
+  cursor: pointer;
 }
 
 .timeline-market-button:hover {
-  border-color: rgba(240, 204, 132, 0.7);
-  background: rgba(224, 176, 83, 0.18);
+  border-color: var(--accent-warm);
+  background: color-mix(in srgb, var(--accent-warm) 18%, var(--surface-strong));
 }
 
 .settings-panel.market-search-dialog {
@@ -68,9 +71,9 @@
 .market-search-results,
 .market-search-state {
   padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface-cell);
 }
 
 .market-search-base {
@@ -84,7 +87,7 @@
 .market-search-base small,
 .market-search-section-heading small,
 .market-search-actions small {
-  color: #aab3c2;
+  color: var(--app-muted);
 }
 
 .market-search-field,
@@ -104,6 +107,13 @@
 
 .market-search-sockets {
   max-width: 180px;
+}
+
+.market-search-sockets input {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
 }
 
 .market-search-section-heading,
@@ -184,13 +194,14 @@
 }
 
 .market-search-error {
-  border-color: rgba(222, 94, 94, 0.35);
-  color: #ffb8b8;
+  border-color: var(--status-danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .market-search-cache-note {
   margin: 0;
-  color: #aab3c2;
+  color: var(--app-muted);
   font-size: 0.82rem;
   line-height: 1.45;
 }
@@ -211,7 +222,28 @@
   gap: 5px;
   padding: 12px;
   border-radius: 8px;
-  background: rgba(224, 176, 83, 0.09);
+  border: 1px solid color-mix(in srgb, var(--accent-warm) 24%, var(--border));
+  background: var(--accent-warm-bg);
+  color: var(--app-text);
+}
+
+.market-search-price-grid article > span {
+  color: var(--app-muted);
+}
+
+.market-search-price-grid article > strong {
+  color: var(--accent-warm);
+}
+
+@media (max-width: 540px) {
+  .market-search-body {
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .market-search-base {
+    gap: var(--space-1);
+  }
 }
 
 .market-search-price-grid span {

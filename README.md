@@ -80,7 +80,7 @@ Compact mode is designed for playing with the companion on top of the game. It k
 
 ![Hero Siege Companion compact overlay](docs/assets/compact.png)
 
-Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. The compact title-bar gear is the only tile-layout editor: it applies default, loot, resource, or XP/kills presets; orders up to eight tiles; and adds exact-item or Filter Stack group counters. Duration remains included because run controls depend on it. The SZ timer opens passive zone details; no active Refresh control is shown.
+Click `This Run` in compact mode to open the run details cover. Use `Pause Run`, `Resume Run`, and `End Run` without expanding back to the full desktop view. The compact title-bar gear is the only tile-layout editor: it applies default, loot, resource, or XP/kills presets; orders up to eight tiles; and adds exact-item or Filter Stack group counters. Duration remains included because run controls depend on it. The SZ timer opens passive zone details; no active Refresh control is shown.
 
 ## Past Runs
 
