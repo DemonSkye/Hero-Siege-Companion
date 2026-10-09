@@ -68,14 +68,24 @@ test("shows intercepted Satanic Zone packets in the compact SZ details drawer", 
 
 async function readEffectColorsByTheme(page, proSelector, conSelector) {
   return page.evaluate(({ themes, proSelector: nextProSelector, conSelector: nextConSelector }) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext("2d");
+    function renderedColor(element) {
+      if (!element) return null;
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = getComputedStyle(element).color;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    }
     return themes.map((theme) => {
       document.documentElement.dataset.theme = theme;
       const pro = document.querySelector(`${nextProSelector} strong`);
       const con = document.querySelector(`${nextConSelector} strong`);
       return {
         theme,
-        proColor: pro ? getComputedStyle(pro).color : "",
-        conColor: con ? getComputedStyle(con).color : "",
+        proColor: renderedColor(pro),
+        conColor: renderedColor(con),
       };
     });
   }, { themes: THEME_IDS, proSelector, conSelector });
@@ -83,18 +93,13 @@ async function readEffectColorsByTheme(page, proSelector, conSelector) {
 
 function assertEffectColorsDistinct(colorReports, surface) {
   for (const report of colorReports) {
-    const proColor = rgbChannels(report.proColor);
-    const conColor = rgbChannels(report.conColor);
+    const proColor = report.proColor;
+    const conColor = report.conColor;
     expect(proColor, `${surface} ${report.theme} pro color`).not.toBeNull();
     expect(conColor, `${surface} ${report.theme} con color`).not.toBeNull();
     expect(colorDistance(proColor, conColor), `${surface} ${report.theme} pro/con color distance`)
       .toBeGreaterThan(80);
   }
-}
-
-function rgbChannels(color) {
-  const match = color.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
 function colorDistance(first, second) {
