@@ -73,6 +73,12 @@ describe("Vue component contracts", () => {
 
       await statMinimumInput.setValue("8");
       expect(wrapper.emitted("updateStatFilter")).toEqual([["market-stat-1", { minimum: 8 }]]);
+      await wrapper.setProps({ canSearch: true, cooldownRemainingSeconds: 0 });
+      const submit = wrapper.get<HTMLButtonElement>('button[type="submit"]');
+      expect(submit.element.form).toBe(wrapper.get("form").element);
+      expect(wrapper.get("form").element.contains(submit.element)).toBe(false);
+      await submit.trigger("click");
+      expect(wrapper.emitted("search")).toEqual([[]]);
     } finally {
       wrapper.unmount();
     }

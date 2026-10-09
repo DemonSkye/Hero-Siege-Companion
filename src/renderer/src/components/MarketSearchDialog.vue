@@ -104,7 +104,7 @@ function selectedStatName(statId: number | null): string {
       <button class="settings-close" type="button" aria-label="Close market search" @click="emit('close')">×</button>
     </div>
 
-    <form class="market-search-body" :aria-busy="phase === 'searching'" @submit.prevent="emit('search')">
+    <form id="market-search-form" class="market-search-body" :aria-busy="phase === 'searching'" @submit.prevent="emit('search')">
       <MarketReadinessStatus :readiness="readiness" />
       <div class="market-search-base">
         <span>Base item</span>
@@ -213,13 +213,12 @@ function selectedStatName(statId: number | null): string {
       <p v-if="phase === 'idle'" class="market-search-cache-note" role="note">
         Npcap capture supplies the current account and mode context. Market requests use a separate direct HTTPS connection and never modify the game’s traffic.
       </p>
-
-      <footer class="market-search-actions">
-        <small>Price ascending · up to 2 results</small>
-        <UiButton tone="primary" type="submit" :disabled="!canSearch">
-          {{ phase === "searching" ? "Searching…" : cooldownRemainingSeconds > 0 ? `Search in ${cooldownRemainingSeconds}s` : "Search market" }}
-        </UiButton>
-      </footer>
     </form>
+    <footer class="market-search-actions">
+      <small>Price ascending · up to 2 results</small>
+      <UiButton tone="primary" type="submit" form="market-search-form" :disabled="!canSearch">
+        {{ phase === "searching" ? "Searching…" : cooldownRemainingSeconds > 0 ? `Search in ${cooldownRemainingSeconds}s` : "Search market" }}
+      </UiButton>
+    </footer>
   </DialogShell>
 </template>
