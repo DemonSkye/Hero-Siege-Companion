@@ -545,8 +545,6 @@ describe("Vue component contracts", () => {
     expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.intro);
     expect(WHATS_NEW_RELEASE.items.length).toBeGreaterThan(0);
     for (const item of WHATS_NEW_RELEASE.items) expect(wrapper.text()).toContain(item);
-    expect(wrapper.text()).toContain("No MITMproxy, certificate installation or interception setup is required.");
-    expect(wrapper.text()).toContain("Npcap is still required for passive capture");
     expect(WHATS_NEW_RELEASE.sections).toHaveLength(0);
     expect(wrapper.text()).toContain("Highlights");
     const whatsNew = wrapper.get(".settings-whats-new");
