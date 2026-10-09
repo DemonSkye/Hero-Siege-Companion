@@ -2,7 +2,7 @@
 
 Local live-session tracking for Hero Siege on Windows.
 
-Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into the Live Session dashboard, Filter Stack for loot alerts, Market for saved item searches, and Report Desk for saved runs. A compact current-run overlay is also available. In 0.3.1, manual Satanic Zone Refresh is temporarily disabled; passive game-observed zone updates remain available.
+Hero Siege Companion passively watches local Hero Siege traffic, parses the game messages it understands, and turns them into the Live Session dashboard, Filter Stack for loot alerts, Market for saved item searches, and Report Desk for saved runs. A compact current-run overlay is also available. Manual Satanic Zone Refresh is temporarily disabled; passive game-observed zone updates remain available.
 
 > **Required before first launch:** install [Npcap](https://npcap.com/#download) so the companion can read local game traffic. The exact installer options are in [Required: Install Npcap](#required-install-npcap).
 
@@ -16,7 +16,7 @@ Download the latest Windows build from the GitHub Releases page:
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
 
-Current local release candidate: **0.3.1**, matching `package.json`. Native game/server compatibility still needs owner testing before publication.
+Current release: **0.4.0**, matching `package.json`. Native game/server compatibility still needs owner testing before publication.
 
 ## Quick Start
 
@@ -39,7 +39,7 @@ If capture loses session information or the observed game connection closes, Mar
 - Run pause/resume controls, including automatic run pause when capture stops.
 - Compact overlay mode for keeping the current run visible while playing, with tile presets and custom item/filter counters configured from the compact gear.
 - Satanic Zone name, reset countdown, pros, cons, and freshness status in both full and compact views.
-- Passive Satanic Zone effects and freshness remain available; manual Refresh and its sign-in settings are temporarily unavailable in 0.3.1.
+- Passive Satanic Zone effects and freshness remain available; manual Refresh and its sign-in settings are temporarily unavailable.
 - Market tab with catalog item selection, optional socket/stat minimums, saved filters and up to 20 gold-price listings from one returned page. Eligible Timeline drops open the same editor.
 - Filter Stack loot alerts with independently collapsible groups, concise rule/sound summaries, rarity/type rules, exact watched items, volume, cooldown, and prominent global mute.
 - Contextual Sound Library for built-in previews, imported local audio or zip soundpacks, usage-aware removal, and soundpack ZIP export; Filter Packs carry only the custom sounds their groups use.
@@ -62,7 +62,7 @@ Item Timeline and Live Log are collapsible dashboard fixtures. Ordinary card col
 
 Satanic Zone details in full and compact mode show zone names, pros, cons, observation age and expiry from the game's own captured traffic. Pausing run counters does not stop these updates. End Run clears the prior run's zone display; the next passive response repopulates it.
 
-Manual SZ Refresh and its sign-in settings are temporarily unavailable in 0.3.1 while native Market coexistence is investigated. The release does not initialize the independent SZ provider or restore saved sign-in data, and legacy enable/Refresh/cache calls are blocked. Existing saved preferences, ciphertext and unlocking keys are left untouched. This does not establish the cause of the native compatibility issue.
+Manual SZ Refresh and its sign-in settings are temporarily unavailable while native Market coexistence is investigated. The release does not initialize the independent SZ provider or restore saved sign-in data, and legacy enable/Refresh/cache calls are blocked. Existing saved preferences, ciphertext and unlocking keys are left untouched. This does not establish the cause of the native compatibility issue.
 
 ## Market and Saved Filters
 
@@ -80,7 +80,7 @@ Compact mode is designed for playing with the companion on top of the game. It k
 
 ![Hero Siege Companion compact overlay](docs/assets/compact.png)
 
-Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. The compact title-bar gear is the only tile-layout editor: it applies default, loot, resource, or XP/kills presets; orders up to eight tiles; and adds exact-item or Filter Stack group counters. Duration remains included because run controls depend on it. The SZ timer opens passive zone details; no active Refresh control is shown in 0.3.1.
+Click `This Run` in compact mode to open the run details cover. Use `Pause`, `Resume`, and `End Run` without expanding back to the full desktop view. The compact title-bar gear is the only tile-layout editor: it applies default, loot, resource, or XP/kills presets; orders up to eight tiles; and adds exact-item or Filter Stack group counters. Duration remains included because run controls depend on it. The SZ timer opens passive zone details; no active Refresh control is shown.
 
 ## Past Runs
 

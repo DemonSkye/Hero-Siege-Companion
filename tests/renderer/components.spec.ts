@@ -536,13 +536,9 @@ describe("Vue component contracts", () => {
 
     expect(wrapper.text()).toContain(`Hero Siege Companion ${WHATS_NEW_RELEASE.version}`);
     expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.title);
-    expect(wrapper.text()).toContain("Version 0.3.1 adds a dedicated Market workspace with saved item filters");
-    expect(wrapper.text()).toContain("Existing shopping-list entries migrate without losing their original names.");
-    expect(wrapper.text()).toContain("up to 20 gold-price listings from one page");
-    expect(wrapper.text()).toContain("Loading saved filters never searches automatically");
-    expect(wrapper.text()).toContain("Manual Satanic Zone Refresh and its sign-in settings are temporarily disabled.");
-    expect(wrapper.text()).toContain("Passive game-observed zone effects, freshness and expiry remain visible");
-    expect(wrapper.text()).toContain("Existing saved sign-in files are preserved.");
+    expect(wrapper.text()).toContain(WHATS_NEW_RELEASE.intro);
+    expect(WHATS_NEW_RELEASE.items.length).toBeGreaterThan(0);
+    for (const item of WHATS_NEW_RELEASE.items) expect(wrapper.text()).toContain(item);
     expect(wrapper.text()).toContain("No MITMproxy, certificate installation or interception setup is required.");
     expect(wrapper.text()).toContain("Npcap is still required for passive capture");
     expect(WHATS_NEW_RELEASE.sections).toHaveLength(0);
