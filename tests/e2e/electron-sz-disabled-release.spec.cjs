@@ -81,7 +81,7 @@ for (const profile of ["fresh", "saved-on", "automatic-cache"]) {
         await session.page.locator("#market-item-query").press("Enter");
         await session.electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(accepted.response.bodyBase64, "base64")]);
         await session.page.getByRole("button", { name: "Search market", exact: true }).click();
-        await expect(session.page.locator(".market-price-table tbody tr")).toHaveCount(20);
+        await expect(session.page.locator(".market-listing-card")).toHaveCount(20);
         expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
         expect(await attempts()).toBe(0);
         await session.page.getByRole("tab", { name: "Live Session", exact: true }).click();

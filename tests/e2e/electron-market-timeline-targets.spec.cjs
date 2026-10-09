@@ -54,7 +54,7 @@ for (const specimen of [
     await expect.poll(async()=>(await getRendererState(session.page)).marketReadiness.canSearch).toBe(true);
     await session.electronApp.evaluate((_electron,bytes)=>globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200,bytes),[...Buffer.from(accepted.response.bodyBase64,"base64")]);
     await workspace.getByRole("button",{name:"Search market",exact:true}).click();
-    await expect(workspace.locator("tbody tr")).toHaveCount(20);expect(await attempts()).toBe(1);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(20);expect(await attempts()).toBe(1);
     const form=await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestLastFilters());
     expect(form.filter_masks).toBe(specimen.mask);expect(form.filter_runeword).toBe(specimen.selector);
     expect(form.filter_sockets_min).toBe("4");
@@ -62,7 +62,7 @@ for (const specimen of [
       {statId:271,filter:2,statValue:10},{statId:351,filter:2,statValue:2},
     ]);
     await session.page.getByRole("tab",{name:"Live Session",exact:true}).click();await shortcut.click();
-    await expect(workspace.locator("tbody tr")).toHaveCount(0);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(0);
     await expect(workspace.getByRole("button",{name:/^Search in \d+s$/})).toBeDisabled();
     expect(await attempts()).toBe(1);
     await workspace.getByRole("button",{name:"New search",exact:true}).click();
@@ -77,7 +77,7 @@ for (const specimen of [
     await workspace.locator(".market-saved-load").filter({hasText:savedName}).click();
     await expect(workspace.locator("#market-sockets")).toHaveValue("4");await expect(workspace.locator(".market-stat-row")).toHaveCount(2);
     expect((await getStoredUiPreferences(session.page)).savedMarketItems.find(item=>item.name===savedName)?.request).toEqual(expected);
-    await expect(workspace.locator("tbody tr")).toHaveCount(0);expect(await attempts()).toBe(0);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(0);expect(await attempts()).toBe(0);
     expect(JSON.stringify(await getStoredUiPreferences(session.page))).not.toMatch(/SYNTHETIC|203\.0\.113|checksum|multipass|fingerprint/);
   } finally {if(session)await closeCompanionApp(session);cleanupUserDataDir(userDataDir);}
 });

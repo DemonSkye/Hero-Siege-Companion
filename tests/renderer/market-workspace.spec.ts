@@ -352,12 +352,12 @@ test("real tab handles unavailable, loading, rejected, empty and price states wh
     expect(reopened.get(".market-results").text()).toContain("Cached at");
     expect(reopened.get(".market-result-details").text()).toContain("server count 42");
     expect(reopened.get(".market-result-details").attributes("open")).toBeUndefined();
-    expect(reopened.findAll(".market-price-table tbody tr")).toHaveLength(20);
-    expect(reopened.findAll(".market-price-table tbody tr")[0].text()).toContain("200,000 gold");
+    expect(reopened.findAll(".market-listing-card")).toHaveLength(20);
+    expect(reopened.findAll(".market-listing-card")[0].text()).toContain("200,000 gold");
     expect(reopened.get(".market-result-details").text()).toContain("20 shown · 101 returned rows");
     expect(reopened.get(".market-results").text()).toContain("100,000 gold per unit");
     emit(companionState({ marketReadiness: { ...companionState().marketReadiness, contextVersion: 2 } })); await flushPromises();
-    expect(reopened.find(".market-price-table").exists()).toBe(false);
+    expect(reopened.find(".market-listing-grid").exists()).toBe(false);
   } finally { reopened.unmount(); }
 });
 
@@ -381,10 +381,10 @@ test("real Market results retain fractional unit prices without rounding small p
     await flushPromises();
     // Literal values are independent of the presentation formatter. These use
     // the test environment's existing en-US grouping/decimal convention.
-    expect(wrapper.findAll(".market-price-table .market-unit-price").map(cell => cell.text())).toEqual([
+    expect(wrapper.findAll(".market-listing-grid .market-unit-price").map(cell => cell.text())).toEqual([
       "0.5 gold per unit", "1,234.56789 gold per unit", "0.0000001 gold per unit", "100,000 gold per unit", "Unit price unavailable",
     ]);
-    expect(wrapper.findAll(".market-price-table tbody tr .market-total-price").map(cell => cell.text())).toEqual([
+    expect(wrapper.findAll(".market-listing-card .market-total-price").map(cell => cell.text())).toEqual([
       "300 gold", "600 gold", "900 gold", "1,200 gold", "1,500 gold",
     ]);
   } finally { wrapper.unmount(); }
@@ -446,7 +446,7 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
     expect(wrapper.get(".market-editor").text()).not.toContain("Actual listing rolls");
     emit(companionState({ marketReadiness: { ...companionState().marketReadiness, contextVersion: 2 } }));
     await flushPromises();
-    expect(results.find(".market-price-table").exists()).toBe(false);
+    expect(results.find(".market-listing-grid").exists()).toBe(false);
     expect(wrapper.get(".market-catalog-ranges").text()).toContain("Mana[300–450]");
     await wrapper.get(".market-chosen-item button").trigger("click");
     await wrapper.get("#market-item-query").setValue("Sharpshooter's Cloak");

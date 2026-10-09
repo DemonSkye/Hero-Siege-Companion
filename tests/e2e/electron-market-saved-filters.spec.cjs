@@ -92,8 +92,8 @@ test("saved Market uses the accepted price page through real IPC, clears stale p
     await expect(workspace.getByRole("button", { name: "Search market", exact: true })).toBeEnabled();
     await session.electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(accepted.response.bodyBase64, "base64")]);
     await workspace.getByRole("button", { name: "Search market", exact: true }).press("Enter");
-    await expect(workspace.locator("tbody tr")).toHaveCount(20);
-    const prices = await workspace.locator("tbody tr .market-total-price").allTextContents();
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(20);
+    const prices = await workspace.locator(".market-listing-card .market-total-price").allTextContents();
     expect(prices).toEqual([
       "4,000 gold", "6,000 gold", "7,000 gold", "10,000 gold", "11,000 gold", "12,000 gold", "13,000 gold", "14,000 gold",
       "15,000 gold", "15,000 gold", "20,000 gold", "20,000 gold", "20,000 gold", "20,000 gold", "28,888 gold",
@@ -103,7 +103,7 @@ test("saved Market uses the accepted price page through real IPC, clears stale p
     await expect(workspace.locator(".market-result-details")).not.toHaveAttribute("open");
     expect(await attemptCount()).toBe(1);
     await observe("12");
-    await expect(workspace.locator("tbody tr")).toHaveCount(0);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(0);
     await expect(workspace.locator(".market-chosen-item")).toContainText("Death Knight's Gauntlets");
     await observe("12", "7-424243");
     await workspace.locator(".market-saved-load").filter({ hasText: "Death Knight search" }).click();
@@ -114,7 +114,7 @@ test("saved Market uses the accepted price page through real IPC, clears stale p
     workspace = session.page.locator(".market-workspace");
     await workspace.locator(".market-saved-load").filter({ hasText: "Death Knight search" }).click();
     await expect(workspace.locator(".market-chosen-item")).toContainText("Death Knight's Gauntlets");
-    await expect(workspace.locator("tbody tr")).toHaveCount(0);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(0);
     expect(await attemptCount()).toBe(0);
     await expect(workspace.getByRole("button", { name: "Search market", exact: true })).toBeDisabled();
     expect(JSON.stringify(await getStoredUiPreferences(session.page))).not.toMatch(/SYNTHETIC|203\.0\.113|checksum|multipass|seller/);
@@ -158,13 +158,13 @@ test("old pending runewords migrate through the native permutation and retain cr
     await session.electronApp.evaluate((_electron,bytes)=>globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200,bytes),[...Buffer.from(accepted.response.bodyBase64,"base64")]);
     await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();
     await workspace.getByRole("button",{name:"Search market",exact:true}).click();
-    await expect(workspace.locator("tbody tr")).toHaveCount(20);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(20);
     expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestLastFilters())).toEqual({
       filter_masks:"[]",filter_runeword:"81",filter_sockets_min:"4",stat_filter:"W3sic3RhdElkIjoyNzEsImZpbHRlciI6Miwic3RhdFZhbHVlIjoxMH1d",
     });
     await workspace.locator(".market-saved-load").filter({hasText:"My Codex search"}).click();
     await expect(workspace.locator(".market-chosen-item")).toContainText("Codex of the Card Collector");
-    await expect(workspace.locator("tbody tr")).toHaveCount(0);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(0);
     await workspace.getByRole("button",{name:"Save changes",exact:true}).click();
     expect((await getStoredUiPreferences(session.page)).savedMarketItems[1]).toMatchObject({
       id:"old-codex",itemKey:"runeword-repository:86",request:{runewordId:86,statFilters:[]},criteria:{statFilters:[]},
@@ -174,7 +174,7 @@ test("old pending runewords migrate through the native permutation and retain cr
     await workspace.locator(".market-saved-load").filter({hasText:"My Grief search"}).click();
     await expect(workspace.locator("#market-sockets")).toHaveValue("4");
     await expect(workspace.locator(".market-stat-row input")).toHaveValue("10");
-    await expect(workspace.locator("tbody tr")).toHaveCount(0);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(0);
     expect(await session.electronApp.evaluate(()=>globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
     const prefs=await getStoredUiPreferences(session.page);
     expect(prefs.shoppingListItems).toEqual(["Grief","Codex of the Card Collector"]);

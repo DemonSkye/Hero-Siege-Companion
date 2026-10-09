@@ -75,7 +75,7 @@ async function assertMarketJourney({ electronApp, page }) {
   await expect(workspace.getByText("6,000 gold", { exact: true })).toBeVisible();
   await expect(workspace.locator(".market-result-details")).toContainText("server count 101");
   await expect(workspace.locator(".market-result-details")).not.toHaveAttribute("open");
-  await expect(workspace.locator("tbody tr")).toHaveCount(20);
+  await expect(workspace.locator(".market-listing-card")).toHaveCount(20);
   await expect(workspace.locator(".market-readiness").getByRole("status")).toHaveText("Market ready");
   await expect(workspace.getByRole("button", { name: /^Search in \d+s$/ })).toBeDisabled();
   expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);

@@ -8,7 +8,7 @@ import { marketCatalogStatRows, marketTriggeredSkillDescription, marketTriggered
 import { itemBaseStatMetadata } from "../../../shared/item-base-stat-catalog";
 import type { MarketListingStatReason } from "../../../shared/market-listing-item";
 
-const props = defineProps<{ item?: MarketListingItem }>();
+const props = defineProps<{ item?: MarketListingItem; rank?: number }>();
 const option = computed(() => marketItemByKey(props.item?.itemKey ?? null));
 const rarity = computed(() => lookupKnownItemRarity(0, option.value?.name));
 const definition = computed(() => itemStatDefinition(props.item?.itemKey ?? null));
@@ -36,10 +36,11 @@ const unknown = computed(() => props.item?.statsReason === "unidentified" ? "Uni
 <template>
   <div class="market-listing-details">
     <div class="market-listing-heading">
+      <span v-if="rank" class="market-listing-rank" aria-hidden="true">#{{ rank }}</span>
       <strong v-if="option">{{ rarity ? `${rarity} · ` : '' }}{{ option.typeLabel }}<span v-if="item && !item.identified"> · Unidentified</span></strong>
       <small v-else>Variant unavailable</small>
-      <small v-if="stats.length" class="market-listing-badge">{{ item?.statsExperimental ? 'Reconstructed listing stats (experimental)' : 'Actual listing rolls' }}</small>
     </div>
+    <small v-if="stats.length" class="market-listing-badge">{{ item?.statsExperimental ? 'Reconstructed listing stats (experimental)' : 'Actual listing rolls' }}</small>
     <template v-if="stats.length">
       <ul class="market-listing-stats">
         <li v-for="stat in stats" :key="stat.key"><span>{{ stat.label }}</span><strong>{{ stat.value ?? stat.detail }}</strong></li>

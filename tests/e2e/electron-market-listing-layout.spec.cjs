@@ -101,7 +101,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     await workspace.locator(".market-chosen-item").scrollIntoViewIfNeeded();
     await screenshot("market-known-wide-editor");
     await workspace.getByRole("button", { name: "Search market", exact: true }).click();
-    await expect(workspace.locator("tbody tr")).toHaveCount(3);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(3);
     const results = workspace.locator(".market-results");
     await expect(results.locator(".market-listing-item").first()).toContainText("Mana439");
     await expect(results.locator(".market-listing-item").first()).toContainText("Enhanced Defense124%");
@@ -118,8 +118,8 @@ test("Market listing rolls, responsive alignment and saved state compose through
         contentRight: box(".market-chosen-item").right, rangesRight: box(".market-catalog-ranges").right,
         socketRow: [box("#market-sockets-group").top, box("#market-sockets").top, box("#market-sockets-max").top, box("#market-sockets-max").bottom],
         sameRow: box("fieldset").top === box(".market-catalog-ranges").top,
-        title: box(".market-results-heading").bottom, table: box(".market-price-table").top,
-        footer: box(".market-results-footer").top, tableBottom: box(".market-price-table").bottom,
+        title: box(".market-results-heading").bottom, table: box(".market-listing-grid").top,
+        footer: box(".market-results-footer").top, tableBottom: box(".market-listing-grid").bottom,
         changeDistance: box(".market-chosen-item button").left - box(".market-chosen-item > div").right,
         savedNameWidth: box("#market-saved-name").width,
         actionsInside: ["button[type=submit]", "#market-saved-name", ".market-save-controls button"].every(selector => root.querySelector(".market-form-actions").contains(root.querySelector(selector))) };
@@ -142,7 +142,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     expect(wide.actionsInside).toBe(true);
     await screenshot("market-known-wide");
     await workspace.locator(".market-results").scrollIntoViewIfNeeded();
-    await expect(results.locator("tbody tr")).toHaveCount(3);
+    await expect(results.locator(".market-listing-card")).toHaveCount(3);
     await expect(results.locator(".market-listing-item").first()).toContainText("Mana439");
     await expect(results.locator(".market-listing-item").first()).toBeInViewport({ ratio: 1 });
     await screenshot("market-known-wide-results");
@@ -150,13 +150,15 @@ test("Market listing rolls, responsive alignment and saved state compose through
     const narrow = await workspace.evaluate(root => {
       const filter = root.querySelector("fieldset").getBoundingClientRect();
       const ranges = root.querySelector(".market-catalog-ranges").getBoundingClientRect();
-      const table = root.querySelector(".market-price-table");
+      const grid = root.querySelector(".market-listing-grid");
+      const cards = [...grid.children].map(card => card.getBoundingClientRect());
       return { stacked: ranges.top > filter.bottom, sameLeft: Math.abs(filter.left - ranges.left),
-        overflow: document.documentElement.scrollWidth > innerWidth, tableDisplay: getComputedStyle(table).display };
+        overflow: document.documentElement.scrollWidth > innerWidth, columns: new Set(cards.map(card => card.left)).size,
+        cardsStacked: cards.every((card, index) => index === 0 || card.top >= cards[index - 1].bottom) };
     });
-    expect(narrow).toEqual({ stacked: true, sameLeft: 0, overflow: false, tableDisplay: "block" });
+    expect(narrow).toEqual({ stacked: true, sameLeft: 0, overflow: false, columns: 1, cardsStacked: true });
     await workspace.locator(".market-results").scrollIntoViewIfNeeded();
-    await expect(results.locator("tbody tr")).toHaveCount(3);
+    await expect(results.locator(".market-listing-card")).toHaveCount(3);
     await expect(results.locator(".market-listing-item").first()).toContainText("Mana439");
     await expect(results.locator(".market-listing-item").first()).toBeInViewport({ ratio: 1 });
     const narrowBytes = await screenshot("market-known-narrow-results");
@@ -170,7 +172,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     expect(JSON.stringify(stored)).not.toMatch(/SYNTHETIC|fingerprint|370600734|"stats"|seller/);
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
     await ready("7-424243");
-    await expect(results.locator("tbody tr")).toHaveCount(0);
+    await expect(results.locator(".market-listing-card")).toHaveCount(0);
     await workspace.getByRole("button", { name: "Change item", exact: true }).click();
     await workspace.locator("#market-item-query").fill("Sharpshooter's Cloak");
     await workspace.locator("#market-item-query").press("Enter");
@@ -183,7 +185,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     await session.page.locator(".market-saved-load").filter({ hasText: "Shield stats" }).click();
     await expect(session.page.locator(".market-chosen-item")).toContainText("Battle Mage's Shield");
     await expect(session.page.locator(".market-catalog-ranges")).toContainText("Mana[300–450]");
-    await expect(session.page.locator("tbody tr")).toHaveCount(0);
+    await expect(session.page.locator(".market-listing-card")).toHaveCount(0);
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
   } finally {
     if (session) await closeCompanionApp(session);
@@ -257,27 +259,54 @@ test("wide Market editor keeps stat filters compact and results dense", async ()
     await expect(workspace.getByRole("button", { name: "Search market", exact: true })).toBeEnabled();
     await workspace.getByRole("button", { name: "Search market", exact: true }).click();
     const results = workspace.locator(".market-results");
-    await expect(results.locator("tbody tr")).toHaveCount(3);
+    await expect(results.locator(".market-listing-card")).toHaveCount(3);
     await expect(results.locator(".market-total-price")).toHaveText(["12,000 gold", "18,500 gold", "25,000 gold"]);
     await expect(results.locator(".market-listing-item").first()).toContainText("Enhanced Damage per level0.5%");
-    const dense = await results.evaluate(root => {
+    const grid = await results.evaluate(root => {
       const box = element => element.getBoundingClientRect();
-      const table = box(root.querySelector("table"));
-      const stats = root.querySelector(".market-listing-stats");
-      const cells = [...stats.children].map(box);
-      return { priceShare: box(root.querySelector(".market-listing-price")).width / table.width,
-        columns: getComputedStyle(stats).gridTemplateColumns.split(" ").length, cellWidth: Math.max(...cells.map(cell => cell.width)),
-        rowHeight: box(root.querySelector("tbody tr")).height, statCount: cells.length, cellHeight: cells[0].height,
+      const cards = [...root.querySelectorAll(".market-listing-card")];
+      const firstTop = box(cards[0]).top;
+      const firstRow = cards.filter(card => box(card).top === firstTop);
+      const statsInside = cards.flatMap(card => [...card.querySelectorAll(".market-listing-stats li")].map(row => {
+        const [name, value] = [row.firstElementChild, row.lastElementChild].map(box), frame = box(card);
+        return name.left >= frame.left && value.right <= frame.right && value.right - name.left <= frame.width;
+      }));
+      return { firstRow: firstRow.length, cardWidth: box(cards[0]).width, statsInside,
+        priceBottoms: firstRow.map(card => box(card.querySelector(".market-listing-price")).bottom),
         overflow: document.documentElement.scrollWidth > innerWidth };
     });
-    expect(dense.priceShare).toBeLessThan(0.2);
-    expect(dense.columns).toBeGreaterThanOrEqual(3);
-    expect(dense.cellWidth).toBeLessThan(480);
-    // A row needs only its stat grid's lines, not one line per stat.
-    expect(dense.rowHeight).toBeLessThan(dense.statCount * dense.cellHeight);
-    expect(dense.overflow).toBe(false);
+    expect(grid.firstRow).toBeGreaterThanOrEqual(3);
+    // Card width, not the results width, bounds how far a value sits from its name.
+    expect(grid.cardWidth).toBeLessThanOrEqual(432.5);
+    expect(grid.statsInside.length).toBeGreaterThan(0);
+    expect(grid.statsInside.every(Boolean)).toBe(true);
+    expect(new Set(grid.priceBottoms).size).toBe(1);
+    expect(grid.overflow).toBe(false);
     await results.scrollIntoViewIfNeeded();
     await capture(session, "market-wide-1900-results");
+    for (const width of [1700, 1400, 1100, 900, 761, 700, 560]) {
+      await resize(session, width, 1050);
+      const flow = await results.evaluate(root => {
+        const cards = [...root.querySelectorAll(".market-listing-card")].map(card => ({ card: card.getBoundingClientRect(),
+          price: card.querySelector(".market-listing-price").getBoundingClientRect() }));
+        const grid = root.querySelector(".market-listing-grid").getBoundingClientRect();
+        const rows = Object.values(Object.groupBy(cards, ({ card }) => Math.round(card.top)));
+        return { overflow: document.documentElement.scrollWidth > innerWidth, widest: Math.max(...cards.map(({ card }) => card.width)),
+          inside: cards.every(({ card }) => card.left >= grid.left - 0.5 && card.right <= grid.right + 0.5),
+          columns: new Set(cards.map(({ card }) => Math.round(card.left))).size,
+          alignedPrices: rows.every(row => new Set(row.map(({ price }) => Math.round(price.bottom))).size === 1) };
+      });
+      expect(flow.overflow, `${width}px`).toBe(false);
+      expect(flow.inside, `${width}px`).toBe(true);
+      expect(flow.alignedPrices, `${width}px`).toBe(true);
+      // Above the narrow breakpoint a card never stretches past its cap, even alone on a row.
+      if (width > 760) expect(flow.widest, `${width}px`).toBeLessThanOrEqual(432.5);
+      if (width <= 760) expect(flow.columns, `${width}px`).toBe(1);
+      if (width === 1100 || width === 560) {
+        await results.locator(".market-listing-grid").scrollIntoViewIfNeeded();
+        await capture(session, width === 1100 ? "market-medium-1100-results" : "market-narrow-560-results");
+      }
+    }
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
   } finally {
     await closeCompanionApp(session);

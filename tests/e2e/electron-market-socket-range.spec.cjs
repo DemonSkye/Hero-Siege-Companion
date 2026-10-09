@@ -78,7 +78,7 @@ test("socket ranges use actual worker fields, item-specific hints and transparen
       .toMatchObject({ ok: false, errorCode: "request_rejected" });
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
     await workspace.getByRole("button", { name: "Search market", exact: true }).click();
-    await expect(workspace.locator("tbody tr")).toHaveCount(20);
+    await expect(workspace.locator(".market-listing-card")).toHaveCount(20);
     expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestLastFilters())).toEqual({
       filter_masks: "[1073758226]", filter_runeword: null, filter_sockets_min: "2", filter_sockets_max: "4",
       stat_filter: "W3sic3RhdElkIjo2NCwiZmlsdGVyIjoyLCJzdGF0VmFsdWUiOjh9XQ==",

@@ -150,7 +150,7 @@ test("themes Market tab readiness, results and errors with semantic roles", asyn
     await electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(accepted.response.bodyBase64, "base64")]);
     await expect(search).toBeEnabled({ timeout: 20_000 });
     await search.click();
-    await expect(market.locator("tbody tr")).toHaveCount(20);
+    await expect(market.locator(".market-listing-card")).toHaveCount(20);
     const priceContrasts = [];
     for (const theme of THEMES) {
       await chooseTheme(page, theme);

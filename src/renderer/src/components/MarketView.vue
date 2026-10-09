@@ -281,16 +281,12 @@ function canAddFromCatalog(statId: number): boolean {
           <p v-if="phase === 'searching'" role="status">Searching current listings…</p>
           <template v-else-if="phase === 'error'"><p v-if="!readinessExplainsError" class="market-search-error" role="alert">{{ errorMessage }}</p></template>
           <template v-else-if="phase === 'success'">
-            <table v-if="listings.length" class="market-price-table">
-              <thead><tr><th scope="col" class="market-rank"><span aria-hidden="true">#</span><span class="sr-only">Listing</span></th><th scope="col">Item and stats</th><th scope="col" class="market-price-heading">Price</th></tr></thead>
-              <tbody>
-                <tr v-for="(listing, index) in listings" :key="index">
-                  <th scope="row" class="market-rank" data-label="Listing">{{ index + 1 }}</th>
-                  <td class="market-listing-item"><MarketListingDetails :item="listing.item" /></td>
-                  <td class="market-listing-price" data-label="Price"><strong class="market-total-price">{{ formatNumber(listing.price) }} gold</strong><small class="market-unit-price">{{ listing.unitPrice !== undefined ? `${unitPriceFormatter.format(listing.unitPrice)} gold per unit` : 'Unit price unavailable' }}</small></td>
-                </tr>
-              </tbody>
-            </table>
+            <ol v-if="listings.length" class="market-listing-grid" aria-label="Price listings">
+              <li v-for="(listing, index) in listings" :key="index" class="market-listing-card" :aria-label="`Listing ${index + 1}`">
+                <div class="market-listing-item"><MarketListingDetails :item="listing.item" :rank="index + 1" /></div>
+                <div class="market-listing-price"><strong class="market-total-price">{{ formatNumber(listing.price) }} gold</strong><small class="market-unit-price">{{ listing.unitPrice !== undefined ? `${unitPriceFormatter.format(listing.unitPrice)} gold per unit` : 'Unit price unavailable' }}</small></div>
+              </li>
+            </ol>
             <p v-else class="empty-copy">{{ returnedCount !== null && returnedCount > 0 ? 'The returned page had no readable price listings.' : 'No matching price listings were returned.' }} Try fewer minimums, then press Search.</p>
             <footer class="market-results-footer">
               <details class="market-result-details">
