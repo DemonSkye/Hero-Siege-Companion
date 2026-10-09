@@ -3,8 +3,8 @@ import type { CompanionState } from "../../../shared/app-state";
 import { MATERIAL_LIKE_TIMELINE_TYPES } from "../../../shared/constants";
 import { nextSatanicZoneBoundary } from "../../../shared/satanic-zone";
 import type { ItemDropCounter, ItemTimelineEntry } from "../../../shared/stats";
+import { compactPageDisplays as projectCompactPages, type CompactPageConfig } from "./compact-pages";
 import {
-  COMPACT_RUN_TILE_LIMIT,
   compactRunTileDisplay,
   standardTile,
   type CompactRunTileConfig,
@@ -26,7 +26,7 @@ import { projectDiagnosticLogs, projectPlayerChatEntries } from "./player-chat-d
 interface UseSessionDisplayOptions {
   state: Ref<CompanionState>;
   now: Ref<number>;
-  compactRunTiles: Ref<CompactRunTileConfig[]>;
+  compactPages: Ref<CompactPageConfig[]>;
   itemFilterGroups: Ref<ItemFilterGroup[]>;
   itemFilterMatchHistory: Ref<ItemFilterMatchHistoryEntry[]>;
   logLimit: Ref<number>;
@@ -47,7 +47,7 @@ const RUN_COMMAND_SCORE_TILES: CompactRunTileConfig[] = [
 export function useSessionDisplay({
   state,
   now,
-  compactRunTiles,
+  compactPages,
   itemFilterGroups,
   itemFilterMatchHistory,
   logLimit,
@@ -132,11 +132,7 @@ export function useSessionDisplay({
   const runScoreDisplays = computed(() =>
     RUN_COMMAND_SCORE_TILES.map((tile) => compactRunTileDisplay(tile, runTileDisplayContext.value)),
   );
-  const compactRunTileDisplays = computed(() =>
-    compactRunTiles.value
-      .map((tile) => compactRunTileDisplay(tile, runTileDisplayContext.value))
-      .slice(0, COMPACT_RUN_TILE_LIMIT),
-  );
+  const compactPageDisplays = computed(() => projectCompactPages(compactPages.value, runTileDisplayContext.value));
 
   return {
     captureStatusLabel,
@@ -144,7 +140,7 @@ export function useSessionDisplay({
     sessionDuration,
     currentGoldLabel,
     runScoreDisplays,
-    compactRunTileDisplays,
+    compactPageDisplays,
     runPausedLabel,
     canToggleRunPaused,
     nextZoneAt,

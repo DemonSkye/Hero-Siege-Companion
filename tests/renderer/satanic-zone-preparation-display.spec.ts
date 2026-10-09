@@ -11,14 +11,18 @@ describe("preparation guidance in the compact overlay", () => {
   test("Refresh opens zone details when ready; waiting shows the reason and cannot dispatch", async () => {
     const state = createInitialCompanionState(); state.satanicZone.refreshEnabled = true;
     state.satanicZone.refreshPreparation = { phase: "ready", expiresAt: null };
-    const wrapper = mount(CompactView, { props: { state, now: 1_000, showZone: false,
-      compactRunTileDisplays: [{ id: "sz", kind: "sz", label: "SZ", value: "--" }],
+    const wrapper = mount(CompactView, { props: { state, now: 1_000,
+      pages: [
+        { id: "run", name: "Run", kind: "tiles", tiles: [{ id: "sz", kind: "sz", label: "SZ", value: "--" }] },
+        { id: "zone", name: "Satanic Zone", kind: "zone", tiles: [] },
+      ],
+      navigation: { wheel: true, arrowKeys: true, pageKeys: true, wrap: true }, sessionDuration: "0:00", zoneCountdown: "--",
       runPausedLabel: "Paused", canToggleRunPaused: true, satanicZoneRefreshSubmitting: false } });
     await wrapper.get(".compact-zone-refresh-button").trigger("click");
     expect(wrapper.emitted("refreshSatanicZone")).toHaveLength(1);
-    expect(wrapper.emitted("update:showZone")?.[0]).toEqual([true]);
+    expect(wrapper.get(".compact-pager-title strong").text()).toBe("Satanic Zone");
     state.satanicZone.refreshPreparation = { phase: "waiting_connection", expiresAt: 121_000 };
-    await wrapper.setProps({ state: { ...state }, showZone: true });
+    await wrapper.setProps({ state: { ...state } });
     expect(wrapper.get('[data-preparation="waiting_connection"]').text()).toContain("You can keep playing");
     expect(wrapper.get(".compact-zone-refresh-button").attributes("aria-label")).toContain("Refresh Satanic Zone unavailable");
     expect(wrapper.get(".compact-zone-refresh-button").attributes("disabled")).toBeDefined();

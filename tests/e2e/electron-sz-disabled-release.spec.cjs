@@ -64,7 +64,7 @@ for (const profile of ["fresh", "saved-on", "automatic-cache"]) {
         await session.page.getByRole("button", { name: "Compact mode", exact: true }).click();
         await expect(session.page.locator(".compact-view")).toBeVisible();
         await expect(session.page.locator(".compact-zone-refresh-button")).toHaveCount(0);
-        await session.page.getByRole("button", { name: "SZ Details", exact: true }).click();
+        await session.page.getByRole("button", { name: "Show Satanic Zone page", exact: true }).click();
         await expect(session.page.locator(".compact-zone-effects")).toBeVisible();
         await expect(session.page.locator(".compact-zone-pros p")).toHaveCount(2);
         await session.page.getByRole("button", { name: "Exit compact mode", exact: true }).click();

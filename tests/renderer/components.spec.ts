@@ -193,48 +193,71 @@ describe("Vue component contracts", () => {
     expect(wrapper.emitted("ignore")).toHaveLength(1);
   });
 
-  test("CompactView keeps overlay numbers visible and emits shopping tray actions", async () => {
+  test("CompactView shows one titled page at a time and changes pages with wheel, keys and dots", async () => {
     const state = companionState();
+    const navigation = { wheel: true, arrowKeys: true, pageKeys: true, wrap: true };
+    const pages = [
+      { id: "run", name: "Run", kind: "tiles" as const, tiles: [
+        { id: "duration", kind: "duration" as const, label: "This Run", value: "10m", title: "Recording" },
+        { id: "gold", kind: "gold" as const, label: "Gold", value: "10,000", detail: "60,000/h", title: "Current 1,010,000 - 60,000/h" },
+        { id: "sz", kind: "sz" as const, label: "SZ", value: "20m", title: "Satanic zone details" },
+      ] },
+      { id: "loot", name: "Loot", kind: "tiles" as const, tiles: [
+        { id: "set", kind: "set" as const, label: "Set", value: "1", title: "Set drops" },
+      ] },
+      { id: "zone", name: "Satanic Zone", kind: "zone" as const, tiles: [] },
+    ];
     const wrapper = mount(CompactView, {
+      attachTo: document.body,
       props: {
-        state,
-        now: baseTime,
-        compactRunTileDisplays: [
-          { id: "duration", kind: "duration", label: "This Run", value: "10m", title: "Recording" },
-          { id: "gold", kind: "gold", label: "Gold", value: "10,000", title: "Current 1,010,000 - 60,000/h" },
-          { id: "xp", kind: "xp", label: "XP", value: "10.04m/h", title: "10,000 earned - 10,040,000/h" },
-          { id: "kills", kind: "kills", label: "Kills", value: "25", title: "25 kills - 150/h" },
-          { id: "sz", kind: "sz", label: "SZ", value: "20m", title: "Satanic zone details" },
-          { id: "set", kind: "set", label: "Set", value: "1", title: "Set drops" },
-          { id: "satanic", kind: "satanic", label: "Satanic", value: "2", title: "Satanic drops" },
-          { id: "heroic", kind: "heroic", label: "Heroic", value: "3", title: "Heroic drops" },
-        ],
-        runPausedLabel: "Paused",
-        canToggleRunPaused: true,
-        showZone: true,
-        satanicZoneRefreshSubmitting: false,
+        state, now: baseTime, pages, navigation, sessionDuration: "10:00", zoneCountdown: "20:00",
+        runPausedLabel: "Paused", canToggleRunPaused: true, satanicZoneRefreshSubmitting: false,
       },
     });
+    const title = () => wrapper.get(".compact-pager-title strong").text();
 
-    expect(wrapper.text()).toContain("This Run");
-    expect(wrapper.text()).toContain("Recording");
+    expect(title()).toBe("Run");
+    expect(wrapper.get(".compact-pager-count").text()).toBe("1/3");
     expect(wrapper.text()).toContain("10,000");
-    expect(wrapper.text()).toContain("Kills");
-    expect(wrapper.text()).toContain("Siege Fields");
-    expect(wrapper.find('.compact-zone-refresh-button').exists()).toBe(false);
-    expect(wrapper.find(".compact-zone-tile-with-refresh").exists()).toBe(false);
+    expect(wrapper.text()).toContain("60,000/h");
+    expect(wrapper.text()).not.toContain("Set");
+    expect(wrapper.find(".compact-zone-refresh-button").exists()).toBe(false);
 
-    await wrapper.get(".compact-zone-tray .compact-shopping-close").trigger("click");
-    await buttonByText(wrapper, "Pause Run").trigger("click");
-    await buttonByText(wrapper, "End Run").trigger("click");
-    await buttonByText(wrapper, "SZ Details").trigger("click");
-
+    await buttonByText(wrapper, "Pause").trigger("click");
+    await buttonByText(wrapper, "End").trigger("click");
     expect(wrapper.emitted("toggleRunPaused")).toHaveLength(1);
     expect(wrapper.emitted("endRun")).toHaveLength(1);
-    expect(wrapper.emitted("update:showZone")).toEqual([[false], [true]]);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown" }));
+    await nextTick();
+    expect(title()).toBe("Loot");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+    await nextTick();
+    expect(title()).toBe("Run");
+
+    await wrapper.get(".compact-tile-sz").trigger("click");
+    expect(title()).toBe("Satanic Zone");
+    expect(wrapper.text()).toContain("Siege Fields");
+    expect(wrapper.text()).toContain("20:00");
+
+    await wrapper.get(".compact-view").trigger("wheel", { deltaY: 120 });
+    expect(title()).toBe("Run");
+
+    await wrapper.findAll(".compact-page-dots button")[1].trigger("click");
+    expect(title()).toBe("Loot");
+
+    await wrapper.setProps({ navigation: { ...navigation, pageKeys: false, wrap: false } });
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown" }));
+    await nextTick();
+    expect(title()).toBe("Loot");
+    await wrapper.findAll(".compact-page-dots button")[2].trigger("click");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+    await nextTick();
+    expect(title()).toBe("Satanic Zone");
+    wrapper.unmount();
   });
 
-  test("CompactView places the opted-in refresh action beside the SZ clock and emits it after gating", async () => {
+  test("CompactView places the opted-in refresh action on the SZ tile and emits it after gating", async () => {
     const state = companionState();
     state.satanicZone = {
       ...state.satanicZone,
@@ -247,19 +270,20 @@ describe("Vue component contracts", () => {
       props: {
         state,
         now: baseTime,
-        compactRunTileDisplays: [
-          { id: "sz", kind: "sz", label: "SZ", value: "20m", title: "Satanic zone details" },
-        ],
+        pages: [{ id: "run", name: "Run", kind: "tiles" as const, tiles: [
+          { id: "sz", kind: "sz" as const, label: "SZ", value: "20m", title: "Satanic zone details" },
+        ] }],
+        navigation: { wheel: true, arrowKeys: true, pageKeys: true, wrap: true },
+        sessionDuration: "10:00",
+        zoneCountdown: "20:00",
         runPausedLabel: "Paused",
         canToggleRunPaused: true,
-        showZone: false,
         satanicZoneRefreshSubmitting: false,
       },
     });
 
-    const clock = wrapper.get(".compact-zone-clock");
-    expect(clock.element.parentElement?.classList.contains("compact-zone-tile-with-refresh")).toBe(true);
-    expect(clock.get("strong").text()).toBe("20m");
+    const clock = wrapper.get(".compact-tile-sz");
+    expect(clock.get(".compact-tile-value").text()).toBe("20m");
     const refreshButton = clock.get(".compact-zone-refresh-button");
     expect(refreshButton.attributes("disabled")).toBeDefined();
     expect(refreshButton.attributes("title")).toBe("Refresh available in 30s.");
@@ -290,12 +314,14 @@ describe("Vue component contracts", () => {
       props: {
         state,
         now: baseTime,
-        compactRunTileDisplays: [
-          { id: "sz", kind: "sz", label: "SZ", value: "20m", title: "Satanic zone details" },
-        ],
+        pages: [{ id: "run", name: "Run", kind: "tiles" as const, tiles: [
+          { id: "sz", kind: "sz" as const, label: "SZ", value: "20m", title: "Satanic zone details" },
+        ] }],
+        navigation: { wheel: true, arrowKeys: true, pageKeys: true, wrap: true },
+        sessionDuration: "10:00",
+        zoneCountdown: "20:00",
         runPausedLabel: "Paused",
         canToggleRunPaused: true,
-        showZone: false,
         satanicZoneRefreshSubmitting: false,
       },
     });

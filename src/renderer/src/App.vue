@@ -11,6 +11,7 @@ import LiveSessionHeader from "./components/LiveSessionHeader.vue";
 import UpdateBanner from "./components/UpdateBanner.vue";
 import WhatsNewPrompt from "./components/WhatsNewPrompt.vue";
 import { useToast } from "./lib/app-toast";
+import { compactPageTiles } from "./lib/compact-pages";
 import { compactFilterGroupRecoveryOptions } from "./lib/compact-tiles";
 import { useConfigurationBackupRuntime } from "./lib/configuration-backup-runtime";
 import { ITEM_TYPE_OPTIONS, shoppingAutocompleteNames } from "./lib/item-options";
@@ -70,7 +71,6 @@ const showSettings = ref(false);
 const approvedGameExecutablePath = ref("");
 const showCompactCustomization = ref(false);
 const settingsInitialTab = ref<SettingsTarget>("app");
-const showCompactZone = ref(false);
 const satanicZoneRefreshSubmitting = ref(false);
 const activeTab = ref<CompanionView>("live");
 const expandedLogIds = ref<Set<string>>(new Set());
@@ -110,7 +110,8 @@ const {
   itemFilterMuted,
   customItemFilterSounds,
   postRunReport,
-  compactRunTiles,
+  compactPages,
+  compactNavigation,
   hiddenDashboardPanels,
   liveRunGraphEnabledMetrics,
   liveRunGraphItemNames,
@@ -207,7 +208,8 @@ const {
 const {
   captureStatusLabel,
   runScoreDisplays,
-  compactRunTileDisplays,
+  compactPageDisplays,
+  sessionDuration,
   runPausedLabel,
   canToggleRunPaused,
   zoneCountdown,
@@ -223,7 +225,7 @@ const {
 } = useSessionDisplay({
   state,
   now,
-  compactRunTiles,
+  compactPages,
   itemFilterGroups,
   itemFilterMatchHistory,
   logLimit,
@@ -307,7 +309,7 @@ const legacyCompactThemeAvailable = computed(() => themeHasCustomization(
   compactThemeTextures.value,
   compactThemeForegroundFills.value,
 ));
-const recoverableCompactFilterGroups = computed(() => compactFilterGroupRecoveryOptions(compactRunTiles.value, itemFilterGroups.value));
+const recoverableCompactFilterGroups = computed(() => compactFilterGroupRecoveryOptions(compactPageTiles(compactPages.value), itemFilterGroups.value));
 const activeViewTitle = computed(() => COMPANION_VIEWS.find((tab) => tab.id === activeTab.value)?.label ?? "Live Session");
 const satanicZoneRefreshEnabled = computed({
   get: () => state.value.satanicZone.refreshEnabled,
@@ -657,10 +659,12 @@ function toggleLog(log: LogEntry) {
 
     <CompactView
       v-if="compactMode"
-      v-model:show-zone="showCompactZone"
       :state="state"
       :now="now"
-      :compact-run-tile-displays="compactRunTileDisplays"
+      :pages="compactPageDisplays"
+      :navigation="compactNavigation"
+      :session-duration="sessionDuration"
+      :zone-countdown="zoneCountdown"
       :run-paused-label="runPausedLabel"
       :can-toggle-run-paused="canToggleRunPaused"
       :satanic-zone-refresh-submitting="satanicZoneRefreshSubmitting"
@@ -882,7 +886,8 @@ function toggleLog(log: LogEntry) {
 
     <CompactCustomizeModal
       v-if="showCompactCustomization"
-      v-model:compact-run-tiles="compactRunTiles"
+      v-model:compact-pages="compactPages"
+      v-model:compact-navigation="compactNavigation"
       :item-filter-groups="itemFilterGroups"
       :item-suggestions="shoppingAutocompleteNames"
       :save-status="saveStatus"

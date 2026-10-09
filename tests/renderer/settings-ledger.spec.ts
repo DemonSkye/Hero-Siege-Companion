@@ -8,7 +8,7 @@ vi.mock("../../src/shared/release-features", () => ({ ACTIVE_SATANIC_ZONE_REFRES
 import type { CaptureDiagnosticsState } from "../../src/shared/app-state";
 import CompactCustomizeModal from "../../src/renderer/src/components/CompactCustomizeModal.vue";
 import SettingsModal from "../../src/renderer/src/components/SettingsModal.vue";
-import { cloneCompactRunTiles, defaultCompactRunTiles } from "../../src/renderer/src/lib/compact-tiles";
+import { cloneCompactPages, defaultCompactNavigation, defaultCompactPages } from "../../src/renderer/src/lib/compact-pages";
 import { THEME_OPTIONS } from "../../src/renderer/src/lib/themes";
 
 const captureDiagnostics: CaptureDiagnosticsState = {
@@ -279,39 +279,48 @@ describe("settings ledger", () => {
 });
 
 describe("compact customization", () => {
-  test("uses presets, an Add Tile menu, a selected list, and an Advanced custom-tile editor", async () => {
+  test("edits pages of up to four tiles, custom tiles, navigation inputs, presets and reset", async () => {
     const wrapper = mount(CompactCustomizeModal, {
       props: {
-        compactRunTiles: cloneCompactRunTiles(defaultCompactRunTiles),
+        compactPages: cloneCompactPages(defaultCompactPages),
+        compactNavigation: { ...defaultCompactNavigation },
         itemFilterGroups: [{ id: "merc", name: "Merc Items", enabled: true, soundId: "none", volume: 1, cooldownMs: 0, rarities: [], types: [], items: [] }],
         itemSuggestions: ["Mystic Soles"],
       },
     });
+    const lastPages = () => wrapper.emitted("update:compactPages")?.at(-1)?.[0] as typeof defaultCompactPages;
 
-    expect(wrapper.findAll(".compact-selected-list > li")).toHaveLength(defaultCompactRunTiles.length);
-    expect(wrapper.text()).not.toContain("Run dashboard tiles");
-    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0);
+    expect(wrapper.findAll(".compact-page-editor")).toHaveLength(defaultCompactPages.length);
+    expect(wrapper.findAll(".compact-page-editor").at(0)!.findAll(".compact-slot-grid select")).toHaveLength(4);
+    expect(wrapper.get(".compact-page-zone-note").text()).toContain("Satanic Zone");
 
-    await button(wrapper, "Add Tile").trigger("click");
-    await button(wrapper, "Keys").trigger("click");
-    const addedTiles = wrapper.emitted("update:compactRunTiles")?.[0]?.[0] as Array<{ kind: string }>;
-    expect(addedTiles.at(-1)?.kind).toBe("keys");
+    await wrapper.get('select[aria-label="Run tile 2"]').setValue("keys");
+    expect(lastPages()[0].tiles.map((tile) => tile.kind)).toEqual(["duration", "keys", "xp", "kills"]);
+    const gold = wrapper.get('select[aria-label="Run tile 1"]').findAll("option").map((option) => option.attributes("value"));
+    expect(gold).not.toContain("xp");
 
-    const customWrapper = mount(CompactCustomizeModal, {
-      props: {
-        compactRunTiles: cloneCompactRunTiles(defaultCompactRunTiles),
-        itemFilterGroups: [],
-        itemSuggestions: ["Mystic Soles"],
-      },
-    });
-    const advanced = customWrapper.get(".compact-advanced-tiles");
-    await advanced.get("summary").trigger("click");
-    await button(customWrapper, "Add Custom Tile").trigger("click");
-    const customTiles = customWrapper.emitted("update:compactRunTiles")?.at(-1)?.[0] as Array<{ kind: string }>;
-    expect(customTiles.at(-1)?.kind).toBe("custom");
+    await wrapper.setProps({ compactPages: lastPages() });
+    await wrapper.get('select[aria-label="Run tile 4"]').setValue("custom");
+    expect(lastPages()[0].tiles.at(-1)?.kind).toBe("custom");
+    await wrapper.setProps({ compactPages: lastPages() });
+    expect(wrapper.find(".compact-custom-ledger-row").exists()).toBe(true);
+
+    await button(wrapper, "Add Page").trigger("click");
+    expect(lastPages()).toHaveLength(4);
+    expect(lastPages().at(-1)).toMatchObject({ kind: "tiles", tiles: [] });
+
+    const wheel = wrapper.findAll(".compact-navigation-option input").at(0)!;
+    await wheel.setValue(false);
+    expect(wrapper.emitted("update:compactNavigation")?.at(-1)?.[0]).toMatchObject({ wheel: false, arrowKeys: true });
+
+    await wrapper.findAll(".compact-preset-button").find((preset) => preset.get("strong").text() === "Single Page")!.trigger("click");
+    expect(wrapper.text()).toContain("Use Single Page?");
+    await button(wrapper, "Replace Pages").trigger("click");
+    expect(lastPages().map((page) => page.name)).toEqual(["Run"]);
 
     await button(wrapper, "Reset Layout…").trigger("click");
     await button(wrapper, "Reset Layout").trigger("click");
     expect(wrapper.emitted("reset")).toHaveLength(1);
+    expect(lastPages().map((page) => page.name)).toEqual(["Run", "Loot", "Satanic Zone"]);
   });
 });

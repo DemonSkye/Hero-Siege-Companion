@@ -50,8 +50,8 @@ test("shows intercepted Satanic Zone packets in the compact SZ details drawer", 
     const compactWindow = await getMainWindowState(electronApp);
     expect(compactWindow.compactMode).toBe(true);
 
-    await page.getByRole("button", { name: "SZ Details" }).click();
-    const drawer = page.getByLabel("Satanic zone details");
+    await page.getByRole("button", { name: "Show Satanic Zone page" }).click();
+    const drawer = page.locator(".compact-zone-page");
     await expect(drawer).toBeVisible();
     await expect(drawer).toContainText(/Act 1/);
     await expect(drawer).toContainText("Pros");
@@ -61,8 +61,11 @@ test("shows intercepted Satanic Zone packets in the compact SZ details drawer", 
       "compact Satanic Zone",
     );
 
-    await drawer.getByRole("button", { name: "Dismiss zone details" }).click();
+    await page.keyboard.press("Home");
     await expect(drawer).toHaveCount(0);
+    await page.mouse.move(120, 140);
+    await page.mouse.wheel(0, -120);
+    await expect(drawer).toBeVisible();
   });
 });
 

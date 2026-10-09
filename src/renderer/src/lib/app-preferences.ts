@@ -1,5 +1,5 @@
 import { ref, type Ref } from "vue";
-import { normalizeCompactRunTiles } from "./compact-tiles";
+import { normalizeCompactNavigation, normalizeCompactPages } from "./compact-pages";
 import { isHideableLiveDashboardFixture, type HideableLiveDashboardFixture } from "./dashboard-fixtures";
 import {
   normalizeCustomItemFilterSounds,
@@ -49,7 +49,8 @@ export function useAppPreferences() {
   const itemFilterMuted = ref(initial.itemFilterMuted);
   const customItemFilterSounds = ref(initial.customItemFilterSounds);
   const postRunReport = ref(initial.postRunReport);
-  const compactRunTiles = ref(initial.compactRunTiles);
+  const compactPages = ref(initial.compactPages);
+  const compactNavigation = ref(initial.compactNavigation);
   const hiddenDashboardPanels = ref<HideableLiveDashboardFixture[]>(
     initial.hiddenDashboardPanels.filter(isHideableLiveDashboardFixture),
   );
@@ -80,7 +81,8 @@ export function useAppPreferences() {
     itemFilterMuted,
     customItemFilterSounds,
     postRunReport,
-    compactRunTiles,
+    compactPages,
+    compactNavigation,
     hiddenDashboardPanels,
     liveRunGraphEnabledMetrics,
     liveRunGraphItemNames,
@@ -113,7 +115,8 @@ export function useAppPreferences() {
       itemFilterMuted: itemFilterMuted.value,
       customItemFilterSounds: customItemFilterSounds.value,
       postRunReport: postRunReport.value,
-      compactRunTiles: compactRunTiles.value,
+      compactPages: compactPages.value,
+      compactNavigation: compactNavigation.value,
       hiddenDashboardPanels: hiddenDashboardPanels.value,
       liveRunGraphEnabledMetrics: liveRunGraphEnabledMetrics.value,
       liveRunGraphItemNames: liveRunGraphItemNames.value,
@@ -148,7 +151,8 @@ export function useAppPreferences() {
     itemFilterGroups.value = normalizeItemFilterGroups(next.itemFilterGroups, customItemFilterSounds.value);
     itemFilterMuted.value = next.itemFilterMuted;
     postRunReport.value = normalizePostRunReportConfig(next.postRunReport);
-    compactRunTiles.value = normalizeCompactRunTiles(next.compactRunTiles);
+    compactPages.value = normalizeCompactPages(next.compactPages);
+    compactNavigation.value = normalizeCompactNavigation(next.compactNavigation);
     hiddenDashboardPanels.value = next.hiddenDashboardPanels.filter(isHideableLiveDashboardFixture);
     liveRunGraphEnabledMetrics.value = normalizeLiveRunGraphEnabledMetrics(next.liveRunGraphEnabledMetrics);
     liveRunGraphItemNames.value = normalizeLiveRunGraphItemNames(next.liveRunGraphItemNames);
@@ -184,7 +188,8 @@ export function useAppPreferences() {
     itemFilterMuted,
     customItemFilterSounds,
     postRunReport,
-    compactRunTiles,
+    compactPages,
+    compactNavigation,
     hiddenDashboardPanels,
     liveRunGraphEnabledMetrics,
     liveRunGraphItemNames,

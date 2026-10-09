@@ -110,7 +110,7 @@ describe("full configuration backups", () => {
         themeAccents: { ...DEFAULT_THEME_ACCENTS, voidglass: "#123456" },
         itemFilterGroups: [itemFilterGroup({ id: "imported", name: "Imported" })],
         customItemFilterSounds: [],
-        compactRunTiles: defaultPreferences.compactRunTiles,
+        compactRunTiles: [{ id: "duration", kind: "duration" }, { id: "keys", kind: "keys" }],
       },
       runArchivePreferences: { skipEmptyRuns: false, minDurationMinutes: 30 },
       capturePreferences: { captureWideLogging: true },
@@ -123,6 +123,8 @@ describe("full configuration backups", () => {
     });
 
     const restored = importConfigurationPayload(legacy, current).uiPreferences;
+    expect(restored.compactPages.map((page) => [page.name, page.tiles.map((tile) => tile.kind)]))
+      .toEqual([["Run", ["duration", "keys"]], ["Satanic Zone", []]]);
     expect(restored.launchThroughSteam).toBe(false);
     expect(restored.alwaysOnTop).toBe(false);
     expect(restored.showCaptureDetails).toBe(false);

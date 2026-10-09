@@ -326,7 +326,7 @@ export function formatCompactNumber(value: number): string {
   return String(Math.trunc(value || 0));
 }
 
-function normalizeCompactRunTile(value: unknown): CompactRunTileConfig | null {
+export function normalizeCompactRunTile(value: unknown): CompactRunTileConfig | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Partial<CompactRunTileConfig>;
   const kind = String(candidate.kind ?? candidate.id ?? "").trim().toLowerCase() as CompactRunTileKind;
@@ -345,7 +345,7 @@ function normalizeCompactRunTile(value: unknown): CompactRunTileConfig | null {
   };
 }
 
-function cleanLabel(value: unknown): string {
+export function cleanLabel(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 24) : "";
 }
 

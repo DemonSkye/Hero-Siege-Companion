@@ -10,6 +10,7 @@
 
 .compact-customize-content {
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 14px;
   min-height: 0;
@@ -201,4 +202,139 @@
 .settings-action-dialog :is(button, input, select):focus-visible {
   outline: 2px solid var(--button-primary);
   outline-offset: 2px;
+}
+
+.compact-page-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+}
+
+.compact-page-editor {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-cell);
+}
+
+.compact-page-editor-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(120px, 0.6fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.compact-page-editor-head .compact-selected-position {
+  margin-bottom: 4px;
+}
+
+.compact-page-editor label,
+.compact-slot-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.compact-page-editor input[type="text"],
+.compact-page-editor select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+}
+
+.compact-page-editor .compact-custom-ledger-row select,
+.compact-page-editor .compact-custom-ledger-row input[type="text"] {
+  min-width: 0;
+}
+
+.compact-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compact-slot-grid label.empty select {
+  color: var(--app-muted);
+}
+
+.compact-page-zone-note {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.compact-navigation-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.compact-navigation-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-cell);
+  cursor: pointer;
+}
+
+.compact-navigation-option input {
+  margin: 2px 0 0;
+}
+
+.compact-navigation-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.compact-navigation-option strong {
+  color: var(--app-heading);
+  font-size: 12px;
+}
+
+.compact-navigation-option small {
+  color: var(--app-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+@media (max-width: 720px) {
+  .compact-page-editor-head {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+
+  .compact-page-editor-head .compact-page-kind {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+
+  .compact-slot-grid,
+  .compact-navigation-options,
+  .compact-preset-grid-ledger {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compact-custom-ledger-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 460px) {
+  .compact-slot-grid,
+  .compact-navigation-options,
+  .compact-preset-grid-ledger {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

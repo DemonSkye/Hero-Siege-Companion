@@ -1,5 +1,13 @@
 import { ITEM_TYPE_NAMES } from "../../../shared/constants";
-import { defaultCompactRunTiles, normalizeCompactRunTiles, type CompactRunTileConfig } from "./compact-tiles";
+import {
+  compactPageTiles,
+  defaultCompactNavigation,
+  defaultCompactPages,
+  normalizeCompactNavigation,
+  normalizeCompactPages,
+  type CompactNavigationConfig,
+  type CompactPageConfig,
+} from "./compact-pages";
 import { normalizeHiddenDashboardFixtures } from "./dashboard-fixtures";
 import {
   DEFAULT_ITEM_FILTER_GROUPS,
@@ -66,7 +74,8 @@ export interface UiPreferences {
   itemFilterMuted: boolean;
   customItemFilterSounds: CustomItemFilterSound[];
   postRunReport: PostRunReportConfig;
-  compactRunTiles: CompactRunTileConfig[];
+  compactPages: CompactPageConfig[];
+  compactNavigation: CompactNavigationConfig;
   hiddenDashboardPanels: string[];
   liveRunGraphEnabledMetrics: LiveRunStandardMetric[];
   liveRunGraphItemNames: string[];
@@ -144,7 +153,8 @@ export const defaultPreferences: UiPreferences = {
   itemFilterMuted: false,
   customItemFilterSounds: [],
   postRunReport: defaultPostRunReportConfig,
-  compactRunTiles: defaultCompactRunTiles,
+  compactPages: defaultCompactPages,
+  compactNavigation: defaultCompactNavigation,
   hiddenDashboardPanels: [],
   liveRunGraphEnabledMetrics: [...DEFAULT_LIVE_RUN_STANDARD_METRICS],
   liveRunGraphItemNames: [],
@@ -205,7 +215,8 @@ export function serializeDurablePreferences(value: Partial<UiPreferences>): stri
     itemFilterMuted: preferences.itemFilterMuted,
     customItemFilterSounds: preferences.customItemFilterSounds,
     postRunReport: preferences.postRunReport,
-    compactRunTiles: preferences.compactRunTiles,
+    compactPages: preferences.compactPages,
+    compactNavigation: preferences.compactNavigation,
     hiddenDashboardPanels: preferences.hiddenDashboardPanels,
     liveRunGraphEnabledMetrics: preferences.liveRunGraphEnabledMetrics,
     liveRunGraphItemNames: preferences.liveRunGraphItemNames,
@@ -245,7 +256,8 @@ export function createConfigurationExportPayload(
     itemFilterMuted: preferences.itemFilterMuted,
     customItemFilterSounds: preferences.customItemFilterSounds,
     postRunReport: preferences.postRunReport,
-    compactRunTiles: preferences.compactRunTiles,
+    compactPages: preferences.compactPages,
+    compactNavigation: preferences.compactNavigation,
     hiddenDashboardPanels: preferences.hiddenDashboardPanels,
     liveRunGraphEnabledMetrics: preferences.liveRunGraphEnabledMetrics,
     liveRunGraphItemNames: preferences.liveRunGraphItemNames,
@@ -280,6 +292,10 @@ export function importConfigurationPayload(
     }
   }
   nextUiPreferences.schemaVersion = identity.sourceVersion;
+  if (Object.prototype.hasOwnProperty.call(rawUiPreferences, "compactRunTiles")
+    && !Object.prototype.hasOwnProperty.call(rawUiPreferences, "compactPages")) {
+    Object.assign(nextUiPreferences, { compactPages: undefined, compactRunTiles: rawUiPreferences.compactRunTiles });
+  }
   if (Object.prototype.hasOwnProperty.call(rawUiPreferences, "shoppingListItems")
     && !Object.prototype.hasOwnProperty.call(rawUiPreferences, "savedMarketItems")) {
     nextUiPreferences.savedMarketItems = undefined;
@@ -316,7 +332,8 @@ export function createConfigurationImportPreview(rawPayload: string | unknown): 
     filterGroups: Array.isArray(rawUiPreferences.itemFilterGroups) ? rawUiPreferences.itemFilterGroups.length : 0,
     sounds: Array.isArray(rawUiPreferences.customItemFilterSounds) ? rawUiPreferences.customItemFilterSounds.length : 0,
     customThemes,
-    compactTiles: Array.isArray(rawUiPreferences.compactRunTiles) ? rawUiPreferences.compactRunTiles.length : 0,
+    compactTiles: Array.isArray(rawUiPreferences.compactPages) || Array.isArray(rawUiPreferences.compactRunTiles)
+      ? compactPageTiles(normalizeCompactPages(rawUiPreferences.compactPages, rawUiPreferences.compactRunTiles)).length : 0,
     legacyFormat: identity.format !== "backup-v2",
   };
 }
@@ -359,7 +376,8 @@ const RESTORABLE_PREFERENCE_KEYS: Array<keyof UiPreferences> = [
   "itemFilterGroups",
   "itemFilterMuted",
   "postRunReport",
-  "compactRunTiles",
+  "compactPages",
+  "compactNavigation",
   "hiddenDashboardPanels",
   "liveRunGraphEnabledMetrics",
   "liveRunGraphItemNames",
@@ -441,7 +459,8 @@ export function normalizePreferences(value: Partial<UiPreferences>): UiPreferenc
     itemFilterMuted: Boolean(value.itemFilterMuted),
     customItemFilterSounds,
     postRunReport: normalizePostRunReportConfig(value.postRunReport),
-    compactRunTiles: normalizeCompactRunTiles(value.compactRunTiles),
+    compactPages: normalizeCompactPages(value.compactPages, (value as { compactRunTiles?: unknown }).compactRunTiles),
+    compactNavigation: normalizeCompactNavigation(value.compactNavigation),
     hiddenDashboardPanels: normalizeHiddenDashboardPanels(value.hiddenDashboardPanels),
     liveRunGraphEnabledMetrics: normalizeLiveRunGraphEnabledMetrics(value.liveRunGraphEnabledMetrics),
     liveRunGraphItemNames: normalizeLiveRunGraphItemNames(value.liveRunGraphItemNames),
@@ -489,7 +508,7 @@ function identifyConfigurationPayload(rawPayload: string | unknown): Configurati
   return { format: "bare-preferences-v1", sourceVersion: 1, uiPreferences: parsed };
 }
 
-const BARE_LEGACY_PREFERENCE_KEYS: Array<keyof UiPreferences> = [
+const BARE_LEGACY_PREFERENCE_KEYS = [
   "logLimit",
   "timelineLimit",
   "showCaptureDetails",

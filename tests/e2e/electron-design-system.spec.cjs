@@ -107,8 +107,8 @@ test("honors public surfaces and inputs across the six themes and both window mo
       expect(layout.clipped, theme).toBe(false);
       await page.evaluate(() => document.documentElement.style.removeProperty("--surface"));
     }
-    await page.getByRole("button", { name: "SZ Details", exact: true }).click();
-    await expect(page.getByLabel("Satanic zone details")).toContainText("Act 1");
+    await page.getByRole("button", { name: "Show Satanic Zone page", exact: true }).click();
+    await expect(page.locator(".compact-zone-page")).toContainText("Act 1");
   });
 });
 
@@ -192,14 +192,14 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
     await page.getByRole("button", { name: "Compact mode", exact: true }).click();
     await page.getByRole("button", { name: "Customize compact mode", exact: true }).click();
     const customization = page.getByRole("dialog", { name: "Customize Compact Mode", exact: true });
-    await customization.locator(".compact-preset-button").filter({ hasText: "Resource Focused" }).click();
-    for (const tile of ["Kills", "Angelic"]) {
-      await customization.getByRole("button", { name: "Add Tile", exact: true }).click();
-      await customization.getByRole("menuitem", { name: tile, exact: true }).click();
-    }
-    await expect(customization.locator(".compact-selected-list > li")).toHaveCount(8);
-    await expect(customization.getByRole("button", { name: "Add Tile", exact: true })).toBeDisabled();
-    await expect(customization.getByRole("button", { name: "Remove Duration", exact: true })).toHaveCount(0);
+    await customization.locator(".compact-preset-button").filter({ hasText: "Everything" }).click();
+    await expect(customization.locator(".compact-page-editor")).toHaveCount(4);
+    await customization.getByRole("button", { name: "Add Page", exact: true }).click();
+    await customization.getByRole("button", { name: "Add Page", exact: true }).click();
+    await expect(customization.locator(".compact-page-editor")).toHaveCount(6);
+    await expect(customization.getByRole("button", { name: "Add Page", exact: true })).toBeDisabled();
+    await customization.getByRole("combobox", { name: "Run tile 4", exact: true }).selectOption("angelic");
+    await assertVisibleLayout(page, ".compact-page-editor", "compact customization");
     await customization.getByRole("button", { name: "Close compact customization" }).click();
     const zoneContrasts = [];
     for (const theme of THEMES) {
@@ -207,12 +207,14 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
       if (await exitCompact.isVisible()) await exitCompact.click();
       await chooseTheme(page, theme, theme);
       await page.getByRole("button", { name: "Compact mode", exact: true }).click();
-      await expect(page.locator(".compact-cover-grid > div")).toHaveCount(8);
+      await expect(page.locator(".compact-cover-grid > div")).toHaveCount(4);
+      await expect(page.locator(".compact-cover-grid")).toContainText("Angelic");
       await assertVisibleLayout(page, ".compact-cover-grid > div", `compact ${theme}`);
       await expect(page.getByRole("button", { name: "Pause Run", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "End Run", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "SZ Details", exact: true }).click();
-      const zone = page.getByLabel("Satanic zone details");
+      await expect(page.locator(".compact-page-dots button")).toHaveCount(6);
+      await page.getByRole("button", { name: "Show Satanic Zone page", exact: true }).click();
+      const zone = page.locator(".compact-zone-page");
       for (const effect of ["pros", "cons"]) {
         const column = zone.locator(`.compact-zone-${effect}`);
         for (const part of ["span", "strong"]) {
@@ -221,7 +223,6 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
           expect.soft(contrast.minimum, `${theme}: rendered compact Zone ${effect} ${part}`).toBeGreaterThanOrEqual(4.5);
         }
       }
-      await page.getByRole("button", { name: "Dismiss zone details", exact: true }).click();
     }
     await recordContrastReport(testInfo, "compact-zone-contrast.json", zoneContrasts);
   });

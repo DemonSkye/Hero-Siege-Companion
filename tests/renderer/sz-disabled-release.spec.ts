@@ -16,8 +16,10 @@ test("release hides full and compact active controls even with forged legacy Rea
     current: { rawZone: "Act_01_01", zone: "Act 1: Fields", act: 1, area: 1, updatedAt: now,
       buffs: [], pros: [{ id: 1, name: "Passive benefit", description: "Observed effect" }], cons: [] } };
   const panel = mount(SatanicZonePanel, { props: { zoneState: state.satanicZone, now, zoneCountdown: "25m", zoneResetLabel: "20:30", refreshSubmitting: false } });
-  const compact = mount(CompactView, { props: { state, now, compactRunTileDisplays: [{ id: "sz", kind: "sz", label: "SZ", value: "25m" }],
-    runPausedLabel: "Pause", canToggleRunPaused: true, showZone: true, satanicZoneRefreshSubmitting: false } });
+  const compact = mount(CompactView, { props: { state, now,
+    pages: [{ id: "zone", name: "Satanic Zone", kind: "zone", tiles: [] }, { id: "run", name: "Run", kind: "tiles", tiles: [{ id: "sz", kind: "sz", label: "SZ", value: "25m" }] }],
+    navigation: { wheel: true, arrowKeys: true, pageKeys: true, wrap: true }, sessionDuration: "0:00", zoneCountdown: "25m",
+    runPausedLabel: "Pause", canToggleRunPaused: true, satanicZoneRefreshSubmitting: false } });
   try {
     expect(panel.find(".zone-refresh-button").exists()).toBe(false);
     expect(compact.find(".compact-zone-refresh-button").exists()).toBe(false);

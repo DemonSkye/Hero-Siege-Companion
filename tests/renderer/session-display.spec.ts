@@ -10,7 +10,11 @@ describe("session display runtime", () => {
     const display = useSessionDisplay({
       state: ref(companionState()),
       now: ref(baseTime),
-      compactRunTiles: ref([standardTile("duration"), standardTile("gold"), standardTile("keys"), standardTile("ores"), standardTile("materials")]),
+      compactPages: ref([
+        { id: "run", name: "Run", kind: "tiles" as const, tiles: [standardTile("duration"), standardTile("gold")] },
+        { id: "resources", name: "Resources", kind: "tiles" as const, tiles: [standardTile("keys"), standardTile("ores"), standardTile("materials")] },
+        { id: "zone", name: "Satanic Zone", kind: "zone" as const, tiles: [] },
+      ]),
       itemFilterGroups: ref([itemFilterGroup()]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(1),
@@ -22,14 +26,14 @@ describe("session display runtime", () => {
     });
 
     expect(display.captureStatusLabel.value).toBe("Capturing");
-    expect(display.compactRunTileDisplays.value[0]).toMatchObject({
+    const [run, resources, zone] = display.compactPageDisplays.value;
+    expect(zone).toMatchObject({ name: "Satanic Zone", kind: "zone", tiles: [] });
+    expect(run.tiles[0]).toMatchObject({
       label: "This Run",
       value: "10:00",
       detail: "TestHero",
     });
-    expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Keys", "2"]);
-    expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Ore", "5"]);
-    expect(display.compactRunTileDisplays.value.map((tile) => [tile.label, tile.value])).toContainEqual(["Materials", "3"]);
+    expect(resources.tiles.map((tile) => [tile.label, tile.value])).toEqual([["Keys", "2"], ["Ore", "5"], ["Materials", "3"]]);
     expect(display.runScoreDisplays.value.map((tile) => tile.kind)).toEqual(["duration", "gold", "xp", "kills"]);
     expect(display.runScoreDisplays.value.map((tile) => tile.kind)).not.toContain("keys");
     expect(display.keyDropTotal.value).toBe(2);
@@ -44,7 +48,7 @@ describe("session display runtime", () => {
     const display = useSessionDisplay({
       state: ref(companionState({ captureRunning: false, runStatus: "paused", runPausedReason: "captureStopped" })),
       now: ref(baseTime),
-      compactRunTiles: ref([]),
+      compactPages: ref([]),
       itemFilterGroups: ref([]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(10),
@@ -64,7 +68,7 @@ describe("session display runtime", () => {
     const display = useSessionDisplay({
       state: ref(companionState()),
       now: ref(baseTime),
-      compactRunTiles: ref([]),
+      compactPages: ref([]),
       itemFilterGroups: ref([group]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(10),
@@ -91,7 +95,7 @@ describe("session display runtime", () => {
     const display = useSessionDisplay({
       state: ref(companionState()),
       now: ref(baseTime),
-      compactRunTiles: ref([]),
+      compactPages: ref([]),
       itemFilterGroups: ref([group]),
       itemFilterMatchHistory: ref([
         {
@@ -125,7 +129,7 @@ describe("session display runtime", () => {
     const display = useSessionDisplay({
       state: ref(state),
       now: ref(baseTime),
-      compactRunTiles: ref([]),
+      compactPages: ref([]),
       itemFilterGroups: ref([]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(10),
@@ -164,7 +168,7 @@ describe("session display runtime", () => {
     const display = useSessionDisplay({
       state: ref(state),
       now: ref(baseTime),
-      compactRunTiles: ref([]),
+      compactPages: ref([]),
       itemFilterGroups: ref([]),
       itemFilterMatchHistory: ref([]),
       logLimit: ref(1),
