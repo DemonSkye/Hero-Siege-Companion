@@ -389,10 +389,14 @@ async function toggleCapture() {
 }
 
 async function resetStats() {
-  const previousRunCount = pastRuns.value.length;
-  state.value = await window.heroSiegeCompanion.resetStats();
-  resetItemFilterSession(state.value.stats.itemTimeline);
-  if ((state.value.pastRuns?.length ?? 0) > previousRunCount) activeTab.value = "past";
+  try {
+    const previousRunCount = pastRuns.value.length;
+    state.value = await window.heroSiegeCompanion.resetStats();
+    resetItemFilterSession(state.value.stats.itemTimeline);
+    if ((state.value.pastRuns?.length ?? 0) > previousRunCount) activeTab.value = "past";
+  } catch {
+    showToast("Run could not be saved. Current run retained; retry End Run when storage is available.");
+  }
 }
 
 async function refreshSatanicZone() {
@@ -438,7 +442,11 @@ async function toggleRunPaused() {
 }
 
 async function updatePastRunTags(runId: string, tags: string[]) {
-  state.value = await window.heroSiegeCompanion.setPastRunTags(runId, tags);
+  try {
+    state.value = await window.heroSiegeCompanion.setPastRunTags(runId, tags);
+  } catch {
+    showToast("Past run tags could not be saved");
+  }
 }
 
 async function deletePastRun(runId: string) {

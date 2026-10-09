@@ -30,7 +30,6 @@ import { MarketRegionDirectoryCache } from "./market-region-directory";
 import { MarketReadinessController } from "./market-readiness-controller";
 import { readJsonFileWithDialog, saveJsonFileWithDialog } from "./json-file-dialogs";
 import {
-  MAX_PAST_RUNS,
   loadPastRuns,
   loadSatanicZoneCache,
   loadSatanicZoneRefreshPreferences,
@@ -47,6 +46,7 @@ import {
 } from "./persistence";
 import { SatanicZoneController } from "./satanic-zone-controller";
 import { checkForReleaseUpdate } from "./release-updates";
+import { RunArchiveController } from "./run-archive-controller";
 import {
   embedConfigurationSoundData,
   exportLootSoundPackWithDialog,
@@ -114,7 +114,14 @@ let marketReadinessController: MarketReadinessController | null = null;
 let lastPersistedSatanicZoneCacheKey: string | null = null;
 let crashReporterStarted = false;
 let crashReporterStartError: string | null = null;
-const archivedSessionStarts = new Set<number>();
+const runArchiveController = new RunArchiveController({
+  getRuns: () => state.pastRuns,
+  saveRuns: (runs) => savePastRuns(pastRunsPath, runs, writeAppLog),
+  publishRuns: (runs) => {
+    state.pastRuns = runs;
+    markPastRunsForPublish();
+  },
+});
 const captureDiagnosticsController = new CaptureDiagnosticsController({
   onChange: (diagnosticsState) => {
     state.captureDiagnostics = diagnosticsState;
@@ -474,6 +481,7 @@ handleTrusted(IPC_CHANNELS.captureStop, () => {
 handleTrusted(IPC_CHANNELS.statsReset, () => {
   applyPendingCaptureEvents();
   const archived = archiveCurrentRun("reset");
+  if (archived === "failed") throw new Error("The run could not be saved. Current run retained; retry End Run when storage is available.");
   satanicZoneController?.resetObservation();
   state.stats = statsEngine.reset();
   state.stats.satanicZone = state.satanicZone.current;
@@ -481,7 +489,7 @@ handleTrusted(IPC_CHANNELS.statsReset, () => {
   state.runPausedReason = null;
   state.runPausedAt = null;
   state.runPausedDurationMs = 0;
-  addLog("info", archived ? "Run saved and session stats reset." : "Session stats reset. Empty runs are not saved.");
+  addLog("info", archived === "saved" ? "Run saved and session stats reset." : "Session stats reset. Empty runs are not saved.");
   publishState();
   return state;
 });
@@ -529,9 +537,7 @@ handleTrusted(IPC_CHANNELS.pastRunsSetTags, (_event, runId: string, tags: unknow
   const nextTags = normalizePastRunTags(tags);
   if (!normalizedRunId || !state.pastRuns.some((run) => run.id === normalizedRunId)) return state;
 
-  state.pastRuns = state.pastRuns.map((run) => (run.id === normalizedRunId ? { ...run, tags: nextTags } : run));
-  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
-  markPastRunsForPublish();
+  persistPastRunChange(state.pastRuns.map((run) => (run.id === normalizedRunId ? { ...run, tags: nextTags } : run)));
   publishState();
   return state;
 });
@@ -540,22 +546,19 @@ handleTrusted(IPC_CHANNELS.pastRunsDelete, (_event, runId: string) => {
   if (!normalizedRunId) return state;
 
   const previousRunCount = state.pastRuns.length;
-  state.pastRuns = state.pastRuns.filter((run) => run.id !== normalizedRunId);
-  if (state.pastRuns.length === previousRunCount) return state;
+  const nextRuns = state.pastRuns.filter((run) => run.id !== normalizedRunId);
+  if (nextRuns.length === previousRunCount) return state;
 
-  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
+  persistPastRunChange(nextRuns);
   addLog("info", "Past run deleted.");
-  markPastRunsForPublish();
   publishState();
   return state;
 });
 handleTrusted(IPC_CHANNELS.pastRunsDeleteAll, () => {
   if (!state.pastRuns.length) return state;
 
-  state.pastRuns = [];
-  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
+  persistPastRunChange([]);
   addLog("info", "All past runs deleted.");
-  markPastRunsForPublish();
   publishState();
   return state;
 });
@@ -1117,20 +1120,29 @@ function writeAppSession(phase: string, extra: Record<string, unknown> = {}): vo
   appDiagnostics?.writeSession(phase, extra);
 }
 
-function archiveCurrentRun(reason: string): boolean {
-  if (!pastRunsPath) return false;
+function archiveCurrentRun(reason: string): "saved" | "skipped" | "failed" {
+  if (!pastRunsPath) return "failed";
   applyPendingCaptureEvents();
   const summary = statsEngine.runSummary();
-  if (archivedSessionStarts.has(summary.sessionStartedAt)) return false;
-  if (!shouldArchiveRun(summary)) return false;
+  if (!shouldArchiveRun(summary)) return "skipped";
 
-  archivedSessionStarts.add(summary.sessionStartedAt);
-  state.pastRuns = [summary, ...state.pastRuns.filter((run) => run.sessionStartedAt !== summary.sessionStartedAt)].slice(0, MAX_PAST_RUNS);
-  savePastRuns(pastRunsPath, state.pastRuns, writeAppLog);
-  markPastRunsForPublish();
+  const outcome = runArchiveController.archive(summary);
+  if (outcome === "already-archived") return "skipped";
+  if (outcome === "failed") {
+    addLog("error", "Run could not be saved. Current run retained for another save attempt.");
+    publishState();
+    return "failed";
+  }
   writeAppLog("run-archived", { reason, id: summary.id });
   addLog("success", `Archived run summary: ${summary.totalGoldGained.toLocaleString()} gold, ${summary.totalXpGained.toLocaleString()} XP, ${(summary.totalKillsGained ?? 0).toLocaleString()} kills.`);
-  return true;
+  return "saved";
+}
+
+function persistPastRunChange(runs: PastRunSummary[]): void {
+  if (runArchiveController.replaceRuns(runs)) return;
+  addLog("error", "Past Runs change could not be saved; the previous archive is unchanged.");
+  publishState();
+  throw new Error("Past Runs change could not be saved.");
 }
 
 function shouldArchiveRun(summary: PastRunSummary): boolean {

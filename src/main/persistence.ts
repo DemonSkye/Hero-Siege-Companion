@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import {
   DEFAULT_SATANIC_ZONE_REFRESH_PREFERENCES,
   createInitialSatanicZoneState,
@@ -115,12 +116,14 @@ export function loadPastRuns(filePath: string, log: StorageLog = noopLog): PastR
   }
 }
 
-export function savePastRuns(filePath: string, runs: PastRunSummary[], log: StorageLog = noopLog): void {
-  if (!filePath) return;
+export function savePastRuns(filePath: string, runs: PastRunSummary[], log: StorageLog = noopLog): boolean {
+  if (!filePath) return false;
   try {
     writeJsonFile(filePath, newestPastRuns(runs.map(normalizePastRunSummary)));
+    return true;
   } catch (error) {
     logStorageError(log, "past-runs-save-error", error);
+    return false;
   }
 }
 
@@ -466,7 +469,20 @@ function readJsonFile(filePath: string): unknown {
 }
 
 function writeJsonFile(filePath: string, value: unknown): void {
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const contents = `${JSON.stringify(value, null, 2)}\n`;
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    // Same-directory replacement keeps the previous file intact on a failed write
+    // or rename. Never delete the destination to work around Windows locks.
+    fs.writeFileSync(temporaryPath, contents, { encoding: "utf8", flag: "wx", flush: true });
+    fs.renameSync(temporaryPath, filePath);
+  } finally {
+    try {
+      if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    } catch {
+      // Preserve the original storage failure when temporary cleanup also fails.
+    }
+  }
 }
 
 function logStorageError(log: StorageLog, type: string, error: unknown): void {

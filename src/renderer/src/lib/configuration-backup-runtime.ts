@@ -18,6 +18,7 @@ export function useConfigurationBackupRuntime(options: UseConfigurationBackupRun
   const backupPreview = ref<ConfigurationImportPreview | null>(null);
   const backupBusy = ref(false);
   let pendingBackupSource = "";
+  let installedBackupSource = "";
 
   async function exportBackup(): Promise<void> {
     if (backupBusy.value) return;
@@ -44,9 +45,11 @@ export function useConfigurationBackupRuntime(options: UseConfigurationBackupRun
       if (!contents) return;
       const preview = createConfigurationImportPreview(contents);
       pendingBackupSource = contents;
+      installedBackupSource = "";
       backupPreview.value = preview;
     } catch {
       pendingBackupSource = "";
+      installedBackupSource = "";
       backupPreview.value = null;
       options.showToast("Backup could not be read");
     } finally {
@@ -58,11 +61,14 @@ export function useConfigurationBackupRuntime(options: UseConfigurationBackupRun
     if (!pendingBackupSource || backupBusy.value) return;
     backupBusy.value = true;
     try {
-      const installedContents = await window.heroSiegeCompanion.installConfigurationSounds(pendingBackupSource);
-      const restored = importConfigurationPayload(installedContents, options.currentPreferences()).uiPreferences;
+      if (!installedBackupSource) {
+        installedBackupSource = await window.heroSiegeCompanion.installConfigurationSounds(pendingBackupSource);
+      }
+      const restored = importConfigurationPayload(installedBackupSource, options.currentPreferences()).uiPreferences;
+      if (!savePreferences(restored)) throw new Error("Backup preferences could not be saved.");
       options.applyPreferences(restored);
-      savePreferences(restored);
       pendingBackupSource = "";
+      installedBackupSource = "";
       backupPreview.value = null;
       options.showToast("Backup restored");
     } catch {
@@ -73,7 +79,9 @@ export function useConfigurationBackupRuntime(options: UseConfigurationBackupRun
   }
 
   function cancelRestoreBackup(): void {
+    if (backupBusy.value) return;
     pendingBackupSource = "";
+    installedBackupSource = "";
     backupPreview.value = null;
   }
 
