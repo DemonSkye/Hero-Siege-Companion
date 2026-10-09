@@ -51,3 +51,12 @@ test("conditional and table modifiers keep their distinct retained representatio
     label:"Class selection",value:"Class name unavailable",
   });
 });
+
+test("weapon base fields are named, and USB's Cord keeps its tooltip Attack Rating label", () => {
+  const monsoon = marketCatalogStatRows(itemBaseStatDefinition("unique:3:13:16")!.stats, "unique:3:13:16");
+  expect(monsoon.find(row => row.key === 22)).toMatchObject({ label: "Base Attack Damage", value: "[114–126]" });
+  expect(monsoon.find(row => row.key === 23)).toMatchObject({ label: "Base Attacks per Second", value: "[1.8]" });
+  expect(monsoon.find(row => row.key === 24)).toMatchObject({ label: "Base Attack Range", value: "[400]" });
+  const cord = marketCatalogStatRows(itemBaseStatDefinition("unique:8:0:36")!.stats, "unique:8:0:36", "listing");
+  expect(cord.find(row => row.key === 23)).toEqual({ key: 23, label: "Attack Rating", value: "32" });
+});

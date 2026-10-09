@@ -58,6 +58,11 @@ export function marketCatalogStatRows(stats: readonly ItemBaseStat[], itemKey: s
       rows.push({ key: stat.statId, label: "Class selection", value: "Class name unavailable", detail: role.detail });
       continue;
     }
+    // The supplied USB's Cord tooltip shows this belt's only stat 23 value as Attack Rating.
+    if (itemKey === "unique:8:0:36" && stat.statId === 23) {
+      rows.push({ key: stat.statId, label: "Attack Rating", value: display === "catalog" ? `[${plainValue(stat)}]` : plainValue(stat) });
+      continue;
+    }
     rows.push({ key: stat.statId,
       label: role?.kind === "talent-identifier" ? "Selected talent" : marketStatFieldName(stat.statId, itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}`),
       value: role?.kind === "talent-identifier" ? "Talent name unavailable"
