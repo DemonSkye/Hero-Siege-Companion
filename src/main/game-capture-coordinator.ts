@@ -34,6 +34,7 @@ export class GameCaptureCoordinator {
       if (!authorized()) return this.options.state;
       this.options.writeAppLog("game-launch-stage", { stage: "game_present" });
       this.clearLaunchCaptureTimer();
+      if (!this.captureEnabled) return this.options.state;
       await this.options.beforeCapture?.();
       if (this.captureEnabled && authorized()) await service.start();
       return this.options.state;
@@ -134,7 +135,7 @@ export class GameCaptureCoordinator {
     if (!service || !this.captureEnabled || this.options.state.captureRunning || this.gameProcessMonitorActive) return;
     this.gameProcessMonitorActive = true;
     try {
-      if (!(await service.hasHeroSiegeProcess()) || !this.captureEnabled) return;
+      if (!(await service.hasHeroSiegeProcess()) || !this.monitorEligible()) return;
       this.options.writeAppLog("game-process-detected", { source, captureStatus: this.options.state.captureStatus });
       const now = Date.now();
       if (now - this.lastGameProcessAutoStartLogAt > 60_000) {
@@ -143,10 +144,19 @@ export class GameCaptureCoordinator {
       }
       this.clearLaunchCaptureTimer();
       await this.options.beforeCapture?.();
-      if (this.captureEnabled) await service.start();
+      if (!this.monitorEligible()) return;
+      await service.start();
+      this.options.publishState();
+    } catch {
+      if (!this.monitorEligible()) return;
+      this.options.addLog("warning", "Could not inspect Hero Siege for automatic capture. The next monitor check will retry.");
       this.options.publishState();
     } finally {
       this.gameProcessMonitorActive = false;
     }
+  }
+
+  private monitorEligible(): boolean {
+    return this.captureEnabled && this.gameProcessMonitorTimer !== null;
   }
 }

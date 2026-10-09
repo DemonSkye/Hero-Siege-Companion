@@ -60,6 +60,48 @@ describe("launch and capture coordination with mocked Electron", () => {
     f.coordinator.startMonitor(); await flush(); f.coordinator.setCaptureEnabled(false); release(); await flush();
     expect(f.service.start).not.toHaveBeenCalled(); f.coordinator.stopMonitor();
   });
+  test("a manual stop remains stopped across game-monitor ticks until an explicit launch", async () => {
+    const f = fixture(); f.service.hasHeroSiegeProcess.mockResolvedValue(true);
+    f.coordinator.setCaptureEnabled(false); f.coordinator.startMonitor();
+    await vi.advanceTimersByTimeAsync(36_000);
+    expect(f.service.start).not.toHaveBeenCalled();
+    await f.coordinator.launchOrCapture({ launchThroughSteam: true });
+    expect(f.service.start).toHaveBeenCalledTimes(1); f.coordinator.stopMonitor();
+  });
+  test("Stop during launch discovery of a running game does not re-arm the listener", async () => {
+    const f = fixture(); let release!: (found: boolean) => void;
+    f.service.hasHeroSiegeProcess.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const launch = f.coordinator.launchOrCapture({ launchThroughSteam: true });
+    await flush(); f.coordinator.setCaptureEnabled(false); release(true); await launch;
+    expect(f.beforeCapture).not.toHaveBeenCalled(); expect(f.service.start).not.toHaveBeenCalled();
+  });
+  test("monitor disposal suppresses a pending discovery's late start", async () => {
+    const f = fixture(); let release!: (found: boolean) => void;
+    f.service.hasHeroSiegeProcess.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    f.coordinator.startMonitor(); await flush(); f.coordinator.stopMonitor(); release(true); await flush();
+    expect(f.beforeCapture).not.toHaveBeenCalled(); expect(f.service.start).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  test("monitor disposal during listener opening suppresses the late start", async () => {
+    const f = fixture(); f.service.hasHeroSiegeProcess.mockResolvedValue(true); let release!: () => void;
+    f.beforeCapture.mockImplementationOnce(() => new Promise(resolve => { release = () => resolve(true); }));
+    f.coordinator.startMonitor(); await flush(); f.coordinator.stopMonitor(); release(); await flush();
+    expect(f.service.start).not.toHaveBeenCalled();
+  });
+  test("a monitor discovery failure is reported and retried, but suppressed after Stop", async () => {
+    const f = fixture();
+    f.service.hasHeroSiegeProcess.mockRejectedValueOnce(new Error("invented discovery failure"));
+    f.coordinator.startMonitor(); await flush();
+    expect(f.addLog).toHaveBeenCalledWith("warning", expect.stringContaining("next monitor check will retry"));
+    f.service.hasHeroSiegeProcess.mockResolvedValueOnce(true);
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(f.service.start).toHaveBeenCalledTimes(1);
+    f.addLog.mockClear(); let fail!: (error: Error) => void;
+    f.service.hasHeroSiegeProcess.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+    await vi.advanceTimersByTimeAsync(12_000);
+    f.coordinator.setCaptureEnabled(false); fail(new Error("stale discovery failure")); await flush();
+    expect(f.addLog).not.toHaveBeenCalled(); f.coordinator.stopMonitor();
+  });
   test("failed Steam or executable launches retain passive watching without a scheduled capture start", async () => {
     const f = fixture(); shell.openExternal.mockRejectedValueOnce(new Error("invented launch failure"));
     await f.coordinator.launchOrCapture({ launchThroughSteam: true });

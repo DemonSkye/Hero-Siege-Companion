@@ -159,6 +159,7 @@ export class CaptureService {
   private widePacketSequence = 0;
   private widePayloadSequence = 0;
   private captureRequested = false;
+  private lifecycleGeneration = 0;
   private satanicZoneRequestSequence = 0;
   private readonly endpointTrafficStats = new Map<string, EndpointTrafficStats>();
   private readonly captureFlowExpirations = new Map<string, number>();
@@ -227,21 +228,24 @@ export class CaptureService {
   }
 
   async hasHeroSiegeProcess(): Promise<boolean> {
+    const generation = this.lifecycleGeneration;
     const networkState = await getHeroSiegeNetworkState();
-    this.observeGameProcessIdsSafely(networkState.gameProcessIds);
+    if (generation === this.lifecycleGeneration) this.observeGameProcessIdsSafely(networkState.gameProcessIds);
     return networkState.gameProcessIds.length > 0;
   }
 
   async start(): Promise<void> {
     if (this.captureRequested || this.pollTimer) return;
     this.captureRequested = true;
+    const generation = ++this.lifecycleGeneration;
 
     let initialNetworkState: HeroSiegeNetworkState;
     try {
       initialNetworkState = await getHeroSiegeNetworkState();
+      if (!this.isCurrentLifecycle(generation)) return;
       this.observeGameProcessIdsSafely(initialNetworkState.gameProcessIds);
     } catch (error) {
-      if (!this.captureRequested) return;
+      if (!this.isCurrentLifecycle(generation)) return;
       this.captureRequested = false;
       const message = errorMessage(error);
       this.writeDebugLog("capture-start-error", { error: message });
@@ -254,7 +258,9 @@ export class CaptureService {
       });
       return;
     }
-    if (!this.captureRequested) return;
+    if (!this.isCurrentLifecycle(generation)) return;
+    const health = await this.diagnostics();
+    if (!this.isCurrentLifecycle(generation)) return;
     if (initialNetworkState.gameProcessIds.length === 0) {
       this.captureRequested = false;
       this.emit({
@@ -262,7 +268,7 @@ export class CaptureService {
         status: "idle",
         error: null,
         connections: [],
-        health: await this.diagnostics(),
+        health,
         log: { level: "info", message: "Hero Siege is not running. Start the game, wait for it to finish launching, then click Launch Game." },
       });
       return;
@@ -278,31 +284,36 @@ export class CaptureService {
         status: "idle",
         error: null,
         connections: [],
-        health: await this.diagnostics(),
+        health,
         log: { level: "warning", message: "Easy Anti-Cheat is still launching Hero Siege. Wait for the game to reach the menu, then click Launch Game." },
       });
       return;
     }
 
-    this.emit({ running: true, status: "waiting", error: null, health: await this.diagnostics() });
+    this.emit({ running: true, status: "waiting", error: null, health });
     this.writeDebugLog("capture-start", {
       debugLogPath: this.debugLogPath,
       wideDebugLogPath: this.wideDebugLogPath,
       preferences: this.capturePreferences,
       lifecycle: this.captureLifecycleSnapshot(),
     });
-    await this.refreshCapture(initialNetworkState);
-    if (!this.captureRequested) return;
+    await this.refreshCapture(initialNetworkState, generation);
+    if (!this.isCurrentLifecycle(generation)) return;
     this.startDiagnosticHeartbeat();
     this.pollTimer = setInterval(() => void this.refreshCaptureSafely("poll"), POLL_INTERVAL_MS);
   }
 
   stop(): void {
+    this.lifecycleGeneration += 1;
     this.captureRequested = false;
     this.stopTimers();
     this.resetCaptureSession();
     this.observeGameProcessIdsSafely([], "capture-stopped");
-    this.emit({ running: false, status: "idle", health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
+    this.emit({ running: false, status: "idle", error: null, health: { device: null, filter: "" }, log: { level: "info", message: "Capture stopped." } });
+  }
+
+  private isCurrentLifecycle(generation: number): boolean {
+    return this.captureRequested && generation === this.lifecycleGeneration;
   }
 
   private stopTimers(): void {
@@ -335,11 +346,12 @@ export class CaptureService {
 
   private async refreshCaptureSafely(source: string): Promise<void> {
     if (this.refreshInFlight) return;
+    const generation = this.lifecycleGeneration;
     this.refreshInFlight = true;
     try {
-      await this.refreshCapture();
+      await this.refreshCapture(undefined, generation);
     } catch (error) {
-      if (!this.captureRequested) return;
+      if (!this.isCurrentLifecycle(generation)) return;
       this.writeDebugLog("capture-refresh-error", {
         source,
         error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
@@ -363,13 +375,13 @@ export class CaptureService {
     }
   }
 
-  private async refreshCapture(networkState?: HeroSiegeNetworkState): Promise<void> {
-    if (!this.captureRequested) return;
+  private async refreshCapture(networkState?: HeroSiegeNetworkState, generation = this.lifecycleGeneration): Promise<void> {
+    if (!this.isCurrentLifecycle(generation)) return;
     this.lastRefreshAt = Date.now();
     const currentNetworkState = networkState
       ?? (await getHeroSiegeNetworkState());
+    if (!this.isCurrentLifecycle(generation)) return;
     this.observeGameProcessIdsSafely(currentNetworkState.gameProcessIds);
-    if (!this.captureRequested) return;
     const connections = currentNetworkState.connections;
     const publicConnections = gameOwnedConnections(currentNetworkState);
     this.emit({ connections: publicConnections, observationBoundary: this.packetBuffers.observationBoundary() });
@@ -562,6 +574,7 @@ export class CaptureService {
       this.emit({
         running: true,
         status: "running",
+        error: null,
         health: { device, filter },
         logs: [
           { level: "success", message: `Capture opened on ${device} (${linkType}).` },
@@ -950,8 +963,7 @@ export class CaptureService {
     if (now - this.lastGoldProbeAt < 5000) return;
     this.lastGoldProbeAt = now;
 
-    const snippet = payloadText.replace(/\s+/g, " ").slice(0, MAX_LOG_SNIPPET);
-    this.emit({ log: { level: "debug", message: `Gold-like payload did not parse: ${snippet}` } });
+    this.emit({ log: { level: "debug", message: "Gold-like payload did not parse." } });
   }
 
   private probeDebugPayload(payloadText: string, messages: MessageValue[], events: ParsedEvent[]): void {

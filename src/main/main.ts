@@ -1018,7 +1018,7 @@ app.whenReady().then(async () => {
   }
   await satanicZoneRefreshProvider?.preparePassively();
   if (await captureService.hasHeroSiegeProcess()) {
-    await captureService.start();
+    if (gameCaptureCoordinator.captureEnabled) await captureService.start();
   } else {
     addLog("info", "Watching for Hero Siege. Launch the game here or open it normally.");
     publishState();
