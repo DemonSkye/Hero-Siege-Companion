@@ -8,39 +8,53 @@ interface UseWindowModeOptions {
 export function useWindowMode({ showSettings, showCompactCustomization }: UseWindowModeOptions) {
   const compactMode = ref(false);
   const fullWindowPinned = ref(false);
-  let generation = 0;
+  let pendingWindowMode: Promise<void> = Promise.resolve();
 
-  async function syncWindowMode() {
-    const currentGeneration = ++generation;
+  function queueWindowMode(action: () => Promise<void>): Promise<void> {
+    const transition = pendingWindowMode.then(action);
+    // Each caller still receives its failure; the queue remains usable for retry.
+    pendingWindowMode = transition.catch(() => undefined);
+    return transition;
+  }
+
+  async function readWindowMode() {
     const snapshot = await window.heroSiegeCompanion.getWindowMode();
-    if (currentGeneration !== generation) return;
     compactMode.value = snapshot.compactMode;
     fullWindowPinned.value = snapshot.fullWindowPinned;
   }
 
-  async function openCompactCustomization() {
-    generation += 1;
-    await window.heroSiegeCompanion.setCompactMode(false);
-    await syncWindowMode();
-    showCompactCustomization.value = true;
+  function syncWindowMode() {
+    return queueWindowMode(readWindowMode);
   }
 
-  async function toggleCompactMode() {
-    generation += 1;
-    const enabled = !compactMode.value;
-    await window.heroSiegeCompanion.setCompactMode(enabled);
-    if (enabled) {
-      showSettings.value = false;
-      showCompactCustomization.value = false;
-    }
-    await syncWindowMode();
+  function openCompactCustomization() {
+    return queueWindowMode(async () => {
+      await readWindowMode();
+      await window.heroSiegeCompanion.setCompactMode(false);
+      await readWindowMode();
+      showCompactCustomization.value = true;
+    });
   }
 
-  async function toggleFullWindowPinned() {
-    if (compactMode.value) return;
-    generation += 1;
-    await window.heroSiegeCompanion.setAlwaysOnTop(!fullWindowPinned.value);
-    await syncWindowMode();
+  function toggleCompactMode() {
+    return queueWindowMode(async () => {
+      await readWindowMode();
+      await window.heroSiegeCompanion.setCompactMode(!compactMode.value);
+      await readWindowMode();
+      if (compactMode.value) {
+        showSettings.value = false;
+        showCompactCustomization.value = false;
+      }
+    });
+  }
+
+  function toggleFullWindowPinned() {
+    return queueWindowMode(async () => {
+      await readWindowMode();
+      if (compactMode.value) return;
+      await window.heroSiegeCompanion.setAlwaysOnTop(!fullWindowPinned.value);
+      await readWindowMode();
+    });
   }
 
   async function minimizeWindow() {
