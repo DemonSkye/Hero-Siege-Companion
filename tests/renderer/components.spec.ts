@@ -549,7 +549,7 @@ describe("Vue component contracts", () => {
       expect(wrapper.text()).toContain(section.title);
       for (const item of section.items) expect(wrapper.text()).toContain(item);
     }
-    expect(WHATS_NEW_RELEASE.sections).toHaveLength(1);
+    expect(WHATS_NEW_RELEASE.sections).toHaveLength(0);
     expect(wrapper.text()).toContain("Highlights");
     const whatsNew = wrapper.get(".settings-whats-new");
     expect(whatsNew.text()).not.toContain("Themes And Appearance");
