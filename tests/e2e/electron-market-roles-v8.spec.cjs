@@ -45,8 +45,8 @@ test("Cloak proc quantities search through real IPC while role identifiers remai
     await workspace.locator("#market-stat-query").fill("Stat 291");
     await expect(workspace.locator('ul[aria-label="Stat suggestions"] button')).toContainText("Double Jump (experimental)");
     await expect(workspace.locator('ul[aria-label="Stat suggestions"] button')).toBeDisabled();
-    await workspace.locator("#market-stat-query").fill("Stat 24");
-    await expect(workspace.locator('ul[aria-label="Stat suggestions"] button').filter({hasText:"Stat 24 (experimental)"})).toBeEnabled();
+    await workspace.locator("#market-stat-query").fill("Stat 280");
+    await expect(workspace.locator('ul[aria-label="Stat suggestions"] button').filter({hasText:"Stat 280 (experimental)"})).toBeEnabled();
     await workspace.locator("#market-stat-query").fill("");
     await workspace.getByRole("button",{name:"Remove Talent identifier when striking (Stat 116) (experimental)",exact:true}).click();
     await expect(workspace.getByRole("button",{name:"Search market",exact:true})).toBeEnabled();

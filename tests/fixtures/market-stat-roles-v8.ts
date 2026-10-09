@@ -9,7 +9,7 @@ export const EXPECTED_PROC_FAMILIES_V8 = [
 export const EXPECTED_CLASS_IDS_V8 = [21,204,207,210,213,216,219,464] as const;
 export const EXPECTED_TALENT_IDS_V8 = [113,116,119,122,125,185,188,202,205,208,211,214,217,315,319,321,323,325,444,462] as const;
 export const EXPECTED_NO_GENERIC_MINIMUM_IDS_V8 = [20,21,102,113,116,119,122,125,185,188,204,205,207,208,210,211,213,214,216,217,219,221,291,292,293,315,319,321,323,325,347,349,415,416,418,444,462,464] as const;
-export const EXPECTED_UNRESOLVED_MEANING_IDS_V8 = [0,1,2,10,11,12,13,14,15,24,280,295,376,378,473] as const;
+export const EXPECTED_UNRESOLVED_MEANING_IDS_V8 = [0,1,2,10,11,12,13,14,15,280,295,376,378,473] as const;
 export const EXPECTED_EXACT_LABELS_V8 = [
   [102,"stat_monsters_rest_in_peace","Monsters rest in peace after death"],
   [279,"stat_damage_taken_over_01","of Incoming Damage is taken over"],

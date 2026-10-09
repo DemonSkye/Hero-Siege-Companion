@@ -322,7 +322,12 @@
       "localizationKey": "stat_id_24",
       "nativeMarketMenu": false,
       "unit": "unknown",
-      "role": null,
+      "role": {
+        "statId": 24,
+        "kind": "control-only",
+        "caption": "Base Attack Range",
+        "detail": "Weapon base reach, inferred from weapon type: melee weapons carry short values and bows, guns and throwing weapons 400. Not shown on tooltips."
+      },
       "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
     },
     {

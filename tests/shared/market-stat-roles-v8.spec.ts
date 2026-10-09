@@ -16,6 +16,7 @@ test("v8 exact text remains separate from qualified roles, numeric quantities an
   }
   expect(itemBaseStatMetadata(22)?.name).toBe("Stat 22");
   expect(marketStatOption(22)?.name).toBe("Base Attack Damage (experimental)");
+  expect(marketStatOption(24)?.name).toBe("Base Attack Range (experimental)");
   expect(marketStatOption(22)?.description).toContain("Attack Damage as this value raised by Enhanced Damage");
   expect(itemBaseStatMetadata(23)?.name).toBe("Stat 23");
   expect(itemBaseStatMetadata(390)?.unit).toBe("seconds");

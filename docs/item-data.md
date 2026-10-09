@@ -123,7 +123,7 @@ Units retain the existing scale. `unknown` does not mean flat or percent. Roles
 distinguish quantities, class/talent identifiers, effects, markers, categories,
 collections and control-only fields. Qualified role captions are not universal
 English labels. A non-null role supersedes an older `unresolvedMeaning` entry,
-as in Market; 15 fields still have unresolved meanings. IDs 119 and 121 have
+as in Market; 14 fields still have unresolved meanings. IDs 119 and 121 have
 proved roles but empty localization keys. Encoded meanings remain item-specific.
 Do not borrow labels from the separate character-attribute ID domain or convert
 proc chances into percentages without evidence.
