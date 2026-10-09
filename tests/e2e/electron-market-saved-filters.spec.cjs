@@ -93,7 +93,7 @@ test("saved Market uses the accepted price page through real IPC, clears stale p
     await session.electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...Buffer.from(accepted.response.bodyBase64, "base64")]);
     await workspace.getByRole("button", { name: "Search market", exact: true }).press("Enter");
     await expect(workspace.locator("tbody tr")).toHaveCount(20);
-    const prices = await workspace.locator("tbody tr td:first-of-type").allTextContents();
+    const prices = await workspace.locator("tbody tr .market-total-price").allTextContents();
     expect(prices).toEqual([
       "4,000 gold", "6,000 gold", "7,000 gold", "10,000 gold", "11,000 gold", "12,000 gold", "13,000 gold", "14,000 gold",
       "15,000 gold", "15,000 gold", "20,000 gold", "20,000 gold", "20,000 gold", "20,000 gold", "28,888 gold",

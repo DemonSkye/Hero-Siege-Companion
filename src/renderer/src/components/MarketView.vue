@@ -129,6 +129,24 @@ function chooseStat(statId: number): void {
   statQuery.value = "";
   void nextTick(() => document.querySelector<HTMLInputElement>(".market-workspace .market-stat-row:last-child input")?.focus());
 }
+const itemQueryFocused = ref(false);
+const showItemSuggestions = computed(() => itemQueryFocused.value || itemQuery.value.trim() !== "");
+function escapeItemQuery(): void {
+  if (itemQuery.value) itemQuery.value = "";
+  else if (props.item) itemPickerOpen.value = false;
+}
+const filteredStatIds = computed(() => new Set(props.statFilters.flatMap((filter) => filter.statId === null ? [] : [filter.statId])));
+// Catalog rows with a plain bracketed value describe exactly one stat ID.
+const catalogRanges = computed(() => new Map(catalogStats.value.flatMap((row) =>
+  row.value && /^\[[^\]]*\]$/.test(row.value) ? [[row.key, row.value.slice(1, -1)] as const] : [])));
+function statRangeHint(statId: number | null): string {
+  const range = statId === null ? undefined : catalogRanges.value.get(statId);
+  return range && /\d/.test(range) ? `Base ${range}` : "";
+}
+function canAddFromCatalog(statId: number): boolean {
+  return catalogRanges.value.has(statId) && !filteredStatIds.value.has(statId) && marketStatOption(statId) !== null
+    && !marketStatMinimumIssue(statId, props.itemKey) && props.statFilters.length < MARKET_SEARCH_MAX_STAT_FILTERS;
+}
 </script>
 
 <template>
@@ -164,44 +182,62 @@ function chooseStat(statId: number): void {
           </div>
           <div v-if="!item || itemPickerOpen" class="market-item-picker">
             <label for="market-item-query">Choose catalog item</label>
-            <input id="market-item-query" ref="itemInput" v-model="itemQuery" type="search" placeholder="Search by item name" autocomplete="off" @keydown.enter.prevent="itemSuggestions[0] && chooseItem(itemSuggestions[0])" />
-            <ul class="market-options" aria-label="Catalog item suggestions">
-              <li v-for="option in itemSuggestions" :key="option.key"><button type="button" @click="chooseItem(option)">{{ option.name }} <small>{{ option.typeLabel }} · {{ option.repository }}{{ option.searchUnavailable ? ' · Search encoding pending' : '' }}</small></button></li>
-            </ul>
-            <p v-if="!itemSuggestions.length">No supported catalog item matches. Try another name.</p>
+            <div class="market-combobox">
+              <input id="market-item-query" ref="itemInput" v-model="itemQuery" type="search" placeholder="Search by item name" autocomplete="off" @focus="itemQueryFocused = true" @blur="itemQueryFocused = false" @keydown.enter.prevent="itemSuggestions[0] && chooseItem(itemSuggestions[0])" @keydown.escape.prevent="escapeItemQuery" />
+              <div v-if="showItemSuggestions" class="market-dropdown" @mousedown.prevent>
+                <ul v-if="itemSuggestions.length" class="market-options" aria-label="Catalog item suggestions">
+                  <li v-for="option in itemSuggestions" :key="option.key"><button type="button" @click="chooseItem(option)">{{ option.name }} <small>{{ option.typeLabel }} · {{ option.repository }}{{ option.searchUnavailable ? ' · Search encoding pending' : '' }}</small></button></li>
+                </ul>
+                <p v-else>No supported catalog item matches. Try another name.</p>
+              </div>
+            </div>
           </div>
           <div class="market-filter-layout">
-          <fieldset :disabled="!item" aria-labelledby="market-filters-title">
-            <h3 id="market-filters-title">Search filters</h3>
-            <UiButton v-if="item && !socketBaseRange && !hasSocketCriteria" :aria-expanded="showSocketControls" aria-controls="market-socket-controls" @click="optionalSocketsOpen = !optionalSocketsOpen">{{ optionalSocketsOpen ? 'Hide optional socket filters' : 'Add optional socket filters' }} <small>Capacity unverified</small></UiButton>
+          <fieldset class="market-filters" :disabled="!item" aria-labelledby="market-filters-title">
+            <h3 id="market-filters-title">Filters</h3>
+            <div v-if="item && !socketBaseRange && !hasSocketCriteria" class="market-socket-toggle">
+              <UiButton :aria-expanded="showSocketControls" aria-controls="market-socket-controls" @click="optionalSocketsOpen = !optionalSocketsOpen">{{ optionalSocketsOpen ? 'Hide optional socket filters' : 'Add optional socket filters' }}</UiButton>
+              <small>Capacity unverified</small>
+            </div>
             <div v-if="showSocketControls" id="market-socket-controls">
-              <div class="market-socket-bounds">
-                <label for="market-sockets">Minimum sockets<input id="market-sockets" :value="minSockets ?? ''" type="number" min="0" max="6" step="1" placeholder="Any" @input="emit('updateMinSockets', numericValue($event))" /></label>
-                <label for="market-sockets-max">Maximum sockets<input id="market-sockets-max" :value="maxSockets ?? ''" type="number" min="0" max="6" step="1" placeholder="Any" @input="emit('updateMaxSockets', numericValue($event))" /></label>
+              <div class="market-socket-bounds" role="group" aria-labelledby="market-sockets-group">
+                <span id="market-sockets-group" class="market-filter-label">Sockets</span>
+                <label class="sr-only" for="market-sockets">Minimum sockets</label>
+                <input id="market-sockets" :value="minSockets ?? ''" type="number" min="0" max="6" step="1" placeholder="Any" @input="emit('updateMinSockets', numericValue($event))" />
+                <span class="market-range-to" aria-hidden="true">to</span>
+                <label class="sr-only" for="market-sockets-max">Maximum sockets</label>
+                <input id="market-sockets-max" :value="maxSockets ?? ''" type="number" min="0" max="6" step="1" placeholder="Any" @input="emit('updateMaxSockets', numericValue($event))" />
+                <small v-if="socketBaseRange" class="market-socket-hint">Base socket range: {{ socketBaseRange.minimum === socketBaseRange.maximum ? socketBaseRange.minimum : `${socketBaseRange.minimum}–${socketBaseRange.maximum}` }}. Final item capacity may differ.</small>
+                <small v-else class="market-socket-hint">Socket capacity is unverified for this item. Socket filters are optional.</small>
               </div>
-              <p v-if="socketBaseRange" class="market-socket-hint">Base socket range: {{ socketBaseRange.minimum === socketBaseRange.maximum ? socketBaseRange.minimum : `${socketBaseRange.minimum}–${socketBaseRange.maximum}` }}. Final item capacity may differ.</p>
-              <p v-else class="market-socket-hint">Socket capacity is unverified for this item. Socket filters are optional.</p>
               <p v-if="minSockets !== null && maxSockets != null && minSockets > maxSockets" class="market-search-error" role="status">Minimum sockets must be less than or equal to maximum sockets.</p>
             </div>
-            <div class="market-stat-list">
+            <div v-if="statFilters.length" class="market-stat-list">
               <div v-for="filter in statFilters" :key="filter.key" class="market-stat-row">
-                <label :for="filter.key">{{ marketStatOption(filter.statId ?? -1)?.name }} minimum <small v-if="marketStatMinimumIssue(filter.statId ?? -1, itemKey)">Unsupported saved criterion</small></label>
-                <input :id="filter.key" :value="filter.minimum ?? ''" type="number" step="any" min="-1000000000" max="1000000000" required placeholder="Minimum" @input="emit('updateStatFilter', filter.key, { minimum: numericValue($event) })" />
-                <UiButton :aria-label="`Remove ${marketStatOption(filter.statId ?? -1)?.name}`" @click="emit('removeStatFilter', filter.key)">×</UiButton>
+                <label :for="filter.key">{{ marketStatOption(filter.statId ?? -1)?.name }}<span class="sr-only"> minimum</span> <small v-if="marketStatMinimumIssue(filter.statId ?? -1, itemKey)" class="market-stat-issue">Unsupported saved criterion</small></label>
+                <input :id="filter.key" :value="filter.minimum ?? ''" type="number" step="any" min="-1000000000" max="1000000000" required placeholder="Min" @input="emit('updateStatFilter', filter.key, { minimum: numericValue($event) })" />
+                <small class="market-stat-hint">{{ statRangeHint(filter.statId) }}</small>
+                <UiButton class="market-stat-remove" :aria-label="`Remove ${marketStatOption(filter.statId ?? -1)?.name}`" @click="emit('removeStatFilter', filter.key)">×</UiButton>
               </div>
             </div>
-            <label for="market-stat-query">Add stat minimum</label>
-            <input id="market-stat-query" v-model="statQuery" type="search" :disabled="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS" placeholder="Type at least 3 characters" autocomplete="off" @keydown.enter.prevent="statSuggestions[0] && chooseStat(statSuggestions[0].statId)" />
-            <ul v-if="statSuggestions.length" class="market-options" aria-label="Stat suggestions"><li v-for="option in statSuggestions" :key="option.statId"><button type="button" :disabled="Boolean(marketStatMinimumIssue(option.statId, itemKey))" @click="chooseStat(option.statId)">{{ option.name }}<small v-if="marketStatMinimumIssue(option.statId, itemKey)">{{ marketStatMinimumIssue(option.statId, itemKey) }}</small><small v-else-if="option.description">{{ option.description }}</small></button></li></ul>
-            <p v-else-if="statQuery.trim().length >= 3">No additional supported stats match.</p>
-            <p v-if="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS">All {{ MARKET_SEARCH_MAX_STAT_FILTERS }} stat slots are in use. Remove one to add another.</p>
+            <div class="market-stat-add">
+              <label for="market-stat-query">Add stat filter</label>
+              <div class="market-combobox">
+                <input id="market-stat-query" v-model="statQuery" type="search" :disabled="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS" placeholder="Type at least 3 characters" autocomplete="off" @keydown.enter.prevent="statSuggestions[0] && chooseStat(statSuggestions[0].statId)" @keydown.escape.prevent="statQuery = ''" />
+                <div v-if="statQuery.trim().length >= 3" class="market-dropdown" @mousedown.prevent>
+                  <ul v-if="statSuggestions.length" class="market-options" aria-label="Stat suggestions"><li v-for="option in statSuggestions" :key="option.statId"><button type="button" :disabled="Boolean(marketStatMinimumIssue(option.statId, itemKey))" @click="chooseStat(option.statId)">{{ option.name }}<small v-if="marketStatMinimumIssue(option.statId, itemKey)">{{ marketStatMinimumIssue(option.statId, itemKey) }}</small><small v-else-if="option.description">{{ option.description }}</small></button></li></ul>
+                  <p v-else>No additional supported stats match.</p>
+                </div>
+              </div>
+            </div>
+            <p v-if="statFilters.length >= MARKET_SEARCH_MAX_STAT_FILTERS" class="market-filter-note">All {{ MARKET_SEARCH_MAX_STAT_FILTERS }} stat slots are in use. Remove one to add another.</p>
           </fieldset>
           <section v-if="showCatalog" class="market-catalog-ranges" aria-labelledby="market-ranges-title">
             <header class="market-stat-card-heading"><h3 id="market-ranges-title">{{ item?.label }}</h3><small>{{ item?.rarity }} · Base stat ranges</small></header>
             <dl v-if="catalogStats.length" class="market-range-list">
-              <div v-for="stat in catalogStats" :key="stat.key">
+              <div v-for="stat in catalogStats" :key="stat.key" :class="{ 'is-filtered': catalogRanges.has(stat.key) && filteredStatIds.has(stat.key) }">
                 <dt :title="stat.detail">{{ stat.label }}</dt>
-                <dd v-if="stat.value">{{ stat.value }}</dd>
+                <dd v-if="stat.value">{{ stat.value }}<button v-if="canAddFromCatalog(stat.key)" type="button" class="market-range-add" :aria-label="`Add ${marketStatOption(stat.key)?.name} minimum`" @click="chooseStat(stat.key)"></button></dd>
               </div>
             </dl>
             <p v-else class="empty-copy">No fixed base stat values retained for this definition.</p>
@@ -218,12 +254,14 @@ function chooseStat(statId: number): void {
           </section>
           <div v-else class="market-catalog-ranges market-catalog-placeholder"><p class="empty-copy">Choose an item to see its stats.</p></div>
           </div>
-          <div v-if="item" class="market-filter-summary" aria-label="Active filters"><span v-for="text in summary" :key="text">{{ text }}</span></div>
-          <p v-if="item && !canSave" role="status">Enter valid socket and stat minimums before saving or searching.</p>
-          <p v-if="blockedFilters.length" class="market-search-error" role="status">These saved criteria are preserved, but cannot be sent as numeric minimums. Remove them to search.<span v-for="filter in blockedFilters" :key="filter.key"> {{ marketStatOption(filter.statId!)?.name }}: {{ marketStatMinimumIssue(filter.statId!, itemKey) }}</span></p>
-          <p v-if="message" role="status">{{ message }}</p>
-          <p v-if="saveStatus === 'error'" class="market-search-error" role="alert">Local saving failed. Keep Companion open and retry.<UiButton @click="emit('retrySave')">Retry save</UiButton></p>
-          <p v-else-if="saveStatus === 'saving'" role="status">Saving locally…</p>
+          <div class="market-editor-status">
+            <div v-if="item" class="market-filter-summary" aria-label="Active filters"><span v-for="text in summary" :key="text">{{ text }}</span></div>
+            <p v-if="item && !canSave" role="status">Enter valid socket and stat minimums before saving or searching.</p>
+            <p v-if="blockedFilters.length" class="market-search-error" role="status">These saved criteria are preserved, but cannot be sent as numeric minimums. Remove them to search.<span v-for="filter in blockedFilters" :key="filter.key"> {{ marketStatOption(filter.statId!)?.name }}: {{ marketStatMinimumIssue(filter.statId!, itemKey) }}</span></p>
+            <p v-if="message" role="status">{{ message }}</p>
+            <p v-if="saveStatus === 'error'" class="market-search-error" role="alert">Local saving failed. Keep Companion open and retry.<UiButton @click="emit('retrySave')">Retry save</UiButton></p>
+            <p v-else-if="saveStatus === 'saving'" role="status">Saving locally…</p>
+          </div>
           <footer class="market-form-actions">
             <div class="market-action-row market-primary-actions">
               <UiButton tone="primary" type="submit" :disabled="!canSearch">{{ inFlight ? 'Searching…' : cooldown > 0 ? `Search in ${cooldown}s` : 'Search market' }}</UiButton>
@@ -244,13 +282,12 @@ function chooseStat(statId: number): void {
           <template v-else-if="phase === 'error'"><p v-if="!readinessExplainsError" class="market-search-error" role="alert">{{ errorMessage }}</p></template>
           <template v-else-if="phase === 'success'">
             <table v-if="listings.length" class="market-price-table">
-              <thead><tr><th scope="col">Listing</th><th scope="col">Price</th><th scope="col">Price per unit</th><th scope="col">Variant and stats</th></tr></thead>
+              <thead><tr><th scope="col" class="market-rank"><span aria-hidden="true">#</span><span class="sr-only">Listing</span></th><th scope="col">Item and stats</th><th scope="col" class="market-price-heading">Price</th></tr></thead>
               <tbody>
                 <tr v-for="(listing, index) in listings" :key="index">
-                  <th scope="row" data-label="Listing">{{ index + 1 }}</th>
-                  <td class="market-listing-price" data-label="Price">{{ formatNumber(listing.price) }} gold</td>
-                  <td class="market-unit-price" data-label="Price per unit">{{ listing.unitPrice !== undefined ? `${unitPriceFormatter.format(listing.unitPrice)} gold per unit` : 'Unavailable' }}</td>
+                  <th scope="row" class="market-rank" data-label="Listing">{{ index + 1 }}</th>
                   <td class="market-listing-item"><MarketListingDetails :item="listing.item" /></td>
+                  <td class="market-listing-price" data-label="Price"><strong class="market-total-price">{{ formatNumber(listing.price) }} gold</strong><small class="market-unit-price">{{ listing.unitPrice !== undefined ? `${unitPriceFormatter.format(listing.unitPrice)} gold per unit` : 'Unit price unavailable' }}</small></td>
                 </tr>
               </tbody>
             </table>

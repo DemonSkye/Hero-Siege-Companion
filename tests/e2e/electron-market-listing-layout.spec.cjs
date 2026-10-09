@@ -111,10 +111,13 @@ test("Market listing rolls, responsive alignment and saved state compose through
     await expect(workspace.locator(".market-result-details")).not.toHaveAttribute("open");
     const wide = await workspace.evaluate(root => {
       const box = selector => root.querySelector(selector).getBoundingClientRect();
-      return { lefts: [".market-chosen-item", "#market-filters-title", "label[for=market-sockets]",
-        "#market-sockets", "#market-results-title"]
-        .map(selector => box(selector).left), filter: box("fieldset").width,
-        ranges: box(".market-catalog-ranges").width, sameRow: box("fieldset").top === box(".market-catalog-ranges").top,
+      return { lefts: [".market-chosen-item", "fieldset", "#market-results-title"].map(selector => box(selector).left),
+        innerLefts: ["#market-filters-title", "#market-sockets-group"].map(selector => box(selector).left),
+        filter: box("fieldset").width, ranges: box(".market-catalog-ranges").width,
+        bottoms: [box(".market-form-actions").bottom, box(".market-catalog-ranges").bottom],
+        contentRight: box(".market-chosen-item").right, rangesRight: box(".market-catalog-ranges").right,
+        socketRow: [box("#market-sockets-group").top, box("#market-sockets").top, box("#market-sockets-max").top, box("#market-sockets-max").bottom],
+        sameRow: box("fieldset").top === box(".market-catalog-ranges").top,
         title: box(".market-results-heading").bottom, table: box(".market-price-table").top,
         footer: box(".market-results-footer").top, tableBottom: box(".market-price-table").bottom,
         changeDistance: box(".market-chosen-item button").left - box(".market-chosen-item > div").right,
@@ -122,8 +125,15 @@ test("Market listing rolls, responsive alignment and saved state compose through
         actionsInside: ["button[type=submit]", "#market-saved-name", ".market-save-controls button"].every(selector => root.querySelector(".market-form-actions").contains(root.querySelector(selector))) };
     });
     expect(Math.max(...wide.lefts) - Math.min(...wide.lefts)).toBeLessThan(2);
+    expect(Math.max(...wide.innerLefts) - Math.min(...wide.innerLefts)).toBeLessThan(2);
     expect(wide.ranges).toBeLessThanOrEqual(wide.filter);
-    expect(wide.ranges).toBeLessThanOrEqual(440);
+    // The stat card fills its column and spans filters through actions, leaving no dead column space.
+    expect(Math.abs(wide.bottoms[0] - wide.bottoms[1])).toBeLessThan(1);
+    expect(Math.abs(wide.contentRight - wide.rangesRight)).toBeLessThan(1);
+    // Socket label and both bounds share one row.
+    expect(wide.socketRow[1]).toBe(wide.socketRow[2]);
+    expect(wide.socketRow[0]).toBeGreaterThanOrEqual(wide.socketRow[1]);
+    expect(wide.socketRow[0]).toBeLessThan(wide.socketRow[3]);
     expect(wide.sameRow).toBe(true);
     expect(wide.table - wide.title).toBeLessThan(20);
     expect(wide.footer).toBeGreaterThanOrEqual(wide.tableBottom);
@@ -180,6 +190,100 @@ test("Market listing rolls, responsive alignment and saved state compose through
     if (path.dirname(path.resolve(userDataDir)) !== path.resolve(os.tmpdir())
       || !path.basename(userDataDir).startsWith("hsc-e2e-")) throw new Error("Unexpected test profile location");
     cleanupUserDataDir(userDataDir);
+  }
+});
+
+// Wide editor with stat filters and results: compact filter rows, overlaid
+// suggestions and a dense results table. Synthetic transport as above.
+test("wide Market editor keeps stat filters compact and results dense", async () => {
+  const session = await launchCompanionApp({ marketTransport: true });
+  try {
+    await resize(session, 1900, 1050);
+    await session.page.getByRole("tab", { name: "Market", exact: true }).click();
+    const workspace = session.page.locator(".market-workspace");
+    await workspace.locator("#market-item-query").fill("Death Knight's Gauntlets");
+    await workspace.locator("#market-item-query").press("Enter");
+    const card = workspace.locator(".market-catalog-ranges");
+    await expect(card).toContainText("Enhanced Damage per level[0.5%]");
+    const add = card.locator(".market-range-add");
+    expect(await add.count()).toBeGreaterThan(1);
+    const [first, second] = (await add.evaluateAll(buttons => buttons.slice(0, 2).map(button => button.getAttribute("aria-label"))))
+      .map(label => label.replace(/^Add (.*) minimum$/, "$1"));
+    await card.getByRole("button", { name: `Add ${first} minimum`, exact: true }).click();
+    await expect(workspace.locator(".market-stat-row")).toHaveCount(1);
+    await expect(workspace.getByLabel(`${first} minimum`, { exact: true })).toBeFocused();
+    await expect(card.locator(".market-range-list > div.is-filtered")).toHaveCount(1);
+    await expect(card.getByRole("button", { name: `Add ${first} minimum`, exact: true })).toHaveCount(0);
+    await workspace.getByLabel(`${first} minimum`, { exact: true }).fill("1");
+    const stable = () => workspace.evaluate(root => ["#market-stat-query", ".market-form-actions", ".market-catalog-ranges"]
+      .map(selector => root.querySelector(selector).getBoundingClientRect().top));
+    const beforeQuery = await stable();
+    await workspace.locator("#market-stat-query").fill(second.slice(0, 6));
+    const suggestions = workspace.locator('ul[aria-label="Stat suggestions"]');
+    await expect(suggestions).toBeVisible();
+    expect(await stable()).toEqual(beforeQuery);
+    await capture(session, "market-wide-1900-stat-suggestions");
+    await workspace.locator("#market-stat-query").press("Escape");
+    await expect(workspace.locator("#market-stat-query")).toHaveValue("");
+    await expect(suggestions).toHaveCount(0);
+    await workspace.locator("#market-stat-query").fill(second.slice(0, 6));
+    await suggestions.getByRole("button").filter({ hasText: second }).first().click();
+    await expect(workspace.locator(".market-stat-row")).toHaveCount(2);
+    await workspace.locator(".market-stat-row input").last().fill("1");
+    await expect(workspace.locator(".market-stat-hint").first()).toHaveText(/^Base /);
+    const editor = await workspace.evaluate(root => {
+      const box = selector => root.querySelector(selector).getBoundingClientRect();
+      const row = root.querySelector(".market-stat-row");
+      const [label, input] = [row.querySelector("label"), row.querySelector("input")].map(element => element.getBoundingClientRect());
+      return { query: box("#market-stat-query").width, filter: box("fieldset").width, labelToInput: input.left - label.left,
+        bottoms: [box(".market-form-actions").bottom, box(".market-catalog-ranges").bottom], overflow: document.documentElement.scrollWidth > innerWidth };
+    });
+    expect(editor.query).toBeLessThan(600);
+    expect(editor.labelToInput).toBeLessThan(560);
+    expect(Math.abs(editor.bottoms[0] - editor.bottoms[1])).toBeLessThan(1);
+    expect(editor.overflow).toBe(false);
+    await workspace.locator(".market-chosen-item").scrollIntoViewIfNeeded();
+    await capture(session, "market-wide-1900-editor");
+    await session.page.evaluate(() => window.heroSiegeCompanion.startCapture());
+    await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.emitSessionContext([123], [{
+      text: "api account_id=7-424242&unique_account_id=SYNTHETIC_ID&crossregion_identifier=SYNTHETIC_SESSION&season=11&hardcore=0&beta=0",
+      direction: "outbound", remoteAddress: "203.0.113.42", remotePort: 26921,
+    }]));
+    const glove = { price: 12000, unit_price: 12000, fingerprint: "SYNTHETIC-0-0-4", item_data: { c: 1, b: 62, d: 24, e: 11, w: 1, a: 1000 } };
+    const rows = [glove, { ...glove, price: 18500, unit_price: 18500 }, { ...glove, price: 25000, unit_price: 25000, item_data: { ...glove.item_data, p: 1 } }];
+    const body = Buffer.from(JSON.stringify({ status: 1, itemCount: rows.length,
+      items: deflateSync(Buffer.from(JSON.stringify(rows))).toString("base64") }));
+    await session.electronApp.evaluate((_electron, bytes) => globalThis.heroSiegeCompanionE2e.setMarketTestResponse(200, bytes), [...body]);
+    await expect(workspace.getByRole("button", { name: "Search market", exact: true })).toBeEnabled();
+    await workspace.getByRole("button", { name: "Search market", exact: true }).click();
+    const results = workspace.locator(".market-results");
+    await expect(results.locator("tbody tr")).toHaveCount(3);
+    await expect(results.locator(".market-total-price")).toHaveText(["12,000 gold", "18,500 gold", "25,000 gold"]);
+    await expect(results.locator(".market-listing-item").first()).toContainText("Enhanced Damage per level0.5%");
+    const dense = await results.evaluate(root => {
+      const box = element => element.getBoundingClientRect();
+      const table = box(root.querySelector("table"));
+      const stats = root.querySelector(".market-listing-stats");
+      const cells = [...stats.children].map(box);
+      return { priceShare: box(root.querySelector(".market-listing-price")).width / table.width,
+        columns: getComputedStyle(stats).gridTemplateColumns.split(" ").length, cellWidth: Math.max(...cells.map(cell => cell.width)),
+        rowHeight: box(root.querySelector("tbody tr")).height, statCount: cells.length, cellHeight: cells[0].height,
+        overflow: document.documentElement.scrollWidth > innerWidth };
+    });
+    expect(dense.priceShare).toBeLessThan(0.2);
+    expect(dense.columns).toBeGreaterThanOrEqual(3);
+    expect(dense.cellWidth).toBeLessThan(480);
+    // A row needs only its stat grid's lines, not one line per stat.
+    expect(dense.rowHeight).toBeLessThan(dense.statCount * dense.cellHeight);
+    expect(dense.overflow).toBe(false);
+    await results.scrollIntoViewIfNeeded();
+    await capture(session, "market-wide-1900-results");
+    expect(await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(1);
+  } finally {
+    await closeCompanionApp(session);
+    if (path.dirname(path.resolve(session.userDataDir)) !== path.resolve(os.tmpdir())
+      || !path.basename(session.userDataDir).startsWith("hsc-e2e-")) throw new Error("Unexpected test profile location");
+    cleanupUserDataDir(session.userDataDir);
   }
 });
 

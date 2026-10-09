@@ -35,10 +35,12 @@ const unknown = computed(() => props.item?.statsReason === "unidentified" ? "Uni
 
 <template>
   <div class="market-listing-details">
-    <strong v-if="option">{{ rarity ? `${rarity} · ` : '' }}{{ option.typeLabel }}<span v-if="item && !item.identified"> · Unidentified</span></strong>
-    <small v-else>Variant unavailable</small>
+    <div class="market-listing-heading">
+      <strong v-if="option">{{ rarity ? `${rarity} · ` : '' }}{{ option.typeLabel }}<span v-if="item && !item.identified"> · Unidentified</span></strong>
+      <small v-else>Variant unavailable</small>
+      <small v-if="stats.length" class="market-listing-badge">{{ item?.statsExperimental ? 'Reconstructed listing stats (experimental)' : 'Actual listing rolls' }}</small>
+    </div>
     <template v-if="stats.length">
-      <small>{{ item?.statsExperimental ? 'Reconstructed listing stats (experimental)' : 'Actual listing rolls' }}</small>
       <ul class="market-listing-stats">
         <li v-for="stat in stats" :key="stat.key"><span>{{ stat.label }}</span><strong>{{ stat.value ?? stat.detail }}</strong></li>
       </ul>

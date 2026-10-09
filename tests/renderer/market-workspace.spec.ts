@@ -382,9 +382,9 @@ test("real Market results retain fractional unit prices without rounding small p
     // Literal values are independent of the presentation formatter. These use
     // the test environment's existing en-US grouping/decimal convention.
     expect(wrapper.findAll(".market-price-table .market-unit-price").map(cell => cell.text())).toEqual([
-      "0.5 gold per unit", "1,234.56789 gold per unit", "0.0000001 gold per unit", "100,000 gold per unit", "Unavailable",
+      "0.5 gold per unit", "1,234.56789 gold per unit", "0.0000001 gold per unit", "100,000 gold per unit", "Unit price unavailable",
     ]);
-    expect(wrapper.findAll(".market-price-table tbody tr td:first-of-type").map(cell => cell.text())).toEqual([
+    expect(wrapper.findAll(".market-price-table tbody tr .market-total-price").map(cell => cell.text())).toEqual([
       "300 gold", "600 gold", "900 gold", "1,200 gold", "1,500 gold",
     ]);
   } finally { wrapper.unmount(); }
@@ -453,6 +453,37 @@ test("compressed listing data crosses main allowlist and real Market UI with ran
     await wrapper.get(".market-options button").trigger("click");
     expect(wrapper.get(".market-catalog-ranges").text()).toContain("Ranged Skills[6–12]");
     expect(wrapper.text()).not.toContain("Mana300–450");
+  } finally { wrapper.unmount(); }
+});
+
+test("base stat card adds a ranged stat minimum and Escape closes stat suggestions", async () => {
+  const { api } = setup();
+  api.searchMarket.mockResolvedValue({ ok: true, result: { listings: [] } });
+  const wrapper = mount(App, { attachTo: document.body, global: { stubs } });
+  try {
+    await flushPromises();
+    await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    await wrapper.get("#market-item-query").setValue("Battle Mage's Shield");
+    await wrapper.get(".market-options button").trigger("click");
+    const manaRow = () => wrapper.findAll(".market-range-list > div").find(row => row.text().startsWith("Mana[300"))!;
+    expect(manaRow().classes()).not.toContain("is-filtered");
+    expect(wrapper.find('.market-range-list button[aria-label="Add Sockets minimum"]').exists()).toBe(false);
+    await manaRow().get('button[aria-label="Add Mana minimum"]').trigger("click"); await flushPromises();
+    const row = wrapper.get(".market-stat-row");
+    expect(row.get("label").text()).toBe("Mana minimum");
+    expect(row.get(".market-stat-hint").text()).toBe("Base 300–450");
+    expect(document.activeElement).toBe(row.get("input").element);
+    expect(manaRow().classes()).toContain("is-filtered");
+    expect(manaRow().find("button").exists()).toBe(false);
+    await row.get("input").setValue("400");
+    await wrapper.get("#market-stat-query").setValue("magic skill");
+    expect(wrapper.find('ul[aria-label="Stat suggestions"]').exists()).toBe(true);
+    await wrapper.get("#market-stat-query").trigger("keydown", { key: "Escape" });
+    expect((wrapper.get("#market-stat-query").element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find('ul[aria-label="Stat suggestions"]').exists()).toBe(false);
+    await wrapper.get("form.market-editor").trigger("submit"); await flushPromises();
+    expect(api.searchMarket).toHaveBeenCalledWith({ itemMask: 1073766438, statFilters: [{ statId: 60, minimum: 400 }] });
   } finally { wrapper.unmount(); }
 });
 
