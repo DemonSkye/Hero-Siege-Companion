@@ -105,7 +105,7 @@ test("Market listing rolls, responsive alignment and saved state compose through
     const results = workspace.locator(".market-results");
     await expect(results.locator(".market-listing-item").first()).toContainText("Mana439");
     await expect(results.locator(".market-listing-item").first()).toContainText("Enhanced Defense124%");
-    await expect(results.locator(".market-listing-item").nth(1)).toContainText("Stats unknown for this variant");
+    await expect(results.locator(".market-listing-item").nth(1)).toContainText("Rolls for this variant can't be read yet");
     await expect(results.locator(".market-listing-item").nth(2)).toContainText("Unidentified — rolls hidden");
     await expect(workspace.locator(".market-catalog-ranges")).toContainText("Mana[300–450]");
     await expect(workspace.locator(".market-result-details")).not.toHaveAttribute("open");
@@ -330,7 +330,10 @@ for (const specimen of [
     catalog: "Enhanced Damage per level[0.5%]", listing: "Enhanced Damage per level0.5%", numeric: true },
   { name: "Death Knight's Gauntlets", slug: "modified-glove", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-4",
     item_data: { c: 1, b: 62, d: 24, e: 11, w: 1, a: 1000, p: 1 } },
-    catalog: "Enhanced Damage per level[0.5%]", listing: "Stats unknown for this variant", modifier: true },
+    catalog: "Enhanced Damage per level[0.5%]", listing: "Rolls for this variant can't be read yet", modifier: true },
+  { name: "Monsoon", slug: "tier-bow", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-3",
+    item_data: { c: 1, b: 16, j: 13, d: 1, e: 11, w: 1, a: 1000 } },
+    catalog: "Strength[45–60]", listing: "Strength58", numeric: true },
 ]) {
   test(`${specimen.name} (${specimen.slug}) preserves constructor confidence through main and preload`, async () => {
     const session = await launchCompanionApp({ marketTransport: true });
@@ -356,11 +359,8 @@ for (const specimen of [
       await expect(workspace).not.toContainText(/Triggered skill ID|Unknown stat 18[67]/);
       if (specimen.numeric) await expect(listing).toContainText("Reconstructed listing stats (experimental)");
       else if (specimen.modifier) {
-        await expect(listing.locator("summary")).toHaveText("9 fields unavailable");
-        await expect(listing.locator("details")).not.toHaveAttribute("open");
-        await listing.locator("summary").click();
-        await expect(listing.locator(".market-listing-stats li")).toHaveCount(9);
-        await expect(listing).toContainText("Modifier effects unavailable");
+        await expect(listing.locator("details")).toHaveCount(0);
+        await expect(listing.locator(".market-listing-stats li")).toHaveCount(0);
         await expect(listing).not.toContainText("0.5");
       } else await expect(listing).toContainText("Strength27");
       await workspace.locator(".market-results").scrollIntoViewIfNeeded();

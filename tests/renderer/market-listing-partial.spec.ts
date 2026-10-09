@@ -26,6 +26,32 @@ test("UI distinguishes reconstructed numeric siblings from explicit unknown fiel
   } finally { wrapper.unmount(); }
 });
 
+test("a wholly blocked definition reads as one line while a partial card keeps its disclosure", async () => {
+  const blocked = sanitizeMarketListingItem({ itemKey: "normal:11:0:23", identified: true })!;
+  const wrapper = mount(MarketListingDetails, { props: { item: blocked } });
+  try {
+    expect(blocked.unknownStats).toHaveLength(6);
+    expect(wrapper.text()).toContain("Rolls for this item type can't be read yet");
+    expect(wrapper.text()).not.toMatch(/fields? unavailable|Item effects unavailable/);
+    expect(wrapper.find(".market-listing-unavailable").exists()).toBe(false);
+  } finally { wrapper.unmount(); }
+  // Monsoon values from the main projection test; its socket roll stays unknown.
+  const monsoon = sanitizeMarketListingItem({ itemKey: "unique:3:13:16", identified: true, stats: [
+    { statId: 22, value: 121 }, { statId: 23, value: 1.8 }, { statId: 24, value: 400 }, { statId: 28, value: 800 },
+    { statId: 33, value: 58 }, { statId: 36, value: 43 }, { statId: 64, value: 15 }, { statId: 67, value: 19 },
+    { statId: 76, value: 10 }, { statId: 77, value: 1 }, { statId: 201, value: 4 }, { statId: 202, value: 525 }, { statId: 203, value: 1 },
+  ], unknownStats: [{ statId: 20, reason: "prior-draw" }] })!;
+  const partial = mount(MarketListingDetails, { props: { item: monsoon } });
+  try {
+    expect(monsoon.stats).toHaveLength(13);
+    expect(partial.text()).toContain("Reconstructed listing stats (experimental)");
+    expect(partial.text()).toContain("Strength58");
+    expect(partial.get(".market-listing-unavailable summary").text()).toBe("1 field unavailable");
+    await partial.get(".market-listing-unavailable summary").trigger("click");
+    expect(partial.text()).toContain("Depends on an unavailable roll");
+  } finally { partial.unmount(); }
+});
+
 async function workerToUi(body: Buffer) {
   transport.request.mockImplementation((_options, accept) => {
     const request = new EventEmitter() as EventEmitter & { end(): void; destroy(): void };
@@ -72,8 +98,8 @@ test("compressed response uses real worker, sanitization and renderer for glove 
         expect(wrapper.findAll(".market-listing-stats li")).toHaveLength(9);
         expect(wrapper.find(".market-listing-unavailable").exists()).toBe(false);
       } else {
-        expect(wrapper.text()).toContain("9 fields unavailable");
-        expect(wrapper.text()).toContain("Modifier effects unavailable");
+        expect(wrapper.text()).toContain("Rolls for this variant can't be read yet");
+        expect(wrapper.find(".market-listing-unavailable").exists()).toBe(false);
         expect(wrapper.text()).not.toContain("0.5");
       }
     } finally { wrapper.unmount(); }
@@ -105,8 +131,8 @@ test.skipIf(!process.env.HSC_PRIVATE_MARKET_REPLAY)("original 101-record page cr
         known++;
         expect(listing.item.stats.length === 9 && listing.item.stats.some(stat => stat.statId === 31 && stat.value === 0.5)).toBe(true);
         expect(wrapper.text().includes("Reconstructed listing stats (experimental)") && wrapper.text().includes("Enhanced Damage per level0.5%")).toBe(true);
-        expect(!wrapper.text().includes("Tier effects unavailable")).toBe(true);
-      } else expect(wrapper.text().includes("Modifier effects unavailable") || wrapper.text().includes("Unidentified")).toBe(true);
+        expect(!wrapper.text().includes("unavailable")).toBe(true);
+      } else expect(wrapper.text().includes("Rolls for this variant can't be read yet") || wrapper.text().includes("Unidentified")).toBe(true);
       // Use booleans so a failure cannot print an original compact record.
       expect(!/fingerprint|item_data|"a":|"sh":|seller/.test(wrapper.html())).toBe(true);
     } finally { wrapper.unmount(); }

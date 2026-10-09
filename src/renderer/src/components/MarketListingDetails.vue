@@ -20,16 +20,16 @@ const stats = computed(() => marketCatalogStatRows(props.item?.stats?.filter(sta
 const reasonLabels: Record<MarketListingStatReason, string> = {
   "constructor-value": "Conditional value unavailable", "prior-draw": "Depends on an unavailable roll",
   "native-stat-case": "This effect is unavailable", modifier: "Modifier effects unavailable",
-  "tier-helper": "Tier effects unavailable", "constructor-helper": "Item effects unavailable",
+  "constructor-helper": "Item effects unavailable",
   "invalid-seed": "Listing data incomplete", "invalid-projection": "Invalid listing value", "not-reconstructed": "Value unavailable",
 };
 const unknownStats = computed(() => props.item?.unknownStats?.map(stat => ({ ...stat,
   name: itemBaseStatMetadata(stat.statId)?.name ?? `Stat ${stat.statId}`, label: reasonLabels[stat.reason],
 })) ?? []);
 const unknown = computed(() => props.item?.statsReason === "unidentified" ? "Unidentified — rolls hidden"
-  : props.item?.statsReason === "unsupported-variant" ? "Stats unknown for this variant"
+  : props.item?.statsReason === "unsupported-variant" ? "Rolls for this variant can't be read yet"
   : props.item?.statsReason === "unverified-definition" ? "Listing rolls are not verified for this item"
-  : props.item?.statsReason === "constructor-helper" ? "Listing stats unavailable"
+  : props.item?.statsReason === "constructor-helper" ? "Rolls for this item type can't be read yet"
   : "Stats unknown for this item");
 </script>
 
@@ -48,7 +48,7 @@ const unknown = computed(() => props.item?.statsReason === "unidentified" ? "Uni
       <small v-if="triggeredSkill" class="market-triggered-skill">{{ triggeredSkill }}</small>
     </template>
     <small v-else>{{ unknown }}</small>
-    <details v-if="unknownStats.length" class="market-listing-unavailable">
+    <details v-if="stats.length && unknownStats.length" class="market-listing-unavailable">
       <summary>{{ unknownStats.length }} field{{ unknownStats.length === 1 ? '' : 's' }} unavailable</summary>
       <ul class="market-listing-stats">
         <li v-for="stat in unknownStats" :key="stat.statId"><span>{{ stat.name }}</span><small>{{ stat.label }}</small></li>

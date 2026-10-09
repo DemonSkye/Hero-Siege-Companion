@@ -4,7 +4,7 @@ import { constructorProjectionGaps, itemListingDefinition, validConstructorStatV
 
 export type MarketListingStatsReason = "unsupported-definition" | "unverified-definition" | "unsupported-variant" | "unidentified" | "constructor-helper";
 export type MarketListingStatReason = "constructor-value" | "prior-draw" | "native-stat-case" | "modifier"
-  | "tier-helper" | "constructor-helper" | "invalid-seed" | "invalid-projection" | "not-reconstructed";
+  | "constructor-helper" | "invalid-seed" | "invalid-projection" | "not-reconstructed";
 export interface MarketListingItem {
   itemKey: string;
   identified: boolean;
@@ -15,7 +15,7 @@ export interface MarketListingItem {
   statsReason?: MarketListingStatsReason;
 }
 const reasons = new Set<MarketListingStatReason>(["constructor-value", "prior-draw", "native-stat-case", "modifier",
-  "tier-helper", "constructor-helper", "invalid-seed", "invalid-projection", "not-reconstructed"]);
+  "constructor-helper", "invalid-seed", "invalid-projection", "not-reconstructed"]);
 
 export function sanitizeMarketListingItem(value: unknown): MarketListingItem | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;

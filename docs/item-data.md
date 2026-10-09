@@ -13,7 +13,7 @@ decoder read these same facts. There is no second hand-maintained catalog.
 | `item-stats.json` | One shared numeric stat-ID catalog: labels, units, native menu membership, qualified roles, meaning gaps, encoded contexts and proc families |
 | `rarities.json` | Inherited normalized-name classification and its distinct provenance |
 | `runewords.json` | External runeword repository IDs mapped to legacy constructor keys; tuples are `[externalId, legacyKey, itemTypeOrNull]`. Names derive from `identities.json`. |
-| `listing-coverage.json` | Existing constructor helper gaps and optional-generation guards |
+| `listing-coverage.json` | Unaudited constructor helper gaps and optional-generation guards |
 
 `item-stats.ts` exports `ItemStats` and `itemStat(id)`. Numeric `statId` is the
 stable identity; a display name is not an enum member or a reliable join key.
@@ -114,6 +114,10 @@ Affix pools, conditional helpers, tiers, upgrades, corruption, socket contents,
 final tooltip arithmetic and current-build parity remain outside this claim.
 The existing main-only decoder and listing guards remain the owners of actual
 roll reconstruction; constructor coverage does not grant listing eligibility.
+The tier helper shared by item constructors is audited: it adds only nonrandom
+metadata and, for some weapons, a scalar "Attacks can hit multiple enemies" value
+equal to any constructor value, so it neither draws nor changes a listed field.
+Only families with other unaudited constructor helpers keep a listing gap.
 
 Units retain the existing scale. `unknown` does not mean flat or percent. Roles
 distinguish quantities, class/talent identifiers, effects, markers, categories,

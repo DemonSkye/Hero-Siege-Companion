@@ -118,7 +118,7 @@ export function validateItemData(sources: typeof ITEM_DATA_SOURCES = ITEM_DATA_S
   }
   const families = new Set(base.items.map(item => item.itemKey.split(":").slice(0, 3).join(":")));
   for (const [family, gap] of Object.entries(coverage.ITEM_LISTING_CONSTRUCTOR_GAPS)) {
-    check(families.has(family) && ["tier-helper", "constructor-helper"].includes(gap), "Invalid constructor helper gap");
+    check(families.has(family) && gap === "constructor-helper", "Invalid constructor helper gap");
   }
   unique(coverage.ITEM_LISTING_OPTIONAL_GENERATION_KEYS, "Optional generation");
   check(coverage.ITEM_LISTING_OPTIONAL_GENERATION_KEYS.every(key => itemSet.has(key)), "Invalid optional generation key");
