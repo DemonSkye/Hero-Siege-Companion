@@ -50,6 +50,8 @@ import { useUpdateNotice } from "./lib/update-notice";
 import { useWhatsNewPrompt } from "./lib/whats-new-prompt";
 import { WHATS_NEW_RELEASE } from "./lib/whats-new";
 import { useWindowMode } from "./lib/window-mode";
+import { COMPANION_VIEWS, type CompanionView } from "./lib/view-navigation";
+import ViewTabs from "./components/ViewTabs.vue";
 
 type SettingsSection = "app" | "appearance" | "features" | "support" | "developers";
 type SettingsTarget = SettingsSection | "whatsNew";
@@ -70,21 +72,7 @@ const showCompactCustomization = ref(false);
 const settingsInitialTab = ref<SettingsTarget>("app");
 const showCompactZone = ref(false);
 const satanicZoneRefreshSubmitting = ref(false);
-const activeTab = ref<"live" | "past" | "filter" | "market">("live");
-const viewTabs = [
-  { id: "live", label: "Live Session" }, { id: "filter", label: "Item Filter" },
-  { id: "market", label: "Market" }, { id: "past", label: "Past Runs" },
-] as const;
-function handleViewTabKey(event: KeyboardEvent): void {
-  const index = viewTabs.findIndex((tab) => tab.id === activeTab.value);
-  const next = event.key === "Home" ? 0 : event.key === "End" ? viewTabs.length - 1
-    : event.key === "ArrowRight" ? (index + 1) % viewTabs.length
-    : event.key === "ArrowLeft" ? (index + viewTabs.length - 1) % viewTabs.length : null;
-  if (next === null) return;
-  event.preventDefault();
-  activeTab.value = viewTabs[next].id;
-  void nextTick(() => document.getElementById(`view-tab-${activeTab.value}`)?.focus());
-}
+const activeTab = ref<CompanionView>("live");
 const expandedLogIds = ref<Set<string>>(new Set());
 const expandedDropRarity = ref<string | null>(null);
 const diagnosticsBusyLevel = ref<CaptureDiagnosticsLevel | null>(null);
@@ -320,7 +308,7 @@ const legacyCompactThemeAvailable = computed(() => themeHasCustomization(
   compactThemeForegroundFills.value,
 ));
 const recoverableCompactFilterGroups = computed(() => compactFilterGroupRecoveryOptions(compactRunTiles.value, itemFilterGroups.value));
-const activeViewTitle = computed(() => viewTabs.find((tab) => tab.id === activeTab.value)?.label ?? "Live Session");
+const activeViewTitle = computed(() => COMPANION_VIEWS.find((tab) => tab.id === activeTab.value)?.label ?? "Live Session");
 const satanicZoneRefreshEnabled = computed({
   get: () => state.value.satanicZone.refreshEnabled,
   set: (enabled: boolean) => { void setSatanicZoneRefreshEnabled(enabled); },
@@ -686,146 +674,150 @@ function toggleLog(log: LogEntry) {
     />
 
     <div v-if="!compactMode" class="app-scroll">
-      <nav class="view-tabs" role="tablist" aria-label="Companion views" @keydown="handleViewTabKey">
-        <button v-for="tab in viewTabs" :id="`view-tab-${tab.id}`" :key="tab.id" type="button" role="tab" :aria-selected="activeTab === tab.id" :aria-controls="`view-panel-${tab.id}`" :tabindex="activeTab === tab.id ? 0 : -1" :class="{ active: activeTab === tab.id }" @click="activeTab = tab.id">{{ tab.label }}</button>
-      </nav>
+      <ViewTabs v-model="activeTab" />
 
-      <div :id="`view-panel-${activeTab}`" role="tabpanel" :aria-labelledby="`view-tab-${activeTab}`">
-      <LiveView
-        v-if="activeTab === 'live'"
-        v-model:show-capture-details="showCaptureDetails"
-        v-model:expanded-drop-rarity="expandedDropRarity"
-        v-model:timeline-type="timelineType"
-        v-model:hide-socketables="hideSocketables"
-        v-model:hide-keys="hideKeys"
-        v-model:hide-materials="hideMaterials"
-        v-model:hide-unfiltered-items="hideUnfilteredTimelineItems"
-        v-model:hidden-fixtures="hiddenDashboardPanels"
-        v-model:log-limit="logLimit"
-        :state="state"
-        :now="now"
-        :capture-status-label="captureStatusLabel"
-        :run-tile-displays="runScoreDisplays"
-        :live-run-graph-elapsed-ms="liveRunGraphElapsedMs"
-        :run-paused-label="runPausedLabel"
-        :live-run-graph-lanes="liveRunGraphLanes"
-        :live-run-graph-custom-items="liveRunGraphCustomItems"
-        :live-run-graph-enabled-standard-metrics="liveRunGraphEnabledStandardMetrics"
-        :live-run-item-name-options="shoppingAutocompleteNames"
-        :zone-countdown="zoneCountdown"
-        :zone-reset-label="zoneResetLabel"
-        :satanic-zone-refresh-submitting="satanicZoneRefreshSubmitting"
-        :tracked-items="trackedItems"
-        :key-drop-total="keyDropTotal"
-        :ore-drop-total="oreDropTotal"
-        :visible-item-timeline="visibleItemTimeline"
-        :item-timeline-count="itemTimelineSourceCount"
-        :item-filter-match-history="itemFilterMatchHistory"
-        :log-limit-options="logLimitOptions"
-        :item-type-options="itemTypeOptions"
-        :item-filter-groups="itemFilterGroups"
-        :market-search-available="true"
-        :recent-logs="recentLogs"
-        :recent-player-chat="recentPlayerChat"
-        :expanded-log-ids="expandedLogIds"
-        @open-npcap-guide="openNpcapGuide"
-        @open-item-filter-group="openItemFilterGroup"
-        @search-market="openMarketFromDrop"
-        @add-live-run-graph-item="addLiveRunGraphItem"
-        @remove-live-run-graph-item="removeLiveRunGraphItem"
-        @set-live-run-graph-standard-metric="setLiveRunGraphStandardMetric"
-        @refresh-satanic-zone="refreshSatanicZone"
-        @toggle-log="toggleLog"
-      />
+      <section id="view-panel-live" class="view-panel" role="tabpanel" aria-labelledby="view-tab-live" :hidden="activeTab !== 'live'" :tabindex="activeTab === 'live' ? 0 : -1">
+        <LiveView
+          v-if="activeTab === 'live'"
+          v-model:show-capture-details="showCaptureDetails"
+          v-model:expanded-drop-rarity="expandedDropRarity"
+          v-model:timeline-type="timelineType"
+          v-model:hide-socketables="hideSocketables"
+          v-model:hide-keys="hideKeys"
+          v-model:hide-materials="hideMaterials"
+          v-model:hide-unfiltered-items="hideUnfilteredTimelineItems"
+          v-model:hidden-fixtures="hiddenDashboardPanels"
+          v-model:log-limit="logLimit"
+          :state="state"
+          :now="now"
+          :capture-status-label="captureStatusLabel"
+          :run-tile-displays="runScoreDisplays"
+          :live-run-graph-elapsed-ms="liveRunGraphElapsedMs"
+          :run-paused-label="runPausedLabel"
+          :live-run-graph-lanes="liveRunGraphLanes"
+          :live-run-graph-custom-items="liveRunGraphCustomItems"
+          :live-run-graph-enabled-standard-metrics="liveRunGraphEnabledStandardMetrics"
+          :live-run-item-name-options="shoppingAutocompleteNames"
+          :zone-countdown="zoneCountdown"
+          :zone-reset-label="zoneResetLabel"
+          :satanic-zone-refresh-submitting="satanicZoneRefreshSubmitting"
+          :tracked-items="trackedItems"
+          :key-drop-total="keyDropTotal"
+          :ore-drop-total="oreDropTotal"
+          :visible-item-timeline="visibleItemTimeline"
+          :item-timeline-count="itemTimelineSourceCount"
+          :item-filter-match-history="itemFilterMatchHistory"
+          :log-limit-options="logLimitOptions"
+          :item-type-options="itemTypeOptions"
+          :item-filter-groups="itemFilterGroups"
+          :market-search-available="true"
+          :recent-logs="recentLogs"
+          :recent-player-chat="recentPlayerChat"
+          :expanded-log-ids="expandedLogIds"
+          @open-npcap-guide="openNpcapGuide"
+          @open-item-filter-group="openItemFilterGroup"
+          @search-market="openMarketFromDrop"
+          @add-live-run-graph-item="addLiveRunGraphItem"
+          @remove-live-run-graph-item="removeLiveRunGraphItem"
+          @set-live-run-graph-standard-metric="setLiveRunGraphStandardMetric"
+          @refresh-satanic-zone="refreshSatanicZone"
+          @toggle-log="toggleLog"
+        />
+      </section>
 
-      <ItemFilterView
-        v-else-if="activeTab === 'filter'"
-        v-model:item-filter-muted="itemFilterMuted"
-        v-model:item-filter-draft-group-name="itemFilterDraftGroupName"
-        v-model:item-filter-draft-item="itemFilterDraftItem"
-        :item-filter-groups="itemFilterGroups"
-        :recoverable-compact-filter-groups="recoverableCompactFilterGroups"
-        :item-filter-sounds="itemFilterSoundOptionsList"
-        :custom-item-filter-sounds="customItemFilterSounds"
-        :selected-item-filter-group="selectedItemFilterGroup"
-        :selected-item-filter-grouped-items="selectedItemFilterGroupedItems"
-        :item-filter-suggestions="itemFilterSuggestions"
-        :item-type-options="itemTypeOptions"
-        :pending-item-filter-pack-import="pendingItemFilterPackImport"
-        :item-filter-pack-import-busy="itemFilterPackImportBusy"
-        @add-group="addItemFilterGroup"
-        @select-group="selectItemFilterGroup"
-        @remove-group="removeItemFilterGroupAndReportRefs"
-        @restore-missing-group="restoreMissingItemFilterGroup($event.id, $event.name)"
-        @update-group="updateItemFilterGroup"
-        @add-item-to-group="addItemToFilterGroup"
-        @remove-item-from-group="removeItemFromFilterGroup"
-        @test-sound="testItemFilterSound"
-        @import-sounds="importItemFilterSounds"
-        @export-soundpack="exportItemFilterSoundPack"
-        @remove-sound="removeItemFilterSound"
-        @import-filter-pack="prepareItemFilterPackImport"
-        @export-filter-pack="exportItemFilterPack"
-        @confirm-filter-pack-import="confirmItemFilterPackImport"
-        @cancel-filter-pack-import="discardPendingItemFilterPackImport"
-      />
+      <section id="view-panel-filter" class="view-panel" role="tabpanel" aria-labelledby="view-tab-filter" :hidden="activeTab !== 'filter'" :tabindex="activeTab === 'filter' ? 0 : -1">
+        <ItemFilterView
+          v-if="activeTab === 'filter'"
+          v-model:item-filter-muted="itemFilterMuted"
+          v-model:item-filter-draft-group-name="itemFilterDraftGroupName"
+          v-model:item-filter-draft-item="itemFilterDraftItem"
+          :item-filter-groups="itemFilterGroups"
+          :recoverable-compact-filter-groups="recoverableCompactFilterGroups"
+          :item-filter-sounds="itemFilterSoundOptionsList"
+          :custom-item-filter-sounds="customItemFilterSounds"
+          :selected-item-filter-group="selectedItemFilterGroup"
+          :selected-item-filter-grouped-items="selectedItemFilterGroupedItems"
+          :item-filter-suggestions="itemFilterSuggestions"
+          :item-type-options="itemTypeOptions"
+          :pending-item-filter-pack-import="pendingItemFilterPackImport"
+          :item-filter-pack-import-busy="itemFilterPackImportBusy"
+          @add-group="addItemFilterGroup"
+          @select-group="selectItemFilterGroup"
+          @remove-group="removeItemFilterGroupAndReportRefs"
+          @restore-missing-group="restoreMissingItemFilterGroup($event.id, $event.name)"
+          @update-group="updateItemFilterGroup"
+          @add-item-to-group="addItemToFilterGroup"
+          @remove-item-from-group="removeItemFromFilterGroup"
+          @test-sound="testItemFilterSound"
+          @import-sounds="importItemFilterSounds"
+          @export-soundpack="exportItemFilterSoundPack"
+          @remove-sound="removeItemFilterSound"
+          @import-filter-pack="prepareItemFilterPackImport"
+          @export-filter-pack="exportItemFilterPack"
+          @confirm-filter-pack-import="confirmItemFilterPackImport"
+          @cancel-filter-pack-import="discardPendingItemFilterPackImport"
+        />
+      </section>
 
-      <MarketView
-        v-else-if="activeTab === 'market'"
-        v-model:saved-name="marketSavedName"
-        :item="marketSearchItem"
+      <section id="view-panel-market" class="view-panel" role="tabpanel" aria-labelledby="view-tab-market" :hidden="activeTab !== 'market'" :tabindex="activeTab === 'market' ? 0 : -1">
+        <MarketView
+          v-if="activeTab === 'market'"
+          v-model:saved-name="marketSavedName"
+          :item="marketSearchItem"
           :item-key="marketItemKey"
-        :readiness="state.marketReadiness"
-        :min-sockets="marketSearchMinSockets"
-        :max-sockets="marketSearchMaxSockets"
-        :stat-filters="marketSearchStatFilters"
-        :phase="marketSearchPhase"
-        :listings="marketSearchListings"
-        :total-matches="marketSearchTotalMatches"
-        :returned-count="marketSearchReturnedCount"
-        :error-message="marketSearchErrorMessage"
-        :result-observed-at="marketSearchResultObservedAt"
-        :result-cached="marketSearchResultCached"
-        :cooldown="marketSearchCooldownRemainingSeconds"
-        :in-flight="marketSearch.searchInFlight.value"
-        :can-search="canSubmitMarketSearch"
-        :can-save="marketSearch.draftValid.value && marketItemKey !== null"
-        :saved-items="savedMarketItems"
-        :editing-id="marketEditingId"
-        :message="marketSavedMessage"
-        :can-undo="marketDeleted !== null"
-        :save-status="saveStatus"
-        @select-item="savedMarket.selectItem"
-        @new-search="savedMarket.newSearch"
-        @load-saved="savedMarket.loadSaved"
-        @save="savedMarket.saveDraft"
-        @delete-saved="savedMarket.deleteSaved"
-        @undo="savedMarket.undoDelete"
-        @retry-save="persistUiPreferences"
-        @update-min-sockets="updateMarketSearchMinSockets"
-        @update-max-sockets="updateMarketSearchMaxSockets"
-        @add-stat-filter="addMarketSearchStatFilter"
-        @update-stat-filter="updateMarketSearchStatFilter"
-        @remove-stat-filter="removeMarketSearchStatFilter"
-        @search="submitMarketSearch"
-      />
+          :readiness="state.marketReadiness"
+          :min-sockets="marketSearchMinSockets"
+          :max-sockets="marketSearchMaxSockets"
+          :stat-filters="marketSearchStatFilters"
+          :phase="marketSearchPhase"
+          :listings="marketSearchListings"
+          :total-matches="marketSearchTotalMatches"
+          :returned-count="marketSearchReturnedCount"
+          :error-message="marketSearchErrorMessage"
+          :result-observed-at="marketSearchResultObservedAt"
+          :result-cached="marketSearchResultCached"
+          :cooldown="marketSearchCooldownRemainingSeconds"
+          :in-flight="marketSearch.searchInFlight.value"
+          :can-search="canSubmitMarketSearch"
+          :can-save="marketSearch.draftValid.value && marketItemKey !== null"
+          :saved-items="savedMarketItems"
+          :editing-id="marketEditingId"
+          :message="marketSavedMessage"
+          :can-undo="marketDeleted !== null"
+          :save-status="saveStatus"
+          @select-item="savedMarket.selectItem"
+          @new-search="savedMarket.newSearch"
+          @load-saved="savedMarket.loadSaved"
+          @save="savedMarket.saveDraft"
+          @delete-saved="savedMarket.deleteSaved"
+          @undo="savedMarket.undoDelete"
+          @retry-save="persistUiPreferences"
+          @update-min-sockets="updateMarketSearchMinSockets"
+          @update-max-sockets="updateMarketSearchMaxSockets"
+          @add-stat-filter="addMarketSearchStatFilter"
+          @update-stat-filter="updateMarketSearchStatFilter"
+          @remove-stat-filter="removeMarketSearchStatFilter"
+          @search="submitMarketSearch"
+        />
+      </section>
 
-      <PastRunsView
-        v-else
-        :report-config="postRunReport"
-        :past-runs="pastRuns"
-        :item-filter-groups="itemFilterGroups"
-        :live-run-graph-enabled-metrics="liveRunGraphEnabledMetrics"
-        :live-run-graph-item-names="liveRunGraphItemNames"
-        @update:report-config="updatePostRunReportConfig"
-        @update-run-tags="updatePastRunTags"
-        @export-runs-json="exportPastRunsJson"
-        @export-runs-csv="exportPastRunsCsv"
-        @copy-summary="copyPastRunsSummary"
-        @delete-run="deletePastRun"
-        @delete-all-runs="deleteAllPastRuns"
-      />
-      </div>
+      <section id="view-panel-past" class="view-panel" role="tabpanel" aria-labelledby="view-tab-past" :hidden="activeTab !== 'past'" :tabindex="activeTab === 'past' ? 0 : -1">
+        <PastRunsView
+          v-if="activeTab === 'past'"
+          :report-config="postRunReport"
+          :past-runs="pastRuns"
+          :item-filter-groups="itemFilterGroups"
+          :live-run-graph-enabled-metrics="liveRunGraphEnabledMetrics"
+          :live-run-graph-item-names="liveRunGraphItemNames"
+          @update:report-config="updatePostRunReportConfig"
+          @update-run-tags="updatePastRunTags"
+          @export-runs-json="exportPastRunsJson"
+          @export-runs-csv="exportPastRunsCsv"
+          @copy-summary="copyPastRunsSummary"
+          @delete-run="deletePastRun"
+          @delete-all-runs="deleteAllPastRuns"
+        />
+      </section>
     </div>
 
     <SettingsModal

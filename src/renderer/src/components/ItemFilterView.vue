@@ -11,6 +11,8 @@ import {
   type ItemFilterSpecificItem,
 } from "../lib/item-filters";
 import { useModalFocus } from "../lib/modal-focus";
+import InfoHint from "./InfoHint.vue";
+import UiButton from "./UiButton.vue";
 
 interface ItemTypeOption {
   value: string;
@@ -167,7 +169,7 @@ function confirmRemoveGroup() {
       <div class="panel-heading item-filter-page-heading">
         <div>
           <p class="eyebrow">Loot alerts</p>
-          <h2>Item Filters <span class="info-bubble" data-tip="Alerts are driven by captured network traffic and can arrive a couple seconds after the item appears in game.">i</span></h2>
+          <h2>Item Filters <InfoHint text="Alerts are driven by captured network traffic and can arrive a couple seconds after the item appears in game." /></h2>
           <p>{{ enabledGroupCount }} of {{ itemFilterGroups.length }} groups active · {{ watchedItemCount }} exact items watched</p>
         </div>
       </div>
@@ -215,7 +217,7 @@ function confirmRemoveGroup() {
           </div>
           <form class="item-filter-add-group" @submit.prevent="emit('addGroup')">
             <input v-model="groupNameModel" type="text" placeholder="New group name" spellcheck="false" aria-label="New filter group name" />
-            <button class="icon-button primary" type="submit">Add group</button>
+            <UiButton tone="primary" type="submit">Add group</UiButton>
           </form>
         </div>
 

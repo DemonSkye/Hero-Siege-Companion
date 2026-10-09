@@ -8,6 +8,7 @@ import { formatNumber } from "../lib/format";
 import MarketReadinessStatus from "./MarketReadinessStatus.vue";
 import { marketReadinessExplainsError } from "../lib/market-readiness-display";
 import MarketListingDetails from "./MarketListingDetails.vue";
+import UiButton from "./UiButton.vue";
 import { itemStatDefinition } from "../../../shared/item-stat-ranges";
 import { itemBaseSocketRange } from "../../../shared/item-socket-capacity";
 import { ITEM_BASE_STAT_CATALOG, itemBaseStatDefinition } from "../../../shared/item-base-stat-catalog";
@@ -134,7 +135,7 @@ function chooseStat(statId: number): void {
   <section class="market-workspace" aria-labelledby="market-title">
     <header class="market-heading">
       <h2 id="market-title">Market</h2>
-      <button class="icon-button ghost" type="button" @click="newSearch">New search</button>
+      <UiButton @click="newSearch">New search</UiButton>
     </header>
     <MarketReadinessStatus :readiness="readiness" />
     <div class="market-layout">
@@ -149,17 +150,17 @@ function chooseStat(statId: number): void {
               <strong>{{ entry.name || 'Untitled legacy entry' }}</strong>
               <small>{{ entry.request || entry.criteria ? `${socketSummary((entry.criteria ?? entry.request)?.minSockets, (entry.criteria ?? entry.request)?.maxSockets)} · ${(entry.criteria ?? entry.request)?.statFilters.length} stat minimums` : 'Catalog item unavailable' }}</small>
             </button>
-            <button class="icon-button ghost" type="button" :aria-label="`Delete saved item ${entry.name}`" @click="emit('deleteSaved', entry.id)">×</button>
+            <UiButton :aria-label="`Delete saved item ${entry.name}`" @click="emit('deleteSaved', entry.id)">×</UiButton>
           </li>
         </ul>
-        <button v-if="canUndo" class="icon-button ghost" type="button" @click="emit('undo')">Undo delete</button>
+        <UiButton v-if="canUndo" @click="emit('undo')">Undo delete</UiButton>
         <p>Loading a saved item only fills the form. Press Search to fetch prices.</p>
       </aside>
       <div class="market-detail">
         <form class="panel market-editor" :aria-busy="inFlight" @submit.prevent="emit('search')">
           <div v-if="item" class="market-chosen-item">
             <div><strong>{{ item.label }}</strong><small>{{ item.rarity }}</small></div>
-            <button class="icon-button ghost" type="button" :aria-expanded="itemPickerOpen" @click="itemPickerOpen = !itemPickerOpen; nextTick(() => itemInput?.focus())">Change item</button>
+            <UiButton :aria-expanded="itemPickerOpen" @click="itemPickerOpen = !itemPickerOpen; nextTick(() => itemInput?.focus())">Change item</UiButton>
           </div>
           <div v-if="!item || itemPickerOpen" class="market-item-picker">
             <label for="market-item-query">Choose catalog item</label>
@@ -172,7 +173,7 @@ function chooseStat(statId: number): void {
           <div class="market-filter-layout">
           <fieldset :disabled="!item" aria-labelledby="market-filters-title">
             <h3 id="market-filters-title">Search filters</h3>
-            <button v-if="item && !socketBaseRange && !hasSocketCriteria" class="icon-button ghost" type="button" :aria-expanded="showSocketControls" aria-controls="market-socket-controls" @click="optionalSocketsOpen = !optionalSocketsOpen">{{ optionalSocketsOpen ? 'Hide optional socket filters' : 'Add optional socket filters' }} <small>Capacity unverified</small></button>
+            <UiButton v-if="item && !socketBaseRange && !hasSocketCriteria" :aria-expanded="showSocketControls" aria-controls="market-socket-controls" @click="optionalSocketsOpen = !optionalSocketsOpen">{{ optionalSocketsOpen ? 'Hide optional socket filters' : 'Add optional socket filters' }} <small>Capacity unverified</small></UiButton>
             <div v-if="showSocketControls" id="market-socket-controls">
               <div class="market-socket-bounds">
                 <label for="market-sockets">Minimum sockets<input id="market-sockets" :value="minSockets ?? ''" type="number" min="0" max="6" step="1" placeholder="Any" @input="emit('updateMinSockets', numericValue($event))" /></label>
@@ -186,7 +187,7 @@ function chooseStat(statId: number): void {
               <div v-for="filter in statFilters" :key="filter.key" class="market-stat-row">
                 <label :for="filter.key">{{ marketStatOption(filter.statId ?? -1)?.name }} minimum <small v-if="marketStatMinimumIssue(filter.statId ?? -1, itemKey)">Unsupported saved criterion</small></label>
                 <input :id="filter.key" :value="filter.minimum ?? ''" type="number" step="any" min="-1000000000" max="1000000000" required placeholder="Minimum" @input="emit('updateStatFilter', filter.key, { minimum: numericValue($event) })" />
-                <button class="icon-button ghost" type="button" :aria-label="`Remove ${marketStatOption(filter.statId ?? -1)?.name}`" @click="emit('removeStatFilter', filter.key)">×</button>
+                <UiButton :aria-label="`Remove ${marketStatOption(filter.statId ?? -1)?.name}`" @click="emit('removeStatFilter', filter.key)">×</UiButton>
               </div>
             </div>
             <label for="market-stat-query">Add stat minimum</label>
@@ -221,17 +222,17 @@ function chooseStat(statId: number): void {
           <p v-if="item && !canSave" role="status">Enter valid socket and stat minimums before saving or searching.</p>
           <p v-if="blockedFilters.length" class="market-search-error" role="status">These saved criteria are preserved, but cannot be sent as numeric minimums. Remove them to search.<span v-for="filter in blockedFilters" :key="filter.key"> {{ marketStatOption(filter.statId!)?.name }}: {{ marketStatMinimumIssue(filter.statId!, itemKey) }}</span></p>
           <p v-if="message" role="status">{{ message }}</p>
-          <p v-if="saveStatus === 'error'" class="market-search-error" role="alert">Local saving failed. Keep Companion open and retry.<button class="icon-button ghost" type="button" @click="emit('retrySave')">Retry save</button></p>
+          <p v-if="saveStatus === 'error'" class="market-search-error" role="alert">Local saving failed. Keep Companion open and retry.<UiButton @click="emit('retrySave')">Retry save</UiButton></p>
           <p v-else-if="saveStatus === 'saving'" role="status">Saving locally…</p>
           <footer class="market-form-actions">
             <div class="market-action-row market-primary-actions">
-              <button class="icon-button primary" type="submit" :disabled="!canSearch">{{ inFlight ? 'Searching…' : cooldown > 0 ? `Search in ${cooldown}s` : 'Search market' }}</button>
-              <button class="icon-button ghost" type="button" @click="newSearch">Clear</button>
+              <UiButton tone="primary" type="submit" :disabled="!canSearch">{{ inFlight ? 'Searching…' : cooldown > 0 ? `Search in ${cooldown}s` : 'Search market' }}</UiButton>
+              <UiButton @click="newSearch">Clear</UiButton>
               <div class="market-save-controls">
                 <label class="sr-only" for="market-saved-name">Saved name (optional)</label>
                 <input id="market-saved-name" v-model="savedName" placeholder="Saved name (optional)" />
-                <button class="icon-button ghost" type="button" :disabled="!canSave" @click="emit('save', false)">{{ editingId ? 'Save changes' : 'Save item and filters' }}</button>
-                <button v-if="editingId" class="icon-button ghost" type="button" :disabled="!canSave" @click="emit('save', true)">Save as new</button>
+                <UiButton :disabled="!canSave" @click="emit('save', false)">{{ editingId ? 'Save changes' : 'Save item and filters' }}</UiButton>
+                <UiButton v-if="editingId" :disabled="!canSave" @click="emit('save', true)">Save as new</UiButton>
               </div>
             </div>
             <small v-if="inFlight || cooldown > 0">{{ inFlight ? 'Searching. Editing filters discards the pending result.' : `Next search available in ${cooldown}s.` }}</small>

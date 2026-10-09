@@ -89,10 +89,10 @@ defineEmits<{
             <button
               type="button"
               :disabled="!canToggleRunPaused"
-              :title="!canToggleRunPaused ? 'Run resumes when capture starts' : state.runStatus === 'paused' ? 'Resume run' : 'Stop run timer'"
+              :title="!canToggleRunPaused ? 'Run resumes when capture starts' : state.runStatus === 'paused' ? 'Resume this run' : 'Pause this run'"
               @click="$emit('toggleRunPaused')"
             >
-              {{ state.runStatus === "paused" ? "Resume" : "Stop" }}
+              {{ state.runStatus === "paused" ? "Resume Run" : "Pause Run" }}
             </button>
             <button type="button" title="End run" @click="$emit('endRun')">End Run</button>
           </div>
