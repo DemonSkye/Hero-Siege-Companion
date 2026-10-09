@@ -59,7 +59,7 @@
 .market-listing-stats { display: grid; gap: 6px; list-style: none; padding: 0; margin: 4px 0 0; font-size: .85rem; }
 .market-listing-stats strong { white-space: nowrap; }
 .market-workspace :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-.market-workspace .market-search-error { color: var(--app-text); background: var(--danger-bg); border: 1px solid var(--danger); border-radius: var(--radius-control); padding: 12px; }
+.market-workspace .market-search-error { color: var(--status-error-text); background: var(--status-error-bg); border: 1px solid var(--danger); border-radius: var(--radius-control); padding: 12px; }
 @media (max-width: 1050px) { .market-filter-layout { grid-template-columns: 1fr; } .market-catalog-placeholder { min-height: 0; } }
 @media (max-width: 760px) {
   .market-layout { grid-template-columns: 1fr; }

@@ -93,8 +93,14 @@ Run `npm test`, `npm run typecheck`, `npm run build`, and mock Electron tests.
 `tests/renderer/design-system.spec.ts` checks keyboard/focus/busy contracts.
 `tests/e2e/electron-design-system.spec.cjs` exercises the actual views, nested
 confirmation focus, semantic Market states, public surface/input overrides in
-every theme and compact pause/resume. Existing layout, settings, filter, report,
-traffic, Market and capture tests remain part of verification.
+every theme and compact pause/resume. Settings-driven coverage also checks all
+six supplied palettes at minimum full window size, including the Market tab, and
+with eight compact tiles. Market error contrast uses computed text color and
+sampled composited element backgrounds, with a 4.5:1 normal-text threshold. The
+internal error text/background roles alias public `appText`/`dangerBg`; imported
+themes retain the existing public API. This checks supplied defaults and does not
+guarantee contrast for arbitrary custom palettes. Existing layout, settings,
+filter, report, traffic, Market and capture tests remain part of verification.
 
 The E2E tests use synthetic traffic and isolated temporary user data. The E2E
 main process omits direct providers and release checks; the design-system tests

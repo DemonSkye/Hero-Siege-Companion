@@ -18,6 +18,8 @@
   --line-body: 1.5;
   --focus-ring: var(--user-accent);
   --status-danger-border: color-mix(in srgb, var(--danger) 42%, var(--border));
+  --status-error-text: var(--app-text);
+  --status-error-bg: var(--danger-bg);
   --elevation-panel: 0 6px 20px var(--shadow);
   --elevation-dialog: 0 24px 64px var(--shadow);
 }
