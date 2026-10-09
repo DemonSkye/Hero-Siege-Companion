@@ -151,16 +151,25 @@ test("themes Market tab readiness, results and errors with semantic roles", asyn
     await expect(search).toBeEnabled({ timeout: 20_000 });
     await search.click();
     await expect(market.locator("tbody tr")).toHaveCount(20);
+    const priceContrasts = [];
     for (const theme of THEMES) {
       await chooseTheme(page, theme);
       const colors = await semanticMarketColors(page);
       expect(colors.resultsNote, theme).toBe(colors.muted);
       expect(colors.readiness, theme).toBe(colors.text);
+      expect(colors.price, theme).toBe(colors.priceText);
+      for (const index of [0, 1]) {
+        const price = market.locator(".market-listing-price").nth(index);
+        const contrast = await renderedTextContrast(page, price);
+        priceContrasts.push({ theme, listing: index + 1, ...contrast });
+        expect.soft(contrast.minimum, `${theme}: rendered Market price ${index + 1}`).toBeGreaterThanOrEqual(4.5);
+      }
     }
+    await recordContrastReport(testInfo, "market-price-contrast.json", priceContrasts);
   });
 });
 
-test("keeps supplied palettes usable at minimum full size and with eight compact tiles", async () => {
+test("keeps supplied palettes usable at minimum full size and with eight compact tiles", async ({}, testInfo) => {
   test.setTimeout(90_000);
   await withCompanionApp({ seedPastRuns: true }, async ({ page, electronApp }) => {
     await blockExternalRequests(page);
@@ -192,6 +201,7 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
     await expect(customization.getByRole("button", { name: "Add Tile", exact: true })).toBeDisabled();
     await expect(customization.getByRole("button", { name: "Remove Duration", exact: true })).toHaveCount(0);
     await customization.getByRole("button", { name: "Close compact customization" }).click();
+    const zoneContrasts = [];
     for (const theme of THEMES) {
       const exitCompact = page.getByRole("button", { name: "Exit compact mode", exact: true });
       if (await exitCompact.isVisible()) await exitCompact.click();
@@ -201,7 +211,19 @@ test("keeps supplied palettes usable at minimum full size and with eight compact
       await assertVisibleLayout(page, ".compact-cover-grid > div", `compact ${theme}`);
       await expect(page.getByRole("button", { name: "Pause Run", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "End Run", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "SZ Details", exact: true }).click();
+      const zone = page.getByLabel("Satanic zone details");
+      for (const effect of ["pros", "cons"]) {
+        const column = zone.locator(`.compact-zone-${effect}`);
+        for (const part of ["span", "strong"]) {
+          const contrast = await renderedTextContrast(page, column.locator(part).first(), column);
+          zoneContrasts.push({ theme, effect, part, ...contrast });
+          expect.soft(contrast.minimum, `${theme}: rendered compact Zone ${effect} ${part}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      await page.getByRole("button", { name: "Dismiss zone details", exact: true }).click();
     }
+    await recordContrastReport(testInfo, "compact-zone-contrast.json", zoneContrasts);
   });
 });
 
@@ -304,9 +326,11 @@ async function semanticMarketColors(page) {
       detail: color(".market-workspace .market-readiness-detail"),
       resultsNote: color(".market-workspace .market-results-heading small"),
       error: color(".market-workspace .market-results .market-search-error"),
+      price: color(".market-workspace .market-listing-price"),
       muted: resolve("--app-muted"),
       text: resolve("--app-text"),
       errorText: resolve("--status-error-text"),
+      priceText: resolve("--market-price-text"),
     };
     probe.remove();
     return report;

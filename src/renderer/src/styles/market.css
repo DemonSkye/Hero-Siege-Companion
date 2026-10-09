@@ -54,6 +54,7 @@
 .market-result-details summary, .market-catalog-details summary { cursor: pointer; width: fit-content; }
 .market-result-details p, .market-catalog-details p { margin: 8px 0 0; }
 .market-price-table tbody tr:nth-child(odd) { background: var(--surface-soft); }
+.market-listing-price { color: var(--market-price-text); }
 .market-listing-item { width: 48%; }
 .market-listing-details { display: grid; gap: 6px; }
 .market-listing-stats { display: grid; gap: 6px; list-style: none; padding: 0; margin: 4px 0 0; font-size: .85rem; }

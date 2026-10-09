@@ -20,6 +20,27 @@
   --status-danger-border: color-mix(in srgb, var(--danger) 42%, var(--border));
   --status-error-text: var(--app-text);
   --status-error-bg: var(--danger-bg);
+  --market-price-text: var(--accent-warm);
+  --zone-benefit-text: var(--effect-benefit);
+  --zone-danger-text: var(--danger);
   --elevation-panel: 0 6px 20px var(--shadow);
   --elevation-dialog: 0 24px 64px var(--shadow);
+}
+
+/* Adjust only text roles whose supplied palette/surface combinations need
+   greater contrast. Keep their accent/effect hues and public override inputs. */
+:root[data-theme="demonsteel"],
+:root[data-theme="voidglass"],
+:root[data-theme="reliquary"] {
+  --market-price-text: color-mix(in srgb, var(--accent-warm) 70%, var(--app-text));
+}
+
+:root[data-theme="reliquary"] {
+  --zone-danger-text: color-mix(in srgb, var(--danger) 80%, var(--app-text));
+}
+
+:root[data-theme="light"] {
+  --market-price-text: color-mix(in srgb, var(--accent-warm) 40%, var(--app-text));
+  --zone-benefit-text: color-mix(in srgb, var(--effect-benefit) 40%, var(--app-text));
+  --zone-danger-text: color-mix(in srgb, var(--danger) 40%, var(--app-text));
 }

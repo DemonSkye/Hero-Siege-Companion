@@ -232,7 +232,7 @@
 }
 
 .market-search-price-grid article > strong {
-  color: var(--accent-warm);
+  color: var(--market-price-text);
 }
 
 @media (max-width: 540px) {
@@ -253,7 +253,7 @@
 }
 
 .market-search-price-grid strong {
-  color: #f4d99e;
+  color: var(--market-price-text);
   font-size: 1.15rem;
 }
 
