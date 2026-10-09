@@ -16,11 +16,12 @@ export interface WhatsNewSection {
 export const WHATS_NEW_RELEASE: WhatsNewRelease = {
   version: APP_VERSION,
   title: `Hero Siege Companion v${APP_VERSION}`,
-  intro: "Version 0.4.2 shows Market listing stats for many more items, including most unique weapons, amulets, rings, belts and flasks, and names the weapon base stats.",
+  intro: "Version 0.4.3 keeps Market ready after vote resets and rebuilds compact mode around pages you can flip through.",
   items: [
-    "Listing cards now show rolled stats for most unique weapons, amulets, rings, belts and flasks, which previously showed every field as unavailable. Only fields that still can't be verified, such as some socket rolls, stay hidden.",
-    "Weapon base stats have names: Base Attack Damage, Base Attacks per Second and Base Attack Range, replacing Stat 22, Stat 23 and Stat 24.",
-    "Items whose rolls can't be read yet show one clear line instead of a long list of unavailable fields.",
+    "Market remembers your account and character mode while Companion is open, so it is ready again as soon as the game sends fresh session information after a vote reset, reconnect or game restart.",
+    "Compact mode shows one titled page of up to four tiles at a time. The default pages are Run, Loot and Satanic Zone, which replaces the SZ Details pop-over.",
+    "Change compact pages with the mouse wheel, arrow keys, Page Up / Page Down or the page dots. Choose which inputs work in Customize Compact Mode.",
+    "Customize Compact Mode now edits pages, includes presets and scrolls so every option is reachable. Existing compact layouts move to pages automatically.",
   ],
   sections: [],
 };
