@@ -2,6 +2,7 @@ import { BrowserWindow, nativeImage, shell } from "electron";
 import { pathToFileURL } from "node:url";
 import { saveWindowBounds, withMinimumBounds, type WindowBoundsPreferences } from "./persistence";
 import type { LogEntry } from "../shared/app-state";
+import type { WindowModeState } from "../shared/ipc";
 
 const NORMAL_WINDOW_BOUNDS = { width: 1180, height: 760, minWidth: 980, minHeight: 620 };
 const COMPACT_WINDOW_BOUNDS = { width: 420, height: 220, minWidth: 340, minHeight: 160 };
@@ -46,6 +47,10 @@ export class MainWindowManager {
     return this.compactWindowMode;
   }
 
+  windowModeState(): WindowModeState {
+    return { compactMode: this.compactWindowMode, fullWindowPinned: this.fullWindowAlwaysOnTop };
+  }
+
   isTrustedIpcSender(event: Electron.IpcMainInvokeEvent): boolean {
     const window = this.mainWindow;
     return !!window && !window.isDestroyed() && event.sender === window.webContents
@@ -78,6 +83,8 @@ export class MainWindowManager {
     });
 
     this.attachWindowHandlers(this.mainWindow);
+    this.compactWindowMode = false;
+    this.restoreWindowBounds("normal");
     this.loadRenderer(this.mainWindow);
     this.options.writeAppLog("window-created", { id: this.mainWindow.id, bounds: this.mainWindow.getBounds() });
     return this.mainWindow;
@@ -182,6 +189,8 @@ export class MainWindowManager {
     });
     window.webContents.on("will-navigate", (event, url) => this.handleRendererNavigation(event, url));
     window.webContents.on("will-redirect", (event, url) => this.handleRendererNavigation(event, url));
+    // Reapply main's mode per renderer load; on Windows, later topmost changes were unreliable without a post-load call.
+    window.webContents.on("did-finish-load", () => this.setCompactMode(this.compactWindowMode));
 
     window.on("close", () => {
       this.options.writeAppLog("window-close", { id: window.id, ...this.options.getCaptureSnapshot() });

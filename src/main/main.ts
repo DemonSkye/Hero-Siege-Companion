@@ -725,6 +725,7 @@ handleTrusted(IPC_CHANNELS.pastRunsExportCsv, async (_event, csv: string) => {
 handleTrusted(IPC_CHANNELS.windowMinimize, () => {
   windowManager?.minimize();
 });
+handleTrusted(IPC_CHANNELS.windowGetMode, () => windowManager?.windowModeState() ?? { compactMode: false, fullWindowPinned: false });
 handleTrusted(IPC_CHANNELS.windowToggleMaximize, () => {
   windowManager?.toggleMaximize();
 });

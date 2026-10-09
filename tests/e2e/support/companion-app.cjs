@@ -26,6 +26,7 @@ const EXPECTED_PRELOAD_API = [
   "exportPastRunsJson",
   "exportSoundPack",
   "getState",
+  "getWindowMode",
   "getMarketPrivateDiagnosticState",
   "setMarketPrivateDiagnosticEnabled",
   "openMarketPrivateDiagnosticDirectory",

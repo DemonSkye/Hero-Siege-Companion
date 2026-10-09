@@ -26,6 +26,10 @@ Current release: **0.4.0**, matching `package.json`. Native game/server compatib
 4. Open the Market tab or use `Market` on a recognized drop. Edit filters and press Search; save filters to return to them later.
 5. Use `End Run` when a run is complete and should be saved to Past Runs.
 
+`Stop Capture` keeps capture stopped for the current Companion launch, including when the game restarts. Use `Launch Game` to resume (it starts capture when the game is already running); automatic capture is enabled again on the next Companion launch.
+
+If `End Run` cannot save the archive, the current run stays available for another save attempt. A failed backup restore keeps its preview available for retry and leaves the current settings in place.
+
 Most data appears after Hero Siege sends the relevant packet. For example, gold may update after a zone change or town interaction, and Satanic Zone details normally arrive during world entry or through a later game-observed update.
 
 Market checks become ready after capture observes current account, mode and session evidence. If Market is not ready: “With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.” Local readiness does not prove accepted authentication. Companion can attach during play; packets sent before capture began cannot be recovered.

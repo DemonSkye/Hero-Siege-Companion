@@ -212,6 +212,25 @@ function createManager(windowBounds: WindowBoundsPreferences = {}, overrides: Pa
 }
 
 describe("main window manager", () => {
+  test("new-process window defaults and saved full bounds are owned by main", () => {
+    const manager = createManager({ normal: { x: 12, y: 34, width: 1200, height: 700 } });
+    const window = manager.create();
+    expect(manager.windowModeState()).toEqual({ compactMode: false, fullWindowPinned: false });
+    expect(window.getBounds()).toEqual({ x: 12, y: 34, width: 1200, height: 700 });
+    manager.setAlwaysOnTop(true);
+    manager.setCompactMode(true);
+    expect(manager.windowModeState()).toEqual({ compactMode: true, fullWindowPinned: true });
+  });
+  test("a renderer load reapplies main's canonical compact mode and topmost state", () => {
+    const manager = createManager({ compact: { x: 5, y: 6, width: 400, height: 210 } });
+    const window = manager.create() as unknown as { alwaysOnTop: boolean; getBounds(): Electron.Rectangle; webContents: { emit(event: string): void } };
+    manager.setCompactMode(true);
+    window.alwaysOnTop = false;
+    window.webContents.emit("did-finish-load");
+    expect(manager.windowModeState()).toEqual({ compactMode: true, fullWindowPinned: false });
+    expect(window.alwaysOnTop).toBe(true);
+    expect(window.getBounds()).toEqual({ x: 5, y: 6, width: 400, height: 210 });
+  });
   beforeEach(() => {
     electronMock.instances.length = 0;
     electronMock.shell.openExternal.mockClear();

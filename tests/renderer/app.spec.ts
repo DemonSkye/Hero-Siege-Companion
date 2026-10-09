@@ -293,8 +293,9 @@ describe("App orchestration", () => {
 
     try {
       await flushPromises();
-      expect(api.setCompactMode).toHaveBeenCalledWith(false);
-      expect(api.setAlwaysOnTop).toHaveBeenCalledWith(false);
+      expect(api.getWindowMode).toHaveBeenCalledOnce();
+      expect(api.setCompactMode).not.toHaveBeenCalled();
+      expect(api.setAlwaysOnTop).not.toHaveBeenCalled();
       vi.mocked(api.setCompactMode).mockClear();
       vi.mocked(api.setAlwaysOnTop).mockClear();
 
@@ -546,6 +547,7 @@ describe("App orchestration", () => {
 
 function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
   const state = companionState();
+  const mainWindowMode = { compactMode: false, fullWindowPinned: false };
   const api: HeroSiegeCompanionApi = {
     getState: vi.fn().mockResolvedValue(state),
     startCapture: vi.fn().mockResolvedValue(state),
@@ -572,10 +574,11 @@ function installHeroSiegeCompanionApi(): HeroSiegeCompanionApi {
     exportPastRunsJson: vi.fn().mockResolvedValue(true),
     exportPastRunsCsv: vi.fn().mockResolvedValue(true),
     minimizeWindow: vi.fn().mockResolvedValue(undefined),
+    getWindowMode: vi.fn(async () => ({ ...mainWindowMode })),
     toggleMaximizeWindow: vi.fn().mockResolvedValue(undefined),
     closeWindow: vi.fn().mockResolvedValue(undefined),
-    setAlwaysOnTop: vi.fn().mockResolvedValue(undefined),
-    setCompactMode: vi.fn().mockResolvedValue(undefined),
+    setAlwaysOnTop: vi.fn(async (enabled: boolean) => { mainWindowMode.fullWindowPinned = enabled; }),
+    setCompactMode: vi.fn(async (enabled: boolean) => { mainWindowMode.compactMode = enabled; }),
     resetWindowBounds: vi.fn().mockResolvedValue(undefined),
     writeClipboardText: vi.fn().mockResolvedValue(undefined),
     getSupportDiagnosticsInfo: vi.fn().mockResolvedValue({ userDataPath: "C:\\Users\\Tester", logsPath: "C:\\Users\\Tester\\logs", appVersion: "0.2.5", generatedFiles: [], logFiles: [] }),
