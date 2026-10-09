@@ -157,6 +157,32 @@ test("the real catalog card shows Gryphon's compound talent and percent phrase w
   } finally { wrapper.unmount(); }
 });
 
+test("the stat panel keeps its place beside the filters with a placeholder until an item is chosen", async () => {
+  setup(); const wrapper = mount(App, { global: { stubs } });
+  try {
+    await flushPromises(); await wrapper.get("#view-tab-market").trigger("click");
+    await vi.waitFor(() => expect(wrapper.find(".market-workspace").exists()).toBe(true));
+    const panel = () => wrapper.get(".market-filter-layout > :nth-child(2)");
+    expect(wrapper.get(".market-filter-layout > :first-child").element.tagName).toBe("FIELDSET");
+    expect(panel().classes()).toEqual(expect.arrayContaining(["market-catalog-ranges", "market-catalog-placeholder"]));
+    expect(panel().text()).toBe("Choose an item to see its stats.");
+    expect(panel().attributes("aria-labelledby")).toBeUndefined();
+    expect(panel().find("button, input, a, [tabindex], [role]").exists()).toBe(false);
+    expect(panel().find(".market-range-list").exists()).toBe(false);
+    await wrapper.get("#market-item-query").setValue("Gryphon's Claw");
+    await wrapper.get(".market-options button").trigger("click");
+    expect(wrapper.findAll(".market-filter-layout > *")).toHaveLength(2);
+    expect(wrapper.find(".market-catalog-placeholder").exists()).toBe(false);
+    expect(panel().element.tagName).toBe("SECTION");
+    expect(panel().attributes("aria-labelledby")).toBe("market-ranges-title");
+    expect(panel().get("#market-ranges-title").text()).toBe("Gryphon's Claw");
+    expect(panel().findAll(".market-range-list > div")).toHaveLength(5);
+    await button(wrapper, "Clear").trigger("click"); await flushPromises();
+    expect(panel().classes()).toContain("market-catalog-placeholder");
+    expect(wrapper.find(".market-range-list").exists()).toBe(false);
+  } finally { wrapper.unmount(); }
+});
+
 test.each(["before", "after"] as const)("Market tab shows recovery guidance once when region status arrives %s the failed request", async (order) => {
   const initial = companionState();
   initial.marketReadiness = { ...initial.marketReadiness, phase: "region-required", reason: "region_unprepared", regionQualified: false };

@@ -79,8 +79,18 @@ test("Market listing rolls, responsive alignment and saved state compose through
     await size(1380, 1000);
     await session.page.getByRole("tab", { name: "Market", exact: true }).click();
     const workspace = session.page.locator(".market-workspace");
+    const panelLayout = () => workspace.evaluate(root => {
+      const filter = root.querySelector(".market-filter-layout fieldset").getBoundingClientRect();
+      const panel = root.querySelector(".market-catalog-ranges").getBoundingClientRect();
+      return { filterLeft: filter.left, filterWidth: filter.width, panelLeft: panel.left, sameRow: filter.top === panel.top };
+    });
+    await expect(workspace.locator(".market-catalog-placeholder")).toHaveText("Choose an item to see its stats.");
+    const beforeChoice = await panelLayout();
+    expect(beforeChoice.sameRow).toBe(true);
     await workspace.locator("#market-item-query").fill("Battle Mage's Shield");
     await workspace.locator("#market-item-query").press("Enter");
+    await expect(workspace.locator(".market-catalog-placeholder")).toHaveCount(0);
+    expect(await panelLayout()).toEqual(beforeChoice);
     await workspace.locator("#market-saved-name").fill("Shield stats");
     await workspace.getByRole("button", { name: "Save item and filters", exact: true }).click();
     await ready();

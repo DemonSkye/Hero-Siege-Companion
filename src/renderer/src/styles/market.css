@@ -10,8 +10,7 @@
 .market-socket-bounds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .market-socket-hint { margin: 6px 0 12px; font-size: .85rem; }
 .market-detail, .market-editor { display: grid; gap: 16px; min-width: 0; }
-.market-filter-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
-.market-filter-layout.has-catalog { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.market-filter-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .market-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .market-chosen-item { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
 .market-chosen-item > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; min-width: 0; }
@@ -21,6 +20,8 @@
 .market-workspace .market-stat-card-heading h3 { margin: 0 0 4px; color: var(--user-accent, #71cec0); font-size: 1rem; overflow-wrap: anywhere; }
 .market-catalog-ranges footer { display: grid; gap: 4px; padding-top: 10px; margin-top: 12px; border-top: 1px solid var(--border); font-size: .75rem; }
 .market-catalog-ranges > p { margin: 0 0 12px; font-size: .85rem; }
+.market-catalog-placeholder { display: grid; place-items: center; min-height: 160px; border-color: var(--border); text-align: center; }
+.market-catalog-ranges.market-catalog-placeholder > p { margin: 0; }
 .market-range-list { display: grid; gap: 6px; margin: 0; font-size: .85rem; }
 .market-range-list > div, .market-listing-stats li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .market-range-list dt { overflow-wrap: anywhere; }
@@ -58,7 +59,7 @@
 .market-listing-stats strong { white-space: nowrap; }
 .market-workspace :focus-visible { outline: 2px solid var(--user-accent, #71cec0); outline-offset: 3px; }
 .market-workspace .market-search-error { color: var(--app-text); background: var(--danger-bg); border: 1px solid var(--danger); border-radius: 8px; padding: 12px; }
-@media (max-width: 1050px) { .market-filter-layout.has-catalog { grid-template-columns: 1fr; } }
+@media (max-width: 1050px) { .market-filter-layout { grid-template-columns: 1fr; } .market-catalog-placeholder { min-height: 0; } }
 @media (max-width: 760px) {
   .market-layout { grid-template-columns: 1fr; }
   .market-price-table, .market-price-table tbody { display: block; }

@@ -169,7 +169,7 @@ function chooseStat(statId: number): void {
             </ul>
             <p v-if="!itemSuggestions.length">No supported catalog item matches. Try another name.</p>
           </div>
-          <div class="market-filter-layout" :class="{ 'has-catalog': showCatalog }">
+          <div class="market-filter-layout">
           <fieldset :disabled="!item" aria-labelledby="market-filters-title">
             <h3 id="market-filters-title">Search filters</h3>
             <button v-if="item && !socketBaseRange && !hasSocketCriteria" class="icon-button ghost" type="button" :aria-expanded="showSocketControls" aria-controls="market-socket-controls" @click="optionalSocketsOpen = !optionalSocketsOpen">{{ optionalSocketsOpen ? 'Hide optional socket filters' : 'Add optional socket filters' }} <small>Capacity unverified</small></button>
@@ -215,6 +215,7 @@ function chooseStat(statId: number): void {
               </details>
             </footer>
           </section>
+          <div v-else class="market-catalog-ranges market-catalog-placeholder"><p class="empty-copy">Choose an item to see its stats.</p></div>
           </div>
           <div v-if="item" class="market-filter-summary" aria-label="Active filters"><span v-for="text in summary" :key="text">{{ text }}</span></div>
           <p v-if="item && !canSave" role="status">Enter valid socket and stat minimums before saving or searching.</p>
