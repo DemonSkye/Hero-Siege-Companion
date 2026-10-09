@@ -27,7 +27,7 @@ test("real main/preload/UI clears old results on observation loss and resumes wi
     await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.emitCaptureUpdate({ observationGap: true }));
     await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(false);
     await expect(workspace.getByText("4,000 gold", { exact: true })).toHaveCount(0);
-    await expect(workspace.locator(".market-readiness")).toContainText("Capture lost session information");
+    await expect(workspace.locator(".market-readiness")).toContainText("The game connection changed");
     await expect(workspace.locator(".market-readiness").getByRole("status")).toHaveText("Market not ready");
     expect((await getRendererState(page)).marketReadiness.contextVersion).toBeGreaterThan(previous);
     expect(await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request))
@@ -82,15 +82,20 @@ for (const { loss, order } of ["attributed", "unscoped"].flatMap(loss =>
       }), { affected: transientFlow, loss });
       await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(false);
       const renewed = transient.replace("SYNTHETIC-session", "SYNTHETIC-new-session");
-      if (order === "account-first") await emit(flow, account);
-      else await emit(transientFlow, renewed);
-      expect((await getRendererState(page)).marketReadiness.canSearch).toBe(false);
-      expect(await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request))
-        .toMatchObject({ ok: false, errorCode: "template_unavailable" });
-      expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
-      if (order === "account-first") await emit(transientFlow, renewed);
-      else await emit(flow, account);
-      await expect.poll(async () => (await getRendererState(page)).marketReadiness.canSearch).toBe(true);
+      if (order === "account-first") {
+        await emit(flow, account);
+        expect((await getRendererState(page)).marketReadiness.canSearch).toBe(false);
+        expect(await page.evaluate(input => window.heroSiegeCompanion.searchMarket(input), request))
+          .toMatchObject({ ok: false, errorCode: "template_unavailable" });
+        expect(await electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.getMarketTestAttemptCount())).toBe(0);
+        await emit(transientFlow, renewed);
+      } else {
+        // Fresh matching UID/crossregion restores account and mode retained from earlier this session.
+        await emit(transientFlow, renewed);
+        await expect.poll(async () => (await getRendererState(page)).marketReadiness).toMatchObject({ canSearch: true, retainedContext: true });
+        await emit(flow, account);
+      }
+      await expect.poll(async () => (await getRendererState(page)).marketReadiness).toMatchObject({ canSearch: true, retainedContext: false });
       const version = (await getRendererState(page)).marketReadiness.contextVersion;
       await emit(flow, account.replace("hardcore=0", "hardcore=1"));
       await expect.poll(async () => (await getRendererState(page)).marketReadiness.contextVersion).toBeGreaterThan(version);

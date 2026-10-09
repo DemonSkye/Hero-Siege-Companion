@@ -15,9 +15,16 @@ describe("Market readiness UI", () => {
       ...createInitialMarketReadiness(), phase: "collecting", reason: "observation_gap",
     } } });
     expect(wrapper.get('[role="status"]').text()).toBe("Market not ready");
-    expect(wrapper.text()).toContain("Capture lost session information");
-    expect(wrapper.text()).toContain("Waiting for fresh game information");
+    expect(wrapper.text()).toContain("The game connection changed");
+    expect(wrapper.text()).toContain("Waiting for the game to send fresh session information");
     expect(wrapper.text()).not.toContain("restart");
+  });
+  test("says when Ready relies on account and mode captured earlier this session", () => {
+    const wrapper = mount(MarketReadinessStatus, { props: { readiness: {
+      ...companionState().marketReadiness, phase: "ready", reason: null, canSearch: true, missingFields: [], retainedContext: true,
+    } } });
+    expect(wrapper.get('[role="status"]').text()).toBe("Market ready");
+    expect(wrapper.text()).toContain("captured earlier this session");
   });
   test("explains established transient endpoint mismatch even with all six fields", () => {
     const wrapper = mount(MarketReadinessStatus, { props: { readiness: {

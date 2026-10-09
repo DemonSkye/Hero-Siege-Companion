@@ -9,7 +9,7 @@ export interface MarketRequestDiagnostics extends MarketContextProvenance {
   beta: "0" | "1" | null;
   recordComparison?: MarketRecordComparison;
 }
-const SOURCES = ["mailbox", "market", "game-api", "json", "character-save", "region-directory"] as const;
+const SOURCES = ["mailbox", "market", "game-api", "json", "character-save", "region-directory", "retained"] as const;
 const QUALIFICATIONS = ["observed-prefix", "region-directory", "unqualified", "unknown"] as const;
 const agreement = (value: unknown): boolean | null => typeof value === "boolean" ? value : null;
 

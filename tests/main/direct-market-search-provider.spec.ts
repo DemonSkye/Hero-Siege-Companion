@@ -68,12 +68,14 @@ function setup(options: {
   context?: CompleteCapturedSessionContext | null;
   records?: () => CompleteCapturedSessionContext["diagnosticRecords"];
   privateDiagnostic?: { take: () => string | undefined; finish: (completeResponse: boolean, writeSucceeded?: boolean) => void };
+  discardRetainedContext?: () => void;
 } = {}) {
   let context = options.context === undefined ? completeContext : options.context;
   let listener = () => undefined;
   const source: DirectMarketContextSource = {
     marketContext: () => context,
     ...(options.records ? { marketRecordSnapshot: options.records } : {}),
+    ...(options.discardRetainedContext ? { discardRetainedContext: options.discardRetainedContext } : {}),
     subscribe: (next) => { listener = next; return () => { listener = () => undefined; }; },
   };
   const log = vi.fn();
@@ -319,7 +321,8 @@ describe("direct-market provider worker boundary", () => {
   });
 
   test("progress cannot finish a search and final worker diagnostics take precedence", async () => {
-    const { provider, log } = setup(); const pending = provider.search(request);
+    const discardRetainedContext = vi.fn();
+    const { provider, log } = setup({ discardRetainedContext }); const pending = provider.search(request);
     await Promise.resolve(); const worker = mock.workers[0];
     worker.emit("message", progress("unconfirmed"));
     expect(worker.terminate).not.toHaveBeenCalled();
@@ -332,6 +335,7 @@ describe("direct-market provider worker boundary", () => {
       dispatchStatus: "submitted", requestContext: finalContext, reason: "server-rejected",
     }));
     expect(worker.terminate).toHaveBeenCalledTimes(1);
+    expect(discardRetainedContext).toHaveBeenCalledOnce();
   });
 
   test("an unsupported progress marker cannot settle the search or enter final diagnostics", async () => {

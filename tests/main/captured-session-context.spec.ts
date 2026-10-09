@@ -111,6 +111,81 @@ describe("captured session context", () => {
     expect(store.satanicZoneContext()).toBeNull();
   });
 
+  describe("retained account and mode", () => {
+    const oldFlow = { ...endpoint, localAddress: "10.0.0.2", localPort: 5000 };
+    const newFlow = { ...endpoint, localAddress: "10.0.0.2", localPort: 5001 };
+    const transient = (uid = "hero-7", xrid = "xrid-two", extra = "") => `unique_account_id=${uid}&crossregion_identifier=${xrid}&beta=0${extra}`;
+    const directory = new MarketRegionDirectory([{ address: endpoint.remoteAddress, port: endpoint.remotePort, beta: "0", region: "10" }]);
+    function readyStore(now = () => 1_000) {
+      const store = new CapturedSessionContextStore(undefined, now);
+      store.observeGameProcessIds([123]);
+      store.applyRegionDirectory(directory);
+      store.observe({ text: savePayload(), direction: "outbound", ...oldFlow, observedAt: 1_000 });
+      expect(store.marketReadiness()).toMatchObject({ phase: "ready", retainedContext: false });
+      return store;
+    }
+    const closeOldFlow = (store: CapturedSessionContextStore) =>
+      store.observeTcpLifecycle({ src: oldFlow.localAddress, srcPort: oldFlow.localPort, dst: endpoint.remoteAddress, dstPort: endpoint.remotePort, flags: 1 });
+
+    test("a vote-reset reconnect restores account and mode from fresh matching UID and crossregion", () => {
+      const store = readyStore();
+      closeOldFlow(store);
+      expect(store.marketReadiness()).toMatchObject({ phase: "collecting", reason: "observation_gap", canSearch: false });
+      store.observe({ text: transient(), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(store.marketReadiness()).toMatchObject({ phase: "ready", canSearch: true, retainedContext: true });
+      expect(store.marketContext()?.fields).toMatchObject({
+        account_id: "10-42", unique_account_id: "hero-7", crossregion_identifier: "xrid-two", season: "11", hardcore: "0", beta: "0",
+      });
+      store.observe({ text: savePayload({ crossregion_identifier: "xrid-two" }), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(store.marketReadiness()).toMatchObject({ phase: "ready", retainedContext: false });
+    });
+
+    test("survives a game restart but still requires fresh transient evidence", () => {
+      const store = readyStore();
+      store.observeGameProcessIds([]);
+      store.observeGameProcessIds([456]);
+      expect(store.marketContext()).toBeNull();
+      store.observe({ text: "unique_account_id=hero-7&beta=0", direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(store.marketReadiness().canSearch).toBe(false);
+      store.observe({ text: transient(), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(store.marketReadiness()).toMatchObject({ phase: "ready", retainedContext: true });
+    });
+
+    test("is not used for a different UID or contradicting fresh mode", () => {
+      const other = readyStore();
+      closeOldFlow(other);
+      other.observe({ text: transient("hero-8"), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(other.marketReadiness()).toMatchObject({ canSearch: false, missingFields: ["account_id", "season", "hardcore"] });
+
+      const switched = readyStore();
+      closeOldFlow(switched);
+      switched.observe({ text: transient("hero-7", "xrid-two").replace("beta=0", "beta=1"), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(switched.marketReadiness().canSearch).toBe(false);
+      switched.observe({ text: transient(), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(switched.marketReadiness().canSearch).toBe(false);
+    });
+
+    test("requalifies the account when the API endpoint changes", () => {
+      const store = readyStore();
+      store.observeGameProcessIds([456]);
+      store.observe({ text: transient(), direction: "outbound", remoteAddress: "203.0.113.11", remotePort: 6669, observedAt: 1_000 });
+      expect(store.marketReadiness()).toMatchObject({ phase: "region-required", retainedContext: true });
+      expect(store.marketContext()).toBeNull();
+    });
+
+    test("a checksum rejection discards restored values until fresh evidence replaces them", () => {
+      const store = readyStore();
+      closeOldFlow(store);
+      store.observe({ text: transient(), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      const version = store.marketReadiness().contextVersion;
+      store.discardRetainedContext();
+      expect(store.marketReadiness()).toMatchObject({ canSearch: false, retainedContext: false, missingFields: ["account_id", "season", "hardcore"] });
+      expect(store.marketReadiness().contextVersion).toBeGreaterThan(version!);
+      store.observe({ text: transient("hero-7", "xrid-three"), direction: "outbound", ...newFlow, observedAt: 1_000 });
+      expect(store.marketReadiness().canSearch).toBe(false);
+    });
+  });
+
   test("ignores inbound or unbound observations and never logs credential values", () => {
     const log = vi.fn();
     const store = new CapturedSessionContextStore(log);

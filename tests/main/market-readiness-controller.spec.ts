@@ -42,7 +42,7 @@ describe("sanitized Market readiness", () => {
     await operation;
     expect(state.latest()).toMatchObject({ phase: "ready", sessionCurrent: true, regionQualified: true, canSearch: true });
     expect(state.store.marketContext()).not.toBeNull();
-    expect(Object.keys(state.latest()).sort()).toEqual(["canSearch", "contextVersion", "expiresAt", "missingFields", "phase", "reason", "regionQualified", "sessionCurrent"]);
+    expect(Object.keys(state.latest()).sort()).toEqual(["canSearch", "contextVersion", "expiresAt", "missingFields", "phase", "reason", "regionQualified", "retainedContext", "sessionCurrent"]);
     expect(JSON.stringify(state.updates)).not.toMatch(/sensitive-user|sensitive-session|203\.0\.113|10-42|123/);
   });
 

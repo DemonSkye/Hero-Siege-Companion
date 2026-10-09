@@ -49,7 +49,7 @@ test("integrated startup, loss/recovery and restart preserve saved glove criteri
     await workspace.getByRole("button", { name: "Search market", exact: true }).click();
     await assertRolls(workspace);
     await session.electronApp.evaluate(() => globalThis.heroSiegeCompanionE2e.emitCaptureUpdate({ observationGap: true }));
-    await expect(workspace.locator(".market-readiness")).toContainText("Capture lost session information");
+    await expect(workspace.locator(".market-readiness")).toContainText("The game connection changed");
     await expect(workspace.locator(".market-listing-details")).toHaveCount(0);
     await expect(workspace.locator(".market-saved-load").filter({ hasText: "Recovered glove" })).toHaveCount(1);
     await expect(workspace.locator(".market-stat-row input")).toHaveValue("20");

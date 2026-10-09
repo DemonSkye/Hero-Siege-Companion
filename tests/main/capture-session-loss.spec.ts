@@ -254,12 +254,13 @@ describe("production capture to Market trust after lost evidence", () => {
     expect(f.store.marketContext()?.fields.hardcore).toBe("1");
   });
 
-  test("a proved new process generation admits its new sequence space without old fields", () => {
+  test("a proved new process generation admits its new sequence space, restoring only retained account/mode", () => {
     const f = harness(); f.identity(); f.reopen("reopen"); f.processes([43]);
-    f.feed(frameDiagnosticBody(requestDiagnosticBody(3, "mailbox/get_mail", 83, transient), 10), { sequence: 1, localPort: 6000 });
     expect(f.readiness().canSearch).toBe(false);
+    f.feed(frameDiagnosticBody(requestDiagnosticBody(3, "mailbox/get_mail", 83, transient), 10), { sequence: 1, localPort: 6000 });
+    expect(f.readiness()).toMatchObject({ canSearch: true, retainedContext: true });
     f.feed(frameDiagnosticBody(requestDiagnosticBody(3, "mailbox/get_mail", 83, account), 10), { sequence: 1, localPort: 5000 });
-    expect(f.readiness().canSearch).toBe(true);
+    expect(f.readiness()).toMatchObject({ canSearch: true, retainedContext: false });
   });
 
   test.each(["reopen", "parser-recovery"].flatMap(reason =>
@@ -272,7 +273,7 @@ describe("production capture to Market trust after lost evidence", () => {
       expect((await f.provider.search(replayMarketRequest)).ok).toBe(false);
       if (order === "account-first") f.fields(account, 5000);
       else f.fields(transient.replace("1111111111", "3333333333"), 6000);
-      expect(f.readiness().canSearch).toBe(false);
+      expect(f.readiness()).toMatchObject({ canSearch: order === "transient-first", retainedContext: order === "transient-first" });
       if (order === "account-first") f.fields(transient.replace("1111111111", "3333333333"), 6000);
       else f.fields(account, 5000);
       expect(f.readiness().canSearch).toBe(true);
@@ -454,10 +455,12 @@ describe("production capture to Market trust after lost evidence", () => {
     const freshTransient = transient.replace("1111111111", "3333333333");
     if (order === "account-first") f.fields(account, 5000);
     else f.fields(freshTransient, 6000);
-    // Even healthy pre-loss account/mode values cannot complete fresh credentials.
-    expect(f.readiness().canSearch).toBe(false);
-    expect((await f.provider.search(replayMarketRequest)).ok).toBe(false);
-    expect(workers).toHaveLength(0);
+    // Fresh matching credentials restore retained account/mode; account evidence alone cannot.
+    expect(f.readiness()).toMatchObject({ canSearch: order === "transient-first", retainedContext: order === "transient-first" });
+    if (order === "account-first") {
+      expect((await f.provider.search(replayMarketRequest)).ok).toBe(false);
+      expect(workers).toHaveLength(0);
+    }
     if (order === "account-first") f.fields(freshTransient, 6000);
     else f.fields(account, 5000);
     expect(f.readiness()).toMatchObject({ phase: "ready", canSearch: true });
@@ -484,7 +487,7 @@ describe("production capture to Market trust after lost evidence", () => {
     const freshTransient = transient.replace("1111111111", "3333333333");
     if (order === "account-first") f.fields(account, 5000);
     else f.fields(freshTransient, 7000);
-    expect(f.readiness().canSearch).toBe(false);
+    expect(f.readiness()).toMatchObject({ canSearch: order === "transient-first", retainedContext: order === "transient-first" });
     if (order === "account-first") f.fields(freshTransient, 7000);
     else f.fields(account, 5000);
     expect(f.readiness().canSearch).toBe(true);

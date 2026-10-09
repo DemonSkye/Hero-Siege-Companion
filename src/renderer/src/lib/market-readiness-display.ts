@@ -6,12 +6,15 @@ export const MARKET_CONTEXT_LABELS: Record<MarketContextField, string> = {
 };
 
 const MARKET_CONTEXT_RECOVERY_DETAIL = "With capture running, search for an item in the game’s Market or perform an in-game vote reset to collect the information needed.";
+export const MARKET_RETAINED_CONTEXT_DETAIL = "Using account and character mode captured earlier this session. If you have switched character or mode since, search for an item in the game’s Market or perform a vote reset to update it.";
 export const MARKET_REGION_UNCONFIRMED_DETAIL = "Session captured, but region information could not be confirmed. " + MARKET_CONTEXT_RECOVERY_DETAIL;
 
 export function marketReadinessDisplay(readiness: MarketReadiness): { label: string; detail: string } {
   switch (readiness.phase) {
     case "ready":
-      return { label: "Market ready", detail: "Local prerequisites are present. Press Search to ask the server; accepted authentication is confirmed only by a successful response." };
+      return readiness.retainedContext
+        ? { label: "Market ready", detail: MARKET_RETAINED_CONTEXT_DETAIL }
+        : { label: "Market ready", detail: "Local prerequisites are present. Press Search to ask the server; accepted authentication is confirmed only by a successful response." };
     case "region-required":
       return { label: "Market ready", detail: "Your first search will prepare region information." };
     case "preparing":
@@ -26,7 +29,7 @@ export function marketReadinessDisplay(readiness: MarketReadiness): { label: str
         : { label: "Market not ready", detail: "Connect to Hero Siege. " + MARKET_CONTEXT_RECOVERY_DETAIL };
     case "collecting":
       if (readiness.reason === "observation_gap") {
-        return { label: "Market not ready", detail: "Capture lost session information. Waiting for fresh game information with capture running." };
+        return { label: "Market not ready", detail: "The game connection changed, for example after a vote reset. Waiting for the game to send fresh session information with capture running." };
       }
       if (readiness.reason === "endpoint_mismatch") {
         return { label: "Market not ready", detail: "Waiting for matching session information. " + MARKET_CONTEXT_RECOVERY_DETAIL };

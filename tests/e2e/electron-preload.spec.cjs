@@ -169,7 +169,7 @@ test("publishes sanitized Market readiness through the preload state bridge", as
     const updates = await page.evaluate(() => window.__marketReadinessUpdates);
     for (const readiness of updates) {
       expect(Object.keys(readiness).sort()).toEqual([
-        "canSearch", "contextVersion", "expiresAt", "missingFields", "phase", "reason", "regionQualified", "sessionCurrent",
+        "canSearch", "contextVersion", "expiresAt", "missingFields", "phase", "reason", "regionQualified", "retainedContext", "sessionCurrent",
       ]);
     }
     expect(JSON.stringify(updates)).not.toMatch(/e2e-identity|e2e-session|203\.0\.113|10-42/);

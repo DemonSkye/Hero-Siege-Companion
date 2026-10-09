@@ -19,6 +19,7 @@ export interface DirectMarketContextSource {
   subscribe(listener: () => void): () => void;
   marketProvenance?(): CompleteCapturedSessionContext["provenance"];
   marketRecordSnapshot?(): CompleteCapturedSessionContext["diagnosticRecords"];
+  discardRetainedContext?(): void;
 }
 
 interface ActiveSearch {
@@ -141,7 +142,10 @@ export class DirectMarketSearchProvider implements MarketSearchProvider {
       listingCount: result.response.ok ? result.response.result.listings.length : undefined,
       totalMatches: result.response.ok ? result.response.result.totalMatches : undefined,
     });
-    if (!result.response.ok) return { ...result.response, nextAllowedSearchAt: this.nextAllowedSearchAt };
+    if (!result.response.ok) {
+      if (result.response.errorCode === "checksum_rejected") this.contextSource.discardRetainedContext?.();
+      return { ...result.response, nextAllowedSearchAt: this.nextAllowedSearchAt };
+    }
     const observedAt = this.now();
     this.cache.set(key, result.response.result, observedAt);
     return {

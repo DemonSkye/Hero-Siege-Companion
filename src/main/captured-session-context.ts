@@ -16,6 +16,7 @@ import {
 
 const TRANSIENT_IDENTITY_TTL_MS = 10 * 60_000;
 const MAX_ACCOUNT_SOURCES = 8;
+const RETAINED_FIELDS = ["account_id", "season", "hardcore", "beta"] as const;
 
 export interface CapturedSessionPayload {
   text: string;
@@ -53,6 +54,12 @@ export interface MarketContextProvenance {
   hardcoreSourcesAgree: boolean | null;
 }
 interface HardcoreEvidence { value: string; account?: string; evidence: FieldEvidence }
+/** RAM-only account/mode from the last complete context, bound to its UID. Never transient credentials. */
+interface RetainedAccountContext {
+  uniqueAccountId: string;
+  fields: Record<typeof RETAINED_FIELDS[number], string>;
+  endpoint: { address: string; port: number };
+}
 
 export interface CompleteCapturedSessionContext {
   generation: number;
@@ -96,6 +103,7 @@ export class CapturedSessionContextStore {
   private pendingRecoveryBoundary = 0;
   private rejectedObservationBoundary = 0;
   private activeFlows: Set<string | null> | null = null;
+  private retained: RetainedAccountContext | null = null;
 
   constructor(
     private readonly log: (type: string, data: Record<string, unknown>) => void = () => undefined,
@@ -126,6 +134,8 @@ export class CapturedSessionContextStore {
       this.observeMessage(payload, message);
     }
     this.qualifyCurrentAccount();
+    this.restoreRetainedContext();
+    this.rememberCompleteContext();
     const unique = this.evidence.unique_account_id, crossregion = this.evidence.crossregion_identifier;
     if (this.transientEndpoint(this.now()) && unique?.observationSequence !== undefined && crossregion?.observationSequence !== undefined
       && Math.min(unique.observationSequence, crossregion.observationSequence) > this.pendingRecoveryBoundary) {
@@ -139,6 +149,7 @@ export class CapturedSessionContextStore {
   applyRegionDirectory(directory: MarketRegionDirectory): void {
     this.directory = directory;
     this.qualifyCurrentAccount();
+    this.rememberCompleteContext();
     this.notifyReadiness();
   }
   marketRecordSnapshot(): FrozenMarketRecordEvidence { return this.records.freeze(this.generation, this.now()); }
@@ -201,6 +212,7 @@ export class CapturedSessionContextStore {
       missingFields: SESSION_CONTEXT_FIELDS.filter((field) => this.fields[field] === undefined),
       sessionCurrent: Boolean(this.processSignature && this.transientEndpoint(this.now())),
       regionQualified: isRegionQualifiedAccount(this.fields.account_id),
+      retainedContext: RETAINED_FIELDS.some(field => this.evidence[field]?.source === "retained"),
       expiresAt, canSearch: false,
     };
     if (!this.processSignature) return { ...snapshot, phase: "waiting", reason: "game_unavailable" };
@@ -214,6 +226,22 @@ export class CapturedSessionContextStore {
     }
     // Use the same final preflight as the working lookup provider.
     return this.marketContext() ? { ...snapshot, phase: "ready", reason: null, canSearch: true } : snapshot;
+  }
+
+  /** A server rejection of restored account/mode retires it; fresh evidence must replace it. */
+  discardRetainedContext(): void {
+    const restored = RETAINED_FIELDS.filter(field => this.evidence[field]?.source === "retained");
+    this.retained = null;
+    if (!restored.length) return;
+    for (const field of restored) {
+      delete this.fields[field];
+      delete this.evidence[field];
+    }
+    this.revision += 1;
+    this.readinessContextVersion += 1;
+    this.log("session-context-reset", { generation: this.generation, revision: this.revision, reason: "retained-rejected" });
+    for (const listener of this.listeners) listener();
+    this.notifyReadiness();
   }
 
   subscribeReadiness(listener: () => void): () => void {
@@ -286,6 +314,7 @@ export class CapturedSessionContextStore {
     this.accountSources = [];
     this.apiHardcore = this.saveHardcore = undefined;
     this.directory = null;
+    this.retained = null;
     this.processSignature = "";
     this.retiredFlows.clear();
     this.pendingRecoveryBoundary = this.rejectedObservationBoundary = 0;
@@ -302,6 +331,44 @@ export class CapturedSessionContextStore {
     return { address: crossregion.remoteAddress, port: crossregion.remotePort };
   }
 
+  private rememberCompleteContext(): void {
+    const endpoint = this.transientEndpoint(this.now());
+    if (!endpoint || !isComplete(this.fields)) return;
+    const { account_id, season, hardcore, beta } = this.fields;
+    this.retained = { uniqueAccountId: this.fields.unique_account_id, fields: { account_id, season, hardcore, beta }, endpoint };
+  }
+
+  /**
+   * Capture gaps and vote-reset reconnects clear the context, but the game rarely resends
+   * account/mode afterwards. Fresh UID/crossregion matching the retained UID restores them,
+   * unless any freshly observed account/mode value disagrees.
+   */
+  private restoreRetainedContext(): void {
+    const retained = this.retained, unique = this.evidence.unique_account_id;
+    if (!retained || !unique || isComplete(this.fields)) return;
+    if (this.fields.unique_account_id !== retained.uniqueAccountId) {
+      this.retained = null;
+      return;
+    }
+    const endpoint = this.transientEndpoint(this.now());
+    if (!endpoint) return;
+    const fields = { ...retained.fields };
+    // A different API endpoint may be a different region; qualify the raw account again.
+    if (endpoint.address !== retained.endpoint.address || endpoint.port !== retained.endpoint.port) {
+      fields.account_id = rawAccountId(fields.account_id);
+    }
+    const conflict = RETAINED_FIELDS.some(field => this.fields[field] !== undefined && (field === "account_id"
+      ? rawAccountId(this.fields.account_id!) !== rawAccountId(fields.account_id) : this.fields[field] !== fields[field]));
+    if (conflict) {
+      this.retained = null;
+      return;
+    }
+    const missing = Object.fromEntries(RETAINED_FIELDS.filter(field => this.fields[field] === undefined).map(field => [field, fields[field]]));
+    this.observeMessage({ text: "", direction: unique.direction, remoteAddress: unique.remoteAddress, remotePort: unique.remotePort,
+      observedAt: unique.observedAt, localAddress: unique.localAddress, localPort: unique.localPort,
+      observationSequence: unique.observationSequence }, { source: "retained", fields: missing });
+  }
+
   private qualifyCurrentAccount(): void {
     const account = this.fields.account_id;
     if (!account || isRegionQualifiedAccount(account) || !this.directory) return;
@@ -315,7 +382,7 @@ export class CapturedSessionContextStore {
 
   private observeMessage(payload: CapturedSessionPayload, message: SessionContextMessage): void {
     const candidates = { ...message.fields };
-    if (!candidates.account_id && !candidates.unique_account_id) return;
+    if (!candidates.account_id && !candidates.unique_account_id && message.source !== "retained") return;
     const current = this.fields;
     const accountChanged = candidates.account_id && current.account_id
       && rawAccountId(candidates.account_id) !== rawAccountId(current.account_id);
@@ -331,6 +398,7 @@ export class CapturedSessionContextStore {
     const reset = Boolean(accountChanged || uniqueChanged || regionChanged);
     if (reset) {
       this.rejectOlderObservations(payload);
+      this.retained = null;
       this.clearContext("identity", true);
     }
     if (candidates.crossregion_identifier && current.crossregion_identifier
@@ -338,7 +406,7 @@ export class CapturedSessionContextStore {
       this.rejectOlderObservations(payload);
     }
 
-    if (message.fields.account_id && message.source !== "region-directory") {
+    if (message.fields.account_id && message.source !== "region-directory" && message.source !== "retained") {
       this.accountSources = [{ ...payload, text: "" }, ...this.accountSources.filter((source) =>
         source.remoteAddress !== payload.remoteAddress || source.remotePort !== payload.remotePort)].slice(0, MAX_ACCOUNT_SOURCES);
     }
@@ -455,7 +523,7 @@ export class CapturedSessionContextStore {
     };
   }
   private observeHardcore(payload: CapturedSessionPayload, message: SessionContextMessage, observedAt: number): void {
-    if (message.source === "region-directory") return;
+    if (message.source === "region-directory" || message.source === "retained") return;
     const nativeAccount = message.fields.account_id ? rawAccountId(message.fields.account_id) : undefined;
     // API mode can precede account-bearing save traffic. Bind only the same full flow.
     if (nativeAccount) for (const prior of [this.apiHardcore, this.saveHardcore]) {

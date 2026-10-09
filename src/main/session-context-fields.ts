@@ -13,7 +13,7 @@ export interface NativeMarketDigestEvidence {
 
 export interface SessionContextMessage {
   fields: SessionContextFields;
-  source: "mailbox" | "market" | "game-api" | "json" | "character-save" | "region-directory";
+  source: "mailbox" | "market" | "game-api" | "json" | "character-save" | "region-directory" | "retained";
   /** Directly observed top-level slot only; no selected-slot authority is implied. */
   slot?: string;
   nativeMarket?: NativeMarketDigestEvidence;

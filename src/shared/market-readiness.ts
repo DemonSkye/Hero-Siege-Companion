@@ -16,6 +16,8 @@ export interface MarketReadiness {
   missingFields: MarketContextField[];
   sessionCurrent: boolean;
   regionQualified: boolean;
+  /** Account/mode came from earlier in this Companion session, not fresh traffic. */
+  retainedContext?: boolean;
   expiresAt: number | null;
   canSearch: boolean;
 }
