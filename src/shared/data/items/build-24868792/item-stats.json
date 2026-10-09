@@ -297,7 +297,8 @@
       "role": {
         "statId": 22,
         "kind": "control-only",
-        "detail": "Participates in the Attack Damage calculation; the complete displayed amount is not established."
+        "caption": "Base Attack Damage",
+        "detail": "Weapon base damage. Owner-checked tooltips show Attack Damage as this value raised by Enhanced Damage."
       },
       "unresolvedMeaning": "numeric-range-field-unbound-meaning"
     },
@@ -310,7 +311,8 @@
       "role": {
         "statId": 23,
         "kind": "control-only",
-        "detail": "Participates in the Attacks per Second calculation; the complete displayed amount is not established."
+        "caption": "Base Attacks per Second",
+        "detail": "Weapon base attack rate. Owner-checked tooltips show Attacks per Second as this value raised by Increased Attack Speed."
       },
       "unresolvedMeaning": "fixed-numeric-field-unbound-meaning"
     },

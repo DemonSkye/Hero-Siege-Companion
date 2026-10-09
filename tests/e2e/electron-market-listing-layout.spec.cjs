@@ -324,7 +324,7 @@ for (const specimen of [
     catalog: "10% Chance when Struck: Chainsaw Massacre (Level 40)", listing: "10% Chance when Struck: Chainsaw Massacre (Level 40)" },
   { name: "Lemon", slug: "lemon", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-3",
     item_data: { c: 1, b: 0, j: 17, d: 1, e: 11, w: 1, a: 1000 } },
-    catalog: "Stat 23[1.25]", listing: "Stat 231.25", numeric: true },
+    catalog: "Base Attacks per Second[1.25]", listing: "Base Attacks per Second1.25", numeric: true },
   { name: "Death Knight's Gauntlets", slug: "tier-glove", row: { price: 1, unit_price: 1, fingerprint: "SYNTHETIC-0-0-4",
     item_data: { c: 1, b: 62, d: 24, e: 11, w: 1, a: 1000 } },
     catalog: "Enhanced Damage per level[0.5%]", listing: "Enhanced Damage per level0.5%", numeric: true },

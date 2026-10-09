@@ -19,7 +19,7 @@ test("unknown labels and composed labels do not block approved experimental nume
   for (const statId of [...EXPECTED_UNRESOLVED_MARKET_STAT_IDS_V7,98,100,186,187,299,64,271,351].filter(id=>!blocked.has(id))) {
     expect(normalizeMarketSearchRequest({itemMask:1073746020,statFilters:[{statId,minimum:1}]})).toEqual({ok:true,request:{itemMask:1073746020,statFilters:[{statId,minimum:1}]}});
   }
-  expect(MARKET_STAT_OPTIONS.find(option=>option.statId===22)?.name).toBe("Stat 22 (experimental)");
+  expect(MARKET_STAT_OPTIONS.find(option=>option.statId===22)?.name).toBe("Base Attack Damage (experimental)");
   expect(MARKET_STAT_OPTIONS.find(option=>option.statId===203)?.name).toBe("Selected talent modifier (Stat 203) (experimental)");
 });
 
