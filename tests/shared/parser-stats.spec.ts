@@ -360,6 +360,48 @@ test("gold mode changes reset baseline instead of counting cross-mode totals as 
   assert.equal(snapshot.totalGoldEarned, 0);
 });
 
+test("gold counts without a character save by following the one balance that rises", () => {
+  const stats = new StatsEngine();
+  const currency = (GSS: number) =>
+    stats.applyEvents(captureMessages(`{"status":"1","message":"Success!","currencyData":{"account_id":"1","GSS":${GSS},"GSH":0,"GNS":285189632,"GNH":0,"GBP":3070922}}`).flatMap((message) => messageToEvents([message])));
+
+  assert.equal(currency(86_258).seasonMode, null);
+  const snapshot = currency(86_405);
+
+  assert.equal(snapshot.seasonMode, "GSS");
+  assert.equal(snapshot.totalGold, 86_405);
+  assert.equal(snapshot.totalGoldEarned, 147);
+});
+
+test("an observed gold balance outranks the mode a save declares", () => {
+  const stats = new StatsEngine();
+  const save = () => stats.applyEvents(messageToEvents([{ name: "Player", experience: 1, season: 99, hardcore: 0 }]));
+  const currency = (GSS: number) =>
+    stats.applyEvents(messageToEvents([{ currencyData: { account_id: 1, GSS, GSH: 0, GNS: 5000, GNH: 0, GBP: 70 } }]));
+
+  assert.equal(save().seasonMode, "GNS");
+  currency(1000);
+  currency(1100);
+  save();
+  const snapshot = currency(1150);
+
+  assert.equal(snapshot.seasonMode, "GSS");
+  assert.equal(snapshot.totalGold, 1150);
+  assert.equal(snapshot.totalGoldEarned, 150);
+});
+
+test("currency snapshots that change several balances do not pick a gold mode", () => {
+  const stats = new StatsEngine();
+  const currency = (values: Partial<Record<"GSS" | "GNS" | "GBP", number>>) =>
+    stats.applyEvents(messageToEvents([{ currencyData: { account_id: 1, GSS: 0, GSH: 0, GNS: 0, GNH: 0, GBP: 0, ...values } }]));
+
+  currency({ GSS: 1000 });
+  const snapshot = currency({ GSS: 1100, GNS: 5000, GBP: 70 });
+
+  assert.equal(snapshot.seasonMode, null);
+  assert.equal(snapshot.totalGoldEarned, 0);
+});
+
 test("gold snapshots take precedence over noisy delta fields", () => {
   const stats = new StatsEngine();
 

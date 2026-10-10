@@ -109,6 +109,15 @@ const ORE_MATERIALS: Record<number, string> = {
   32: "Tarethium Ore",
 };
 
+const GOLD_BALANCES = ["GSS", "GSH", "GNS", "GNH", "GBP"] as const;
+type GoldBalance = (typeof GOLD_BALANCES)[number];
+
+function soleRisenBalance(previous: CurrencyData, current: CurrencyData): GoldBalance | null {
+  if (previous.accountId && current.accountId && previous.accountId !== current.accountId) return null;
+  const changed = GOLD_BALANCES.filter((balance) => current[balance] !== previous[balance]);
+  return changed.length === 1 && current[changed[0]] > previous[changed[0]] ? changed[0] : null;
+}
+
 export class StatsEngine {
   private stats: CompanionStats = createInitialStats();
   private runPace: RunPaceRecorder = createRunPaceRecorder();
@@ -116,6 +125,7 @@ export class StatsEngine {
   private itemTotals = new Map<string, ItemDropCounter>();
   private lastCurrencyData: CurrencyData | null = null;
   private goldMode: string | null = null;
+  private observedGoldMode: string | null = null;
   private totalsCharacter: string | null = null;
   private pausedAt: number | null = null;
   private totalPausedMs = 0;
@@ -127,6 +137,7 @@ export class StatsEngine {
     this.itemTotals.clear();
     this.lastCurrencyData = null;
     this.goldMode = null;
+    this.observedGoldMode = null;
     this.totalsCharacter = null;
     this.pausedAt = null;
     this.totalPausedMs = 0;
@@ -189,11 +200,12 @@ export class StatsEngine {
         if (this.totalsCharacter !== null && this.totalsCharacter !== account.name) {
           this.stats.totalKills = 0;
           this.stats.totalXp = 0;
+          this.observedGoldMode = null;
         }
         this.totalsCharacter = account.name;
       }
       if (event.name === EVENT_NAMES.account) this.stats.accountName = account.name || this.stats.accountName;
-      this.stats.seasonMode = account.seasonMode;
+      this.stats.seasonMode = this.observedGoldMode ?? account.seasonMode;
       if (event.name === EVENT_NAMES.account) {
         if (account.hasExperience !== false) this.updateXpTotal(account.experience);
         this.updateKillTotal(account.totalMonsterKills);
@@ -226,16 +238,23 @@ export class StatsEngine {
   }
 
   private updateGold(currency: CurrencyData): void {
+    const previous = this.lastCurrencyData;
     this.lastCurrencyData = currency;
+    // A pickup moves only the character's own balance, so it identifies the gold mode without a save.
+    const risen = previous ? soleRisenBalance(previous, currency) : null;
+    if (risen) {
+      this.observedGoldMode = risen;
+      this.stats.seasonMode = risen;
+    }
 
     const mode = this.stats.seasonMode;
     if (mode) {
       const currentGold = currency[mode as keyof CurrencyData];
       if (typeof currentGold === "number") {
-        if (this.stats.totalGold !== 0 && this.goldMode === mode) {
-          const diff = currentGold - this.stats.totalGold;
-          if (diff > 0) this.stats.totalGoldEarned += diff;
-        }
+        const baseline = this.goldMode === mode && this.stats.totalGold !== 0
+          ? this.stats.totalGold
+          : risen === mode && previous ? previous[risen] : null;
+        if (baseline !== null && currentGold > baseline) this.stats.totalGoldEarned += currentGold - baseline;
         this.stats.totalGold = currentGold;
         this.goldMode = mode;
         return;
