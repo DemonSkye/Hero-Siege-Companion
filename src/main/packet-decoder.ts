@@ -11,6 +11,8 @@ export interface ParsedPayload {
   text: string;
   /** Main-only order of the first observed bytes in this assembled record. */
   observationSequence?: number;
+  /** The IPv4 length was 0, as for a large-send-offload frame, so the captured length was used. */
+  offloadedLength?: true;
 }
 
 export interface CompletedPayload {
@@ -858,7 +860,7 @@ export function getTcpPacketEndpoints(
   const ipHeaderLength = (buffer[ipOffset] & 0x0f) * 4;
   if (ipHeaderLength < 20 || ipOffset + ipHeaderLength > capturedLength) return null;
   if (buffer[ipOffset + 9] !== IPV4_PROTOCOL_TCP || (buffer.readUInt16BE(ipOffset + 6) & 0x3fff) !== 0) return null;
-  if (buffer.readUInt16BE(ipOffset + 2) < ipHeaderLength + 20) return null;
+  if (ipv4TotalLength(buffer, ipOffset, capturedLength) < ipHeaderLength + 20) return null;
   const tcpOffset = ipOffset + ipHeaderLength;
   // Only the captured addresses and both port fields are needed to signal a gap.
   if (tcpOffset + 4 > capturedLength) return null;
@@ -881,7 +883,7 @@ export function getTcpSegment(buffer: Buffer, nbytes: number, linkType: string, 
   if (buffer[ipOffset + 9] !== IPV4_PROTOCOL_TCP) return null;
   if ((buffer.readUInt16BE(ipOffset + 6) & 0x3fff) !== 0) return null;
 
-  const ipTotalLength = buffer.readUInt16BE(ipOffset + 2);
+  const ipTotalLength = ipv4TotalLength(buffer, ipOffset, capturedLength);
   if (ipTotalLength < ipHeaderLength + 20) return null;
   const packetEnd = ipOffset + ipTotalLength;
   if (packetEnd > capturedLength) return null;
@@ -907,7 +909,14 @@ export function getTcpSegment(buffer: Buffer, nbytes: number, linkType: string, 
     payloadLength: payload.length,
     payload,
     text: borrowPayload ? "" : payload.toString("utf8"),
+    ...(buffer.readUInt16BE(ipOffset + 2) === 0 ? { offloadedLength: true as const } : {}),
   };
+}
+
+// Windows large send offload captures one oversized outbound frame whose IPv4 total length is 0.
+function ipv4TotalLength(buffer: Buffer, ipOffset: number, capturedLength: number): number {
+  const totalLength = buffer.readUInt16BE(ipOffset + 2);
+  return totalLength === 0 ? capturedLength - ipOffset : totalLength;
 }
 
 export function ipv4OffsetForLinkType(buffer: Buffer, nbytes: number, linkType: string): number | null {

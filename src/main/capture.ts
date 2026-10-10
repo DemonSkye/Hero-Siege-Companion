@@ -1157,6 +1157,7 @@ export class CaptureService {
       payloadLength: packet.payloadLength,
       nullBytes: packet.payload.reduce((count, byte) => count + (byte === 0 ? 1 : 0), 0),
       textSnippet: sanitizeDebugSnippet(packet.text, 4000),
+      ...(packet.offloadedLength ? { offloadedLength: true } : {}),
     });
   }
 

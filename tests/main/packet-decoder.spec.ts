@@ -419,6 +419,21 @@ describe("packet decoder", () => {
     expect(buffers.stats()).toEqual({ streams: 1, pendingSegments: 0, bufferedBytes: 0 });
   });
 
+  test.each(["ETHERNET", "RAW"] as const)("decodes a %s large-send-offload save frame whose IPv4 total length is 0", (linkType) => {
+    const slotData = JSON.stringify({ name: "Dante", experience: 424534, statisticTotalMonsterKills: 72532, season: 11, hardcore: 0, inventorySnapshot: "x".repeat(4_400) });
+    const frame = apiFrame(Buffer.from(`\0\0save\0R\0account_id=1&slot_data=${slotData}&beta=0\0`));
+    const packet = tcpPacket(frame, linkType, { seq: 4_000 });
+    packet.writeUInt16BE(0, linkPrefix(linkType).length + 2);
+
+    expect(getTcpPacketEndpoints(packet, packet.length, linkType)).toEqual({ src: "10.0.0.1", dst: "10.0.0.2", srcPort: 1234, dstPort: 26921 });
+    const segment = getTcpSegment(packet, packet.length, linkType);
+    expect(segment).toMatchObject({ seq: 4_000, payloadLength: frame.length, offloadedLength: true });
+    const [completed] = new PacketBuffers().push(segment!);
+    expect(messageToEvents(captureMessages(completed.text))).toMatchObject([{ name: "updateAccount", value: { totalMonsterKills: 72532 } }]);
+    const ordinary = tcpPacket(frame, linkType);
+    expect(getTcpSegment(ordinary, ordinary.length, linkType)).not.toHaveProperty("offloadedLength");
+  });
+
   test("decodes coalesced API and generic length-prefixed frames on one stream", () => {
     const buffers = new PacketBuffers();
     const request = apiFrame("\0\0satanic_zone_get\0R\0unique_account_id=1234567&crossregion_identifier=12345678901\0");
