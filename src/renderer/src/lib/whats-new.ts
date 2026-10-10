@@ -16,12 +16,13 @@ export interface WhatsNewSection {
 export const WHATS_NEW_RELEASE: WhatsNewRelease = {
   version: APP_VERSION,
   title: `Hero Siege Companion v${APP_VERSION}`,
-  intro: "Version 0.4.3 keeps Market ready after vote resets and rebuilds compact mode around pages you can flip through.",
+  intro: "Version 0.4.4 fixes kill tracking for some characters and makes explainers and the Live Log easier to read.",
   items: [
-    "Market remembers your account and character mode while Companion is open, so it is ready again as soon as the game sends fresh session information after a vote reset, reconnect or game restart.",
-    "Compact mode shows one titled page of up to four tiles at a time. The default pages are Run, Loot and Satanic Zone, which replaces the SZ Details pop-over.",
-    "Change compact pages with the mouse wheel, arrow keys, Page Up / Page Down or the page dots. Choose which inputs work in Customize Compact Mode.",
-    "Customize Compact Mode now edits pages, includes presets and scrolls so every option is reachable. Existing compact layouts move to pages automatically.",
+    "Kills and XP now count for characters whose save data contains escaped text, for example a quote or slash in a mercenary or inventory tab name. Those saves were previously ignored.",
+    "Switching characters during a run no longer adds the difference between the two characters' lifetime kills and XP to the run.",
+    "Player chat that mentions mail no longer turns on the mail indicator.",
+    "Explainer bubbles, such as those on Gold and Kills, now appear above everything else and stay inside the window.",
+    "Live Log entries stay readable in narrow layouts, and hovering an entry shows its full text.",
   ],
   sections: [],
 };
