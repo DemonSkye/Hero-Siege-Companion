@@ -16,7 +16,7 @@ Download the latest Windows build from the GitHub Releases page:
 
 The release asset is the portable Windows build. Download it, unzip it if needed, and run `Hero Siege Companion.exe`.
 
-Current release: **0.4.4**, matching `package.json`. Native game/server compatibility still needs owner testing before publication.
+Current release: **0.4.5**, matching `package.json`. Native game/server compatibility still needs owner testing before publication.
 
 ## Quick Start
 
