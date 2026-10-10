@@ -82,18 +82,6 @@
   font-size: 13px;
 }
 
-.settings-row .info-bubble::after {
-  top: calc(100% + 8px);
-  bottom: auto;
-  left: 0;
-  max-width: 300px;
-  transform: translate(0, 2px);
-}
-
-.settings-row .info-bubble:hover::after {
-  transform: translate(0, 0);
-}
-
 .settings-row select {
   height: 32px;
   min-width: 154px;

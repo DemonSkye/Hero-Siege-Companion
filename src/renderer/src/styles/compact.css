@@ -207,19 +207,6 @@
   white-space: nowrap;
 }
 
-.compact-run-summary .info-bubble::after {
-  top: calc(100% + 8px);
-  bottom: auto;
-  left: 0;
-  width: max-content;
-  max-width: 180px;
-  transform: translate(0, 2px);
-}
-
-.compact-run-summary .info-bubble:hover::after {
-  transform: translate(0, 0);
-}
-
 .compact-drop {
   min-width: 0;
   padding: 8px;

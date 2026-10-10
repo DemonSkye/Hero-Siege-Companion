@@ -424,7 +424,6 @@ input[type="checkbox"] {
 }
 
 .info-bubble,
-.info-bubble::after,
 .item-filter-specific-type h4,
 .item-filter-group-button.active,
 .sound-test-button,
@@ -433,8 +432,8 @@ input[type="checkbox"] {
   border-color: var(--accent-border);
 }
 
-.info-bubble::after {
-  background: var(--surface-strong);
+.floating-tip {
+  background: rgb(var(--foreground-strong-rgb, 20 24 32));
   color: var(--app-text);
   box-shadow: 0 12px 32px var(--shadow);
 }

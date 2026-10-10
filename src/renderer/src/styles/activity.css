@@ -407,6 +407,7 @@
 }
 
 .logs {
+  container-type: inline-size;
   max-height: 360px;
   overflow: auto;
   padding-right: 6px;
@@ -478,6 +479,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.log-event {
+  justify-self: start;
+}
+
+@container (max-width: 480px) {
+  .log-content {
+    grid-template-columns: auto auto 1fr;
+    row-gap: 4px;
+  }
+
+  .log-icon {
+    justify-self: end;
+  }
+
+  .log-icon-empty {
+    display: none;
+  }
+
+  .log-message {
+    grid-column: 1 / -1;
+  }
 }
 
 .log p,

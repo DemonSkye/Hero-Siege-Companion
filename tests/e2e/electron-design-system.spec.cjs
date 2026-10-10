@@ -169,6 +169,34 @@ test("themes Market tab readiness, results and errors with semantic roles", asyn
   });
 });
 
+test("shows every explainer fully on screen at the minimum window size", async () => {
+  await withCompanionApp({ seedPastRuns: true }, async ({ page, electronApp }) => {
+    await emitCapturePayloads(electronApp, e2eTrafficPayloads());
+    await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(980, 700, false));
+    for (const view of ["Live Session", "Past Runs"]) {
+      await page.getByRole("tab", { name: view, exact: true }).click();
+      const bubbles = page.getByRole("tabpanel", { name: view }).locator("[data-tip]");
+      await expect(bubbles.first()).toBeVisible();
+      for (const bubble of await bubbles.all()) {
+        await bubble.scrollIntoViewIfNeeded();
+        await bubble.hover();
+        const tip = page.locator(".floating-tip.visible");
+        await expect(tip).toHaveText(await bubble.getAttribute("data-tip"));
+        const placement = await tip.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          element.style.pointerEvents = "auto";
+          const topmost = [[0.1, 0.2], [0.5, 0.5], [0.9, 0.8]]
+            .every(([x, y]) => document.elementFromPoint(rect.left + rect.width * x, rect.top + rect.height * y) === element);
+          element.style.pointerEvents = "";
+          return { inside: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight, topmost };
+        });
+        expect(placement, view).toEqual({ inside: true, topmost: true });
+      }
+      await page.mouse.move(1, 1);
+    }
+  });
+});
+
 test("keeps supplied palettes usable at minimum full size and with eight compact tiles", async ({}, testInfo) => {
   test.setTimeout(90_000);
   await withCompanionApp({ seedPastRuns: true }, async ({ page, electronApp }) => {

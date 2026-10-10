@@ -41,7 +41,7 @@ function isLogExpanded(log: LogEntry): boolean {
           <span :class="['log-event', logEventTone(log)]">{{ logEventLabel(log) }}</span>
           <img v-if="logItemIconUrl(log)" class="log-icon" :src="logItemIconUrl(log)" alt="" />
           <span v-else class="log-icon log-icon-empty" aria-hidden="true"></span>
-          <p class="log-message">{{ logSummary(log) }}</p>
+          <p class="log-message" :title="isLogExpanded(log) ? undefined : logSummary(log)">{{ logSummary(log) }}</p>
           <pre v-if="isLogExpanded(log)" class="log-full">{{ log.message }}</pre>
         </button>
       </div>

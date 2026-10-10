@@ -242,12 +242,6 @@
   color: var(--app-text);
 }
 
-.info-bubble:focus-visible::after {
-  display: block;
-  opacity: 1;
-  visibility: visible;
-}
-
 .compact-zone-tray .compact-shopping-head > div {
   display: grid;
   min-width: 0;
