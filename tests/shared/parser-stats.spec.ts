@@ -78,6 +78,7 @@ test("recognizes structured player chat without turning it into a run event", ()
 test("keeps server chat non-actionable and rejects loose chat-like objects", () => {
   assert.equal(extractPlayerChatMessages({ chatRoom: 0, name: "SERVER", message: "GiveMeGold rolled", msgType: 1, uid: 0 })[0].actionable, false);
   assert.deepEqual(extractPlayerChatMessages({ name: "GiveMeGold", message: "not a chat envelope", uid: 3 }), []);
+  assert.deepEqual(messageToEvents({ chatRoom: 1, name: "Someone", message: "anyone check their mail?", msgType: 0, uid: 42 }), []);
 });
 
 test("query string nested JSON values are deserialized", () => {
@@ -123,6 +124,26 @@ test("save query snapshots recover account, XP, and kill totals", () => {
     bloodPact: 0,
     seasonMode: "GSS",
   });
+});
+
+test("save snapshots with escaped strings still count kills", () => {
+  const save = (kills: number) => captureMessages(
+    `\0\0save\0R\0account_id=123&slot_data={"statisticTotalMonsterKills":${kills},"merc_name":["Bob \\"Jr\\"","",""],`
+    + `"inventory_tab_name":["Runes\\/Gems",null],"damage_source":"D\\u00e6mon","name":"Dante","experience":5000,"season":11,"hardcore":0}`
+    + "&checksum=abc&beta=0\0",
+  );
+  const stats = new StatsEngine();
+
+  const first = messageToEvents(save(408_947));
+  assert.deepEqual(first.map((event) => event.name), ["updateAccount"]);
+  assert.equal((first[0].value as { totalMonsterKills: number }).totalMonsterKills, 408_947);
+  stats.applyEvents(first);
+  assert.equal(stats.applyEvents(messageToEvents(save(409_050))).totalKillsEarned, 103);
+});
+
+test("backslashes between JSON payloads still separate fragments", () => {
+  assert.deepEqual(captureMessages('{"a":1}\\x00{"b":"c\\"d"}\\'), [{ a: 1 }, { b: 'c"d' }]);
+  assert.deepEqual(captureMessages('[noise\\{"a":1}]'), [{ a: 1 }]);
 });
 
 test("satanic zone query payloads load zone effects from compact framing", () => {
@@ -219,6 +240,23 @@ test("account snapshots track character kill deltas", () => {
   assert.equal(snapshot.totalKills, 147031);
   assert.equal(snapshot.totalKillsEarned, 31);
   assert.equal(summary.totalKillsGained, 31);
+});
+
+test("switching characters does not count the gap between their lifetime totals", () => {
+  const stats = new StatsEngine();
+  const save = (name: string, kills: number, experience: number) =>
+    stats.applyEvents(messageToEvents([{ name, experience, season: 11, hardcore: 0, statisticTotalMonsterKills: kills }]));
+
+  save("Main", 400_000, 17_000_000);
+  save("Main", 400_100, 17_100_000);
+  save("Alt", 50_000, 1_000_000);
+  save("Alt", 50_010, 1_000_500);
+  stats.applyEvents(messageToEvents([{ name: "Account", accountUID: 1, hardcore: 0, season: 11, cross_region_identifier: "1" }]));
+  save("Main", 400_100, 17_100_000);
+  const snapshot = save("Main", 400_105, 17_100_050);
+
+  assert.equal(snapshot.totalKillsEarned, 115);
+  assert.equal(snapshot.totalXpEarned, 100_550);
 });
 
 test("active character identity packets set the displayed character without resetting XP", () => {

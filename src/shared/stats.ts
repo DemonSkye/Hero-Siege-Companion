@@ -116,6 +116,7 @@ export class StatsEngine {
   private itemTotals = new Map<string, ItemDropCounter>();
   private lastCurrencyData: CurrencyData | null = null;
   private goldMode: string | null = null;
+  private totalsCharacter: string | null = null;
   private pausedAt: number | null = null;
   private totalPausedMs = 0;
 
@@ -126,6 +127,7 @@ export class StatsEngine {
     this.itemTotals.clear();
     this.lastCurrencyData = null;
     this.goldMode = null;
+    this.totalsCharacter = null;
     this.pausedAt = null;
     this.totalPausedMs = 0;
     return this.snapshot();
@@ -182,6 +184,14 @@ export class StatsEngine {
 
     if (event.name === EVENT_NAMES.account || event.name === EVENT_NAMES.accountMode) {
       const account = event.value as AccountInfo;
+      if (event.name === EVENT_NAMES.account && account.name && (account.hasExperience || account.totalMonsterKills > 0)) {
+        // Lifetime totals belong to one character; switching must not count the gap between characters.
+        if (this.totalsCharacter !== null && this.totalsCharacter !== account.name) {
+          this.stats.totalKills = 0;
+          this.stats.totalXp = 0;
+        }
+        this.totalsCharacter = account.name;
+      }
       if (event.name === EVENT_NAMES.account) this.stats.accountName = account.name || this.stats.accountName;
       this.stats.seasonMode = account.seasonMode;
       if (event.name === EVENT_NAMES.account) {

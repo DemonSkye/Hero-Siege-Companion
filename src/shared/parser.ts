@@ -198,15 +198,7 @@ export function messageToEvents(value: MessageValue | MessageValue[] | null | un
 export function extractPlayerChatMessages(value: MessageValue | MessageValue[] | null | undefined): PlayerChatMessage[] {
   const chatMessages: PlayerChatMessage[] = [];
   for (const msg of iterMessageObjects(value)) {
-    if (
-      !hasMessageField(msg, ["chatRoom"]) ||
-      !hasMessageField(msg, ["name"]) ||
-      !hasMessageField(msg, ["message"]) ||
-      !hasMessageField(msg, ["msgType"]) ||
-      !hasMessageField(msg, ["uid"])
-    ) {
-      continue;
-    }
+    if (!isPlayerChatShaped(msg)) continue;
 
     const playerName = normalizeChatText(getMessageField(msg, ["name"], ""), 64);
     const message = normalizeChatText(getMessageField(msg, ["message"], ""), 2_000);
@@ -231,7 +223,7 @@ export function identifyEvent(msg: MessageObject): EventName | null {
 }
 
 function identifyEvents(msg: MessageObject): EventName[] {
-  if (!msg || typeof msg !== "object" || Array.isArray(msg) || msg.steam) return [];
+  if (!msg || typeof msg !== "object" || Array.isArray(msg) || msg.steam || isPlayerChatShaped(msg)) return [];
 
   const events: EventName[] = [];
   const message = String(getMessageField(msg, ["message"], "")).toLowerCase();
@@ -258,6 +250,10 @@ function identifyEvents(msg: MessageObject): EventName[] {
   if (hasMessageField(msg, XP_GAIN_FIELDS)) events.push(EVENT_NAMES.xp);
 
   return events;
+}
+
+function isPlayerChatShaped(msg: MessageObject): boolean {
+  return ["chatRoom", "name", "message", "msgType", "uid"].every((field) => hasMessageField(msg, [field]));
 }
 
 function* iterMessageObjects(value: MessageValue | MessageValue[] | null | undefined): Iterable<MessageObject> {
@@ -1026,12 +1022,33 @@ function parseQueryValue(value: string): MessageValue {
   }
 }
 
+// Backslashes inside valid JSON are string escapes, not fragment separators.
 function splitProtocolFragments(text: string): string[] {
-  return text
-    .replace(/'b'/g, "")
-    .split("\\")
-    .map((fragment) => fragment.replace(/\0/g, "").trim())
-    .filter(Boolean);
+  const cleaned = text.replace(/'b'/g, "");
+  const fragments: string[] = [];
+  let fragmentStart = 0;
+  for (let i = 0; i < cleaned.length; i += 1) {
+    const char = cleaned[i];
+    if (char === "{" || char === "[") {
+      const end = findMatchingJsonEnd(cleaned, i, char);
+      const span = end === -1 ? "" : cleaned.slice(i, end + 1);
+      if (span && (!span.includes("\\") || isValidJson(span.replace(/\0/g, "")))) i = end;
+    } else if (char === "\\") {
+      fragments.push(cleaned.slice(fragmentStart, i));
+      fragmentStart = i + 1;
+    }
+  }
+  fragments.push(cleaned.slice(fragmentStart));
+  return fragments.map((fragment) => fragment.replace(/\0/g, "").trim()).filter(Boolean);
+}
+
+function isValidJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseSpecialPayload(text: string): MessageValue | null {
