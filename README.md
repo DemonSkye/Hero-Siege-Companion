@@ -229,3 +229,16 @@ OSS contributors can reuse the canonical item JSON, shared stat IDs and typed
 coverage, explicit unknowns and offline validation/export commands.
 
 Npcap is developed by the Nmap Project. Hero Siege Companion is not affiliated with Hero Siege, Panic Art Studios, Nmap, or Npcap.
+
+## License
+
+Hero Siege Companion is source-available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE.md). You may use, copy, modify and
+share it, including in forks, for any noncommercial purpose, as long as you keep
+the `Required Notice` line from [LICENSE.md](LICENSE.md) with your copy. Selling
+it, or using it in a paid product or service, is not permitted. If you'd like to
+use it commercially, for example in a fork you've substantially reworked, open an
+issue to ask.
+
+Hero Siege names and the game artwork under `img/` belong to Panic Art Studios and
+are not covered by this license.
